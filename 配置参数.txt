@@ -1,0 +1,11 @@
+数据库密码：MySql@2024!Root
+
+数据库：
+
+数据表：
+
+豆包大模型：
+
+"model": "doubao-seed-1-8-251228",
+
+'api_key': '58a51ac5-3b75-4c5e-85ac-1fb4ef652bd0'
