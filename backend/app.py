@@ -7,10 +7,87 @@ import json
 import requests
 from sqlalchemy import create_engine
 from sqlalchemy import inspect
+from sqlalchemy import text
 import numpy as np
+import hashlib
+import jwt
+import datetime
+from functools import wraps
+
+# JWT配置
+SECRET_KEY = 'your-secret-key-for-jwt-token'
+TOKEN_EXPIRATION = 24 * 60 * 60  # 24小时
 
 app = Flask(__name__)
-CORS(app)
+# 配置CORS，允许所有跨域请求
+CORS(app, resources={r"/*": {"origins": "*", "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"], "allow_headers": ["Content-Type", "Authorization"]}})
+
+# JWT令牌生成
+def generate_token(user_id, username, role):
+    payload = {
+        'user_id': user_id,
+        'username': username,
+        'role': role,
+        'exp': datetime.datetime.utcnow() + datetime.timedelta(seconds=TOKEN_EXPIRATION)
+    }
+    return jwt.encode(payload, SECRET_KEY, algorithm='HS256')
+
+# JWT令牌验证
+def verify_token(token):
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
+        return payload
+    except:
+        return None
+
+# 保护路由的装饰器
+def protected(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        token = request.headers.get('Authorization')
+        if not token:
+            return jsonify({'error': 'Missing token'}), 401
+        
+        # 移除Bearer前缀
+        if token.startswith('Bearer '):
+            token = token[7:]
+        
+        payload = verify_token(token)
+        if not payload:
+            return jsonify({'error': 'Invalid or expired token'}), 401
+        
+        # 将用户信息添加到请求上下文
+        request.user_id = payload['user_id']
+        request.username = payload['username']
+        request.role = payload['role']
+        return f(*args, **kwargs)
+    return decorated
+
+# 管理员权限装饰器
+def admin_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        token = request.headers.get('Authorization')
+        if not token:
+            return jsonify({'error': 'Missing token'}), 401
+        
+        # 移除Bearer前缀
+        if token.startswith('Bearer '):
+            token = token[7:]
+        
+        payload = verify_token(token)
+        if not payload:
+            return jsonify({'error': 'Invalid or expired token'}), 401
+        
+        if payload['role'] != 'admin':
+            return jsonify({'error': 'Admin permission required'}), 403
+        
+        # 将用户信息添加到请求上下文
+        request.user_id = payload['user_id']
+        request.username = payload['username']
+        request.role = payload['role']
+        return f(*args, **kwargs)
+    return decorated
 
 # 数据库配置
 DB_USER = 'root'
@@ -23,12 +100,35 @@ DB_PORT = '3306'
 encoded_password = urllib.parse.quote_plus(DB_PASSWORD)
 engine = create_engine(f'mysql+pymysql://{DB_USER}:{encoded_password}@{DB_HOST}:{DB_PORT}/{DB_NAME}')
 
+# 导入用户表模型
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy import Column, Integer, String, DateTime
+from sqlalchemy.sql import func
+from sqlalchemy.orm import sessionmaker
+
+Base = declarative_base()
+
+class User(Base):
+    __tablename__ = 'users'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    username = Column(String(50), unique=True, nullable=False)
+    password = Column(String(255), nullable=False)
+    role = Column(String(20), nullable=False, default='user')
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+# 创建会话
+Session = sessionmaker(bind=engine)
+session = Session()
+
 # 大模型API配置（火山引擎）
 API_KEY = '58a51ac5-3b75-4c5e-85ac-1fb4ef652bd0'
 API_URL = 'https://ark.cn-beijing.volces.com/api/v3/chat/completions'
 MODEL = 'doubao-seed-1-8-251228'
 
 @app.route('/api/upload', methods=['POST'])
+@protected
 def upload_file():
     try:
         if 'file' not in request.files:
@@ -54,7 +154,293 @@ def upload_file():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+# 登录接口
+@app.route('/api/login', methods=['POST'])
+def login():
+    try:
+        data = request.json
+        username = data.get('username')
+        password = data.get('password')
+        
+        if not username or not password:
+            return jsonify({'error': 'Missing username or password'}), 400
+        
+        # 查找用户
+        user = session.query(User).filter_by(username=username).first()
+        if not user:
+            return jsonify({'error': 'Invalid username or password'}), 401
+        
+        # 验证密码
+        hashed_password = hashlib.sha256(password.encode()).hexdigest()
+        if user.password != hashed_password:
+            return jsonify({'error': 'Invalid username or password'}), 401
+        
+        # 生成令牌
+        token = generate_token(user.id, user.username, user.role)
+        
+        # 获取用户权限
+        permission = session.execute(text("SELECT data_management, assessment, data_analysis, spotcheck, tools, chengguantong FROM permissions WHERE user_id = :user_id"), {'user_id': user.id}).fetchone()
+        permissions = {
+            'data_management': False,
+            'assessment': False,
+            'data_analysis': False,
+            'spotcheck': False,
+            'tools': False,
+            'chengguantong': False
+        }
+        if permission:
+            permissions = {
+                'data_management': permission[0],
+                'assessment': permission[1],
+                'data_analysis': permission[2],
+                'spotcheck': permission[3],
+                'tools': permission[4],
+                'chengguantong': permission[5]
+            }
+        
+        return jsonify({
+                'token': token,
+                'user_id': user.id,
+                'username': user.username,
+                'role': user.role,
+                'permissions': permissions
+            }), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# 获取当前用户信息接口
+@app.route('/api/user', methods=['GET'])
+@protected
+def get_current_user():
+    try:
+        # 获取用户权限
+        permission = session.execute(text("SELECT data_management, assessment, data_analysis, spotcheck, tools, chengguantong FROM permissions WHERE user_id = :user_id"), {'user_id': request.user_id}).fetchone()
+        permissions = {
+            'data_management': False,
+            'assessment': False,
+            'data_analysis': False,
+            'spotcheck': False,
+            'tools': False,
+            'chengguantong': False
+        }
+        if permission:
+            permissions = {
+                'data_management': permission[0],
+                'assessment': permission[1],
+                'data_analysis': permission[2],
+                'spotcheck': permission[3],
+                'tools': permission[4],
+                'chengguantong': permission[5]
+            }
+        
+        return jsonify({
+            'user_id': request.user_id,
+            'username': request.username,
+            'role': request.role,
+            'permissions': permissions
+        }), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# 获取所有用户列表接口（管理员专用）
+@app.route('/api/users', methods=['GET'])
+@admin_required
+def get_users():
+    try:
+        users = session.query(User).all()
+        user_list = []
+        for user in users:
+            # 获取用户权限
+            permission = session.execute(text("SELECT data_management, assessment, data_analysis, spotcheck, tools, chengguantong FROM permissions WHERE user_id = :user_id"), {'user_id': user.id}).fetchone()
+            permissions = {
+                'data_management': False,
+                'assessment': False,
+                'data_analysis': False,
+                'spotcheck': False,
+                'tools': False,
+                'chengguantong': False
+            }
+            if permission:
+                permissions = {
+                    'data_management': permission[0],
+                    'assessment': permission[1],
+                    'data_analysis': permission[2],
+                    'spotcheck': permission[3],
+                    'tools': permission[4],
+                    'chengguantong': permission[5]
+                }
+            user_list.append({
+                'id': user.id,
+                'username': user.username,
+                'role': user.role,
+                'created_at': user.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+                'permissions': permissions
+            })
+        return jsonify({'users': user_list}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# 创建用户接口（管理员专用）
+@app.route('/api/users', methods=['POST'])
+@admin_required
+def create_user():
+    try:
+        data = request.json
+        username = data.get('username')
+        password = data.get('password')
+        role = data.get('role', 'user')
+        
+        if not username or not password:
+            return jsonify({'error': 'Missing username or password'}), 400
+        
+        # 检查用户是否已存在
+        existing_user = session.query(User).filter_by(username=username).first()
+        if existing_user:
+            return jsonify({'error': 'Username already exists'}), 400
+        
+        # 创建新用户
+        hashed_password = hashlib.sha256(password.encode()).hexdigest()
+        new_user = User(
+            username=username,
+            password=hashed_password,
+            role=role
+        )
+        session.add(new_user)
+        session.commit()
+        
+        # 为新用户添加默认权限
+        session.execute(text("INSERT INTO permissions (user_id, data_management, assessment, data_analysis, spotcheck, tools, chengguantong) VALUES (:user_id, :data_management, :assessment, :data_analysis, :spotcheck, :tools, :chengguantong)"), {
+            'user_id': new_user.id,
+            'data_management': False,
+            'assessment': False,
+            'data_analysis': False,
+            'spotcheck': False,
+            'tools': False,
+            'chengguantong': False
+        })
+        session.commit()
+        
+        return jsonify({
+            'id': new_user.id,
+            'username': new_user.username,
+            'role': new_user.role,
+            'permissions': {
+                'data_management': False,
+                'assessment': False,
+                'data_analysis': False,
+                'spotcheck': False,
+                'tools': False,
+                'chengguantong': False
+            }
+        }), 201
+    except Exception as e:
+        session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+# 修改用户接口（管理员专用）
+@app.route('/api/users/<int:user_id>', methods=['PUT'])
+@admin_required
+def update_user(user_id):
+    try:
+        data = request.json
+        user = session.query(User).filter_by(id=user_id).first()
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+        
+        # 更新用户信息
+        if 'username' in data:
+            user.username = data['username']
+        if 'password' in data:
+            user.password = hashlib.sha256(data['password'].encode()).hexdigest()
+        if 'role' in data:
+            user.role = data['role']
+        
+        session.commit()
+        
+        return jsonify({
+            'id': user.id,
+            'username': user.username,
+            'role': user.role
+        }), 200
+    except Exception as e:
+        session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+# 更新用户权限接口（管理员专用）
+@app.route('/api/users/<int:user_id>/permissions', methods=['PUT'])
+@admin_required
+def update_user_permissions(user_id):
+    try:
+        data = request.json
+        
+        # 验证用户是否存在
+        user = session.query(User).filter_by(id=user_id).first()
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+        
+        # 更新用户权限
+        session.execute(text("UPDATE permissions SET data_management = :data_management, assessment = :assessment, data_analysis = :data_analysis, spotcheck = :spotcheck, tools = :tools, chengguantong = :chengguantong WHERE user_id = :user_id"), {
+            'user_id': user_id,
+            'data_management': data.get('data_management', False),
+            'assessment': data.get('assessment', False),
+            'data_analysis': data.get('data_analysis', False),
+            'spotcheck': data.get('spotcheck', False),
+            'tools': data.get('tools', False),
+            'chengguantong': data.get('chengguantong', False)
+        })
+        session.commit()
+        
+        # 返回更新后的权限
+        permission = session.execute(text("SELECT data_management, assessment, data_analysis, spotcheck, tools, chengguantong FROM permissions WHERE user_id = :user_id"), {'user_id': user_id}).fetchone()
+        permissions = {
+            'data_management': False,
+            'assessment': False,
+            'data_analysis': False,
+            'spotcheck': False,
+            'tools': False,
+            'chengguantong': False
+        }
+        if permission:
+            permissions = {
+                'data_management': permission[0],
+                'assessment': permission[1],
+                'data_analysis': permission[2],
+                'spotcheck': permission[3],
+                'tools': permission[4],
+                'chengguantong': permission[5]
+            }
+        
+        return jsonify({
+            'user_id': user_id,
+            'permissions': permissions
+        }), 200
+    except Exception as e:
+        session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+# 删除用户接口（管理员专用）
+@app.route('/api/users/<int:user_id>', methods=['DELETE'])
+@admin_required
+def delete_user(user_id):
+    try:
+        user = session.query(User).filter_by(id=user_id).first()
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+        
+        # 不允许删除管理员用户
+        if user.role == 'admin' and user_id == 1:
+            return jsonify({'error': 'Cannot delete admin user'}), 400
+        
+        session.delete(user)
+        session.commit()
+        
+        return jsonify({'message': 'User deleted successfully'}), 200
+    except Exception as e:
+        session.rollback()
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/tables', methods=['GET'])
+@protected
 def get_tables():
     try:
         # 获取数据库中所有表名
@@ -62,6 +448,25 @@ def get_tables():
         tables = inspector.get_table_names()
         return jsonify({'tables': tables}), 200
     except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# 删除数据表接口
+@app.route('/api/tables/<table_name>', methods=['DELETE'])
+@protected
+def delete_table(table_name):
+    try:
+        # 防止删除系统表
+        protected_tables = ['users', 'permissions']
+        if table_name in protected_tables:
+            return jsonify({'error': f'不能删除系统表 {table_name}'}), 403
+        
+        # 删除数据表
+        from sqlalchemy import text
+        session.execute(text(f"DROP TABLE IF EXISTS {table_name}"))
+        session.commit()
+        return jsonify({'message': f'Table {table_name} deleted successfully'})
+    except Exception as e:
+        session.rollback()
         return jsonify({'error': str(e)}), 500
 
 def convert_nan_to_null(obj):
@@ -156,6 +561,7 @@ def call_doubao_api(prompt, data_summary, analysis_type):
             return f"API调用失败: {str(e)}"
 
 @app.route('/api/analyze', methods=['POST'])
+@protected
 def analyze():
     try:
         data = request.json

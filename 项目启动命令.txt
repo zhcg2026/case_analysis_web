@@ -1,0 +1,9 @@
+#进入后端目录
+cd C:\Users\Administrator\Documents\trae_projects\case_analysis_web\backend
+#启动后端服务，服务运行在：http://localhost:5001
+python app.py
+
+#进入前端目录
+cd C:\Users\Administrator\Documents\trae_projects\case_analysis_web\frontend
+##启动前端服务，服务运行在：http://localhost:5174
+npm run dev
