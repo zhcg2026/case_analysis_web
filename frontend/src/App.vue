@@ -12,6 +12,13 @@ const message = ref('');
 const selectedFile = ref(null);
 const activeModule = ref('home'); // home, data, assessment, analysis, spotcheck, tools, chengguantong, cms
 
+// 案件抽查模块状态管理
+const spotcheckFile = ref(null);
+const spotcheckLoading = ref(false);
+const spotcheckResult = ref(null);
+const spotcheckMessage = ref('');
+const spotcheckError = ref('');
+
 // 考核计分状态管理
 const selectedDepartment = ref('');
 const selectedAssessmentTable = ref('');
@@ -1695,6 +1702,101 @@ function closeAddUserForm() {
   adminError.value = '';
 }
 
+// 案件抽查模块方法
+function handleSpotcheckFileSelect(event) {
+  const file = event.target.files[0];
+  if (file) {
+    // 验证文件类型
+    const allowedTypes = ['application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'];
+    const allowedExtensions = ['.docx', '.xlsx'];
+    const fileExtension = file.name.toLowerCase().substring(file.name.lastIndexOf('.'));
+    
+    if (!allowedTypes.includes(file.type) && !allowedExtensions.includes(fileExtension)) {
+      spotcheckError.value = '只支持docx和xlsx文件';
+      spotcheckFile.value = null;
+      return;
+    }
+    
+    spotcheckFile.value = file;
+    spotcheckError.value = '';
+  }
+}
+
+async function uploadAndAnalyzeSpotcheck() {
+  if (!spotcheckFile.value) {
+    spotcheckError.value = '请先选择文件';
+    return;
+  }
+
+  const token = localStorage.getItem('token');
+  if (!token) {
+    spotcheckError.value = '请先登录';
+    return;
+  }
+
+  const formData = new FormData();
+  formData.append('file', spotcheckFile.value);
+
+  try {
+    spotcheckLoading.value = true;
+    spotcheckMessage.value = '上传中...';
+    spotcheckError.value = '';
+    spotcheckResult.value = null;
+    
+    // 添加上传进度提示
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => {
+      controller.abort();
+      spotcheckError.value = '上传超时，请稍后重试';
+      spotcheckLoading.value = false;
+    }, 60000); // 60秒超时
+    
+    const response = await fetch('http://localhost:5000/api/spotcheck', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: formData,
+      signal: controller.signal
+    });
+    
+    clearTimeout(timeoutId);
+    
+    if (!response.ok) {
+      throw new Error(`服务器响应失败: ${response.status}`);
+    }
+    
+    spotcheckMessage.value = '分析中...';
+    const data = await response.json();
+    
+    if (data.error) {
+      spotcheckError.value = '错误: ' + data.error;
+    } else {
+      spotcheckResult.value = data;
+      spotcheckMessage.value = '分析完成';
+    }
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      spotcheckError.value = '上传超时，请稍后重试';
+    } else {
+      spotcheckError.value = '错误: ' + error.message;
+    }
+    console.error('Error uploading spotcheck file:', error);
+  } finally {
+    spotcheckLoading.value = false;
+  }
+}
+
+function clearSpotcheck() {
+  spotcheckFile.value = null;
+  spotcheckResult.value = null;
+  spotcheckMessage.value = '';
+  spotcheckError.value = '';
+  // 重置文件输入
+  const fileInput = document.getElementById('spotcheck-file-input');
+  if (fileInput) {
+    fileInput.value = '';
+  }
+}
+
 // 编辑用户权限
 function editUserPermissions(user) {
   // 添加调试代码
@@ -2093,6 +2195,11 @@ async function saveArticle() {
     return;
   }
   
+  if (!newArticle.value.category_id) {
+    cmsFormError.value = '请选择栏目';
+    return;
+  }
+  
   try {
     cmsLoading.value = true;
     cmsFormError.value = '';
@@ -2231,10 +2338,44 @@ function closeArticleForm() {
   fileUploadLoading.value = false;
 }
 
+// 状态管理：全部文章弹窗
+const showAllArticlesModal = ref(false);
+const allArticlesCategoryId = ref(null);
+const allArticlesList = ref([]);
+
 // 根据栏目ID获取文章
 function getCategoryArticles(categoryId) {
-  // 这里可以根据需要从后端获取，现在暂时从cmsArticles中过滤
-  return cmsArticles.value.filter(article => Number(article.category_id) === Number(categoryId));
+  // 过滤出指定栏目的文章，按时间排序（最新的在前），只返回前5条
+  return cmsArticles.value
+    .filter(article => Number(article.category_id) === Number(categoryId))
+    .sort((a, b) => {
+      const dateA = new Date(a.published_at || a.created_at);
+      const dateB = new Date(b.published_at || b.created_at);
+      return dateB - dateA; // 降序排序
+    })
+    .slice(0, 5); // 只返回前5条
+}
+
+// 显示全部文章弹窗
+function showAllArticles(categoryId) {
+  // 过滤出该栏目的所有文章并排序
+  allArticlesList.value = cmsArticles.value
+    .filter(article => Number(article.category_id) === Number(categoryId))
+    .sort((a, b) => {
+      const dateA = new Date(a.published_at || a.created_at);
+      const dateB = new Date(b.published_at || b.created_at);
+      return dateB - dateA; // 降序排序
+    });
+  
+  allArticlesCategoryId.value = categoryId;
+  showAllArticlesModal.value = true;
+}
+
+// 关闭全部文章弹窗
+function closeAllArticlesModal() {
+  showAllArticlesModal.value = false;
+  allArticlesCategoryId.value = null;
+  allArticlesList.value = [];
 }
 
 // 生成slug函数
@@ -2463,17 +2604,17 @@ async function uploadImage(event) {
         <div class="cms-home-section" style="margin-top: 20px;">
           <div class="cms-columns" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 40px;">
             <div v-for="(category, index) in cmsCategories" :key="category.id" class="cms-column" style="padding: 25px; border: 1px solid #e0e0e0; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); background-color: #ffffff;">
-              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
                 <h3 class="column-title" style="font-size: 22px; font-weight: bold; margin: 0; color: #333;">{{ category.name }}</h3>
-                <a href="#" class="more-link" style="font-size: 16px; color: #666; text-decoration: none; padding: 6px 12px; border: 1px solid #ddd; border-radius: 4px;">更多</a>
+                <a href="#" class="more-link" style="font-size: 16px; color: #666; text-decoration: none; padding: 6px 12px; border: 1px solid #ddd; border-radius: 4px;" @click.prevent="showAllArticles(category.id)">更多</a>
               </div>
               <div class="column-articles">
                 <div v-if="cmsLoading" class="loading" style="font-size: 16px; padding: 20px; text-align: center; color: #666;">加载中...</div>
                 <div v-else-if="cmsError" class="error" style="font-size: 16px; padding: 20px; text-align: center; color: #ff4d4f;">{{ cmsError }}</div>
                 <div v-else-if="getCategoryArticles(category.id).length === 0" class="empty" style="font-size: 16px; padding: 20px; text-align: center; color: #999;">该栏目下暂无文章</div>
                 <div v-else class="articles-list" style="list-style: none; padding: 0; margin: 0;">
-                  <div v-for="article in getCategoryArticles(category.id)" :key="article.id" class="article-item" style="margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; padding: 12px; border-radius: 4px; transition: all 0.3s ease;" @click="fetchArticleDetail(article.id)" :style="{ backgroundColor: 'hover' === 'hover' ? '#f5f5f5' : 'transparent' }" @mouseenter="$event.currentTarget.style.backgroundColor='#f5f5f5'" @mouseleave="$event.currentTarget.style.backgroundColor='transparent'">
-                    <span style="flex: 1; font-size: 16px; color: #333; line-height: 1.4;">
+                  <div v-for="article in getCategoryArticles(category.id)" :key="article.id" class="article-item" style="margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; padding: 8px; border-radius: 4px; transition: all 0.3s ease;" @click="fetchArticleDetail(article.id)" :style="{ backgroundColor: 'hover' === 'hover' ? '#f5f5f5' : 'transparent' }" @mouseenter="$event.currentTarget.style.backgroundColor='#f5f5f5'" @mouseleave="$event.currentTarget.style.backgroundColor='transparent'">
+                    <span style="flex: 1; font-size: 16px; color: #333; line-height: 1.4; text-align: left;">
                       <span style="margin-right: 12px; color: #1890ff;">•</span>
                       {{ article.title }}
                     </span>
@@ -2556,14 +2697,7 @@ async function uploadImage(event) {
                 </tbody>
               </table>
             </div>
-            <div v-if="assessmentResult.details" class="result-details" style="margin-top: 20px;">
-              <h4>详细指标</h4>
-              <ul style="list-style-type: none; padding: 0;">
-                <li v-for="(value, key) in assessmentResult.details" :key="key" style="margin: 5px 0; padding: 5px; background-color: white; border-radius: 4px;">
-                  {{ key }}：{{ value }}
-                </li>
-              </ul>
-            </div>
+
           </div>
         </div>
       </div>
@@ -2708,7 +2842,70 @@ async function uploadImage(event) {
       <div v-if="activeModule === 'spotcheck' && (!userInfo || userInfo.role === 'admin' || (userInfo.permissions && userInfo.permissions.spotcheck))" class="tab-content">
         <h2 class="section-title">案件抽查</h2>
         <div class="spotcheck-section">
-          <p>案件抽查功能开发中...</p>
+          <!-- 第一行：提示文字 -->
+          <div class="tip-section">
+            <p>该模块允许上传文件（docx或者xlsx），并发送给大模型进行分析，然后返回结果。</p>
+          </div>
+          
+          <!-- 第二行：文件选择和按钮 -->
+          <div class="upload-section">
+            <div class="form-group">
+              <input 
+                type="file" 
+                id="spotcheck-file-input"
+                accept=".docx,.xlsx" 
+                @change="handleSpotcheckFileSelect"
+              >
+              <div v-if="spotcheckFile" class="file-info">
+                已选择：{{ spotcheckFile.name }}
+              </div>
+            </div>
+            
+            <div class="button-group">
+              <button 
+                @click="uploadAndAnalyzeSpotcheck"
+                :disabled="!spotcheckFile || spotcheckLoading"
+                class="btn-primary"
+              >
+                <span v-if="spotcheckLoading">分析中...</span>
+                <span v-else>上传并分析</span>
+              </button>
+              <button 
+                @click="clearSpotcheck"
+                :disabled="spotcheckLoading"
+                class="btn-secondary"
+              >
+                清除
+              </button>
+            </div>
+            
+            <div v-if="spotcheckMessage" class="message success">
+              {{ spotcheckMessage }}
+            </div>
+            <div v-if="spotcheckError" class="message error">
+              {{ spotcheckError }}
+            </div>
+          </div>
+          
+          <!-- 第三行：分析结果（去除评分结果） -->
+          <div v-if="spotcheckResult" class="result-section">
+            <div class="result-card">
+              <!-- 文件内容显示 -->
+              <div v-if="spotcheckResult.file_content" class="file-content">
+                <h5>读取的文件内容：</h5>
+                <div class="content-display">
+                  <p v-for="(line, index) in spotcheckResult.file_content.split('\n')" :key="index" v-if="line && line.trim()">
+                    {{ line }}
+                  </p>
+                </div>
+              </div>
+              
+              <div v-if="spotcheckResult.analysis" class="analysis-content">
+                <h5>分析内容：</h5>
+                <div v-html="spotcheckResult.analysis"></div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
       
@@ -3171,7 +3368,7 @@ async function uploadImage(event) {
     <!-- 页脚 -->
     <div v-if="isLoggedIn" class="footer">
       <p>© 2024 运城市智慧城市管理平台-一站通</p> 
-      <p>联系电话：2381078</p>
+      <p>联系电话：0359-2381078</p>
     </div>
     
     <!-- 文章详情弹窗 -->
@@ -3211,6 +3408,30 @@ async function uploadImage(event) {
             <a :href="`http://localhost:5000/${currentArticle.file_path}`" :download="currentArticle.file_path.split('/').pop()" style="display: inline-block; padding: 8px 16px; background-color: #3498db; color: white; text-decoration: none; border-radius: 4px; font-size: 14px;">
               下载文件
             </a>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- 全部文章弹窗 -->
+    <div v-if="showAllArticlesModal" class="all-articles-modal" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background-color: rgba(0, 0, 0, 0.5); display: flex; justify-content: center; align-items: center; z-index: 1000;">
+      <div class="all-articles-content" style="background-color: white; border-radius: 8px; padding: 30px; width: 90%; max-width: 800px; max-height: 80vh; overflow-y: auto; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px;">
+          <h2 style="margin: 0; font-size: 24px; color: #333; text-align: left;">{{ getCategoryName(allArticlesCategoryId) }} - 全部文章</h2>
+          <button @click="closeAllArticlesModal" style="background: none; border: none; font-size: 24px; cursor: pointer; color: #999; padding: 0; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center;">&times;</button>
+        </div>
+        <div v-if="allArticlesList.length === 0" style="text-align: center; padding: 40px; color: #999;">
+          <div>该栏目下暂无文章</div>
+        </div>
+        <div v-else class="articles-list" style="list-style: none; padding: 0; margin: 0;">
+          <div v-for="article in allArticlesList" :key="article.id" class="article-item" style="margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; padding: 8px; border-radius: 4px; transition: all 0.3s ease;" @click="() => { fetchArticleDetail(article.id); closeAllArticlesModal(); }" @mouseenter="$event.currentTarget.style.backgroundColor='#f5f5f5'" @mouseleave="$event.currentTarget.style.backgroundColor='transparent'">
+            <span style="flex: 1; font-size: 16px; color: #333; line-height: 1.4; text-align: left;">
+              <span style="margin-right: 12px; color: #1890ff;">•</span>
+              {{ article.title }}
+            </span>
+            <span style="font-size: 14px; color: #999; white-space: nowrap; margin-left: 15px;">
+              [{{ formatDate(article.published_at || article.created_at) }}]
+            </span>
           </div>
         </div>
       </div>
@@ -3711,11 +3932,13 @@ body {
   padding: 20px;
   background-color: #f9f9f9;
   border-radius: 8px;
-  text-align: center;
+  text-align: left;
   min-height: 300px;
   display: flex;
-  align-items: center;
-  justify-content: center;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 20px;
 }
 
 /* 图表样式 */
