@@ -193,7 +193,7 @@ API_URL = 'https://ark.cn-beijing.volces.com/api/v3/chat/completions'
 MODEL = 'doubao-seed-1-8-251228'
 
 @app.route('/api/upload', methods=['POST'])
-@protected
+@admin_required
 def upload_file():
     session = Session()
     try:
@@ -711,6 +711,503 @@ def convert_nan_to_null(obj):
     else:
         return obj
 
+# 考核计分相关函数
+import datetime
+
+def calculate_law_enforcement_score(cases):
+    """计算城市综合行政执法队8个片区的考核分数和排名"""
+    # 定义8个目标执法分队
+    target_departments = [
+        "执法东片区", "执法北片区", "执法南片区", "执法西片区",
+        "执法中片区", "大渠执法分队", "姚孟执法分队", "安邑执法分队"
+    ]
+    print(f"目标统计部门：{target_departments}")
+    
+    # 按部门分组计算各项指标
+    team_results = []
+    
+    for dept_name in target_departments:
+        # 筛选该部门的数据
+        dept_cases = [c for c in cases if c.get('处置部门') == dept_name]
+        
+        # 计算各项指标
+        total = len(dept_cases)
+        on_time = 0
+        overdue = 0
+        delay = 0
+        rework = 0
+        
+        for case in dept_cases:
+            # 检查结案时间和截止时间
+            close_time = case.get('结案时间') or case.get('handle_time')
+            deadline = case.get('捆绑处置截止时间') or case.get('deadline')
+            
+            if close_time and deadline:
+                try:
+                    if isinstance(close_time, str):
+                        close_time = datetime.datetime.strptime(close_time, '%Y-%m-%d %H:%M:%S')
+                    if isinstance(deadline, str):
+                        deadline = datetime.datetime.strptime(deadline, '%Y-%m-%d %H:%M:%S')
+                    
+                    if close_time < deadline:
+                        on_time += 1
+                    elif close_time > deadline:
+                        overdue += 1
+                except:
+                    pass
+            
+            # 检查延期次数
+            delay_val = case.get('延期次数') or case.get('delay')
+            try:
+                if delay_val is not None:
+                    delay_num = int(delay_val)
+                    if delay_num != 0:
+                        delay += 1
+            except (ValueError, TypeError):
+                pass
+            
+            # 检查返工次数
+            rework_val = case.get('返工次数') or case.get('rework')
+            if rework_val and str(rework_val) == '是':
+                rework += 1
+        
+        # 计算比率
+        on_time_rate = on_time / total if total > 0 else 0
+        overdue_rate = overdue / total if total > 0 else 0
+        delay_rate = delay / total if total > 0 else 0
+        rework_rate = rework / total if total > 0 else 0
+        
+        # 计算得分
+        score = (
+            (on_time_rate * 1 + overdue_rate * 0.4) * 0.8 +
+            (1 - delay_rate) * 0.1 +
+            (1 - rework_rate) * 0.1
+        ) * 100
+        
+        team_results.append({
+            'department': dept_name,
+            'total_cases': total,
+            'on_time_count': on_time,
+            'overdue_count': overdue,
+            'delay_count': delay,
+            'rework_count': rework,
+            'on_time_rate': round(on_time_rate * 100, 2),
+            'overdue_rate': round(overdue_rate * 100, 2),
+            'delay_rate': round(delay_rate * 100, 2),
+            'rework_rate': round(rework_rate * 100, 2),
+            'score': round(score, 2)
+        })
+        
+        print(f"  {dept_name}: 总数={total}, 按期={on_time}, 超期={overdue}, 延期={delay}, 返工={rework}, 得分={score:.2f}")
+    
+    # 按得分排名
+    team_results.sort(key=lambda x: x['score'], reverse=True)
+    
+    for i, team in enumerate(team_results, 1):
+        team['rank'] = i
+    
+    print(f"\n排名结果：")
+    for team in team_results:
+        print(f"  第{team['rank']}名：{team['department']} - {team['score']}分")
+    
+    # 计算总体数据
+    total_cases = sum(t['total_cases'] for t in team_results)
+    total_score = sum(t['score'] for t in team_results) / len(team_results)
+    
+    return {
+        'total_cases': total_cases,
+        'team_results': team_results,
+        'score': round(total_score, 2),
+        'details': {}
+    }
+
+def calculate_huanwei_score(cases):
+    """计算市容环卫中心5个片区的考核分数和排名"""
+    # 定义5个目标环卫片区
+    target_areas = [
+        "环卫东片区", "环卫北片区", "环卫南片区",
+        "环卫西片区", "环卫中片区"
+    ]
+    print(f"目标统计片区：{target_areas}")
+    
+    # 按片区分组计算各项指标
+    area_results = []
+    
+    for area_name in target_areas:
+        # 筛选该片区的数据
+        area_cases = [c for c in cases if c.get('处置部门') == area_name]
+        
+        # 计算各项指标
+        total = len(area_cases)
+        on_time = 0
+        overdue = 0
+        delay = 0
+        rework = 0
+        
+        for case in area_cases:
+            # 检查结案时间和截止时间
+            close_time = case.get('结案时间') or case.get('handle_time')
+            deadline = case.get('捆绑处置截止时间') or case.get('deadline')
+            
+            if close_time and deadline:
+                try:
+                    if isinstance(close_time, str):
+                        close_time = datetime.datetime.strptime(close_time, '%Y-%m-%d %H:%M:%S')
+                    if isinstance(deadline, str):
+                        deadline = datetime.datetime.strptime(deadline, '%Y-%m-%d %H:%M:%S')
+                    
+                    if close_time < deadline:
+                        on_time += 1
+                    elif close_time > deadline:
+                        overdue += 1
+                except:
+                    pass
+            
+            # 检查延期次数
+            delay_val = case.get('延期次数') or case.get('delay')
+            try:
+                if delay_val is not None:
+                    delay_num = int(delay_val)
+                    if delay_num != 0:
+                        delay += 1
+            except (ValueError, TypeError):
+                pass
+            
+            # 检查返工次数
+            rework_val = case.get('返工次数') or case.get('rework')
+            if rework_val and str(rework_val) == '是':
+                rework += 1
+        
+        # 计算比率
+        on_time_rate = on_time / total if total > 0 else 0
+        overdue_rate = overdue / total if total > 0 else 0
+        delay_rate = delay / total if total > 0 else 0
+        rework_rate = rework / total if total > 0 else 0
+        
+        # 计算得分
+        score = (
+            (on_time_rate * 1 + overdue_rate * 0.4) * 0.8 +
+            (1 - delay_rate) * 0.1 +
+            (1 - rework_rate) * 0.1
+        ) * 100
+        
+        area_results.append({
+            'department': area_name,
+            'total_cases': total,
+            'on_time_count': on_time,
+            'overdue_count': overdue,
+            'delay_count': delay,
+            'rework_count': rework,
+            'on_time_rate': round(on_time_rate * 100, 2),
+            'overdue_rate': round(overdue_rate * 100, 2),
+            'delay_rate': round(delay_rate * 100, 2),
+            'rework_rate': round(rework_rate * 100, 2),
+            'score': round(score, 2)
+        })
+        
+        print(f"  {area_name}: 总数={total}, 按期={on_time}, 超期={overdue}, 延期={delay}, 返工={rework}, 得分={score:.2f}")
+    
+    # 按得分排名
+    area_results.sort(key=lambda x: x['score'], reverse=True)
+    
+    for i, area in enumerate(area_results, 1):
+        area['rank'] = i
+    
+    print(f"\n排名结果：")
+    for area in area_results:
+        print(f"  第{area['rank']}名：{area['department']} - {area['score']}分")
+    
+    # 计算总体数据
+    total_cases = sum(a['total_cases'] for a in area_results)
+    total_score = sum(a['score'] for a in area_results) / len(area_results)
+    
+    return {
+        'total_cases': total_cases,
+        'team_results': area_results,
+        'score': round(total_score, 2),
+        'details': {}
+    }
+
+def calculate_garden_score(cases):
+    """计算园林各片区的考核得分并排名"""
+    # 定义5个目标园林片区
+    target_areas = [
+        "园林东片区", "园林北片区", "园林南片区",
+        "园林西片区", "园林中片区"
+    ]
+    print(f"目标统计片区：{target_areas}")
+    
+    # 按片区分组计算各项指标
+    area_results = []
+    
+    for area_name in target_areas:
+        # 筛选该片区的数据
+        area_cases = [c for c in cases if c.get('处置部门') == area_name]
+        
+        # 计算各项指标
+        total = len(area_cases)
+        on_time = 0
+        overdue = 0
+        delay = 0
+        rework = 0
+        
+        for case in area_cases:
+            # 检查结案时间和截止时间
+            close_time = case.get('结案时间') or case.get('handle_time')
+            deadline = case.get('捆绑处置截止时间') or case.get('deadline')
+            
+            if close_time and deadline:
+                try:
+                    if isinstance(close_time, str):
+                        close_time = datetime.datetime.strptime(close_time, '%Y-%m-%d %H:%M:%S')
+                    if isinstance(deadline, str):
+                        deadline = datetime.datetime.strptime(deadline, '%Y-%m-%d %H:%M:%S')
+                    
+                    if close_time < deadline:
+                        on_time += 1
+                    elif close_time > deadline:
+                        overdue += 1
+                except:
+                    pass
+            
+            # 检查延期次数
+            delay_val = case.get('延期次数') or case.get('delay')
+            try:
+                if delay_val is not None:
+                    delay_num = int(delay_val)
+                    if delay_num != 0:
+                        delay += 1
+            except (ValueError, TypeError):
+                pass
+            
+            # 检查返工次数
+            rework_val = case.get('返工次数') or case.get('rework')
+            if rework_val and str(rework_val) == '是':
+                rework += 1
+        
+        # 计算比率
+        on_time_rate = on_time / total if total > 0 else 0
+        overdue_rate = overdue / total if total > 0 else 0
+        delay_rate = delay / total if total > 0 else 0
+        rework_rate = rework / total if total > 0 else 0
+        
+        # 计算得分
+        score = (
+            (on_time_rate * 1 + overdue_rate * 0.4) * 0.8 +
+            (1 - delay_rate) * 0.1 +
+            (1 - rework_rate) * 0.1
+        ) * 100
+        
+        area_results.append({
+            'department': area_name,
+            'total_cases': total,
+            'on_time_count': on_time,
+            'overdue_count': overdue,
+            'delay_count': delay,
+            'rework_count': rework,
+            'on_time_rate': round(on_time_rate * 100, 2),
+            'overdue_rate': round(overdue_rate * 100, 2),
+            'delay_rate': round(delay_rate * 100, 2),
+            'rework_rate': round(rework_rate * 100, 2),
+            'score': round(score, 2)
+        })
+        
+        print(f"  {area_name}: 总数={total}, 按期={on_time}, 超期={overdue}, 延期={delay}, 返工={rework}, 得分={score:.2f}")
+    
+    # 按得分排名
+    area_results.sort(key=lambda x: x['score'], reverse=True)
+    
+    for i, area in enumerate(area_results, 1):
+        area['rank'] = i
+    
+    print(f"\n排名结果：")
+    for area in area_results:
+        print(f"  第{area['rank']}名：{area['department']} - {area['score']}分")
+    
+    # 计算总体数据
+    total_cases = sum(a['total_cases'] for a in area_results)
+    total_score = sum(a['score'] for a in area_results) / len(area_results)
+    
+    return {
+        'total_cases': total_cases,
+        'team_results': area_results,
+        'score': round(total_score, 2),
+        'details': {}
+    }
+
+def calculate_park_score(cases):
+    """计算园林各公园考核得分（排除挂账案件）"""
+    # 定义7个目标公园
+    target_parks = ["南风广场", "天逸公园", "体育公园", "航天公园", "圣惠公园", "禹都公园", "人民公园"]
+    print(f"目标统计公园：{target_parks}")
+    
+    # 过滤掉挂账案件
+    non_guazhang_cases = []
+    for case in cases:
+        # 检查当前阶段是否包含挂账
+        stage = case.get('当前阶段名称') or ''
+        stage_str = str(stage).strip().lower()
+        if '挂账' not in stage_str:
+            non_guazhang_cases.append(case)
+    
+    print(f"\n挂账过滤结果：")
+    print(f"   - 原始案件数：{len(cases)}")
+    print(f"   - 排除挂账后案件数：{len(non_guazhang_cases)}")
+    print(f"   - 排除的挂账案件数：{len(cases) - len(non_guazhang_cases)}")
+    
+    # 按公园分组计算各项指标
+    park_results = []
+    
+    for park_name in target_parks:
+        # 筛选该公园的数据
+        park_cases = [c for c in non_guazhang_cases if c.get('处置部门') == park_name]
+        
+        # 计算各项指标
+        total = len(park_cases)
+        on_time = 0
+        overdue = 0
+        delay = 0
+        rework = 0
+        
+        for case in park_cases:
+            # 检查结案时间和截止时间
+            close_time = case.get('结案时间') or case.get('handle_time')
+            deadline = case.get('捆绑处置截止时间') or case.get('deadline')
+            
+            if close_time and deadline:
+                try:
+                    if isinstance(close_time, str):
+                        close_time = datetime.datetime.strptime(close_time, '%Y-%m-%d %H:%M:%S')
+                    if isinstance(deadline, str):
+                        deadline = datetime.datetime.strptime(deadline, '%Y-%m-%d %H:%M:%S')
+                    
+                    if close_time < deadline:
+                        on_time += 1
+                    elif close_time > deadline:
+                        overdue += 1
+                except:
+                    pass
+            
+            # 检查延期次数
+            delay_val = case.get('延期次数') or case.get('delay')
+            try:
+                if delay_val is not None:
+                    delay_num = int(delay_val)
+                    if delay_num != 0:
+                        delay += 1
+            except (ValueError, TypeError):
+                pass
+            
+            # 检查返工次数
+            rework_val = case.get('返工次数') or case.get('rework')
+            if rework_val and str(rework_val) == '是':
+                rework += 1
+        
+        # 计算比率
+        on_time_rate = on_time / total if total > 0 else 0
+        overdue_rate = overdue / total if total > 0 else 0
+        delay_rate = delay / total if total > 0 else 0
+        rework_rate = rework / total if total > 0 else 0
+        
+        # 计算得分
+        score = (
+            (on_time_rate * 1 + overdue_rate * 0.4) * 0.8 +
+            (1 - delay_rate) * 0.1 +
+            (1 - rework_rate) * 0.1
+        ) * 100
+        
+        park_results.append({
+            'department': park_name,
+            'total_cases': total,
+            'on_time_count': on_time,
+            'overdue_count': overdue,
+            'delay_count': delay,
+            'rework_count': rework,
+            'on_time_rate': round(on_time_rate * 100, 2),
+            'overdue_rate': round(overdue_rate * 100, 2),
+            'delay_rate': round(delay_rate * 100, 2),
+            'rework_rate': round(rework_rate * 100, 2),
+            'score': round(score, 2)
+        })
+        
+        print(f"  {park_name}: 总数={total}, 按期={on_time}, 超期={overdue}, 延期={delay}, 返工={rework}, 得分={score:.2f}")
+    
+    # 按得分排名
+    park_results.sort(key=lambda x: x['score'], reverse=True)
+    
+    for i, park in enumerate(park_results, 1):
+        park['rank'] = i
+    
+    print(f"\n排名结果：")
+    for park in park_results:
+        print(f"  第{park['rank']}名：{park['department']} - {park['score']}分")
+    
+    # 计算总体数据
+    total_cases = sum(p['total_cases'] for p in park_results)
+    total_score = sum(p['score'] for p in park_results) / len(park_results)
+    
+    return {
+        'total_cases': total_cases,
+        'team_results': park_results,
+        'score': round(total_score, 2),
+        'details': {}
+    }
+
+def calculate_generic_score(cases):
+    """其他部门的通用计算逻辑"""
+    total_cases = len(cases)
+    closed_cases = 0
+    total_handle_hours = 0
+    valid_cases = 0
+    
+    for case in cases:
+        # 检查状态列
+        status = case.get('status') or case.get('状态')
+        if status and '已结案' in str(status):
+            closed_cases += 1
+        
+        # 计算处理时间
+        create_time = case.get('create_time') or case.get('创建时间') or case.get('create_time')
+        handle_time = case.get('handle_time') or case.get('处理时间') or case.get('完成时间')
+        
+        if create_time and handle_time:
+            try:
+                # 尝试解析时间
+                if isinstance(create_time, str):
+                    create_time = datetime.datetime.strptime(create_time, '%Y-%m-%d %H:%M:%S')
+                if isinstance(handle_time, str):
+                    handle_time = datetime.datetime.strptime(handle_time, '%Y-%m-%d %H:%M:%S')
+                handle_hours = (handle_time - create_time).total_seconds() / 3600
+                total_handle_hours += handle_hours
+                valid_cases += 1
+            except Exception as e:
+                print(f'解析时间失败: {e}')
+    
+    # 计算各项指标
+    avg_handle_hours = total_handle_hours / valid_cases if valid_cases > 0 else 0
+    
+    # 标准处理时间（示例：24小时）
+    standard_hours = 24
+    
+    # 计算得分
+    closure_rate = (closed_cases / total_cases) * 40 if total_cases > 0 else 0
+    time_score = max(0, (standard_hours - avg_handle_hours) / standard_hours * 30) if standard_hours > 0 else 0
+    quality_score = 30  # 示例值，实际需要根据质量评估
+    
+    total_score = closure_rate + time_score + quality_score
+    
+    return {
+        'total_cases': total_cases,
+        'closed_cases': closed_cases,
+        'avg_handle_hours': round(avg_handle_hours, 2),
+        'score': round(total_score, 2),
+        'details': {
+            '结案率': round(closure_rate, 2),
+            '时间得分': round(time_score, 2),
+            '质量得分': round(quality_score, 2)
+        }
+    }
+
 def call_doubao_api(prompt, data_summary, analysis_type):
     """调用豆包大模型API进行分析"""
     headers = {
@@ -790,6 +1287,44 @@ def call_doubao_api(prompt, data_summary, analysis_type):
                 return f"API调用失败: 多次尝试后仍然超时 - {str(e)}"
         except Exception as e:
             return f"API调用失败: {str(e)}"
+
+@app.route('/api/assess', methods=['POST'])
+@protected
+def assess():
+    try:
+        data = request.json
+        table_name = data.get('table_name')
+        department = data.get('department')
+        
+        if not table_name or not department:
+            return jsonify({'error': 'Missing table_name or department'}), 400
+        
+        # 从数据库读取数据
+        df = pd.read_sql_table(table_name, engine)
+        cases = df.to_dict('records')
+        
+        # 根据部门选择计算逻辑
+        if department == '城市综合行政执法队':
+            result = calculate_law_enforcement_score(cases)
+        elif department == '市容环卫中心':
+            result = calculate_huanwei_score(cases)
+        elif department == '园林绿化服务中心（片区）':
+            result = calculate_garden_score(cases)
+        elif department == '园林绿化服务中心（公园广场）':
+            result = calculate_park_score(cases)
+        else:
+            result = calculate_generic_score(cases)
+        
+        # 添加元数据
+        result['department'] = department
+        result['table_name'] = table_name
+        
+        return jsonify(convert_nan_to_null(result)), 200
+    except Exception as e:
+        print(f"Error in assess: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/analyze', methods=['POST'])
 @protected

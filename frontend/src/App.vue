@@ -12,6 +12,11 @@ const message = ref('');
 const selectedFile = ref(null);
 const activeModule = ref('home'); // home, data, assessment, analysis, spotcheck, tools, chengguantong, cms
 
+// 考核计分状态管理
+const selectedDepartment = ref('');
+const selectedAssessmentTable = ref('');
+const assessmentResult = ref(null);
+
 // CMS状态管理
 const cmsCategories = ref([]);
 const cmsArticles = ref([]);
@@ -73,6 +78,28 @@ const newUser = ref({
 });
 const adminLoading = ref(false);
 const adminError = ref('');
+
+// 表格可见性状态管理
+const tableVisibility = ref({});
+
+// 初始化表格可见性状态
+function initTableVisibility() {
+  const savedVisibility = localStorage.getItem('tableVisibility');
+  if (savedVisibility) {
+    try {
+      const parsedConfig = JSON.parse(savedVisibility);
+      tableVisibility.value = parsedConfig;
+      console.log('从localStorage加载表格可见性配置:', parsedConfig);
+    } catch (error) {
+      console.error('Error parsing table visibility:', error);
+      tableVisibility.value = {};
+      // 清空损坏的配置
+      localStorage.removeItem('tableVisibility');
+    }
+  } else {
+    console.log('localStorage中没有表格可见性配置');
+  }
+}
 
 // 权限管理状态
 const showEditPermissionsForm = ref(false);
@@ -1141,6 +1168,8 @@ function formatDate(dateString) {
 // 初始化时获取数据库表
 onMounted(() => {
   fetchTables();
+  // 初始化表格可见性状态
+  initTableVisibility();
   // 首页也需要获取CMS数据
   fetchCMSCategories();
 });
@@ -1198,6 +1227,10 @@ async function fetchTables() {
     const token = localStorage.getItem('token');
     if (!token) return;
     
+    // 确保表格可见性配置已经加载
+    initTableVisibility();
+    console.log('当前表格可见性配置:', tableVisibility.value);
+    
     const response = await fetch('http://localhost:5000/api/tables', {
       headers: getAuthHeaders()
     });
@@ -1205,7 +1238,23 @@ async function fetchTables() {
     if (data.tables) {
       // 过滤掉系统表，只显示用户上传的表
       const systemTables = ['users', 'permissions'];
-      tables.value = data.tables.filter(table => !systemTables.includes(table));
+      let filteredTables = data.tables.filter(table => !systemTables.includes(table));
+      
+      // 应用表格可见性过滤
+      console.log('原始数据表（过滤系统表后）:', filteredTables);
+      
+      // 使用当前的表格可见性配置进行过滤
+      const finalTables = filteredTables.filter(table => {
+        // 只有在配置中明确设置为true的表格才显示
+        const isVisible = tableVisibility.value[table] === true;
+        console.log(`表格 ${table} 可见性: ${isVisible}`);
+        return isVisible;
+      });
+      
+      console.log('过滤后的数据表:', finalTables);
+      
+      tables.value = finalTables;
+      console.log('最终显示的数据表:', tables.value);
     }
   } catch (error) {
     console.error('Error fetching tables:', error);
@@ -1333,11 +1382,62 @@ async function startAnalysis() {
   }
 }
 
+// 开始考核计算
+async function startAssessment() {
+  if (!selectedDepartment.value || !selectedAssessmentTable.value) {
+    message.value = '请选择部门和数据表';
+    return;
+  }
+
+  const token = localStorage.getItem('token');
+  if (!token) {
+    message.value = '请先登录';
+    return;
+  }
+
+  try {
+    loading.value = true;
+    message.value = '计算中...';
+    
+    const response = await fetch('http://localhost:5000/api/assess', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeaders()
+      },
+      body: JSON.stringify({
+        table_name: selectedAssessmentTable.value,
+        department: selectedDepartment.value
+      })
+    });
+    
+    const data = await response.json();
+    
+    if (data.error) {
+      message.value = 'Error: ' + data.error;
+    } else {
+      assessmentResult.value = data;
+      message.value = '计算完成';
+    }
+  } catch (error) {
+    message.value = 'Error calculating assessment: ' + error.message;
+    console.error('Error calculating assessment:', error);
+  } finally {
+    loading.value = false;
+  }
+}
+
 // 切换模块
 function switchModule(module) {
   activeModule.value = module;
-  // 只有切换到数据分析模块时才重新获取表列表
+  // 切换到数据分析模块时重新获取表列表（应用可见性过滤）
   if (module === 'analysis') {
+    console.log('切换到数据分析模块，获取可见的数据表');
+    fetchTables();
+  }
+  // 切换到考核计分模块时也需要获取表列表（应用可见性过滤）
+  if (module === 'assessment') {
+    console.log('切换到考核计分模块，获取可见的数据表');
     fetchTables();
   }
   // 切换到管理员模块时获取用户列表和CMS数据
@@ -1676,10 +1776,52 @@ async function fetchTablesForManagement() {
     const data = await response.json();
     if (data.tables) {
       tables.value = data.tables;
+      // 初始化表格可见性状态
+      initTableVisibility();
+      
+      // 确保所有数据表都有可见性设置
+      const currentVisibility = { ...tableVisibility.value };
+      data.tables.forEach(table => {
+        if (currentVisibility[table] === undefined) {
+          currentVisibility[table] = true; // 默认所有表都可见
+        }
+      });
+      tableVisibility.value = currentVisibility;
     }
   } catch (error) {
     adminError.value = '获取数据表失败，请稍后重试';
     console.error('Error fetching tables:', error);
+  } finally {
+    adminLoading.value = false;
+  }
+}
+
+// 保存表格可见性配置
+async function saveTableVisibility() {
+  try {
+    adminLoading.value = true;
+    adminError.value = '';
+    
+    // 保存到本地存储
+    const visibilityConfig = JSON.stringify(tableVisibility.value);
+    localStorage.setItem('tableVisibility', visibilityConfig);
+    
+    // 验证保存是否成功
+    const savedConfig = localStorage.getItem('tableVisibility');
+    if (savedConfig) {
+      console.log('表格可见性配置已保存:', JSON.parse(savedConfig));
+    }
+    
+    // 显示保存成功消息
+    adminError.value = '配置保存成功！';
+    
+    // 3秒后清除消息
+    setTimeout(() => {
+      adminError.value = '';
+    }, 3000);
+  } catch (error) {
+    adminError.value = '保存配置失败，请稍后重试';
+    console.error('Error saving table visibility:', error);
   } finally {
     adminLoading.value = false;
   }
@@ -2259,7 +2401,7 @@ async function uploadImage(event) {
   <div class="system-container">
     <!-- 顶部标题栏 -->
     <div class="header">
-      <h1>运城市智慧城市管理平台-城管通</h1>
+      <h1>运城市智慧城市管理平台-一站通</h1>
       <div v-if="isLoggedIn" class="user-info">
         <span class="username">{{ userInfo?.username }} ({{ userInfo?.role }})</span>
         <button class="logout-btn" @click="logout">登出</button>
@@ -2292,9 +2434,7 @@ async function uploadImage(event) {
       <div class="tab" :class="{ active: activeModule === 'home' }" @click="switchModule('home')">
         首页
       </div>
-      <div v-if="!userInfo || userInfo?.role === 'admin' || (userInfo?.permissions && userInfo?.permissions.data_management)" class="tab" :class="{ active: activeModule === 'data' }" @click="switchModule('data')">
-        数据管理
-      </div>
+
       <div v-if="!userInfo || userInfo?.role === 'admin' || (userInfo?.permissions && userInfo?.permissions.assessment)" class="tab" :class="{ active: activeModule === 'assessment' }" @click="switchModule('assessment')">
         考核计分
       </div>
@@ -2304,11 +2444,11 @@ async function uploadImage(event) {
       <div v-if="!userInfo || userInfo?.role === 'admin' || (userInfo?.permissions && userInfo?.permissions.spotcheck)" class="tab" :class="{ active: activeModule === 'spotcheck' }" @click="switchModule('spotcheck')">
         案件抽查
       </div>
-      <div v-if="!userInfo || userInfo?.role === 'admin' || (userInfo?.permissions && userInfo?.permissions.tools)" class="tab" :class="{ active: activeModule === 'tools' }" @click="switchModule('tools')">
-        小工具
-      </div>
       <div v-if="!userInfo || userInfo?.role === 'admin' || (userInfo?.permissions && userInfo?.permissions.chengguantong)" class="tab" :class="{ active: activeModule === 'chengguantong' }" @click="switchModule('chengguantong')">
         城管通
+      </div>
+      <div v-if="!userInfo || userInfo?.role === 'admin' || (userInfo?.permissions && userInfo?.permissions.tools)" class="tab" :class="{ active: activeModule === 'tools' }" @click="switchModule('tools')">
+        小工具
       </div>
       <div v-if="!userInfo || userInfo?.role === 'admin'" class="tab" :class="{ active: activeModule === 'admin' }" @click="switchModule('admin')">
         管理员管理
@@ -2348,29 +2488,83 @@ async function uploadImage(event) {
         </div>
       </div>
       
-      <!-- 数据管理模块 -->
-      <div v-if="activeModule === 'data' && (!userInfo || userInfo.role === 'admin' || (userInfo.permissions && userInfo.permissions.data_management))" class="tab-content">
-        <h2 class="section-title">Excel数据上传</h2>
-        <div class="upload-section">
-          <div class="file-selector">
-            <input type="file" accept=".xlsx" @change="handleFileSelect" :disabled="loading" />
-            <span class="file-name">{{ selectedFile ? selectedFile.name : '未选择任何文件' }}</span>
-          </div>
-          <button class="upload-btn" @click="uploadFile" :disabled="loading || !selectedFile">
-            {{ loading ? '上传中...' : '上传并导入数据库' }}
-          </button>
-          <div class="upload-status">
-            <span class="status-label">上传状态：</span>
-            <span class="status-value">{{ message || '等待上传' }}</span>
-          </div>
-        </div>
-      </div>
+
       
       <!-- 考核计分模块 -->
       <div v-if="activeModule === 'assessment' && (!userInfo || userInfo.role === 'admin' || (userInfo.permissions && userInfo.permissions.assessment))" class="tab-content">
         <h2 class="section-title">考核计分</h2>
-        <div class="assessment-section">
-          <p>考核计分功能开发中...</p>
+        <div class="assessment-section" style="max-width: 800px; margin: 0 auto;">
+          <div style="margin-bottom: 20px;">
+            <div style="margin-bottom: 15px;">
+              <label for="department-select" style="display: block; margin-bottom: 5px; font-weight: bold;">选择部门：</label>
+              <select id="department-select" v-model="selectedDepartment" :disabled="loading" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                <option value="">-- 请选择部门 --</option>
+                <option value="城市综合行政执法队">城市综合行政执法队</option>
+                <option value="市容环卫中心">市容环卫中心</option>
+                <option value="园林绿化服务中心（片区）">园林绿化服务中心（片区）</option>
+                <option value="园林绿化服务中心（公园广场）">园林绿化服务中心（公园广场）</option>
+              </select>
+            </div>
+            <div style="margin-bottom: 15px;">
+              <label for="table-select-assessment" style="display: block; margin-bottom: 5px; font-weight: bold;">选择数据表：</label>
+              <select id="table-select-assessment" v-model="selectedAssessmentTable" :disabled="loading" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                <option value="">-- 请选择 --</option>
+                <option v-for="table in tables" :key="table" :value="table">
+                  {{ table }}
+                </option>
+              </select>
+            </div>
+            <button class="start-btn" @click="startAssessment" :disabled="loading" style="padding: 10px 20px; background-color: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px;">
+              {{ loading ? '计算中...' : '开始计算' }}
+            </button>
+            <div v-if="message" class="message" style="margin-top: 10px; padding: 10px; background-color: #f0f0f0; border-radius: 4px;">{{ message }}</div>
+          </div>
+          
+          <!-- 考核结果显示 -->
+          <div v-if="assessmentResult" class="assessment-result" style="margin-top: 30px; padding: 20px; border: 1px solid #ddd; border-radius: 4px; background-color: #f9f9f9;">
+            <h3 style="margin-top: 0; padding-bottom: 10px; border-bottom: 1px solid #ddd;">考核结果</h3>
+            <div class="result-summary" style="margin-bottom: 20px;">
+              <p style="margin: 5px 0;">总案件数：{{ assessmentResult.total_cases }}</p>
+              <p style="margin: 5px 0;">平均得分：{{ assessmentResult.score }}分</p>
+            </div>
+            <div v-if="assessmentResult.team_results" class="team-ranking">
+              <h4 style="margin-top: 20px; margin-bottom: 10px;">片区排名</h4>
+              <table class="ranking-table" style="width: 100%; border-collapse: collapse; margin-top: 10px;">
+                <thead>
+                  <tr style="background-color: #f2f2f2;">
+                    <th style="padding: 8px; text-align: left; border: 1px solid #ddd;">排名</th>
+                    <th style="padding: 8px; text-align: left; border: 1px solid #ddd;">片区名称</th>
+                    <th style="padding: 8px; text-align: left; border: 1px solid #ddd;">案件总数</th>
+                    <th style="padding: 8px; text-align: left; border: 1px solid #ddd;">按期结案数</th>
+                    <th style="padding: 8px; text-align: left; border: 1px solid #ddd;">超期结案数</th>
+                    <th style="padding: 8px; text-align: left; border: 1px solid #ddd;">延期次数</th>
+                    <th style="padding: 8px; text-align: left; border: 1px solid #ddd;">返工次数</th>
+                    <th style="padding: 8px; text-align: left; border: 1px solid #ddd;">考核得分</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="team in assessmentResult.team_results" :key="team.department" style="background-color: white;">
+                    <td style="padding: 8px; border: 1px solid #ddd;">{{ team.rank }}</td>
+                    <td style="padding: 8px; border: 1px solid #ddd;">{{ team.department }}</td>
+                    <td style="padding: 8px; border: 1px solid #ddd;">{{ team.total_cases }}</td>
+                    <td style="padding: 8px; border: 1px solid #ddd;">{{ team.on_time_count }}</td>
+                    <td style="padding: 8px; border: 1px solid #ddd;">{{ team.overdue_count }}</td>
+                    <td style="padding: 8px; border: 1px solid #ddd;">{{ team.delay_count }}</td>
+                    <td style="padding: 8px; border: 1px solid #ddd;">{{ team.rework_count }}</td>
+                    <td style="padding: 8px; border: 1px solid #ddd;">{{ team.score }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div v-if="assessmentResult.details" class="result-details" style="margin-top: 20px;">
+              <h4>详细指标</h4>
+              <ul style="list-style-type: none; padding: 0;">
+                <li v-for="(value, key) in assessmentResult.details" :key="key" style="margin: 5px 0; padding: 5px; background-color: white; border-radius: 4px;">
+                  {{ key }}：{{ value }}
+                </li>
+              </ul>
+            </div>
+          </div>
         </div>
       </div>
       
@@ -2604,10 +2798,30 @@ async function uploadImage(event) {
               <div v-if="systemConfigTab === 'data'" class="config-panel">
                 <div class="panel-header">
                   <h4 class="panel-title">数据库管理</h4>
-                  <p class="panel-description">管理数据库中的数据表，可删除不需要的数据表</p>
+                  <p class="panel-description">管理数据库中的数据表，可上传Excel文件和删除不需要的数据表</p>
                 </div>
                 <div class="panel-body">
+                  <!-- Excel上传功能 -->
+                  <div class="data-management" style="margin-bottom: 40px;">
+                    <h5 class="management-title" style="margin-bottom: 20px;">Excel数据上传</h5>
+                    <div class="upload-section">
+                      <div class="file-selector">
+                        <input type="file" accept=".xlsx" @change="handleFileSelect" :disabled="loading" />
+                        <span class="file-name">{{ selectedFile ? selectedFile.name : '未选择任何文件' }}</span>
+                      </div>
+                      <button class="upload-btn" @click="uploadFile" :disabled="loading || !selectedFile" style="margin-top: 15px;">
+                        {{ loading ? '上传中...' : '上传并导入数据库' }}
+                      </button>
+                      <div class="upload-status" style="margin-top: 15px;">
+                        <span class="status-label">上传状态：</span>
+                        <span class="status-value">{{ message || '等待上传' }}</span>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <!-- 数据表管理 -->
                   <div class="table-management">
+                    <h5 class="management-title" style="margin-bottom: 20px;">数据表管理</h5>
                     <button class="refresh-btn" @click="fetchTablesForManagement" :disabled="adminLoading">
                       {{ adminLoading ? '加载中...' : '刷新数据表' }}
                     </button>
@@ -2616,12 +2830,16 @@ async function uploadImage(event) {
                         <thead>
                           <tr>
                             <th>表名</th>
+                            <th>对用户可见</th>
                             <th>操作</th>
                           </tr>
                         </thead>
                         <tbody>
                           <tr v-for="table in tables" :key="table">
                             <td>{{ table }}</td>
+                            <td>
+                              <input type="checkbox" v-model="tableVisibility[table]" @change="saveTableVisibility" :disabled="adminLoading" />
+                            </td>
                             <td>
                               <button class="delete-table-btn" @click="deleteTable(table)" :disabled="adminLoading">
                                 删除
@@ -2635,6 +2853,15 @@ async function uploadImage(event) {
                       <p>暂无数据表</p>
                     </div>
                     <div v-if="adminError" class="admin-error">{{ adminError }}</div>
+                  </div>
+                  
+                  <!-- 数据表可见性配置 -->
+                  <div class="table-visibility-config" style="margin-top: 30px;">
+                    <h5 class="management-title" style="margin-bottom: 15px;">数据表可见性配置</h5>
+                    <p class="config-description" style="margin-bottom: 15px; color: #666;">配置哪些数据表对前端用户可见，用户只能选择可见的数据表进行分析和考核。</p>
+                    <button class="save-visibility-btn" @click="saveTableVisibility" :disabled="adminLoading" style="padding: 8px 16px; background-color: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                      {{ adminLoading ? '保存中...' : '保存配置' }}
+                    </button>
                   </div>
                 </div>
               </div>
@@ -2943,7 +3170,8 @@ async function uploadImage(event) {
     
     <!-- 页脚 -->
     <div v-if="isLoggedIn" class="footer">
-      <p>© 2024 运城市智慧城市管理平台-城管通</p>
+      <p>© 2024 运城市智慧城市管理平台-一站通</p> 
+      <p>联系电话：2381078</p>
     </div>
     
     <!-- 文章详情弹窗 -->

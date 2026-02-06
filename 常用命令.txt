@@ -7,3 +7,7 @@ python app.py
 cd C:\Users\Administrator\Documents\trae_projects\case_analysis_web\frontend
 ##启动前端服务，服务运行在：http://localhost:5174
 npm run dev
+
+git add .
+git commit -m "update"
+git push origin HEAD:main
