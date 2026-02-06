@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, nextTick, watch } from 'vue';
+import { ref, onMounted, nextTick, watch, computed } from 'vue';
 import * as echarts from 'echarts';
 
 // 状态管理
@@ -10,7 +10,44 @@ const analysisResult = ref(null);
 const loading = ref(false);
 const message = ref('');
 const selectedFile = ref(null);
-const activeModule = ref('home'); // home, data, assessment, analysis, spotcheck, tools, chengguantong
+const activeModule = ref('home'); // home, data, assessment, analysis, spotcheck, tools, chengguantong, cms
+
+// CMS状态管理
+const cmsCategories = ref([]);
+const cmsArticles = ref([]);
+const selectedCategory = ref(null);
+const cmsLoading = ref(false);
+const cmsError = ref('');
+const showArticleDetail = ref(false);
+const currentArticle = ref(null);
+const articleDetailLoading = ref(false);
+const articleDetailError = ref('');
+
+// CMS表单状态
+const showAddCategoryForm = ref(false);
+const showAddArticleForm = ref(false);
+const editingCategory = ref(null);
+const editingArticle = ref(null);
+const newCategory = ref({
+  name: '',
+  slug: '',
+  description: '',
+  order: 0
+});
+const newArticle = ref({
+  title: '',
+  slug: '',
+  content: '',
+  summary: '',
+  category_id: '',
+  status: 'published',
+  file_path: ''
+});
+const cmsFormError = ref('');
+const fileUploadLoading = ref(false);
+const fileUploadError = ref('');
+const imageUploadLoading = ref(false);
+const imageUploadError = ref('');
 
 // 登录状态管理
 const isLoggedIn = ref(false);
@@ -25,7 +62,7 @@ const loginError = ref('');
 
 // 管理员管理状态
 const adminActiveTab = ref('users'); // users, system
-const systemConfigTab = ref('data'); // data, general, security, logs
+const systemConfigTab = ref('data'); // data, general, security, logs, cms
 const users = ref([]);
 const showAddUserForm = ref(false);
 const editingUser = ref(null);
@@ -1088,10 +1125,72 @@ function getAnalysisTypeName(typeValue) {
   return type ? type.label : typeValue;
 }
 
+// 格式化日期为 MM-DD 格式
+function formatDate(dateString) {
+  if (!dateString) return '';
+  
+  const date = new Date(dateString);
+  if (isNaN(date.getTime())) return '';
+  
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  
+  return `${month}-${day}`;
+}
+
 // 初始化时获取数据库表
 onMounted(() => {
   fetchTables();
+  // 首页也需要获取CMS数据
+  fetchCMSCategories();
 });
+
+// 监听系统配置标签页变化，当切换到cms标签时获取CMS数据
+watch(
+  () => systemConfigTab.value,
+  (newTab) => {
+    if (newTab === 'cms') {
+      fetchCMSCategories();
+    }
+  }
+);
+
+// 测试函数，用于调试栏目名称显示问题
+function testCategoryName() {
+  console.log('cmsCategories:', cmsCategories.value);
+  console.log('测试栏目ID 2:', getCategoryName(2));
+  console.log('测试栏目ID "2":', getCategoryName('2'));
+}
+
+// 监听栏目名称变化，自动生成slug
+watch(
+  () => newCategory.value.name,
+  (newName) => {
+    console.log('栏目名称变化:', newName);
+    console.log('editingCategory.value:', editingCategory.value);
+    console.log('条件判断:', newName && !editingCategory.value);
+    if (newName && !editingCategory.value) {
+      console.log('生成slug:', generateSlug(newName));
+      newCategory.value.slug = generateSlug(newName);
+    }
+  },
+  { immediate: false }
+);
+
+// 监听文章标题变化，自动生成slug
+watch(
+  () => newArticle.value.title,
+  (newTitle) => {
+    console.log('文章标题变化:', newTitle);
+    console.log('editingArticle.value:', editingArticle.value);
+    console.log('条件判断:', newTitle && !editingArticle.value);
+    if (newTitle && !editingArticle.value) {
+      console.log('生成slug:', generateSlug(newTitle));
+      newArticle.value.slug = generateSlug(newTitle);
+    }
+  },
+  { immediate: false }
+);
 
 // 获取数据库表
 async function fetchTables() {
@@ -1241,9 +1340,14 @@ function switchModule(module) {
   if (module === 'analysis') {
     fetchTables();
   }
-  // 切换到管理员模块时获取用户列表
+  // 切换到管理员模块时获取用户列表和CMS数据
   if (module === 'admin' && userInfo.value && userInfo.value.role === 'admin') {
     fetchUsers();
+    fetchCMSCategories();
+  }
+  // 切换到首页时重新获取CMS数据
+  if (module === 'home') {
+    fetchCMSCategories();
   }
 }
 
@@ -1643,6 +1747,512 @@ function closeEditPermissionsForm() {
   };
   adminError.value = '';
 }
+
+// CMS相关方法
+
+// 获取CMS栏目
+async function fetchCMSCategories() {
+  try {
+    cmsLoading.value = true;
+    cmsError.value = '';
+    
+    const response = await fetch('http://localhost:5000/api/categories');
+    const data = await response.json();
+    
+    if (data.categories) {
+      cmsCategories.value = data.categories;
+      // 默认选择第一个栏目
+      if (data.categories.length > 0 && !selectedCategory.value) {
+        selectedCategory.value = data.categories[0];
+        await fetchCMSArticles(data.categories[0].id);
+      }
+      // 获取所有栏目的文章，确保首页能显示所有栏目
+      await fetchAllCMSArticles();
+    }
+  } catch (error) {
+    cmsError.value = '获取栏目失败，请稍后重试';
+    console.error('Error fetching CMS categories:', error);
+  } finally {
+    cmsLoading.value = false;
+  }
+}
+
+// 获取CMS文章
+async function fetchCMSArticles(categoryId) {
+  try {
+    cmsLoading.value = true;
+    cmsError.value = '';
+    
+    const response = await fetch(`http://localhost:5000/api/articles/category/${categoryId}?include_drafts=true`);
+    const data = await response.json();
+    
+    if (data.articles) {
+      cmsArticles.value = data.articles;
+    }
+  } catch (error) {
+    cmsError.value = '获取文章失败，请稍后重试';
+    console.error('Error fetching CMS articles:', error);
+  } finally {
+    cmsLoading.value = false;
+  }
+}
+
+// 获取所有CMS文章
+async function fetchAllCMSArticles() {
+  try {
+    const response = await fetch('http://localhost:5000/api/articles?include_drafts=true');
+    const data = await response.json();
+    
+    if (data.articles) {
+      cmsArticles.value = data.articles;
+    }
+  } catch (error) {
+    console.error('Error fetching all CMS articles:', error);
+  }
+}
+
+// 切换CMS栏目
+async function switchCMSCategory(category) {
+  selectedCategory.value = category;
+  await fetchCMSArticles(category.id);
+}
+
+// 获取栏目名称
+function getCategoryName(categoryId) {
+  // 确保类型匹配
+  const idToFind = Number(categoryId);
+  const category = cmsCategories.value.find(cat => Number(cat.id) === idToFind);
+  return category ? category.name : '未知栏目';
+}
+
+// 添加/编辑栏目
+async function saveCategory() {
+  if (!newCategory.value.name) {
+    cmsFormError.value = '名称不能为空';
+    return;
+  }
+  
+  try {
+    cmsLoading.value = true;
+    cmsFormError.value = '';
+    
+    const token = localStorage.getItem('token');
+    if (!token) {
+      cmsFormError.value = '请先登录';
+      return;
+    }
+    
+    let response;
+    if (editingCategory.value) {
+      // 编辑栏目
+      response = await fetch(`http://localhost:5000/api/categories/${editingCategory.value.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(newCategory.value)
+      });
+    } else {
+      // 添加栏目
+      response = await fetch('http://localhost:5000/api/categories', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(newCategory.value)
+      });
+    }
+    
+    const data = await response.json();
+    if (data.error) {
+      cmsFormError.value = data.error;
+    } else {
+      // 重新获取栏目列表
+      await fetchCMSCategories();
+      closeCategoryForm();
+    }
+  } catch (error) {
+    cmsFormError.value = '操作失败，请稍后重试';
+    console.error('Error saving category:', error);
+  } finally {
+    cmsLoading.value = false;
+  }
+}
+
+// 删除栏目
+async function deleteCategory(categoryId) {
+  if (!confirm('确定要删除这个栏目吗？如果该栏目下有文章，将无法删除。')) {
+    return;
+  }
+  
+  try {
+    cmsLoading.value = true;
+    cmsError.value = '';
+    
+    const token = localStorage.getItem('token');
+    if (!token) {
+      cmsError.value = '请先登录';
+      return;
+    }
+    
+    const response = await fetch(`http://localhost:5000/api/categories/${categoryId}`, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+    
+    const data = await response.json();
+    if (data.error) {
+      cmsError.value = data.error;
+    } else {
+      // 重新获取栏目列表
+      await fetchCMSCategories();
+    }
+  } catch (error) {
+    cmsError.value = '删除失败，请稍后重试';
+    console.error('Error deleting category:', error);
+  } finally {
+    cmsLoading.value = false;
+  }
+}
+
+// 编辑栏目
+function editCategory(category) {
+  editingCategory.value = category;
+  newCategory.value = {
+    name: category.name,
+    slug: category.slug,
+    description: category.description,
+    order: category.order
+  };
+  showAddCategoryForm.value = true;
+}
+
+// 关闭栏目表单
+function closeCategoryForm() {
+  showAddCategoryForm.value = false;
+  editingCategory.value = null;
+  newCategory.value = {
+    name: '',
+    slug: '',
+    description: '',
+    order: 0
+  };
+  cmsFormError.value = '';
+}
+
+// 添加/编辑文章
+async function saveArticle() {
+  if (!newArticle.value.title || !newArticle.value.content) {
+    cmsFormError.value = '标题和内容不能为空';
+    return;
+  }
+  
+  try {
+    cmsLoading.value = true;
+    cmsFormError.value = '';
+    
+    const token = localStorage.getItem('token');
+    if (!token) {
+      cmsFormError.value = '请先登录';
+      return;
+    }
+    
+    let response;
+    if (editingArticle.value) {
+      // 编辑文章
+      response = await fetch(`http://localhost:5000/api/articles/${editingArticle.value.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(newArticle.value)
+      });
+    } else {
+      // 添加文章
+      response = await fetch('http://localhost:5000/api/articles', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(newArticle.value)
+      });
+    }
+    
+    const data = await response.json();
+    if (data.error) {
+      cmsFormError.value = data.error;
+    } else {
+      // 重新获取栏目列表和文章列表
+      await fetchCMSCategories();
+      await fetchCMSArticles(selectedCategory.value?.id || cmsCategories.value[0]?.id);
+      closeArticleForm();
+    }
+  } catch (error) {
+    cmsFormError.value = '操作失败，请稍后重试';
+    console.error('Error saving article:', error);
+  } finally {
+    cmsLoading.value = false;
+  }
+}
+
+// 删除文章
+async function deleteArticle(articleId) {
+  if (!confirm('确定要删除这篇文章吗？')) {
+    return;
+  }
+  
+  try {
+    cmsLoading.value = true;
+    cmsError.value = '';
+    
+    const token = localStorage.getItem('token');
+    if (!token) {
+      cmsError.value = '请先登录';
+      return;
+    }
+    
+    const response = await fetch(`http://localhost:5000/api/articles/${articleId}`, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+    
+    const data = await response.json();
+    if (data.error) {
+      cmsError.value = data.error;
+    } else {
+      // 重新获取文章列表
+      await fetchCMSArticles(selectedCategory.value?.id || cmsCategories.value[0]?.id);
+    }
+  } catch (error) {
+    cmsError.value = '删除失败，请稍后重试';
+    console.error('Error deleting article:', error);
+  } finally {
+    cmsLoading.value = false;
+  }
+}
+
+// 编辑文章
+async function editArticle(article) {
+  try {
+    cmsLoading.value = true;
+    // 获取完整的文章详情，包括content字段
+    const response = await fetch(`http://localhost:5000/api/articles/${article.id}`);
+    const articleDetail = await response.json();
+    
+    if (articleDetail.error) {
+      cmsError.value = articleDetail.error;
+      return;
+    }
+    
+    editingArticle.value = articleDetail;
+    newArticle.value = {
+      title: articleDetail.title,
+      slug: articleDetail.slug,
+      content: articleDetail.content,
+      summary: articleDetail.summary,
+      category_id: articleDetail.category_id,
+      status: 'published',
+      file_path: articleDetail.file_path
+    };
+    showAddArticleForm.value = true;
+  } catch (error) {
+    cmsError.value = '获取文章详情失败，请稍后重试';
+    console.error('Error fetching article detail for editing:', error);
+  } finally {
+    cmsLoading.value = false;
+  }
+}
+
+// 关闭文章表单
+function closeArticleForm() {
+  showAddArticleForm.value = false;
+  editingArticle.value = null;
+  newArticle.value = {
+    title: '',
+    slug: '',
+    content: '',
+    summary: '',
+    category_id: '',
+    status: 'published',
+    file_path: ''
+  };
+  cmsFormError.value = '';
+  fileUploadError.value = '';
+  fileUploadLoading.value = false;
+}
+
+// 根据栏目ID获取文章
+function getCategoryArticles(categoryId) {
+  // 这里可以根据需要从后端获取，现在暂时从cmsArticles中过滤
+  return cmsArticles.value.filter(article => Number(article.category_id) === Number(categoryId));
+}
+
+// 生成slug函数
+function generateSlug(title) {
+  return title
+    .toLowerCase()
+    .replace(/\s+/g, '-') // 空格替换为连字符
+    .replace(/[^\u4e00-\u9fa5a-z0-9-]/g, '') // 保留中文和字母数字连字符
+    .replace(/-+/g, '-') // 多个连字符替换为单个
+    .replace(/^-|-$/g, ''); // 移除首尾连字符
+}
+
+
+
+// 添加新栏目
+function addNewCategory() {
+  editingCategory.value = null;
+  newCategory.value = {
+    name: '',
+    slug: '',
+    description: '',
+    order: 0
+  };
+  showAddCategoryForm.value = true;
+}
+
+// 添加新文章
+function addNewArticle() {
+  editingArticle.value = null;
+  newArticle.value = {
+    title: '',
+    slug: '',
+    content: '',
+    summary: '',
+    category_id: '',
+    status: 'published'
+  };
+  showAddArticleForm.value = true;
+}
+
+// 获取文章详情
+async function fetchArticleDetail(articleId) {
+  try {
+    articleDetailLoading.value = true;
+    articleDetailError.value = '';
+    
+    const response = await fetch(`http://localhost:5000/api/articles/${articleId}`);
+    const data = await response.json();
+    
+    if (data.error) {
+      articleDetailError.value = data.error;
+    } else {
+      currentArticle.value = data;
+      showArticleDetail.value = true;
+    }
+  } catch (error) {
+    articleDetailError.value = '获取文章详情失败，请稍后重试';
+    console.error('Error fetching article detail:', error);
+  } finally {
+    articleDetailLoading.value = false;
+  }
+}
+
+// 关闭文章详情
+function closeArticleDetail() {
+  showArticleDetail.value = false;
+  currentArticle.value = null;
+  articleDetailError.value = '';
+}
+
+// 上传CMS文件
+async function uploadCMSFile(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  
+  // 检查文件类型
+  const allowedExtensions = ['docx', 'pdf'];
+  const fileExtension = file.name.split('.').pop().toLowerCase();
+  if (!allowedExtensions.includes(fileExtension)) {
+    fileUploadError.value = '只支持DOCX和PDF文件';
+    return;
+  }
+  
+  try {
+    fileUploadLoading.value = true;
+    fileUploadError.value = '';
+    
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    const token = localStorage.getItem('token');
+    const response = await fetch('http://localhost:5000/api/upload/file', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`
+      },
+      body: formData
+    });
+    
+    const data = await response.json();
+    if (data.error) {
+      fileUploadError.value = data.error;
+    } else {
+      newArticle.value.file_path = data.file_path;
+      fileUploadError.value = '';
+    }
+  } catch (error) {
+    fileUploadError.value = '文件上传失败，请稍后重试';
+    console.error('Error uploading file:', error);
+  } finally {
+    fileUploadLoading.value = false;
+  }
+}
+
+// 上传图片
+async function uploadImage(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  
+  // 检查文件类型
+  const allowedExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
+  const fileExtension = file.name.split('.').pop().toLowerCase();
+  if (!allowedExtensions.includes(fileExtension)) {
+    imageUploadError.value = '只支持图片文件（JPG、PNG、GIF、WebP）';
+    return;
+  }
+  
+  try {
+    imageUploadLoading.value = true;
+    imageUploadError.value = '';
+    
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    const token = localStorage.getItem('token');
+    const response = await fetch('http://localhost:5000/api/upload/image', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`
+      },
+      body: formData
+    });
+    
+    const data = await response.json();
+    if (data.error) {
+      imageUploadError.value = data.error;
+    } else {
+      // 将图片URL插入到文章内容中
+      const imageUrl = data.location;
+      const imageTag = `<img src="${imageUrl}" alt="图片" style="max-width: 100%; height: auto; margin: 10px 0;">`;
+      newArticle.value.content += imageTag;
+      imageUploadError.value = '';
+    }
+  } catch (error) {
+    imageUploadError.value = '图片上传失败，请稍后重试';
+    console.error('Error uploading image:', error);
+  } finally {
+    imageUploadLoading.value = false;
+  }
+}
 </script>
 
 <template>
@@ -1709,16 +2319,32 @@ function closeEditPermissionsForm() {
     <div v-if="isLoggedIn" class="main-content">
       <!-- 首页模块 -->
       <div v-if="activeModule === 'home'" class="tab-content">
-        <h2 class="section-title">系统概览</h2>
-        <div class="overview-section">
-          <p>欢迎使用智慧城市管理平台 - 案例分析系统</p>
-          <p>本系统提供以下功能：</p>
-          <ul class="feature-list">
-            <li>数据管理：上传和导入Excel数据</li>
-            <li>考核计分：对案件处理情况进行考核评分</li>
-            <li>数据分析：对案件数据进行多维度分析</li>
-            <li>案件抽查：随机抽查案件处理情况</li>
-          </ul>
+        <!-- CMS内容展示 -->
+        <div class="cms-home-section" style="margin-top: 20px;">
+          <div class="cms-columns" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 40px;">
+            <div v-for="(category, index) in cmsCategories" :key="category.id" class="cms-column" style="padding: 25px; border: 1px solid #e0e0e0; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); background-color: #ffffff;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h3 class="column-title" style="font-size: 22px; font-weight: bold; margin: 0; color: #333;">{{ category.name }}</h3>
+                <a href="#" class="more-link" style="font-size: 16px; color: #666; text-decoration: none; padding: 6px 12px; border: 1px solid #ddd; border-radius: 4px;">更多</a>
+              </div>
+              <div class="column-articles">
+                <div v-if="cmsLoading" class="loading" style="font-size: 16px; padding: 20px; text-align: center; color: #666;">加载中...</div>
+                <div v-else-if="cmsError" class="error" style="font-size: 16px; padding: 20px; text-align: center; color: #ff4d4f;">{{ cmsError }}</div>
+                <div v-else-if="getCategoryArticles(category.id).length === 0" class="empty" style="font-size: 16px; padding: 20px; text-align: center; color: #999;">该栏目下暂无文章</div>
+                <div v-else class="articles-list" style="list-style: none; padding: 0; margin: 0;">
+                  <div v-for="article in getCategoryArticles(category.id)" :key="article.id" class="article-item" style="margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; padding: 12px; border-radius: 4px; transition: all 0.3s ease;" @click="fetchArticleDetail(article.id)" :style="{ backgroundColor: 'hover' === 'hover' ? '#f5f5f5' : 'transparent' }" @mouseenter="$event.currentTarget.style.backgroundColor='#f5f5f5'" @mouseleave="$event.currentTarget.style.backgroundColor='transparent'">
+                    <span style="flex: 1; font-size: 16px; color: #333; line-height: 1.4;">
+                      <span style="margin-right: 12px; color: #1890ff;">•</span>
+                      {{ article.title }}
+                    </span>
+                    <span style="font-size: 14px; color: #999; white-space: nowrap; margin-left: 15px;">
+                      [{{ formatDate(article.published_at || article.created_at) }}]
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
       
@@ -1908,6 +2534,8 @@ function closeEditPermissionsForm() {
         </div>
       </div>
       
+
+      
       <!-- 管理员管理模块 -->
       <div v-if="activeModule === 'admin' && (!userInfo || userInfo.role === 'admin')" class="tab-content">
         <h2 class="section-title">管理员管理</h2>
@@ -1967,6 +2595,7 @@ function closeEditPermissionsForm() {
               <button class="config-tab" :class="{ active: systemConfigTab === 'general' }" @click="systemConfigTab = 'general'">通用配置</button>
               <button class="config-tab" :class="{ active: systemConfigTab === 'security' }" @click="systemConfigTab = 'security'">安全配置</button>
               <button class="config-tab" :class="{ active: systemConfigTab === 'logs' }" @click="systemConfigTab = 'logs'">系统日志</button>
+              <button class="config-tab" :class="{ active: systemConfigTab === 'cms' }" @click="systemConfigTab = 'cms'">内容管理</button>
             </div>
             
             <!-- 配置内容 -->
@@ -2077,6 +2706,83 @@ function closeEditPermissionsForm() {
                   </div>
                 </div>
               </div>
+              
+              <!-- CMS内容管理 -->
+              <div v-if="systemConfigTab === 'cms'" class="config-panel">
+                <div class="panel-header">
+                  <h4 class="panel-title">内容管理</h4>
+                  <p class="panel-description">管理系统内容，包括栏目和文章</p>
+                </div>
+                <div class="panel-body">
+                  <!-- 栏目管理 -->
+                  <div class="cms-management">
+                    <h5 class="management-title">栏目管理</h5>
+                    <button class="add-btn" @click="addNewCategory">添加栏目</button>
+                    <div v-if="cmsCategories.length > 0" class="category-list">
+                      <table class="category-table">
+                        <thead>
+                          <tr>
+                            <th>ID</th>
+                            <th>名称</th>
+                            <th>Slug</th>
+                            <th>排序</th>
+                            <th>操作</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr v-for="category in cmsCategories" :key="category.id">
+                            <td>{{ category.id }}</td>
+                            <td>{{ category.name }}</td>
+                            <td>{{ category.slug }}</td>
+                            <td>{{ category.order }}</td>
+                            <td>
+                              <button class="edit-btn" @click="editCategory(category)">编辑</button>
+                              <button class="delete-btn" @click="deleteCategory(category.id)">删除</button>
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                    <div v-else class="empty-state">
+                      <p>暂无栏目</p>
+                    </div>
+                  </div>
+                  
+                  <!-- 文章管理 -->
+                  <div class="cms-management" style="margin-top: 30px;">
+                    <h5 class="management-title">文章管理</h5>
+                    <button class="add-btn" @click="addNewArticle">添加文章</button>
+                    <div v-if="cmsArticles.length > 0" class="article-list">
+                      <table class="article-table">
+                        <thead>
+                          <tr>
+                            <th>ID</th>
+                            <th>标题</th>
+                            <th>栏目</th>
+                            <th>状态</th>
+                            <th>操作</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr v-for="article in cmsArticles" :key="article.id">
+                            <td>{{ article.id }}</td>
+                            <td>{{ article.title }}</td>
+                            <td>{{ getCategoryName(article.category_id) }}</td>
+                            <td>{{ article.status === 'draft' ? '草稿' : '已发布' }}</td>
+                            <td>
+                              <button class="edit-btn" @click="editArticle(article)">编辑</button>
+                              <button class="delete-btn" @click="deleteArticle(article.id)">删除</button>
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                    <div v-else class="empty-state">
+                      <p>暂无文章</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -2152,12 +2858,134 @@ function closeEditPermissionsForm() {
             </div>
           </div>
         </div>
+        
+        <!-- 添加/编辑栏目弹窗 -->
+        <div v-if="showAddCategoryForm" class="modal">
+          <div class="modal-content">
+            <h3>{{ editingCategory ? '编辑栏目' : '添加栏目' }}</h3>
+            <div class="form-group">
+              <label for="category-name">名称：</label>
+              <input type="text" id="category-name" v-model="newCategory.name" placeholder="请输入栏目名称" @input="() => { if (!editingCategory) newCategory.slug = generateSlug(newCategory.name) }" />
+            </div>
+
+            <div class="form-group">
+              <label for="category-description">描述：</label>
+              <textarea id="category-description" v-model="newCategory.description" placeholder="请输入栏目描述" rows="3"></textarea>
+            </div>
+            <div class="form-group">
+              <label for="category-order">排序：</label>
+              <input type="number" id="category-order" v-model="newCategory.order" placeholder="请输入排序值" />
+            </div>
+            <div v-if="cmsFormError" class="admin-error">{{ cmsFormError }}</div>
+            <div class="modal-actions">
+              <button class="cancel-btn" @click="closeCategoryForm">取消</button>
+              <button class="save-btn" @click="saveCategory" :disabled="cmsLoading">
+                {{ cmsLoading ? '保存中...' : '保存' }}
+              </button>
+            </div>
+          </div>
+        </div>
+        
+        <!-- 添加/编辑文章弹窗 -->
+        <div v-if="showAddArticleForm" class="modal">
+          <div class="modal-content" style="max-width: 800px;">
+            <h3>{{ editingArticle ? '编辑文章' : '添加文章' }}</h3>
+            <div class="form-group">
+              <label for="article-title">标题：</label>
+              <input type="text" id="article-title" v-model="newArticle.title" placeholder="请输入文章标题" style="width: 100%;" @input="() => { if (!editingArticle) newArticle.slug = generateSlug(newArticle.title) }" />
+            </div>
+            
+            <div class="form-group">
+              <label for="article-file">文件上传（DOCX/PDF）：</label>
+              <input type="file" id="article-file" accept=".docx,.pdf" @change="uploadCMSFile" :disabled="fileUploadLoading" />
+              <div v-if="fileUploadLoading" style="font-size: 12px; color: #666; margin-top: 5px;">上传中...</div>
+              <div v-if="fileUploadError" style="font-size: 12px; color: #e74c3c; margin-top: 5px;">{{ fileUploadError }}</div>
+              <div v-if="newArticle.file_path" style="font-size: 12px; color: #27ae60; margin-top: 5px;">已上传文件</div>
+            </div>
+            
+            <div class="form-group">
+              <label for="article-image">图片上传（插入到内容）：</label>
+              <input type="file" id="article-image" accept=".jpg,.jpeg,.png,.gif,.webp" @change="uploadImage" :disabled="imageUploadLoading" />
+              <div v-if="imageUploadLoading" style="font-size: 12px; color: #666; margin-top: 5px;">上传中...</div>
+              <div v-if="imageUploadError" style="font-size: 12px; color: #e74c3c; margin-top: 5px;">{{ imageUploadError }}</div>
+              <div style="font-size: 12px; color: #666; margin-top: 5px;">提示：上传后图片将自动插入到文章内容中</div>
+            </div>
+
+            <div class="form-group">
+              <label for="article-category">栏目：</label>
+              <select id="article-category" v-model="newArticle.category_id">
+                <option value="">请选择栏目</option>
+                <option v-for="category in cmsCategories" :key="category.id" :value="category.id">
+                  {{ category.name }}
+                </option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="article-summary">摘要：</label>
+              <textarea id="article-summary" v-model="newArticle.summary" placeholder="请输入文章摘要" rows="3" style="width: 100%;"></textarea>
+            </div>
+            <div class="form-group">
+              <label for="article-content">内容：</label>
+              <textarea id="article-content" v-model="newArticle.content" placeholder="请输入文章内容" rows="15" style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 16px; line-height: 1.5; font-family: Arial, sans-serif; resize: vertical;"></textarea>
+              <div style="font-size: 12px; color: #666; margin-top: 5px;">提示：可以直接输入HTML标签来实现格式化效果，例如 &lt;b&gt;粗体&lt;/b&gt;、&lt;i&gt;斜体&lt;/i&gt; 等</div>
+            </div>
+            <div v-if="cmsFormError" class="admin-error">{{ cmsFormError }}</div>
+            <div class="modal-actions">
+              <button class="cancel-btn" @click="closeArticleForm">取消</button>
+              <button class="save-btn" @click="saveArticle" :disabled="cmsLoading">
+                {{ cmsLoading ? '保存中...' : '保存' }}
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
     
     <!-- 页脚 -->
     <div v-if="isLoggedIn" class="footer">
       <p>© 2024 运城市智慧城市管理平台-城管通</p>
+    </div>
+    
+    <!-- 文章详情弹窗 -->
+    <div v-if="showArticleDetail" class="article-detail-modal" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background-color: rgba(0, 0, 0, 0.5); display: flex; justify-content: center; align-items: center; z-index: 1000;">
+      <div class="article-detail-content" style="background-color: white; border-radius: 8px; padding: 30px; width: 90%; max-width: 800px; max-height: 80vh; overflow-y: auto; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px;">
+          <h2 style="margin: 0; font-size: 24px; color: #333; text-align: left;">{{ currentArticle?.title }}</h2>
+          <button @click="closeArticleDetail" style="background: none; border: none; font-size: 24px; cursor: pointer; color: #999; padding: 0; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center;">&times;</button>
+        </div>
+        
+        <div v-if="articleDetailLoading" style="text-align: center; padding: 40px;">
+          <div>加载中...</div>
+        </div>
+        
+        <div v-else-if="articleDetailError" style="text-align: center; padding: 40px; color: #e74c3c;">
+          <div>{{ articleDetailError }}</div>
+          <button @click="closeArticleDetail" style="margin-top: 20px; padding: 8px 16px; background-color: #3498db; color: white; border: none; border-radius: 4px; cursor: pointer;">关闭</button>
+        </div>
+        
+        <div v-else-if="currentArticle" style="line-height: 1.6; color: #333;">
+          <div style="display: flex; gap: 20px; margin-bottom: 20px; font-size: 14px; color: #666;">
+            <span>栏目：{{ getCategoryName(currentArticle.category_id) }}</span>
+            <span>发布时间：{{ currentArticle.published_at || currentArticle.created_at }}</span>
+            <span>浏览量：{{ currentArticle.view_count }}</span>
+          </div>
+          
+          <div v-if="currentArticle.summary" style="margin-bottom: 20px; padding: 15px; background-color: #f8f9fa; border-left: 4px solid #3498db; border-radius: 0 4px 4px 0;">
+            {{ currentArticle.summary }}
+          </div>
+          
+          <div style="margin-bottom: 20px; min-height: 200px;">
+            <div v-html="currentArticle.content"></div>
+          </div>
+          
+          <div v-if="currentArticle.file_path" style="margin-top: 20px; padding: 15px; background-color: #f8f9fa; border-radius: 4px;">
+            <h4 style="margin: 0 0 10px 0; font-size: 16px; color: #333;">附件</h4>
+            <a :href="`http://localhost:5000/${currentArticle.file_path}`" :download="currentArticle.file_path.split('/').pop()" style="display: inline-block; padding: 8px 16px; background-color: #3498db; color: white; text-decoration: none; border-radius: 4px; font-size: 14px;">
+              下载文件
+            </a>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -2970,15 +3798,24 @@ body {
   align-items: center;
   justify-content: center;
   z-index: 2000;
+  overflow: visible !important;
+  transform: translateZ(0);
+  will-change: transform;
 }
+
+
 
 .modal-content {
   background-color: #fff;
   padding: 30px;
   border-radius: 8px;
   box-shadow: 0 0 20px rgba(0, 0, 0, 0.2);
-  width: 400px;
+  width: 800px;
   max-width: 90%;
+  max-height: 80vh;
+  overflow-y: auto;
+  position: relative;
+  z-index: 2001;
 }
 
 .modal-content h3 {
@@ -3018,9 +3855,44 @@ body {
 
 .modal-actions {
   display: flex;
-  gap: 10px;
   justify-content: flex-end;
   margin-top: 20px;
+  gap: 10px;
+}
+
+/* TinyMCE z-index fix for modal */
+.tox-tinymce,
+.tox-tinymce *,
+.tox-menu,
+.tox-menu *,
+.tox-dialog,
+.tox-dialog *,
+.tox-pop,
+.tox-pop *,
+.tox-tbtn,
+.tox-toolbar,
+.tox-toolbar-overlord,
+.tox-collection,
+.tox-collection-item,
+.tox-colorpicker,
+.tox-listbox,
+.tox-listboxitem {
+  z-index: 3000 !important;
+  position: relative !important;
+}
+
+/* Ensure modal content has proper stacking context */
+.modal-content {
+  position: relative !important;
+  z-index: 2001 !important;
+}
+
+/* Ensure TinyMCE containers have higher z-index */
+.mce-container,
+.mce-container-body,
+.mce-popover,
+.mce-menu {
+  z-index: 3000 !important;
 }
 
 .cancel-btn,

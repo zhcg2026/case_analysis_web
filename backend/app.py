@@ -102,7 +102,7 @@ engine = create_engine(f'mysql+pymysql://{DB_USER}:{encoded_password}@{DB_HOST}:
 
 # 导入用户表模型
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy import Column, Integer, String, DateTime
+from sqlalchemy import Column, Integer, String, DateTime, Text
 from sqlalchemy.sql import func
 from sqlalchemy.orm import sessionmaker
 
@@ -118,9 +118,74 @@ class User(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
-# 创建会话
+class Permission(Base):
+    __tablename__ = 'permissions'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, nullable=False, unique=True)
+    data_management = Column(Integer, nullable=False, default=0)
+    assessment = Column(Integer, nullable=False, default=0)
+    data_analysis = Column(Integer, nullable=False, default=0)
+    spotcheck = Column(Integer, nullable=False, default=0)
+    tools = Column(Integer, nullable=False, default=0)
+    chengguantong = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+# CMS栏目模型
+class Category(Base):
+    __tablename__ = 'categories'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(100), unique=True, nullable=False)
+    slug = Column(String(100), unique=True, nullable=False)
+    description = Column(String(500))
+    order = Column(Integer, default=0)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+# CMS文章模型
+class Article(Base):
+    __tablename__ = 'articles'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    title = Column(String(200), nullable=False)
+    slug = Column(String(200), unique=True, nullable=False)
+    content = Column(Text)  # 长文本
+    summary = Column(String(500))
+    category_id = Column(Integer, nullable=False)
+    author_id = Column(Integer, nullable=False)
+    status = Column(String(20), default='draft')  # draft, published
+    view_count = Column(Integer, default=0)
+    file_path = Column(String(500))  # 文件路径，用于存储上传的Docx或PDF文件
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    published_at = Column(DateTime(timezone=True))
+
+# 创建数据库表
+Base.metadata.create_all(engine)
+
+# 创建会话工厂
 Session = sessionmaker(bind=engine)
-session = Session()
+
+# 生成slug函数
+def generate_slug(text):
+    import re
+    import hashlib
+    # 转换为小写
+    slug = text.lower()
+    # 替换空格为连字符
+    slug = re.sub(r'\s+', '-', slug)
+    # 保留中文和字母数字连字符
+    slug = re.sub(r'[^\u4e00-\u9fa5a-z0-9-]', '', slug)
+    # 替换多个连字符为单个
+    slug = re.sub(r'-+', '-', slug)
+    # 移除首尾连字符
+    slug = slug.strip('-')
+    # 如果slug为空，使用标题的哈希值
+    if not slug:
+        slug = hashlib.md5(text.encode()).hexdigest()[:8]
+    return slug
 
 # 大模型API配置（火山引擎）
 API_KEY = '58a51ac5-3b75-4c5e-85ac-1fb4ef652bd0'
@@ -130,6 +195,7 @@ MODEL = 'doubao-seed-1-8-251228'
 @app.route('/api/upload', methods=['POST'])
 @protected
 def upload_file():
+    session = Session()
     try:
         if 'file' not in request.files:
             return jsonify({'error': 'No file part'}), 400
@@ -148,15 +214,119 @@ def upload_file():
             # 写入数据库
             df.to_sql(table_name, engine, if_exists='replace', index=False)
             
+            session.commit()
             return jsonify({'message': 'File uploaded successfully', 'table_name': table_name}), 200
         else:
             return jsonify({'error': 'Only Excel files are allowed'}), 400
     except Exception as e:
+        session.rollback()
+        print(f"Error in upload_file: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
+    finally:
+        session.close()
+
+# CMS文件上传接口
+@app.route('/api/upload/file', methods=['POST'])
+@admin_required
+def upload_cms_file():
+    session = Session()
+    try:
+        if 'file' not in request.files:
+            return jsonify({'error': 'No file part'}), 400
+        
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({'error': 'No selected file'}), 400
+        
+        # 检查文件类型
+        allowed_extensions = {'docx', 'pdf'}
+        if '.' not in file.filename or file.filename.rsplit('.', 1)[1].lower() not in allowed_extensions:
+            return jsonify({'error': 'Only DOCX and PDF files are allowed'}), 400
+        
+        # 生成唯一文件名
+        import uuid
+        import os
+        file_extension = file.filename.rsplit('.', 1)[1].lower()
+        unique_filename = f"{uuid.uuid4()}.{file_extension}"
+        
+        # 确保uploads目录存在
+        upload_folder = 'uploads'
+        if not os.path.exists(upload_folder):
+            os.makedirs(upload_folder)
+        
+        # 保存文件
+        file_path = os.path.join(upload_folder, unique_filename)
+        file.save(file_path)
+        
+        session.commit()
+        # 返回文件路径
+        return jsonify({
+            'file_path': file_path,
+            'filename': file.filename
+        }), 200
+    except Exception as e:
+        session.rollback()
+        print(f"Error in upload_cms_file: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        session.close()
+
+# 图片上传接口（用于富文本编辑器）
+@app.route('/api/upload/image', methods=['POST'])
+@admin_required
+def upload_image():
+    session = Session()
+    try:
+        if 'file' not in request.files:
+            return jsonify({'error': 'No file part'}), 400
+        
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({'error': 'No selected file'}), 400
+        
+        # 检查文件类型
+        allowed_extensions = {'jpg', 'jpeg', 'png', 'gif', 'webp'}
+        if '.' not in file.filename or file.filename.rsplit('.', 1)[1].lower() not in allowed_extensions:
+            return jsonify({'error': 'Only image files are allowed'}), 400
+        
+        # 生成唯一文件名
+        import uuid
+        import os
+        file_extension = file.filename.rsplit('.', 1)[1].lower()
+        unique_filename = f"{uuid.uuid4()}.{file_extension}"
+        
+        # 确保uploads目录存在
+        upload_folder = 'uploads'
+        if not os.path.exists(upload_folder):
+            os.makedirs(upload_folder)
+        
+        # 保存文件
+        file_path = os.path.join(upload_folder, unique_filename)
+        file.save(file_path)
+        
+        session.commit()
+        
+        # TinyMCE需要的响应格式
+        return jsonify({
+            'location': f"http://localhost:5000/{file_path}"
+        }), 200
+    except Exception as e:
+        session.rollback()
+        print(f"Error in upload_image: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        session.close()
 
 # 登录接口
 @app.route('/api/login', methods=['POST'])
 def login():
+    session = Session()
     try:
         data = request.json
         username = data.get('username')
@@ -198,6 +368,7 @@ def login():
                 'chengguantong': permission[5]
             }
         
+        session.commit()
         return jsonify({
                 'token': token,
                 'user_id': user.id,
@@ -206,12 +377,19 @@ def login():
                 'permissions': permissions
             }), 200
     except Exception as e:
+        session.rollback()
+        print(f"Error in login: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
+    finally:
+        session.close()
 
 # 获取当前用户信息接口
 @app.route('/api/user', methods=['GET'])
 @protected
 def get_current_user():
+    session = Session()
     try:
         # 获取用户权限
         permission = session.execute(text("SELECT data_management, assessment, data_analysis, spotcheck, tools, chengguantong FROM permissions WHERE user_id = :user_id"), {'user_id': request.user_id}).fetchone()
@@ -233,6 +411,7 @@ def get_current_user():
                 'chengguantong': permission[5]
             }
         
+        session.commit()
         return jsonify({
             'user_id': request.user_id,
             'username': request.username,
@@ -240,12 +419,19 @@ def get_current_user():
             'permissions': permissions
         }), 200
     except Exception as e:
+        session.rollback()
+        print(f"Error in get_current_user: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
+    finally:
+        session.close()
 
 # 获取所有用户列表接口（管理员专用）
 @app.route('/api/users', methods=['GET'])
 @admin_required
 def get_users():
+    session = Session()
     try:
         users = session.query(User).all()
         user_list = []
@@ -276,14 +462,22 @@ def get_users():
                 'created_at': user.created_at.strftime('%Y-%m-%d %H:%M:%S'),
                 'permissions': permissions
             })
+        session.commit()
         return jsonify({'users': user_list}), 200
     except Exception as e:
+        session.rollback()
+        print(f"Error in get_users: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
+    finally:
+        session.close()
 
 # 创建用户接口（管理员专用）
 @app.route('/api/users', methods=['POST'])
 @admin_required
 def create_user():
+    session = Session()
     try:
         data = request.json
         username = data.get('username')
@@ -335,12 +529,18 @@ def create_user():
         }), 201
     except Exception as e:
         session.rollback()
+        print(f"Error in create_user: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
+    finally:
+        session.close()
 
 # 修改用户接口（管理员专用）
 @app.route('/api/users/<int:user_id>', methods=['PUT'])
 @admin_required
 def update_user(user_id):
+    session = Session()
     try:
         data = request.json
         user = session.query(User).filter_by(id=user_id).first()
@@ -364,12 +564,18 @@ def update_user(user_id):
         }), 200
     except Exception as e:
         session.rollback()
+        print(f"Error in update_user: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
+    finally:
+        session.close()
 
 # 更新用户权限接口（管理员专用）
 @app.route('/api/users/<int:user_id>/permissions', methods=['PUT'])
 @admin_required
 def update_user_permissions(user_id):
+    session = Session()
     try:
         data = request.json
         
@@ -416,12 +622,18 @@ def update_user_permissions(user_id):
         }), 200
     except Exception as e:
         session.rollback()
+        print(f"Error in update_user_permissions: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
+    finally:
+        session.close()
 
 # 删除用户接口（管理员专用）
 @app.route('/api/users/<int:user_id>', methods=['DELETE'])
 @admin_required
 def delete_user(user_id):
+    session = Session()
     try:
         user = session.query(User).filter_by(id=user_id).first()
         if not user:
@@ -437,23 +649,37 @@ def delete_user(user_id):
         return jsonify({'message': 'User deleted successfully'}), 200
     except Exception as e:
         session.rollback()
+        print(f"Error in delete_user: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
+    finally:
+        session.close()
 
 @app.route('/api/tables', methods=['GET'])
 @protected
 def get_tables():
+    session = Session()
     try:
         # 获取数据库中所有表名
         inspector = inspect(engine)
         tables = inspector.get_table_names()
+        session.commit()
         return jsonify({'tables': tables}), 200
     except Exception as e:
+        session.rollback()
+        print(f"Error in get_tables: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
+    finally:
+        session.close()
 
 # 删除数据表接口
 @app.route('/api/tables/<table_name>', methods=['DELETE'])
 @protected
 def delete_table(table_name):
+    session = Session()
     try:
         # 防止删除系统表
         protected_tables = ['users', 'permissions']
@@ -467,7 +693,12 @@ def delete_table(table_name):
         return jsonify({'message': f'Table {table_name} deleted successfully'})
     except Exception as e:
         session.rollback()
+        print(f"Error in delete_table: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
+    finally:
+        session.close()
 
 def convert_nan_to_null(obj):
     """将数据结构中的NaN值转换为null值"""
@@ -1339,6 +1570,517 @@ def analyze():
         return jsonify(result), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+# CMS栏目相关API
+
+@app.route('/api/categories', methods=['GET'])
+def get_categories():
+    # 创建新的session实例
+    session = Session()
+    try:
+        # 获取所有栏目，按排序字段排序
+        categories = session.query(Category).order_by(Category.order).all()
+        
+        # 转换为字典列表
+        categories_list = []
+        for category in categories:
+            categories_list.append({
+                'id': category.id,
+                'name': category.name,
+                'slug': category.slug,
+                'description': category.description,
+                'order': category.order,
+                'created_at': category.created_at.strftime('%Y-%m-%d %H:%M:%S') if category.created_at else None,
+                'updated_at': category.updated_at.strftime('%Y-%m-%d %H:%M:%S') if category.updated_at else None
+            })
+        
+        session.commit()
+        return jsonify({'categories': categories_list}), 200
+    except Exception as e:
+        session.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        session.close()
+
+# 生成slug函数
+def generate_slug(text):
+    import re
+    import hashlib
+    # 转换为小写
+    slug = text.lower()
+    # 替换空格为连字符
+    slug = re.sub(r'\s+', '-', slug)
+    # 保留中文和字母数字连字符
+    slug = re.sub(r'[^\u4e00-\u9fa5a-z0-9-]', '', slug)
+    # 替换多个连字符为单个
+    slug = re.sub(r'-+', '-', slug)
+    # 移除首尾连字符
+    slug = slug.strip('-')
+    # 如果slug为空，使用标题的哈希值
+    if not slug:
+        slug = hashlib.md5(text.encode()).hexdigest()[:8]
+    return slug
+
+@app.route('/api/categories', methods=['POST'])
+@admin_required
+def create_category():
+    session = Session()
+    try:
+        data = request.json
+        
+        # 验证必填字段
+        if not data.get('name'):
+            return jsonify({'error': '名称不能为空'}), 400
+        
+        # 自动生成slug
+        slug = data.get('slug')
+        if not slug:
+            slug = generate_slug(data.get('name'))
+        
+        # 创建新栏目
+        new_category = Category(
+            name=data.get('name'),
+            slug=slug,
+            description=data.get('description'),
+            order=data.get('order', 0)
+        )
+        
+        session.add(new_category)
+        session.commit()
+        
+        return jsonify({
+            'id': new_category.id,
+            'name': new_category.name,
+            'slug': new_category.slug,
+            'description': new_category.description,
+            'order': new_category.order
+        }), 201
+    except Exception as e:
+        session.rollback()
+        print(f"Error in create_category: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        session.close()
+
+@app.route('/api/categories/<int:category_id>', methods=['GET'])
+def get_category(category_id):
+    session = Session()
+    try:
+        category = session.query(Category).filter_by(id=category_id).first()
+        if not category:
+            return jsonify({'error': '栏目不存在'}), 404
+        
+        session.commit()
+        return jsonify({
+            'id': category.id,
+            'name': category.name,
+            'slug': category.slug,
+            'description': category.description,
+            'order': category.order,
+            'created_at': category.created_at.strftime('%Y-%m-%d %H:%M:%S') if category.created_at else None,
+            'updated_at': category.updated_at.strftime('%Y-%m-%d %H:%M:%S') if category.updated_at else None
+        }), 200
+    except Exception as e:
+        session.rollback()
+        print(f"Error in get_category: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        session.close()
+
+@app.route('/api/categories/<int:category_id>', methods=['PUT'])
+@admin_required
+def update_category(category_id):
+    session = Session()
+    try:
+        data = request.json
+        category = session.query(Category).filter_by(id=category_id).first()
+        
+        if not category:
+            return jsonify({'error': '栏目不存在'}), 404
+        
+        # 更新栏目信息
+        if 'name' in data:
+            category.name = data['name']
+        if 'slug' in data:
+            category.slug = data['slug']
+        elif 'name' in data:
+            # 如果修改了名称但没有提供slug，自动生成
+            category.slug = generate_slug(data['name'])
+        if 'description' in data:
+            category.description = data['description']
+        if 'order' in data:
+            category.order = data['order']
+        
+        session.commit()
+        
+        return jsonify({
+            'id': category.id,
+            'name': category.name,
+            'slug': category.slug,
+            'description': category.description,
+            'order': category.order
+        }), 200
+    except Exception as e:
+        session.rollback()
+        print(f"Error in update_category: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        session.close()
+
+@app.route('/api/categories/<int:category_id>', methods=['DELETE'])
+@admin_required
+def delete_category(category_id):
+    session = Session()
+    try:
+        print(f"删除栏目请求，category_id: {category_id}")
+        category = session.query(Category).filter_by(id=category_id).first()
+        print(f"查询到的栏目: {category}")
+        if not category:
+            print("栏目不存在")
+            return jsonify({'error': '栏目不存在'}), 404
+        
+        # 检查是否有文章属于该栏目
+        article_count = session.query(Article).filter_by(category_id=category_id).count()
+        print(f"该栏目下的文章数量: {article_count}")
+        if article_count > 0:
+            print(f"该栏目下还有{article_count}篇文章，无法删除")
+            return jsonify({'error': f'该栏目下还有{article_count}篇文章，无法删除'}), 400
+        
+        # 尝试删除栏目
+        session.delete(category)
+        session.commit()
+        print(f"栏目删除成功，ID: {category_id}")
+        return jsonify({'message': '栏目删除成功'}), 200
+    except Exception as e:
+        session.rollback()
+        print(f"删除栏目时出错: {str(e)}")
+        # 检查是否是外键约束错误
+        if 'foreign key constraint' in str(e).lower():
+            return jsonify({'error': '该栏目下还有文章，无法删除'}), 400
+        return jsonify({'error': str(e)}), 500
+    finally:
+        session.close()
+
+# CMS文章相关API
+
+@app.route('/api/articles', methods=['GET'])
+def get_articles():
+    # 创建新的session实例
+    session = Session()
+    try:
+        # 获取查询参数
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 10, type=int)
+        category_id = request.args.get('category_id', type=int)
+        status = request.args.get('status')
+        include_drafts = request.args.get('include_drafts', 'false').lower() == 'true'
+        
+        # 构建查询
+        query = session.query(Article)
+        
+        # 应用筛选条件
+        if category_id:
+            query = query.filter_by(category_id=category_id)
+        if status:
+            query = query.filter_by(status=status)
+        elif not include_drafts:
+            # 如果没有指定状态且不包含草稿，只获取已发布的
+            query = query.filter_by(status='published')
+        
+        # 计算总数
+        total = query.count()
+        
+        # 分页
+        articles = query.order_by(Article.created_at.desc()).offset((page-1)*per_page).limit(per_page).all()
+        
+        # 转换为字典列表
+        articles_list = []
+        for article in articles:
+            try:
+                article_dict = {
+                    'id': article.id,
+                    'title': article.title,
+                    'slug': article.slug,
+                    'summary': article.summary,
+                    'category_id': article.category_id,
+                    'author_id': article.author_id,
+                    'status': article.status,
+                    'view_count': article.view_count,
+                    'created_at': article.created_at.strftime('%Y-%m-%d %H:%M:%S') if article.created_at else None,
+                    'updated_at': article.updated_at.strftime('%Y-%m-%d %H:%M:%S') if article.updated_at else None,
+                    'published_at': article.published_at.strftime('%Y-%m-%d %H:%M:%S') if article.published_at else None
+                }
+                # 尝试获取file_path字段，如果不存在则跳过
+                try:
+                    article_dict['file_path'] = article.file_path
+                except AttributeError:
+                    article_dict['file_path'] = None
+                articles_list.append(article_dict)
+            except Exception as article_error:
+                print(f"Error processing article {article.id}: {str(article_error)}")
+                # 跳过有错误的文章，继续处理其他文章
+                continue
+        
+        session.commit()
+        return jsonify({
+            'articles': articles_list,
+            'total': total,
+            'page': page,
+            'per_page': per_page,
+            'pages': (total + per_page - 1) // per_page
+        }), 200
+    except Exception as e:
+        session.rollback()
+        print(f"Error in get_articles: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        session.close()
+
+@app.route('/api/articles', methods=['POST'])
+@admin_required
+def create_article():
+    # 创建新的session实例
+    session = Session()
+    try:
+        data = request.json
+        
+        # 验证必填字段
+        if not data.get('title'):
+            return jsonify({'error': '标题不能为空'}), 400
+        
+        # 自动生成slug
+        slug = data.get('slug')
+        print(f"Original slug from frontend: '{slug}'")
+        print(f"if not slug: {not slug}")
+        if not slug:
+            title = data.get('title')
+            print(f"Generating slug from title: '{title}'")
+            slug = generate_slug(title)
+            print(f"Generated slug: '{slug}'")
+        
+        # 确保slug唯一
+        slug_base = slug
+        counter = 1
+        while True:
+            existing_article = session.query(Article).filter_by(slug=slug).first()
+            if not existing_article:
+                break
+            # slug已存在，添加数字后缀
+            slug = f"{slug_base}-{counter}"
+            counter += 1
+        
+        # 创建新文章
+        new_article = Article(
+            title=data.get('title'),
+            slug=slug,
+            content=data.get('content'),
+            summary=data.get('summary'),
+            category_id=data.get('category_id'),
+            author_id=request.user_id,
+            status=data.get('status', 'draft'),
+            file_path=data.get('file_path')
+        )
+        
+        # 如果状态为published，设置发布时间
+        if data.get('status') == 'published':
+            new_article.published_at = datetime.datetime.utcnow()
+        
+        session.add(new_article)
+        session.commit()
+        
+        return jsonify({
+            'id': new_article.id,
+            'title': new_article.title,
+            'slug': new_article.slug,
+            'summary': new_article.summary,
+            'category_id': new_article.category_id,
+            'author_id': new_article.author_id,
+            'status': new_article.status,
+            'file_path': new_article.file_path
+        }), 201
+    except Exception as e:
+        session.rollback()
+        print(f"Error in create_article: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        session.close()
+
+@app.route('/api/articles/<int:article_id>', methods=['GET'])
+def get_article(article_id):
+    # 创建新的session实例
+    session = Session()
+    try:
+        article = session.query(Article).filter_by(id=article_id).first()
+        if not article:
+            return jsonify({'error': '文章不存在'}), 404
+        
+        # 增加浏览量
+        article.view_count += 1
+        session.commit()
+        
+        return jsonify({
+            'id': article.id,
+            'title': article.title,
+            'slug': article.slug,
+            'content': article.content,
+            'summary': article.summary,
+            'category_id': article.category_id,
+            'author_id': article.author_id,
+            'status': article.status,
+            'view_count': article.view_count,
+            'file_path': article.file_path,
+            'created_at': article.created_at.strftime('%Y-%m-%d %H:%M:%S') if article.created_at else None,
+            'updated_at': article.updated_at.strftime('%Y-%m-%d %H:%M:%S') if article.updated_at else None,
+            'published_at': article.published_at.strftime('%Y-%m-%d %H:%M:%S') if article.published_at else None
+        }), 200
+    except Exception as e:
+        session.rollback()
+        print(f"Error in get_article: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        session.close()
+
+@app.route('/api/articles/<int:article_id>', methods=['PUT'])
+@admin_required
+def update_article(article_id):
+    # 创建新的session实例
+    session = Session()
+    try:
+        data = request.json
+        article = session.query(Article).filter_by(id=article_id).first()
+        
+        if not article:
+            return jsonify({'error': '文章不存在'}), 404
+        
+        # 更新文章信息
+        if 'title' in data:
+            article.title = data['title']
+        if 'slug' in data:
+            article.slug = data['slug']
+        elif 'title' in data:
+            # 如果修改了标题但没有提供slug，自动生成
+            article.slug = generate_slug(data['title'])
+        if 'content' in data:
+            article.content = data['content']
+        if 'summary' in data:
+            article.summary = data['summary']
+        if 'category_id' in data:
+            article.category_id = data['category_id']
+        if 'status' in data:
+            article.status = data['status']
+            # 如果状态从draft变为published，设置发布时间
+            if data['status'] == 'published' and article.status != 'published':
+                article.published_at = datetime.datetime.utcnow()
+        if 'file_path' in data:
+            article.file_path = data['file_path']
+        
+        session.commit()
+        
+        return jsonify({
+            'id': article.id,
+            'title': article.title,
+            'slug': article.slug,
+            'summary': article.summary,
+            'category_id': article.category_id,
+            'status': article.status
+        }), 200
+    except Exception as e:
+        session.rollback()
+        print(f"Error in update_article: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        session.close()
+
+
+
+@app.route('/api/articles/<int:article_id>', methods=['DELETE'])
+@admin_required
+def delete_article(article_id):
+    session = Session()
+    try:
+        article = session.query(Article).filter_by(id=article_id).first()
+        if not article:
+            return jsonify({'error': '文章不存在'}), 404
+        
+        session.delete(article)
+        session.commit()
+        
+        return jsonify({'message': '文章删除成功'}), 200
+    except Exception as e:
+        session.rollback()
+        print(f"Error in delete_article: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        session.close()
+
+@app.route('/api/articles/category/<int:category_id>', methods=['GET'])
+def get_articles_by_category(category_id):
+    session = Session()
+    try:
+        # 获取查询参数
+        include_drafts = request.args.get('include_drafts', 'false').lower() == 'true'
+        
+        # 构建查询
+        query = session.query(Article).filter_by(category_id=category_id)
+        
+        # 如果不包含草稿，只获取已发布的
+        if not include_drafts:
+            query = query.filter_by(status='published')
+        
+        # 执行查询
+        articles = query.order_by(Article.created_at.desc()).all()
+        
+        # 转换为字典列表
+        articles_list = []
+        for article in articles:
+            articles_list.append({
+                'id': article.id,
+                'title': article.title,
+                'slug': article.slug,
+                'summary': article.summary,
+                'category_id': article.category_id,
+                'view_count': article.view_count,
+                'status': article.status,
+                'created_at': article.created_at.strftime('%Y-%m-%d %H:%M:%S') if article.created_at else None,
+                'published_at': article.published_at.strftime('%Y-%m-%d %H:%M:%S') if article.published_at else None
+            })
+        
+        session.commit()
+        return jsonify({'articles': articles_list}), 200
+    except Exception as e:
+        session.rollback()
+        print(f"Error in get_articles_by_category: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        session.close()
+
+# 配置静态文件服务
+import os
+app.config['UPLOAD_FOLDER'] = 'uploads'
+
+# 静态文件服务路由
+@app.route('/uploads/<path:filename>')
+def serve_uploaded_file(filename):
+    from flask import send_from_directory
+    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
