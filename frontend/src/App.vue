@@ -10,7 +10,13 @@ const analysisResult = ref(null);
 const loading = ref(false);
 const message = ref('');
 const selectedFile = ref(null);
-const activeModule = ref('home'); // home, data, assessment, analysis, spotcheck, tools, chengguantong, cms
+const activeModule = ref('home'); // home, data, assessment, analysis, spotcheck, tools, chengguantong, cms, map
+
+// 地图服务状态管理
+const mapInstance = ref(null);
+const mapLoading = ref(false);
+const mapError = ref('');
+const casesData = ref([]);
 
 // 案件抽查模块状态管理
 const spotcheckFile = ref(null);
@@ -112,12 +118,12 @@ function initTableVisibility() {
 const showEditPermissionsForm = ref(false);
 const editingPermissionsUser = ref(null);
 const editingPermissions = ref({
-  data_management: false,
   assessment: false,
   data_analysis: false,
   spotcheck: false,
   tools: false,
-  chengguantong: false
+  chengguantong: false,
+  map: false
 });
 
 // 从本地存储获取token和用户信息
@@ -1456,6 +1462,134 @@ function switchModule(module) {
   if (module === 'home') {
     fetchCMSCategories();
   }
+  // 切换到地图服务模块时初始化地图
+  if (module === 'map') {
+    nextTick(() => {
+      initMap();
+    });
+  }
+}
+
+// 初始化地图
+function initMap() {
+  if (!window.AMap) {
+    mapError.value = '高德地图加载失败';
+    return;
+  }
+  
+  mapLoading.value = true;
+  mapError.value = '';
+  
+  try {
+    // 初始化地图实例
+    mapInstance.value = new window.AMap.Map('map-container', {
+      zoom: 11,
+      center: [110.99825, 35.0378], // 运城市中心坐标
+      resizeEnable: true,
+      mapStyle: 'amap://styles/light'
+    });
+    
+    // 高德地图2.0版本已移除内置控件，使用地图默认控件
+    // 如需添加控件，请参考高德地图2.0文档使用新控件库
+    
+    // 添加运城市标记
+    const marker = new window.AMap.Marker({
+      position: [110.99825, 35.0378],
+      title: '运城市',
+      map: mapInstance.value
+    });
+    
+    // 添加信息窗口
+    const infoWindow = new window.AMap.InfoWindow({
+      content: '<div style="padding: 10px;"><h3>运城市</h3><p>山西省地级市</p></div>',
+      offset: new window.AMap.Pixel(0, -30)
+    });
+    
+    marker.on('click', function() {
+      infoWindow.open(mapInstance.value, marker.getPosition());
+    });
+    
+    // 模拟案件数据（后续可从API获取）
+    loadMockCaseData();
+    
+  } catch (error) {
+    console.error('地图初始化失败:', error);
+    mapError.value = '地图初始化失败: ' + error.message;
+  } finally {
+    mapLoading.value = false;
+  }
+}
+
+// 加载模拟案件数据
+function loadMockCaseData() {
+  // 模拟运城市内的案件数据
+  casesData.value = [
+    { id: 1, name: '占道经营', location: [110.98, 35.04], type: '市容市貌' },
+    { id: 2, name: '乱停乱放', location: [111.01, 35.03], type: '交通秩序' },
+    { id: 3, name: '垃圾堆积', location: [110.97, 35.02], type: '环境卫生' },
+    { id: 4, name: '违规搭建', location: [111.02, 35.05], type: '违法建设' },
+    { id: 5, name: '噪音扰民', location: [110.99, 35.01], type: '环境噪音' }
+  ];
+  
+  // 在地图上标记案件
+  markCasesOnMap();
+}
+
+// 在地图上标记案件
+function markCasesOnMap() {
+  if (!mapInstance.value || casesData.value.length === 0) return;
+  
+  casesData.value.forEach(caseItem => {
+    const marker = new window.AMap.Marker({
+      position: caseItem.location,
+      title: caseItem.name,
+      map: mapInstance.value,
+      icon: new window.AMap.Icon({
+        size: new window.AMap.Size(30, 30),
+        image: 'https://webapi.amap.com/theme/v1.3/markers/n/mark_b.png',
+        imageSize: new window.AMap.Size(30, 30)
+      })
+    });
+    
+    // 添加案件信息窗口
+    const infoWindow = new window.AMap.InfoWindow({
+      content: `
+        <div style="padding: 10px;">
+          <h4>${caseItem.name}</h4>
+          <p>类型: ${caseItem.type}</p>
+          <p>案件ID: ${caseItem.id}</p>
+        </div>
+      `,
+      offset: new window.AMap.Pixel(0, -30)
+    });
+    
+    marker.on('click', function() {
+      infoWindow.open(mapInstance.value, marker.getPosition());
+    });
+  });
+  
+  // 尝试添加热力图（如果数据足够）
+  try {
+    if (window.AMap.Heatmap) {
+      const heatmap = new window.AMap.Heatmap(mapInstance.value, {
+        radius: 25,
+        opacity: [0, 0.8]
+      });
+      
+      const heatData = casesData.value.map(item => ({
+        lng: item.location[0],
+        lat: item.location[1],
+        count: Math.random() * 10 + 1
+      }));
+      
+      heatmap.setDataSet({
+        data: heatData,
+        max: 10
+      });
+    }
+  } catch (error) {
+    console.log('热力图加载失败（可选功能）:', error);
+  }
 }
 
 // 登录函数
@@ -1806,12 +1940,12 @@ function editUserPermissions(user) {
   
   editingPermissionsUser.value = user;
   editingPermissions.value = {
-    data_management: Boolean(user.permissions?.data_management) || false,
     assessment: Boolean(user.permissions?.assessment) || false,
     data_analysis: Boolean(user.permissions?.data_analysis) || false,
     spotcheck: Boolean(user.permissions?.spotcheck) || false,
     tools: Boolean(user.permissions?.tools) || false,
-    chengguantong: Boolean(user.permissions?.chengguantong) || false
+    chengguantong: Boolean(user.permissions?.chengguantong) || false,
+    map: Boolean(user.permissions?.map) || false
   };
   
   // 打印设置后的权限值
@@ -1982,12 +2116,12 @@ function closeEditPermissionsForm() {
   showEditPermissionsForm.value = false;
   editingPermissionsUser.value = null;
   editingPermissions.value = {
-    data_management: false,
     assessment: false,
     data_analysis: false,
     spotcheck: false,
     tools: false,
-    chengguantong: false
+    chengguantong: false,
+    map: false
   };
   adminError.value = '';
 }
@@ -2585,6 +2719,9 @@ async function uploadImage(event) {
       <div v-if="!userInfo || userInfo?.role === 'admin' || (userInfo?.permissions && userInfo?.permissions.spotcheck)" class="tab" :class="{ active: activeModule === 'spotcheck' }" @click="switchModule('spotcheck')">
         案件抽查
       </div>
+      <div v-if="!userInfo || userInfo?.role === 'admin' || (userInfo?.permissions && userInfo?.permissions.map)" class="tab" :class="{ active: activeModule === 'map' }" @click="switchModule('map')">
+        地图服务
+      </div>
       <div v-if="!userInfo || userInfo?.role === 'admin' || (userInfo?.permissions && userInfo?.permissions.chengguantong)" class="tab" :class="{ active: activeModule === 'chengguantong' }" @click="switchModule('chengguantong')">
         城管通
       </div>
@@ -2925,6 +3062,27 @@ async function uploadImage(event) {
         </div>
       </div>
       
+      <!-- 地图服务模块 -->
+      <div v-if="activeModule === 'map' && (!userInfo || userInfo.role === 'admin' || (userInfo.permissions && userInfo.permissions.map))" class="tab-content">
+        <h2 class="section-title">地图服务</h2>
+        <div class="map-section">
+          <div v-if="mapLoading" class="loading">
+            地图加载中...
+          </div>
+          <div v-else-if="mapError" class="error">
+            {{ mapError }}
+          </div>
+          <div v-else id="map-container" style="width: 100%; height: 600px; border-radius: 8px;"></div>
+          <div class="map-info" style="margin-top: 20px; padding: 20px; background-color: #f9f9f9; border-radius: 8px;">
+            <h3>地图服务说明</h3>
+            <p>• 显示运城市地图</p>
+            <p>• 标记案件位置</p>
+            <p>• 支持热力图展示（数据足够时）</p>
+            <p>• 点击标记查看案件详情</p>
+          </div>
+        </div>
+      </div>
+      
 
       
       <!-- 管理员管理模块 -->
@@ -2967,7 +3125,7 @@ async function uploadImage(event) {
                       <td>
                         <button class="edit-user-btn" @click="editUser(user)">编辑</button>
                         <button class="delete-user-btn" @click="deleteUser(user.id)" :disabled="user.id === 1">删除</button>
-                        <button class="edit-permissions-btn" @click="editUserPermissions(user)">权限</button>
+                        <button v-if="user.role !== 'admin'" class="edit-permissions-btn" @click="editUserPermissions(user)">权限</button>
                       </td>
                     </tr>
                   </tbody>
@@ -3249,10 +3407,6 @@ async function uploadImage(event) {
             </div>
             <div class="permissions-list">
               <div class="permission-item">
-                <input type="checkbox" id="perm-data-management" v-model="editingPermissions.data_management" />
-                <label for="perm-data-management">数据管理</label>
-              </div>
-              <div class="permission-item">
                 <input type="checkbox" id="perm-assessment" v-model="editingPermissions.assessment" />
                 <label for="perm-assessment">考核计分</label>
               </div>
@@ -3271,6 +3425,10 @@ async function uploadImage(event) {
               <div class="permission-item">
                 <input type="checkbox" id="perm-chengguantong" v-model="editingPermissions.chengguantong" />
                 <label for="perm-chengguantong">城管通</label>
+              </div>
+              <div class="permission-item">
+                <input type="checkbox" id="perm-map" v-model="editingPermissions.map" />
+                <label for="perm-map">地图服务</label>
               </div>
             </div>
             <div v-if="adminError" class="admin-error">{{ adminError }}</div>
@@ -3939,6 +4097,49 @@ body {
   align-items: flex-start;
   justify-content: flex-start;
   gap: 20px;
+}
+
+/* 地图服务样式 */
+.map-section {
+  padding: 20px;
+  background-color: #f9f9f9;
+  border-radius: 8px;
+  text-align: left;
+  min-height: 650px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 20px;
+}
+
+#map-container {
+  width: 100%;
+  height: 600px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid #ddd;
+}
+
+.map-info {
+  margin-top: 20px;
+  padding: 20px;
+  background-color: #ffffff;
+  border-radius: 8px;
+  border: 1px solid #ddd;
+  width: 100%;
+}
+
+.map-info h3 {
+  color: #2c3e50;
+  margin-bottom: 15px;
+  font-size: 1.1em;
+}
+
+.map-info p {
+  margin: 8px 0;
+  color: #555;
+  line-height: 1.4;
 }
 
 /* 图表样式 */

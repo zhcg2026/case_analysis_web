@@ -10,4 +10,11 @@ npm run dev
 
 git add .
 git commit -m "update"
+# 设置 HTTP 代理
+git config --global http.proxy http://127.0.0.1:7890
+# 设置 HTTPS 代理
+git config --global https.proxy http://127.0.0.1:7890
 git push origin HEAD:main
+# 取消全局代理
+git config --global --unset http.proxy
+git config --global --unset https.proxy
