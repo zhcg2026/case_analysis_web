@@ -8,7 +8,9 @@ const selectedTable = ref('');
 const selectedAnalysisType = ref('');
 const analysisResult = ref(null);
 const loading = ref(false);
-const message = ref('');
+const message = ref(''); // 通用消息
+const analysisMessage = ref(''); // 数据分析消息
+const assessmentMessage = ref(''); // 考核计分消息
 const selectedFile = ref(null);
 const activeModule = ref('home'); // home, data, assessment, analysis, spotcheck, tools, chengguantong, cms, map
 
@@ -94,6 +96,24 @@ const adminError = ref('');
 
 // 表格可见性状态管理
 const tableVisibility = ref({});
+
+// 小工具模块状态管理
+const activeToolTab = ref('natural-language'); // natural-language, huanwei-assignment, other
+const naturalLanguageQuery = ref('');
+const selectedToolTable = ref('');
+const toolLoading = ref(false);
+const toolMessage = ref('');
+const toolError = ref('');
+const queryResult = ref(null);
+const generatedSQL = ref('');
+const showResultModal = ref(false); // 控制查询结果弹框的显示/隐藏
+
+// 市容环卫案件分配状态管理
+const huanweiFile = ref(null);
+const huanweiLoading = ref(false);
+const huanweiMessage = ref('');
+const huanweiError = ref('');
+const huanweiDownloadUrl = ref('');
 
 // 初始化表格可见性状态
 function initTableVisibility() {
@@ -1325,33 +1345,33 @@ async function uploadFile() {
 // 开始分析
 async function startAnalysis() {
   if (!selectedTable.value || !selectedAnalysisType.value) {
-    message.value = '请选择表和分析类型';
+    analysisMessage.value = '请选择表和分析类型';
     return;
   }
 
   const token = localStorage.getItem('token');
   if (!token) {
-    message.value = '请先登录';
+    analysisMessage.value = '请先登录';
     return;
   }
 
   try {
     loading.value = true;
     currentStep.value = 0;
-    message.value = '分析中...';
+    analysisMessage.value = '分析中...';
     console.log('开始分析，表名:', selectedTable.value, '分析类型:', selectedAnalysisType.value);
     
     // 步骤1: 读取数据
     currentStep.value = 1;
-    message.value = '读取数据...';
+    analysisMessage.value = '读取数据...';
     
     // 步骤2: 处理时间数据
     currentStep.value = 2;
-    message.value = '处理时间数据...';
+    analysisMessage.value = '处理时间数据...';
     
     // 步骤3: 调用大模型分析
     currentStep.value = 3;
-    message.value = '调用大模型分析...';
+    analysisMessage.value = '调用大模型分析...';
     
     const response = await fetch('http://localhost:5000/api/analyze', {
       method: 'POST',
@@ -1369,25 +1389,25 @@ async function startAnalysis() {
     
     // 步骤4: 生成分析报告
     currentStep.value = 4;
-    message.value = '生成分析报告...';
+    analysisMessage.value = '生成分析报告...';
     
     const data = await response.json();
     console.log('分析请求响应数据:', data);
     
     if (data.error) {
-      message.value = 'Error: ' + data.error;
+      analysisMessage.value = 'Error: ' + data.error;
       console.error('分析错误:', data.error);
     } else {
       analysisResult.value = data;
           console.log('分析结果已保存:', analysisResult.value);
-          message.value = '分析完成';
+          analysisMessage.value = '分析完成';
           // 步骤5: 分析完成
           currentStep.value = 4;
           console.log('分析完成，结果已显示在当前页面');
           console.log('当前模块:', activeModule.value);
     }
   } catch (error) {
-    message.value = 'Error analyzing data: ' + error.message;
+    analysisMessage.value = 'Error analyzing data: ' + error.message;
     console.error('Error analyzing data:', error);
   } finally {
     loading.value = false;
@@ -1398,19 +1418,19 @@ async function startAnalysis() {
 // 开始考核计算
 async function startAssessment() {
   if (!selectedDepartment.value || !selectedAssessmentTable.value) {
-    message.value = '请选择部门和数据表';
+    assessmentMessage.value = '请选择部门和数据表';
     return;
   }
 
   const token = localStorage.getItem('token');
   if (!token) {
-    message.value = '请先登录';
+    assessmentMessage.value = '请先登录';
     return;
   }
 
   try {
     loading.value = true;
-    message.value = '计算中...';
+    assessmentMessage.value = '计算中...';
     
     const response = await fetch('http://localhost:5000/api/assess', {
       method: 'POST',
@@ -1427,13 +1447,13 @@ async function startAssessment() {
     const data = await response.json();
     
     if (data.error) {
-      message.value = 'Error: ' + data.error;
+      assessmentMessage.value = 'Error: ' + data.error;
     } else {
       assessmentResult.value = data;
-      message.value = '计算完成';
+      assessmentMessage.value = '计算完成';
     }
   } catch (error) {
-    message.value = 'Error calculating assessment: ' + error.message;
+    assessmentMessage.value = 'Error calculating assessment: ' + error.message;
     console.error('Error calculating assessment:', error);
   } finally {
     loading.value = false;
@@ -2670,6 +2690,138 @@ async function uploadImage(event) {
     imageUploadLoading.value = false;
   }
 }
+
+// 小工具模块方法
+async function executeNaturalLanguageQuery() {
+  if (!naturalLanguageQuery.value || !selectedToolTable.value) {
+    toolError.value = '请输入自然语言查询并选择数据表';
+    return;
+  }
+
+  const token = localStorage.getItem('token');
+  if (!token) {
+    toolError.value = '请先登录';
+    return;
+  }
+
+  try {
+    toolLoading.value = true;
+    toolMessage.value = '处理中...';
+    toolError.value = '';
+    queryResult.value = null;
+    generatedSQL.value = '';
+    
+    const response = await fetch('http://localhost:5000/api/tools/natural-language-query', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeaders()
+      },
+      body: JSON.stringify({
+        natural_language: naturalLanguageQuery.value,
+        table_name: selectedToolTable.value
+      })
+    });
+    
+    const data = await response.json();
+    if (data.error) {
+      toolError.value = '错误: ' + data.error;
+    } else {
+      generatedSQL.value = data.sql;
+      queryResult.value = data.result;
+      toolMessage.value = '查询完成';
+      showResultModal.value = true; // 打开查询结果弹框
+    }
+  } catch (error) {
+    toolError.value = '错误: ' + error.message;
+    console.error('Error executing natural language query:', error);
+  } finally {
+    toolLoading.value = false;
+  }
+}
+
+function closeResultModal() {
+  showResultModal.value = false;
+}
+
+function resetToolState() {
+  naturalLanguageQuery.value = '';
+  selectedToolTable.value = '';
+  toolMessage.value = '';
+  toolError.value = '';
+  queryResult.value = null;
+  generatedSQL.value = '';
+  showResultModal.value = false;
+}
+
+// 处理市容环卫文件选择
+function handleHuanweiFileSelect(event) {
+  const file = event.target.files[0];
+  if (file) {
+    huanweiFile.value = file;
+    huanweiError.value = '';
+  }
+}
+
+// 处理市容环卫文件
+async function processHuanweiFile() {
+  if (!huanweiFile.value) {
+    huanweiError.value = '请先选择Excel文件';
+    return;
+  }
+  
+  const token = localStorage.getItem('token');
+  if (!token) {
+    huanweiError.value = '请先登录';
+    return;
+  }
+  
+  try {
+    huanweiLoading.value = true;
+    huanweiError.value = '';
+    huanweiMessage.value = '处理中...';
+    
+    const formData = new FormData();
+    formData.append('file', huanweiFile.value);
+    
+    const response = await fetch('http://localhost:5000/api/tools/huanwei-assignment', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: formData
+    });
+    
+    if (response.ok) {
+      // 处理文件下载
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      huanweiDownloadUrl.value = url;
+      huanweiMessage.value = '处理完成，请点击下方链接下载文件';
+    } else {
+      const data = await response.json();
+      huanweiError.value = data.error || '处理失败';
+      huanweiMessage.value = '';
+    }
+  } catch (error) {
+    huanweiError.value = '处理失败: ' + error.message;
+    huanweiMessage.value = '';
+    console.error('Error processing huanwei file:', error);
+  } finally {
+    huanweiLoading.value = false;
+  }
+}
+
+// 重置市容环卫文件选择
+function resetHuanweiFile() {
+  huanweiFile.value = null;
+  huanweiMessage.value = '';
+  huanweiError.value = '';
+  huanweiDownloadUrl.value = '';
+  // 重置文件输入框
+  const fileInput = document.getElementById('huanwei-file-input');
+  if (fileInput) {
+    fileInput.value = '';
+  }
+}
 </script>
 
 <template>
@@ -2772,30 +2924,37 @@ async function uploadImage(event) {
       <div v-if="activeModule === 'assessment' && (!userInfo || userInfo.role === 'admin' || (userInfo.permissions && userInfo.permissions.assessment))" class="tab-content">
         <h2 class="section-title">考核计分</h2>
         <div class="assessment-section" style="max-width: 800px; margin: 0 auto;">
+          <!-- 添加说明文本 -->
+          <div style="margin-bottom: 20px; padding: 10px; background-color: #fff3cd; border: 1px solid #ffeeba; border-radius: 4px; color: #856404;">
+            <p style="margin: 0;"><strong>说明：</strong>超时案件计算=结案时间&gt;捆绑处置截止时间判定的，与实际超时计算有出入</p>
+          </div>
+          
           <div style="margin-bottom: 20px;">
-            <div style="margin-bottom: 15px;">
-              <label for="department-select" style="display: block; margin-bottom: 5px; font-weight: bold;">选择部门：</label>
-              <select id="department-select" v-model="selectedDepartment" :disabled="loading" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
-                <option value="">-- 请选择部门 --</option>
-                <option value="城市综合行政执法队">城市综合行政执法队</option>
-                <option value="市容环卫中心">市容环卫中心</option>
-                <option value="园林绿化服务中心（片区）">园林绿化服务中心（片区）</option>
-                <option value="园林绿化服务中心（公园广场）">园林绿化服务中心（公园广场）</option>
-              </select>
-            </div>
-            <div style="margin-bottom: 15px;">
-              <label for="table-select-assessment" style="display: block; margin-bottom: 5px; font-weight: bold;">选择数据表：</label>
-              <select id="table-select-assessment" v-model="selectedAssessmentTable" :disabled="loading" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
-                <option value="">-- 请选择 --</option>
-                <option v-for="table in tables" :key="table" :value="table">
-                  {{ table }}
-                </option>
-              </select>
+            <div style="display: flex; gap: 15px; margin-bottom: 15px;">
+              <div style="flex: 1;">
+                <label for="department-select" style="display: block; margin-bottom: 5px; font-weight: bold; text-align: center;">选择部门：</label>
+                <select id="department-select" v-model="selectedDepartment" :disabled="loading" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">
+                  <option value="">-- 请选择部门 --</option>
+                  <option value="城市综合行政执法队">城市综合行政执法队</option>
+                  <option value="市容环卫中心">市容环卫中心</option>
+                  <option value="园林绿化服务中心（片区）">园林绿化服务中心（片区）</option>
+                  <option value="园林绿化服务中心（公园广场）">园林绿化服务中心（公园广场）</option>
+                </select>
+              </div>
+              <div style="flex: 1;">
+                <label for="table-select-assessment" style="display: block; margin-bottom: 5px; font-weight: bold; text-align: center;">选择数据表：</label>
+                <select id="table-select-assessment" v-model="selectedAssessmentTable" :disabled="loading" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">
+                  <option value="">-- 请选择 --</option>
+                  <option v-for="table in tables" :key="table" :value="table">
+                    {{ table }}
+                  </option>
+                </select>
+              </div>
             </div>
             <button class="start-btn" @click="startAssessment" :disabled="loading" style="padding: 10px 20px; background-color: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px;">
               {{ loading ? '计算中...' : '开始计算' }}
             </button>
-            <div v-if="message" class="message" style="margin-top: 10px; padding: 10px; background-color: #f0f0f0; border-radius: 4px;">{{ message }}</div>
+            <div v-if="assessmentMessage" class="message" style="margin-top: 10px; padding: 10px; background-color: #f0f0f0; border-radius: 4px;">{{ assessmentMessage }}</div>
           </div>
           
           <!-- 考核结果显示 -->
@@ -2842,36 +3001,40 @@ async function uploadImage(event) {
       <!-- 数据分析模块 -->
       <div v-if="activeModule === 'analysis' && (!userInfo || userInfo.role === 'admin' || (userInfo.permissions && userInfo.permissions.data_analysis))" class="tab-content">
         <h2 class="section-title">分析配置</h2>
-        <div class="config-section">
-          <div class="form-group">
-            <label for="table-select">选择表：</label>
-            <select id="table-select" v-model="selectedTable" :disabled="loading">
-              <option value="">-- 请选择 --</option>
-              <option v-for="table in tables" :key="table" :value="table">
-                {{ table }}
-              </option>
-            </select>
-          </div>
-          
-          <div class="form-group">
-            <label for="analysis-select">分析类型：</label>
-            <select id="analysis-select" v-model="selectedAnalysisType" :disabled="loading">
-              <option value="">-- 请选择 --</option>
-              <option v-for="type in analysisTypes" :key="type.value" :value="type.value">
-                {{ type.label }}
-              </option>
-            </select>
-          </div>
-          
-          <button class="analyze-btn" @click="startAnalysis" :disabled="loading || !selectedTable || !selectedAnalysisType">
-            {{ loading ? '分析中...' : '开始分析' }}
-          </button>
-          
-          <!-- 分析进度显示 -->
-          <div v-if="loading" class="analysis-progress">
-            <div class="progress-step" v-for="(step, index) in analysisSteps" :key="index" :class="{ active: currentStep >= index }">
-              <div class="step-indicator">{{ step.icon }}</div>
-              <div class="step-text">{{ step.text }}</div>
+        <div class="config-section" style="max-width: 800px; margin: 0 auto;">
+          <div style="margin-bottom: 20px;">
+            <div style="display: flex; gap: 15px; margin-bottom: 15px;">
+              <div style="flex: 1;">
+                <label for="table-select" style="display: block; margin-bottom: 5px; font-weight: bold;">选择表：</label>
+                <select id="table-select" v-model="selectedTable" :disabled="loading" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                  <option value="">-- 请选择 --</option>
+                  <option v-for="table in tables" :key="table" :value="table">
+                    {{ table }}
+                  </option>
+                </select>
+              </div>
+              <div style="flex: 1;">
+                <label for="analysis-select" style="display: block; margin-bottom: 5px; font-weight: bold;">分析类型：</label>
+                <select id="analysis-select" v-model="selectedAnalysisType" :disabled="loading" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                  <option value="">-- 请选择 --</option>
+                  <option v-for="type in analysisTypes" :key="type.value" :value="type.value">
+                    {{ type.label }}
+                  </option>
+                </select>
+              </div>
+            </div>
+            
+            <button class="analyze-btn" @click="startAnalysis" :disabled="loading || !selectedTable || !selectedAnalysisType" style="padding: 10px 20px; background-color: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px;">
+              {{ loading ? '分析中...' : '开始分析' }}
+            </button>
+            <div v-if="analysisMessage" class="message" style="margin-top: 10px; padding: 10px; background-color: #f0f0f0; border-radius: 4px;">{{ analysisMessage }}</div>
+            
+            <!-- 分析进度显示 -->
+            <div v-if="loading" class="analysis-progress" style="margin-top: 15px;">
+              <div class="progress-step" v-for="(step, index) in analysisSteps" :key="index" :class="{ active: currentStep >= index }" style="display: flex; align-items: center; margin-bottom: 10px;">
+                <div class="step-indicator" style="margin-right: 10px;">{{ step.icon }}</div>
+                <div class="step-text">{{ step.text }}</div>
+              </div>
             </div>
           </div>
         </div>
@@ -3049,8 +3212,184 @@ async function uploadImage(event) {
       <!-- 小工具模块 -->
       <div v-if="activeModule === 'tools' && (!userInfo || userInfo.role === 'admin' || (userInfo.permissions && userInfo.permissions.tools))" class="tab-content">
         <h2 class="section-title">小工具</h2>
-        <div class="tools-section">
-          <p>小工具功能开发中...</p>
+        
+        <!-- 小工具标签页导航 -->
+        <div class="tool-tabs" style="display: flex; margin-bottom: 20px; border-bottom: 1px solid #dee2e6;">
+          <div 
+            class="tool-tab" 
+            :class="{ active: activeToolTab === 'natural-language' }"
+            @click="activeToolTab = 'natural-language'"
+            style="padding: 10px 20px; cursor: pointer; border-bottom: 3px solid transparent; margin-right: 10px; font-weight: bold;"
+            :style="activeToolTab === 'natural-language' ? { borderBottomColor: '#27ae60', color: '#27ae60' } : {}"
+          >
+            自然语言查询
+          </div>
+          <div 
+            class="tool-tab" 
+            :class="{ active: activeToolTab === 'huanwei-assignment' }"
+            @click="activeToolTab = 'huanwei-assignment'"
+            style="padding: 10px 20px; cursor: pointer; border-bottom: 3px solid transparent; margin-right: 10px; font-weight: bold;"
+            :style="activeToolTab === 'huanwei-assignment' ? { borderBottomColor: '#27ae60', color: '#27ae60' } : {}"
+          >
+            市容环卫案件分配
+          </div>
+          <div 
+            class="tool-tab" 
+            :class="{ active: activeToolTab === 'other' }"
+            @click="activeToolTab = 'other'"
+            style="padding: 10px 20px; cursor: pointer; border-bottom: 3px solid transparent; margin-right: 10px; font-weight: bold;"
+            :style="activeToolTab === 'other' ? { borderBottomColor: '#27ae60', color: '#27ae60' } : {}"
+          >
+            其他功能
+          </div>
+        </div>
+        
+        <!-- 自然语言查询标签页内容 -->
+        <div v-if="activeToolTab === 'natural-language'" class="tools-section" style="max-width: 800px; margin: 0 auto;">
+          <!-- 第一行：提示文字 -->
+          <div class="tip-section" style="margin-bottom: 20px;">
+            <p>该模块允许输入自然语句，系统会自动将其转换为SQL语句并执行查询。</p>
+          </div>
+          
+          <!-- 第二行：输入框和下拉菜单 -->
+          <div class="input-section" style="margin-bottom: 20px;">
+            <div style="display: flex; gap: 15px; margin-bottom: 15px;">
+              <div style="flex: 2;">
+                <label for="natural-language-input" style="display: block; margin-bottom: 5px; font-weight: bold;">自然语言查询：</label>
+                <textarea 
+                  id="natural-language-input" 
+                  v-model="naturalLanguageQuery" 
+                  placeholder="例如：帮我查询12月份所有的市容环卫中心的案件" 
+                  rows="4" 
+                  :disabled="toolLoading"
+                  style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; resize: vertical; font-size: 14px;"
+                ></textarea>
+              </div>
+              <div style="flex: 1;">
+                <label for="tool-table-select" style="display: block; margin-bottom: 5px; font-weight: bold;">选择数据表：</label>
+                <select 
+                  id="tool-table-select" 
+                  v-model="selectedToolTable" 
+                  :disabled="toolLoading"
+                  style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;"
+                >
+                  <option value="">-- 请选择 --</option>
+                  <option v-for="table in tables" :key="table" :value="table">
+                    {{ table }}
+                  </option>
+                </select>
+              </div>
+            </div>
+            
+            <div class="button-group" style="display: flex; gap: 10px; margin-bottom: 15px;">
+              <button 
+                @click="executeNaturalLanguageQuery"
+                :disabled="toolLoading || !naturalLanguageQuery || !selectedToolTable"
+                class="btn-primary"
+                style="flex: 1; padding: 12px; background-color: #27ae60; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; font-weight: bold;"
+              >
+                <span v-if="toolLoading">处理中...</span>
+                <span v-else>执行查询</span>
+              </button>
+              <button 
+                @click="resetToolState"
+                :disabled="toolLoading"
+                class="btn-secondary"
+                style="padding: 12px 20px; background-color: #95a5a6; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px;"
+              >
+                重置
+              </button>
+            </div>
+            
+            <div v-if="toolMessage" class="message success" style="padding: 10px; background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; border-radius: 4px; margin-bottom: 15px;">
+              {{ toolMessage }}
+            </div>
+            <div v-if="toolError" class="message error" style="padding: 10px; background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; border-radius: 4px; margin-bottom: 15px;">
+              {{ toolError }}
+            </div>
+          </div>
+          
+          <!-- 第三行：生成的SQL语句 -->
+          <!-- SQL语句现在只在弹框中显示，不再在原页面显示 -->
+          
+          <!-- 第四行：查询结果 -->
+          <!-- 结果现在只通过弹框显示，不再在原页面显示 -->
+        </div>
+        
+        <!-- 市容环卫案件分配标签页内容 -->
+        <div v-if="activeToolTab === 'huanwei-assignment'" class="tools-section" style="max-width: 800px; margin: 0 auto;">
+          <!-- 第一行：提示文字 -->
+          <div class="tip-section" style="margin-bottom: 20px;">
+            <p>该模块允许上传Excel文件，为市容环卫中心的案件分配到各环卫部门（添加"环卫"前缀）。</p>
+            <p style="color: #666; font-size: 14px; margin-top: 5px;"><strong>注意：</strong>请确保Excel文件中包含以下列：</p>
+            <ul style="color: #666; font-size: 14px; margin-top: 5px; margin-left: 20px;">
+              <li>处置部门：案件的处理部门</li>
+              <li>所属片区：案件所属的片区</li>
+            </ul>
+          </div>
+          
+          <!-- 第二行：文件上传 -->
+          <div class="upload-section" style="margin-bottom: 20px;">
+            <div class="form-group" style="margin-bottom: 15px;">
+              <label for="huanwei-file-input" style="display: block; margin-bottom: 5px; font-weight: bold;">选择Excel文件：</label>
+              <input 
+                type="file" 
+                id="huanwei-file-input"
+                accept=".xlsx"
+                @change="handleHuanweiFileSelect"
+                :disabled="huanweiLoading"
+              >
+              <div v-if="huanweiFile" class="file-info" style="margin-top: 5px; font-size: 14px; color: #666;">
+                已选择：{{ huanweiFile.name }}
+              </div>
+            </div>
+            
+            <div class="button-group" style="display: flex; gap: 10px; margin-bottom: 15px;">
+              <button 
+                @click="processHuanweiFile"
+                :disabled="!huanweiFile || huanweiLoading"
+                class="btn-primary"
+                style="flex: 1; padding: 12px; background-color: #27ae60; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; font-weight: bold;"
+              >
+                <span v-if="huanweiLoading">处理中...</span>
+                <span v-else>处理文件</span>
+              </button>
+              <button 
+                @click="resetHuanweiFile"
+                :disabled="huanweiLoading"
+                class="btn-secondary"
+                style="padding: 12px 20px; background-color: #95a5a6; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px;"
+              >
+                重置
+              </button>
+            </div>
+            
+            <div v-if="huanweiMessage" class="message success" style="padding: 10px; background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; border-radius: 4px; margin-bottom: 15px;">
+              {{ huanweiMessage }}
+            </div>
+            <div v-if="huanweiError" class="message error" style="padding: 10px; background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; border-radius: 4px; margin-bottom: 15px;">
+              {{ huanweiError }}
+            </div>
+          </div>
+          
+          <!-- 第三行：下载按钮 -->
+          <div v-if="huanweiDownloadUrl" class="download-section" style="margin-top: 20px;">
+            <a 
+              :href="huanweiDownloadUrl"
+              download
+              style="display: inline-block; padding: 12px 24px; background-color: #3498db; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; font-weight: bold; text-decoration: none;"
+            >
+              下载处理后的文件
+            </a>
+          </div>
+        </div>
+        
+        <!-- 其他功能标签页内容 -->
+        <div v-if="activeToolTab === 'other'" class="tools-section" style="max-width: 800px; margin: 0 auto;">
+          <div style="padding: 40px; text-align: center; background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px;">
+            <h3 style="margin-bottom: 20px;">其他功能</h3>
+            <p>该功能正在开发中，敬请期待...</p>
+          </div>
         </div>
       </div>
       
@@ -3059,6 +3398,7 @@ async function uploadImage(event) {
         <h2 class="section-title">城管通</h2>
         <div class="chengguantong-section">
           <p>城管通功能开发中...</p>
+          <p>采用本地大模型+RAG技术实现城市管理问答知识库</p>
         </div>
       </div>
       
@@ -3519,6 +3859,59 @@ async function uploadImage(event) {
               </button>
             </div>
           </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- 查询结果弹框 -->
+    <div v-if="showResultModal" class="result-modal" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background-color: rgba(0, 0, 0, 0.5); display: flex; justify-content: center; align-items: center; z-index: 1000;">
+      <div class="modal-content" style="background-color: white; border-radius: 8px; padding: 30px; width: 90%; max-width: 1000px; max-height: 80vh; overflow-y: auto; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px;">
+          <h2 style="margin: 0; font-size: 20px; color: #333;">查询结果</h2>
+          <button @click="closeResultModal" style="background: none; border: none; font-size: 24px; cursor: pointer; color: #999; padding: 0; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center;">&times;</button>
+        </div>
+        
+        <!-- 生成的SQL语句 -->
+        <div v-if="generatedSQL" class="sql-section" style="margin-bottom: 20px; padding: 15px; background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px;">
+          <h4 style="margin-top: 0; margin-bottom: 10px; color: #495057;">生成的SQL语句：</h4>
+          <pre style="background-color: #e9ecef; padding: 10px; border-radius: 4px; overflow-x: auto; margin: 0;">{{ generatedSQL }}</pre>
+        </div>
+        
+        <!-- 查询结果 -->
+        <div v-if="queryResult">
+          <div v-if="Array.isArray(queryResult) && queryResult.length > 0" class="result-table-container" style="overflow-x: auto; margin-bottom: 20px;">
+            <table style="width: 100%; border-collapse: collapse; background-color: white; box-shadow: 0 2px 4px rgba(0,0,0,0.1); font-size: 11px; line-height: 1.3;">
+              <thead style="background-color: #f8f9fa;">
+                <tr>
+                  <th v-for="(key, index) in Object.keys(queryResult[0])" :key="index" style="padding: 4px 6px; text-align: left; border-bottom: 2px solid #dee2e6; font-weight: bold; white-space: nowrap;">
+                    {{ key }}
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(row, rowIndex) in queryResult" :key="rowIndex" style="border-bottom: 1px solid #dee2e6;">
+                  <td v-for="(value, colIndex) in Object.values(row)" :key="colIndex" style="padding: 4px 6px; word-break: break-all;">
+                    {{ value }}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div v-else-if="Array.isArray(queryResult) && queryResult.length === 0" class="empty-result" style="padding: 40px; text-align: center; background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px;">
+            <p>查询结果为空</p>
+          </div>
+          <div v-else class="result-message" style="padding: 40px; background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px;">
+            <p>{{ queryResult }}</p>
+          </div>
+        </div>
+        
+        <div style="margin-top: 20px; display: flex; justify-content: flex-end;">
+          <button 
+            @click="closeResultModal"
+            style="padding: 10px 20px; background-color: #95a5a6; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold;"
+          >
+            关闭
+          </button>
         </div>
       </div>
     </div>

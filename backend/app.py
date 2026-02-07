@@ -2345,24 +2345,156 @@ def get_categories():
     finally:
         session.close()
 
-# 生成slug函数
-def generate_slug(text):
-    import re
-    import hashlib
-    # 转换为小写
-    slug = text.lower()
-    # 替换空格为连字符
-    slug = re.sub(r'\s+', '-', slug)
-    # 保留中文和字母数字连字符
-    slug = re.sub(r'[^\u4e00-\u9fa5a-z0-9-]', '', slug)
-    # 替换多个连字符为单个
-    slug = re.sub(r'-+', '-', slug)
-    # 移除首尾连字符
-    slug = slug.strip('-')
-    # 如果slug为空，使用标题的哈希值
-    if not slug:
-        slug = hashlib.md5(text.encode()).hexdigest()[:8]
-    return slug
+# 小工具模块API - 自然语言查询转换为SQL
+@app.route('/api/tools/natural-language-query', methods=['POST'])
+@protected
+def natural_language_query():
+    try:
+        data = request.json
+        natural_language = data.get('natural_language')
+        table_name = data.get('table_name')
+        
+        if not natural_language or not table_name:
+            return jsonify({'error': 'Missing natural_language or table_name'}), 400
+        
+        # 从数据库读取表结构信息
+        df = pd.read_sql_table(table_name, engine)
+        columns = df.columns.tolist()
+        
+        # 构建大模型提示
+        prompt = f"请将以下自然语言查询转换为SQL语句，针对数据表 '{table_name}'。\n"
+        prompt += f"数据表 {table_name} 包含以下字段：\n"
+        for col in columns:
+            prompt += f"- {col}\n"
+        prompt += f"\n自然语言查询：{natural_language}\n"
+        prompt += "\n要求：\n"
+        prompt += "1. 只返回SQL语句，不要包含任何解释或其他内容\n"
+        prompt += "2. 使用正确的SQL语法，针对MySQL数据库\n"
+        prompt += "3. 确保SQL语句能够正确执行\n"
+        prompt += "4. 不要包含任何多余的字符或注释\n"
+        prompt += "5. 直接返回最终的SQL语句，不要有任何前缀或后缀\n"
+        
+        # 调用大模型API
+        headers = {
+            'Content-Type': 'application/json',
+            'Authorization': f'Bearer {API_KEY}'
+        }
+        
+        payload = {
+            "model": MODEL,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": "你是一个专业的SQL生成助手，擅长将自然语言查询转换为标准的SQL语句。请根据提供的数据表结构和自然语言查询，生成正确的SQL语句。"
+                },
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ],
+            "temperature": 0.3,
+            "max_tokens": 1000
+        }
+        
+        # 调用API，添加重试机制
+        max_retries = 3
+        retry_delay = 5
+        generated_sql = None
+        
+        for attempt in range(max_retries):
+            try:
+                response = requests.post(
+                    API_URL, 
+                    headers=headers, 
+                    json=payload, 
+                    timeout=(10, 300)  # 连接超时10秒，读取超时300秒
+                )
+                response.raise_for_status()
+                result = response.json()
+                generated_sql = result['choices'][0]['message']['content'].strip()
+                break
+            except requests.exceptions.RequestException as e:
+                if attempt < max_retries - 1:
+                    print(f"API调用失败，{retry_delay}秒后重试... (尝试 {attempt+1}/{max_retries})")
+                    import time
+                    time.sleep(retry_delay)
+                    retry_delay *= 2  # 指数退避
+                else:
+                    raise Exception(f"大模型API调用失败，请稍后重试: {str(e)}")
+        
+        if not generated_sql:
+            return jsonify({'error': '大模型未返回有效的SQL语句'}), 500
+        
+        # 执行SQL查询
+        try:
+            # 使用text()包装SQL语句，防止SQL注入
+            query_result = pd.read_sql(text(generated_sql), engine)
+            # 转换为字典列表
+            result_records = query_result.to_dict('records')
+            # 转换NaN值为null值
+            result_records = convert_nan_to_null(result_records)
+        except Exception as e:
+            return jsonify({'error': f'SQL执行失败: {str(e)}', 'sql': generated_sql}), 500
+        
+        return jsonify({
+            'sql': generated_sql,
+            'result': result_records
+        }), 200
+    except Exception as e:
+        print(f"Error in natural_language_query: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+# 小工具模块API - 市容环卫案件分配
+@app.route('/api/tools/huanwei-assignment', methods=['POST'])
+@protected
+def huanwei_assignment():
+    try:
+        # 检查是否有文件上传
+        if 'file' not in request.files:
+            return jsonify({'error': 'No file part'}), 400
+        
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({'error': 'No selected file'}), 400
+        
+        # 检查文件类型
+        if not file.filename.endswith('.xlsx'):
+            return jsonify({'error': 'Only xlsx files are allowed'}), 400
+        
+        # 读取Excel文件
+        df = pd.read_excel(file)
+        
+        # 检查必要的列是否存在
+        required_cols = ['处置部门', '所属片区']
+        for col in required_cols:
+            if col not in df.columns:
+                return jsonify({'error': f'Missing required column: {col}'}), 400
+        
+        # 处理数据：仅更新处置部门列，所属片区列保持不变
+        filter_condition = df["处置部门"] == "市容环卫中心"
+        df["所属片区"] = df["所属片区"].astype(str)  # 确保是字符串类型
+        # 基于所属片区列的值更新处置部门列，添加"环卫"前缀
+        df.loc[filter_condition, "处置部门"] = "环卫" + df.loc[filter_condition, "所属片区"]
+        
+        # 生成输出文件名
+        import tempfile
+        import os
+        with tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False) as temp:
+            output_file = temp.name
+        
+        # 保存处理后的数据
+        df.to_excel(output_file, index=False)
+        
+        # 读取文件内容并返回
+        from flask import send_file
+        return send_file(output_file, as_attachment=True, download_name='hwcase_data_updated.xlsx', mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    except Exception as e:
+        print(f"Error in huanwei_assignment: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/categories', methods=['POST'])
 @admin_required
