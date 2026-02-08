@@ -1,6 +1,10 @@
 <script setup>
 import { ref, onMounted, nextTick, watch, computed } from 'vue';
 import * as echarts from 'echarts';
+import cloudbase from '@cloudbase/js-sdk';
+
+// 打印CloudBase SDK版本
+console.log('CloudBase SDK版本:', cloudbase.version);
 
 // 状态管理
 const tables = ref([]);
@@ -12,7 +16,7 @@ const message = ref(''); // 通用消息
 const analysisMessage = ref(''); // 数据分析消息
 const assessmentMessage = ref(''); // 考核计分消息
 const selectedFile = ref(null);
-const activeModule = ref('home'); // home, data, assessment, analysis, spotcheck, tools, chengguantong, cms, map
+const activeModule = ref('home'); // home, data, assessment, analysis, spotcheck, tools, chengguantong, cms, map, huiwentai
 
 // 地图服务状态管理
 const mapInstance = ref(null);
@@ -42,6 +46,12 @@ const showArticleDetail = ref(false);
 const currentArticle = ref(null);
 const articleDetailLoading = ref(false);
 const articleDetailError = ref('');
+
+// 汇问台状态管理
+const cloudbaseInstance = ref(null);
+const huiwentaiTasks = ref([]);
+const huiwentaiLoading = ref(false);
+const huiwentaiError = ref('');
 
 // CMS表单状态
 const showAddCategoryForm = ref(false);
@@ -2822,6 +2832,95 @@ function resetHuanweiFile() {
     fileInput.value = '';
   }
 }
+
+// 汇问台相关方法
+
+// 测试CloudBase连接
+async function testCloudBaseConnection() {
+  try {
+    console.log('开始测试CloudBase连接');
+    
+    // 使用用户提供的云环境ID
+    const envId = 'cloud1-2g359sgd56ce6c79';
+    console.log('云环境ID:', envId);
+    
+    // 初始化CloudBase实例
+    console.log('初始化CloudBase实例...');
+    const app = cloudbase.init({
+      env: envId
+    });
+    console.log('CloudBase实例初始化成功');
+    
+    // 关键：先匿名登录
+    console.log('开始匿名登录...');
+    try {
+      await app.auth().signInAnonymously();
+      console.log('匿名登录成功');
+    } catch (e) {
+      console.error('匿名登录失败:', e);
+      throw new Error(`匿名登录失败: ${e.message}`);
+    }
+    
+    // 测试获取数据库引用
+    console.log('获取数据库引用...');
+    const db = app.database();
+    console.log('数据库引用获取成功');
+    
+    // 测试读取数据
+    console.log('测试读取tasks集合...');
+    
+    // 尝试读取数据
+    const result = await db.collection('tasks').get();
+    console.log('数据读取成功:', result);
+    
+    return result;
+  } catch (error) {
+    console.error('CloudBase连接测试失败:', error);
+    console.error('错误类型:', typeof error);
+    console.error('错误对象:', error);
+    console.error('错误消息:', error.message);
+    console.error('错误堆栈:', error.stack);
+    throw error;
+  }
+}
+
+// 读取tasks集合数据
+async function fetchHuiwentaiTasks() {
+  try {
+    huiwentaiLoading.value = true;
+    huiwentaiError.value = '';
+    
+    console.log('开始读取tasks数据');
+    
+    // 测试CloudBase连接
+    const result = await testCloudBaseConnection();
+    
+    if (result && result.data) {
+      huiwentaiTasks.value = result.data;
+      console.log('读取tasks数据成功:', result.data);
+    } else {
+      huiwentaiTasks.value = [];
+      console.log('tasks集合为空');
+    }
+  } catch (error) {
+    console.error('读取tasks数据失败:', error);
+    huiwentaiError.value = `读取数据失败: ${error.message || '未知错误'}`;
+    huiwentaiTasks.value = [];
+  } finally {
+    huiwentaiLoading.value = false;
+    console.log('数据读取操作完成');
+  }
+}
+
+// 监听切换到汇问台模块时加载数据
+watch(
+  () => activeModule.value,
+  (newModule) => {
+    if (newModule === 'huiwentai') {
+      fetchHuiwentaiTasks();
+    }
+  }
+);
 </script>
 
 <template>
@@ -2877,6 +2976,9 @@ function resetHuanweiFile() {
       <div v-if="!userInfo || userInfo?.role === 'admin' || (userInfo?.permissions && userInfo?.permissions.chengguantong)" class="tab" :class="{ active: activeModule === 'chengguantong' }" @click="switchModule('chengguantong')">
         城管通
       </div>
+      <div class="tab" :class="{ active: activeModule === 'huiwentai' }" @click="switchModule('huiwentai')">
+        汇问台
+      </div>
       <div v-if="!userInfo || userInfo?.role === 'admin' || (userInfo?.permissions && userInfo?.permissions.tools)" class="tab" :class="{ active: activeModule === 'tools' }" @click="switchModule('tools')">
         小工具
       </div>
@@ -2920,6 +3022,64 @@ function resetHuanweiFile() {
       
 
       
+      <!-- 汇问台模块 -->
+      <div v-if="activeModule === 'huiwentai'" class="tab-content">
+        <h2 class="section-title">汇问台</h2>
+        <div class="huiwentai-section" style="max-width: 1000px; margin: 0 auto;">
+          <!-- 刷新按钮 -->
+          <div style="margin-bottom: 20px; text-align: right;">
+            <button class="refresh-btn" @click="fetchHuiwentaiTasks" :disabled="huiwentaiLoading" style="padding: 8px 16px; background-color: #1890ff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">
+              {{ huiwentaiLoading ? '加载中...' : '刷新数据' }}
+            </button>
+          </div>
+          
+          <!-- 加载状态 -->
+          <div v-if="huiwentaiLoading" class="loading" style="font-size: 16px; padding: 40px; text-align: center; color: #666;">
+            加载数据中...
+          </div>
+          
+          <!-- 错误信息 -->
+          <div v-else-if="huiwentaiError" class="error" style="font-size: 16px; padding: 40px; text-align: center; color: #ff4d4f;">
+            <p>{{ huiwentaiError }}</p>
+            <p style="font-size: 14px; color: #999; margin-top: 10px;">请检查：</p>
+            <ul style="font-size: 14px; color: #999; text-align: left; max-width: 400px; margin: 10px auto;">
+              <li>1. 云环境ID是否正确</li>
+              <li>2. 云数据库安全规则是否允许读取操作</li>
+              <li>3. 网络连接是否正常</li>
+              <li>4. tasks集合是否存在</li>
+            </ul>
+            <p style="font-size: 14px; color: #999; margin-top: 10px;">详细错误信息请查看浏览器控制台</p>
+          </div>
+          
+          <!-- 数据表格 -->
+          <div v-else class="tasks-table">
+            <table style="width: 100%; border-collapse: collapse; margin-top: 20px; text-align: left;">
+              <thead>
+                <tr style="background-color: #f5f5f5;">
+                  <th style="padding: 12px; border: 1px solid #ddd;">任务号</th>
+                  <th style="padding: 12px; border: 1px solid #ddd;">问题描述</th>
+                  <th style="padding: 12px; border: 1px solid #ddd;">诉求</th>
+                  <th style="padding: 12px; border: 1px solid #ddd;">联系方式</th>
+                  <th style="padding: 12px; border: 1px solid #ddd;">创建时间</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-if="huiwentaiTasks.length === 0">
+                  <td colspan="5" style="padding: 40px; border: 1px solid #ddd; text-align: center;">暂无任务数据</td>
+                </tr>
+                <tr v-for="task in huiwentaiTasks" :key="task.taskId || task._id" style="background-color: white;">
+                  <td style="padding: 12px; border: 1px solid #ddd;">{{ task.taskId || task._id || '无' }}</td>
+                  <td style="padding: 12px; border: 1px solid #ddd;">{{ task.description || '无' }}</td>
+                  <td style="padding: 12px; border: 1px solid #ddd;">{{ task.request || '无' }}</td>
+                  <td style="padding: 12px; border: 1px solid #ddd;">{{ task.contact || '无' }}</td>
+                  <td style="padding: 12px; border: 1px solid #ddd;">{{ task.createdAt ? new Date(task.createdAt).toLocaleString() : '无' }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
       <!-- 考核计分模块 -->
       <div v-if="activeModule === 'assessment' && (!userInfo || userInfo.role === 'admin' || (userInfo.permissions && userInfo.permissions.assessment))" class="tab-content">
         <h2 class="section-title">考核计分</h2>
@@ -3918,7 +4078,7 @@ function resetHuanweiFile() {
     
     <!-- 页脚 -->
     <div v-if="isLoggedIn" class="footer">
-      <p>© 2024 运城市智慧城市管理平台-一站通</p> 
+      <p>© 2026 运城市智慧城市管理平台-一站通</p> 
       <p>联系电话：0359-2381078</p>
     </div>
     

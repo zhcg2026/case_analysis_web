@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@cloudbase/js-sdk": "^2.25.4",
     "@tinymce/tinymce-vue": "^6.3.0",
     "echarts": "^6.0.0",
     "tinymce": "^8.3.2",
