@@ -825,6 +825,41 @@ def convert_nan_to_null(obj):
 
 # 考核计分相关函数
 import datetime
+import re
+
+def extract_location_from_text(text):
+    """
+    从问题描述中精准提取地点信息（过滤垃圾、经营等非地点关键词）
+    """
+    if pd.isna(text) or text.strip() == "":
+        return "未提取到地址"
+    
+    # 按标点分割文本，只保留前半段地点部分
+    parts = re.split(r"，|,|。|；|：", str(text).strip())
+    # 定义非地点关键词（遇到这些词则停止提取）
+    stop_words = [
+        "绿地内", "人行道", "非机动车道", "主干道", "垃圾", "经营", "乱放",
+        "晾晒", "粪便", "摊点", "尘土", "满溢", "不洁", "摆乱放", "果皮箱外",
+        "成袋垃圾", "动物粪便", "流动", "道路尘土", "外观不洁", "把式车辆",
+        "机动车道","店外经营", "路面", "底盖", "小广告", "广告", "乱晾",
+        "乱晒", "外墙", "线体", "车轮", "违规", "主次干道", "配电箱", "干枝", "户外"
+    ]
+    
+    location_parts = []
+    for part in parts:
+        # 若当前片段包含非地点关键词，停止提取
+        if any(word in part for word in stop_words):
+            break
+        # 过滤空片段，保留有效地点
+        if part.strip():
+            location_parts.append(part.strip())
+    
+    # 兜底：若过滤后无内容，取前2段原始内容
+    if not location_parts:
+        location_parts = [p.strip() for p in parts[:2] if p.strip()]
+    
+    # 拼接成完整地址
+    return "，".join(location_parts) if location_parts else "未提取到地址"
 
 def calculate_law_enforcement_score(cases):
     """计算城市综合行政执法队8个片区的考核分数和排名"""
@@ -2121,6 +2156,15 @@ def analyze():
                     problem_type_counts = df[problem_type_col].value_counts().head(10).reset_index()
                     problem_type_counts.columns = [problem_type_col, 'count']
                     prompt += f"\n问题类型分布（前10）：\n{problem_type_counts.to_string(index=False)}"
+                    
+                    # 分析前五类问题类型的详细情况
+                    top5_problem_types = problem_type_counts.head(5)
+                    prompt += f"\n\n前五类问题类型详细分析：\n"
+                    for index, row in top5_problem_types.iterrows():
+                        problem_type = row[problem_type_col]
+                        count = row['count']
+                        percentage = (count / len(df)) * 100
+                        prompt += f"{index + 1}. {problem_type}：{count} 件，占比 {percentage:.2f}%\n"
                 except Exception as e:
                     prompt += f"\n问题类型分析失败：{str(e)}"
             
@@ -2131,6 +2175,15 @@ def analyze():
                     category_counts = df[category_col].value_counts().head(10).reset_index()
                     category_counts.columns = [category_col, 'count']
                     prompt += f"\n大类名称分布（前10）：\n{category_counts.to_string(index=False)}"
+                    
+                    # 分析前五类大类的详细情况
+                    top5_categories = category_counts.head(5)
+                    prompt += f"\n\n前五大大类详细分析：\n"
+                    for index, row in top5_categories.iterrows():
+                        category = row[category_col]
+                        count = row['count']
+                        percentage = (count / len(df)) * 100
+                        prompt += f"{index + 1}. {category}：{count} 件，占比 {percentage:.2f}%\n"
                 except Exception as e:
                     prompt += f"\n大类分析失败：{str(e)}"
             
@@ -2141,6 +2194,15 @@ def analyze():
                     subcategory_counts = df[subcategory_col].value_counts().head(10).reset_index()
                     subcategory_counts.columns = [subcategory_col, 'count']
                     prompt += f"\n小类名称分布（前10）：\n{subcategory_counts.to_string(index=False)}"
+                    
+                    # 分析前five类小类的详细情况
+                    top5_subcategories = subcategory_counts.head(5)
+                    prompt += f"\n\n前五类小类详细分析：\n"
+                    for index, row in top5_subcategories.iterrows():
+                        subcategory = row[subcategory_col]
+                        count = row['count']
+                        percentage = (count / len(df)) * 100
+                        prompt += f"{index + 1}. {subcategory}：{count} 件，占比 {percentage:.2f}%\n"
                     
                     # 添加小类分布数据到结果
                     result['chart_data'] = {
@@ -2492,6 +2554,60 @@ def huanwei_assignment():
         return send_file(output_file, as_attachment=True, download_name='hwcase_data_updated.xlsx', mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
     except Exception as e:
         print(f"Error in huanwei_assignment: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+# 小工具模块API - 地址信息提取
+@app.route('/api/tools/extract-location', methods=['POST'])
+@protected
+def extract_location():
+    try:
+        # 检查是否有文件上传
+        if 'file' not in request.files:
+            return jsonify({'error': 'No file part'}), 400
+        
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({'error': 'No selected file'}), 400
+        
+        # 检查文件类型
+        if not file.filename.endswith('.xlsx'):
+            return jsonify({'error': 'Only xlsx files are allowed'}), 400
+        
+        # 读取Excel文件
+        df = pd.read_excel(file)
+        
+        # 检查必要的列是否存在
+        required_cols = ['问题描述', '地址描述']
+        for col in required_cols:
+            if col not in df.columns:
+                return jsonify({'error': f'Missing required column: {col}'}), 400
+        
+        # 处理数据：提取地址信息
+        updated_count = 0
+        for idx, row in df.iterrows():
+            addr_desc = str(row["地址描述"]).strip()
+            if addr_desc in ["无位置信息", "无位置描述", "没有相关位置描述", "nan"]:
+                # 从问题描述提取地址
+                new_addr = extract_location_from_text(row["问题描述"])
+                df.loc[idx, "地址描述"] = new_addr
+                updated_count += 1
+        
+        # 生成输出文件名
+        import tempfile
+        import os
+        with tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False) as temp:
+            output_file = temp.name
+        
+        # 保存处理后的数据
+        df.to_excel(output_file, index=False)
+        
+        # 读取文件内容并返回
+        from flask import send_file
+        return send_file(output_file, as_attachment=True, download_name='case_data_with_extracted_location.xlsx', mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    except Exception as e:
+        print(f"Error in extract_location: {str(e)}")
         import traceback
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500

@@ -125,6 +125,13 @@ const huanweiMessage = ref('');
 const huanweiError = ref('');
 const huanweiDownloadUrl = ref('');
 
+// 地址信息提取状态管理
+const locationFile = ref(null);
+const locationLoading = ref(false);
+const locationMessage = ref('');
+const locationError = ref('');
+const locationDownloadUrl = ref('');
+
 // 初始化表格可见性状态
 function initTableVisibility() {
   const savedVisibility = localStorage.getItem('tableVisibility');
@@ -2833,6 +2840,85 @@ function resetHuanweiFile() {
   }
 }
 
+// 处理地址提取文件选择
+function handleLocationFileSelect(event) {
+  const file = event.target.files[0];
+  if (file) {
+    locationFile.value = file;
+  }
+}
+
+// 处理地址提取文件
+async function processLocationFile() {
+  if (!locationFile.value) {
+    locationMessage.value = '请先选择文件';
+    return;
+  }
+
+  const token = localStorage.getItem('token');
+  if (!token) {
+    locationMessage.value = '请先登录';
+    return;
+  }
+
+  const formData = new FormData();
+  formData.append('file', locationFile.value);
+
+  try {
+    locationLoading.value = true;
+    locationMessage.value = '提取中...';
+    locationError.value = '';
+    
+    const response = await fetch('http://localhost:5000/api/tools/extract-location', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: formData
+    });
+    
+    if (!response.ok) {
+      // 处理错误响应
+      const errorData = await response.json();
+      locationError.value = errorData.error || '处理文件时出错';
+      locationMessage.value = '';
+      return;
+    }
+    
+    // 处理文件响应
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    locationDownloadUrl.value = url;
+    locationMessage.value = '地址提取完成，请下载处理后的文件';
+    
+    // 自动触发下载
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'case_data_with_extracted_location.xlsx';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    
+  } catch (error) {
+    locationError.value = '处理文件时出错: ' + error.message;
+    locationMessage.value = '';
+    console.error('Error processing location file:', error);
+  } finally {
+    locationLoading.value = false;
+  }
+}
+
+// 重置地址提取
+function resetLocationFile() {
+  locationFile.value = null;
+  locationMessage.value = '';
+  locationError.value = '';
+  locationDownloadUrl.value = '';
+  // 重置文件输入框
+  const fileInput = document.getElementById('location-file-input');
+  if (fileInput) {
+    fileInput.value = '';
+  }
+}
+
 // 汇问台相关方法
 
 // 测试CloudBase连接
@@ -3059,7 +3145,7 @@ watch(
                   <th style="padding: 12px; border: 1px solid #ddd;">任务号</th>
                   <th style="padding: 12px; border: 1px solid #ddd;">问题描述</th>
                   <th style="padding: 12px; border: 1px solid #ddd;">诉求</th>
-                  <th style="padding: 12px; border: 1px solid #ddd;">联系方式</th>
+                  <th style="padding: 12px; border: 1px solid #ddd; min-width: 150px;">联系方式</th>
                   <th style="padding: 12px; border: 1px solid #ddd;">创建时间</th>
                 </tr>
               </thead>
@@ -3395,6 +3481,15 @@ watch(
           </div>
           <div 
             class="tool-tab" 
+            :class="{ active: activeToolTab === 'location-extraction' }"
+            @click="activeToolTab = 'location-extraction'"
+            style="padding: 10px 20px; cursor: pointer; border-bottom: 3px solid transparent; margin-right: 10px; font-weight: bold;"
+            :style="activeToolTab === 'location-extraction' ? { borderBottomColor: '#27ae60', color: '#27ae60' } : {}"
+          >
+            地址信息提取
+          </div>
+          <div 
+            class="tool-tab" 
             :class="{ active: activeToolTab === 'other' }"
             @click="activeToolTab = 'other'"
             style="padding: 10px 20px; cursor: pointer; border-bottom: 3px solid transparent; margin-right: 10px; font-weight: bold;"
@@ -3536,6 +3631,74 @@ watch(
           <div v-if="huanweiDownloadUrl" class="download-section" style="margin-top: 20px;">
             <a 
               :href="huanweiDownloadUrl"
+              download
+              style="display: inline-block; padding: 12px 24px; background-color: #3498db; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; font-weight: bold; text-decoration: none;"
+            >
+              下载处理后的文件
+            </a>
+          </div>
+        </div>
+        
+        <!-- 地址信息提取标签页内容 -->
+        <div v-if="activeToolTab === 'location-extraction'" class="tools-section" style="max-width: 800px; margin: 0 auto;">
+          <!-- 第一行：提示文字 -->
+          <div class="tip-section" style="margin-bottom: 20px;">
+            <p>该模块允许上传Excel文件，从问题描述中提取地址信息并替换原文件中地址描述为“没有相关位置描述”“无位置描述”。</p>
+            <p style="color: #666; font-size: 14px; margin-top: 5px;"><strong>注意：</strong>请确保Excel文件中包含以下列：</p>
+            <ul style="color: #666; font-size: 14px; margin-top: 5px; margin-left: 20px;">
+              <li>问题描述：包含地址信息的文本</li>
+              <li>地址描述：需要替换的地址字段</li>
+            </ul>
+          </div>
+          
+          <!-- 第二行：文件上传 -->
+          <div class="upload-section" style="margin-bottom: 20px;">
+            <div class="form-group" style="margin-bottom: 15px;">
+              <label for="location-file-input" style="display: block; margin-bottom: 5px; font-weight: bold;">选择Excel文件：</label>
+              <input 
+                type="file" 
+                id="location-file-input"
+                accept=".xlsx"
+                @change="handleLocationFileSelect"
+                :disabled="locationLoading"
+              >
+              <div v-if="locationFile" class="file-info" style="margin-top: 5px; font-size: 14px; color: #666;">
+                已选择：{{ locationFile.name }}
+              </div>
+            </div>
+            
+            <div class="button-group" style="display: flex; gap: 10px; margin-bottom: 15px;">
+              <button 
+                @click="processLocationFile"
+                :disabled="!locationFile || locationLoading"
+                class="btn-primary"
+                style="flex: 1; padding: 12px; background-color: #27ae60; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; font-weight: bold;"
+              >
+                <span v-if="locationLoading">处理中...</span>
+                <span v-else>提取地址信息</span>
+              </button>
+              <button 
+                @click="resetLocationFile"
+                :disabled="locationLoading"
+                class="btn-secondary"
+                style="padding: 12px 20px; background-color: #95a5a6; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px;"
+              >
+                重置
+              </button>
+            </div>
+            
+            <div v-if="locationMessage" class="message success" style="padding: 10px; background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; border-radius: 4px; margin-bottom: 15px;">
+              {{ locationMessage }}
+            </div>
+            <div v-if="locationError" class="message error" style="padding: 10px; background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; border-radius: 4px; margin-bottom: 15px;">
+              {{ locationError }}
+            </div>
+          </div>
+          
+          <!-- 第三行：下载按钮 -->
+          <div v-if="locationDownloadUrl" class="download-section" style="margin-top: 20px;">
+            <a 
+              :href="locationDownloadUrl"
               download
               style="display: inline-block; padding: 12px 24px; background-color: #3498db; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; font-weight: bold; text-decoration: none;"
             >
