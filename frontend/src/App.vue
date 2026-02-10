@@ -132,6 +132,17 @@ const locationMessage = ref('');
 const locationError = ref('');
 const locationDownloadUrl = ref('');
 
+// 数据清洗模块状态管理
+const cleaningFile = ref(null);
+const cleaningLoading = ref(false);
+const cleaningMessage = ref('');
+const cleaningError = ref('');
+const cleaningDownloadUrl = ref('');
+const cleaningFields = ref([]);
+const selectedCleaningField = ref('');
+
+
+
 // 初始化表格可见性状态
 function initTableVisibility() {
   const savedVisibility = localStorage.getItem('tableVisibility');
@@ -2919,6 +2930,275 @@ function resetLocationFile() {
   }
 }
 
+// 数据清洗模块方法
+function handleCleaningFileSelect(event) {
+  const file = event.target.files[0];
+  if (file) {
+    cleaningFile.value = file;
+    cleaningError.value = '';
+    cleaningFields.value = [];
+    selectedCleaningField.value = '';
+  }
+}
+
+async function processCleaningFile() {
+  if (!cleaningFile.value) {
+    cleaningError.value = '请先选择Excel文件';
+    return;
+  }
+
+  if (!selectedCleaningField.value) {
+    cleaningError.value = '请选择字段';
+    return;
+  }
+
+  const token = localStorage.getItem('token');
+  if (!token) {
+    cleaningError.value = '请先登录';
+    return;
+  }
+
+  try {
+    cleaningLoading.value = true;
+    cleaningError.value = '';
+    cleaningMessage.value = '处理中...';
+    
+    const formData = new FormData();
+    formData.append('file', cleaningFile.value);
+    formData.append('fields', JSON.stringify({ [selectedCleaningField.value]: 'problem_description' }));
+    
+    const response = await fetch('http://localhost:5000/api/tools/data-cleaning', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: formData
+    });
+    
+    if (response.ok) {
+      // 处理文件下载
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      cleaningDownloadUrl.value = url;
+      cleaningMessage.value = '处理完成，请点击下方链接下载文件';
+    } else {
+      const data = await response.json();
+      cleaningError.value = data.error || '处理失败';
+      cleaningMessage.value = '';
+    }
+  } catch (error) {
+    cleaningError.value = '处理失败: ' + error.message;
+    cleaningMessage.value = '';
+    console.error('Error processing cleaning file:', error);
+  } finally {
+    cleaningLoading.value = false;
+  }
+}
+
+function resetCleaningFile() {
+  cleaningFile.value = null;
+  cleaningMessage.value = '';
+  cleaningError.value = '';
+  cleaningDownloadUrl.value = '';
+  cleaningFields.value = [];
+  selectedCleaningField.value = '';
+  // 重置文件输入框
+  const fileInput = document.getElementById('cleaning-file-input');
+  if (fileInput) {
+    fileInput.value = '';
+  }
+}
+
+async function fetchCleaningFields() {
+  if (!cleaningFile.value) {
+    cleaningError.value = '请先选择Excel文件';
+    return;
+  }
+
+  const token = localStorage.getItem('token');
+  if (!token) {
+    cleaningError.value = '请先登录';
+    showLogin.value = true;
+    return;
+  }
+
+  try {
+    cleaningLoading.value = true;
+    cleaningError.value = '';
+    cleaningMessage.value = '读取文件字段中...';
+    
+    const formData = new FormData();
+    formData.append('file', cleaningFile.value);
+    
+    const response = await fetch('http://localhost:5000/api/tools/data-cleaning/fields', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: formData
+    });
+    
+    if (response.ok) {
+      const data = await response.json();
+      cleaningFields.value = data.fields;
+      selectedCleaningField.value = '';
+      cleaningMessage.value = '字段读取完成，请选择需要处理的字段';
+    } else {
+      const data = await response.json();
+      if (data.error === 'Invalid or expired token') {
+        // Token过期，清除本地存储并引导重新登录
+        localStorage.removeItem('token');
+        localStorage.removeItem('userInfo');
+        isLoggedIn.value = false;
+        userInfo.value = null;
+        showLogin.value = true;
+        cleaningError.value = '登录已过期，请重新登录';
+      } else {
+        cleaningError.value = data.error || '读取字段失败';
+      }
+      cleaningMessage.value = '';
+    }
+  } catch (error) {
+    cleaningError.value = '读取字段失败: ' + error.message;
+    cleaningMessage.value = '';
+    console.error('Error fetching cleaning fields:', error);
+  } finally {
+    cleaningLoading.value = false;
+  }
+}
+
+// 数据脱敏模块方法
+function handleDesensitizationFileSelect(event) {
+  const file = event.target.files[0];
+  if (file) {
+    desensitizationFile.value = file;
+    desensitizationError.value = '';
+    desensitizationFields.value = [];
+    selectedDesensitizationField.value = '';
+    selectedDesensitizationType.value = '';
+  }
+}
+
+async function processDesensitizationFile() {
+  if (!desensitizationFile.value) {
+    desensitizationError.value = '请先选择Excel文件';
+    return;
+  }
+
+  if (!selectedDesensitizationField.value || !selectedDesensitizationType.value) {
+    desensitizationError.value = '请选择字段和脱敏类型';
+    return;
+  }
+
+  const token = localStorage.getItem('token');
+  if (!token) {
+    desensitizationError.value = '请先登录';
+    return;
+  }
+
+  try {
+    desensitizationLoading.value = true;
+    desensitizationError.value = '';
+    desensitizationMessage.value = '处理中...';
+    
+    const formData = new FormData();
+    formData.append('file', desensitizationFile.value);
+    formData.append('fields', JSON.stringify({ [selectedDesensitizationField.value]: selectedDesensitizationType.value }));
+    
+    const response = await fetch('http://localhost:5000/api/tools/data-cleaning', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: formData
+    });
+    
+    if (response.ok) {
+      // 处理文件下载
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      desensitizationDownloadUrl.value = url;
+      desensitizationMessage.value = '处理完成，请点击下方链接下载文件';
+    } else {
+      const data = await response.json();
+      desensitizationError.value = data.error || '处理失败';
+      desensitizationMessage.value = '';
+    }
+  } catch (error) {
+    desensitizationError.value = '处理失败: ' + error.message;
+    desensitizationMessage.value = '';
+    console.error('Error processing desensitization file:', error);
+  } finally {
+    desensitizationLoading.value = false;
+  }
+}
+
+function resetDesensitizationFile() {
+  desensitizationFile.value = null;
+  desensitizationMessage.value = '';
+  desensitizationError.value = '';
+  desensitizationDownloadUrl.value = '';
+  desensitizationFields.value = [];
+  selectedDesensitizationField.value = '';
+  selectedDesensitizationType.value = '';
+  // 重置文件输入框
+  const fileInput = document.getElementById('desensitization-file-input');
+  if (fileInput) {
+    fileInput.value = '';
+  }
+}
+
+async function fetchDesensitizationFields() {
+  if (!desensitizationFile.value) {
+    desensitizationError.value = '请先选择Excel文件';
+    return;
+  }
+
+  const token = localStorage.getItem('token');
+  if (!token) {
+    desensitizationError.value = '请先登录';
+    showLogin.value = true;
+    return;
+  }
+
+  try {
+    desensitizationLoading.value = true;
+    desensitizationError.value = '';
+    desensitizationMessage.value = '读取文件字段中...';
+    
+    const formData = new FormData();
+    formData.append('file', desensitizationFile.value);
+    
+    const response = await fetch('http://localhost:5000/api/tools/data-cleaning/fields', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: formData
+    });
+    
+    if (response.ok) {
+      const data = await response.json();
+      desensitizationFields.value = data.fields;
+      selectedDesensitizationField.value = '';
+      selectedDesensitizationType.value = '';
+      desensitizationMessage.value = '字段读取完成，请选择需要脱敏的字段';
+    } else {
+      const data = await response.json();
+      if (data.error === 'Invalid or expired token') {
+        // Token过期，清除本地存储并引导重新登录
+        localStorage.removeItem('token');
+        localStorage.removeItem('userInfo');
+        isLoggedIn.value = false;
+        userInfo.value = null;
+        showLogin.value = true;
+        desensitizationError.value = '登录已过期，请重新登录';
+      } else {
+        desensitizationError.value = data.error || '读取字段失败';
+      }
+      desensitizationMessage.value = '';
+    }
+  } catch (error) {
+    desensitizationError.value = '读取字段失败: ' + error.message;
+    desensitizationMessage.value = '';
+    console.error('Error fetching desensitization fields:', error);
+  } finally {
+    desensitizationLoading.value = false;
+  }
+}
+
 // 汇问台相关方法
 
 // 测试CloudBase连接
@@ -3490,6 +3770,15 @@ watch(
           </div>
           <div 
             class="tool-tab" 
+            :class="{ active: activeToolTab === 'data-cleaning' }"
+            @click="activeToolTab = 'data-cleaning'"
+            style="padding: 10px 20px; cursor: pointer; border-bottom: 3px solid transparent; margin-right: 10px; font-weight: bold;"
+            :style="activeToolTab === 'data-cleaning' ? { borderBottomColor: '#27ae60', color: '#27ae60' } : {}"
+          >
+            数据清洗脱敏
+          </div>
+          <div 
+            class="tool-tab" 
             :class="{ active: activeToolTab === 'other' }"
             @click="activeToolTab = 'other'"
             style="padding: 10px 20px; cursor: pointer; border-bottom: 3px solid transparent; margin-right: 10px; font-weight: bold;"
@@ -3706,6 +3995,110 @@ watch(
             </a>
           </div>
         </div>
+        
+        <!-- 数据清洗脱敏标签页内容 -->
+        <div v-if="activeToolTab === 'data-cleaning'" class="tools-section" style="max-width: 800px; margin: 0 auto;">
+          <!-- 第一行：提示文字 -->
+          <div class="tip-section" style="margin-bottom: 20px;">
+            <p>该模块允许上传Excel文件，对数据进行清洗和脱敏处理，包括删除任务编号、车牌号、电话号码、姓名和精细地址等信息。</p>
+            <p style="color: #666; font-size: 14px; margin-top: 5px;"><strong>处理说明：</strong></p>
+            <ul style="color: #666; font-size: 14px; margin-top: 5px; margin-left: 20px;">
+              <li>删除各种任务编号（数字串或字母+数字串）</li>
+              <li>删除车牌号（如"晋M·E5191"）</li>
+              <li>删除电话号码（手机和座机）</li>
+              <li>删除姓名（如"张先生"、"李女士"等）</li>
+              <li>删除精细地址（如几单元几室）</li>
+            </ul>
+          </div>
+          
+          <!-- 第二行：文件上传 -->
+          <div class="upload-section" style="margin-bottom: 20px;">
+            <div class="form-group" style="margin-bottom: 15px;">
+              <label for="cleaning-file-input" style="display: block; margin-bottom: 5px; font-weight: bold;">选择Excel文件：</label>
+              <input 
+                type="file" 
+                id="cleaning-file-input"
+                accept=".xlsx"
+                @change="handleCleaningFileSelect"
+                :disabled="cleaningLoading"
+              >
+              <div v-if="cleaningFile" class="file-info" style="margin-top: 5px; font-size: 14px; color: #666;">
+                已选择：{{ cleaningFile.name }}
+              </div>
+            </div>
+            
+            <div class="button-group" style="display: flex; gap: 10px; margin-bottom: 15px;">
+              <button 
+                @click="fetchCleaningFields"
+                :disabled="!cleaningFile || cleaningLoading"
+                class="btn-primary"
+                style="flex: 1; padding: 12px; background-color: #3498db; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; font-weight: bold;"
+              >
+                <span v-if="cleaningLoading">读取中...</span>
+                <span v-else>读取文件字段</span>
+              </button>
+              <button 
+                @click="resetCleaningFile"
+                :disabled="cleaningLoading"
+                class="btn-secondary"
+                style="padding: 12px 20px; background-color: #95a5a6; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px;"
+              >
+                重置
+              </button>
+            </div>
+            
+            <div v-if="cleaningMessage" class="message success" style="padding: 10px; background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; border-radius: 4px; margin-bottom: 15px;">
+              {{ cleaningMessage }}
+            </div>
+            <div v-if="cleaningError" class="message error" style="padding: 10px; background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; border-radius: 4px; margin-bottom: 15px;">
+              {{ cleaningError }}
+            </div>
+          </div>
+          
+          <!-- 第三行：字段选择 -->
+          <div v-if="cleaningFields.length > 0" class="fields-section" style="margin-bottom: 20px; padding: 20px; border: 1px solid #dee2e6; border-radius: 4px; background-color: #f9f9f9;">
+            <h4 style="margin-top: 0; margin-bottom: 15px; color: #333;">字段选择</h4>
+            <div class="field-selection" style="display: flex; flex-direction: column; gap: 15px;">
+              <div style="display: flex; flex-direction: column;">
+                <label style="margin-bottom: 5px; font-weight: bold;">选择字段：</label>
+                <select 
+                  v-model="selectedCleaningField"
+                  style="padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; width: 300px;"
+                >
+                  <option value="">-- 请选择字段 --</option>
+                  <option v-for="field in cleaningFields" :key="field" :value="field">
+                    {{ field }}
+                  </option>
+                </select>
+              </div>
+            </div>
+            
+            <div class="button-group" style="display: flex; gap: 10px; margin-top: 20px;">
+              <button 
+                @click="processCleaningFile"
+                :disabled="cleaningLoading || !selectedCleaningField"
+                class="btn-primary"
+                style="flex: 1; padding: 12px; background-color: #27ae60; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; font-weight: bold;"
+              >
+                <span v-if="cleaningLoading">处理中...</span>
+                <span v-else>清洗处理</span>
+              </button>
+            </div>
+          </div>
+          
+          <!-- 第四行：下载按钮 -->
+          <div v-if="cleaningDownloadUrl" class="download-section" style="margin-top: 20px;">
+            <a 
+              :href="cleaningDownloadUrl"
+              download
+              style="display: inline-block; padding: 12px 24px; background-color: #3498db; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; font-weight: bold; text-decoration: none;"
+            >
+              下载处理后的文件
+            </a>
+          </div>
+        </div>
+        
+
         
         <!-- 其他功能标签页内容 -->
         <div v-if="activeToolTab === 'other'" class="tools-section" style="max-width: 800px; margin: 0 auto;">

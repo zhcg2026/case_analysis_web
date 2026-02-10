@@ -304,6 +304,121 @@ API_KEY = '58a51ac5-3b75-4c5e-85ac-1fb4ef652bd0'
 API_URL = 'https://ark.cn-beijing.volces.com/api/v3/chat/completions'
 MODEL = 'doubao-seed-1-8-251228'
 
+# 数据清洗脱敏相关函数
+import re
+
+def clean_problem_description(text):
+    """清理问题描述字段，删除所有任务编号、姓名、电话号码、详细地址和车牌号"""
+    if pd.isna(text) or text.strip() == "":
+        return text
+    
+    text_str = str(text)
+    
+    # 1. 删除电话号码
+    # 匹配手机号码
+    text_str = re.sub(r'1[3-9]\d{9}', '', text_str)
+    # 匹配座机号码
+    text_str = re.sub(r'0\d{2,3}-?\d{7,8}', '', text_str)
+    
+    # 2. 删除车牌号
+    # 匹配车牌号格式，如"晋M·E5191"、"晋ME5191"等
+    text_str = re.sub(r'[\u4e00-\u9fa5][A-Za-z]·?[A-Za-z0-9]{4,6}', '', text_str)
+    
+    # 3. 删除任务编号
+    # 匹配明确的编号格式
+    # 格式1: 数字字母组合的编号
+    text_str = re.sub(r'[0-9A-Za-z]{4,}', '', text_str)
+    # 格式2: 转办编号等特定格式
+    text_str = re.sub(r'原转办编号：\d+', '', text_str)
+    
+    # 4. 删除姓名（删除明确的姓名标记，如"张先生"、"李女士"等）
+    text_str = re.sub(r'[\u4e00-\u9fa5]{1,2}[先生|女士|小姐|同志]', '', text_str)
+    
+    # 5. 删除精细地址（如几单元几室）
+    text_str = re.sub(r'[0-9]+[单元|号楼|楼|室|房|号]', '', text_str)
+    
+    # 6. 清理多余的空格
+    text_str = re.sub(r'\s+', ' ', text_str).strip()
+    
+    return text_str
+
+def desensitize_name(name):
+    """对姓名进行脱敏，隐去名"""
+    if pd.isna(name) or str(name).strip() == "":
+        return name
+    
+    name_str = str(name).strip()
+    if len(name_str) <= 1:
+        return name_str
+    return name_str[0] + '*' * (len(name_str) - 1)
+
+def desensitize_phone(phone):
+    """对电话号码进行脱敏，隐去后8位"""
+    if pd.isna(phone) or str(phone).strip() == "":
+        return phone
+    
+    phone_str = str(phone).strip()
+    if len(phone_str) <= 3:
+        return phone_str
+    return phone_str[:3] + '*' * 8
+
+def desensitize_landline(landline):
+    """对座机号码进行脱敏，隐去后4位"""
+    if pd.isna(landline) or str(landline).strip() == "":
+        return landline
+    
+    landline_str = str(landline).strip()
+    if len(landline_str) <= 4:
+        return landline_str
+    return landline_str[:-4] + '*' * 4
+
+def desensitize_address(address):
+    """对地址进行脱敏，隐去详细地址"""
+    if pd.isna(address) or str(address).strip() == "":
+        return address
+    
+    address_str = str(address).strip()
+    # 只保留省市县，隐去详细地址
+    parts = address_str.split(' ')
+    if len(parts) <= 1:
+        # 如果没有空格，尝试按常见地址分隔符分割
+        parts = re.split(r'[,，]', address_str)
+    
+    if len(parts) >= 3:
+        return ' '.join(parts[:3]) + ' ****'
+    elif len(parts) >= 2:
+        return ' '.join(parts[:2]) + ' ****'
+    else:
+        return address_str[:4] + ' ****'
+
+# 数据清洗脱敏主函数
+def clean_and_desensitize_data(df, fields_config):
+    """对数据进行清洗和脱敏处理"""
+    result_df = df.copy()
+    
+    for field, field_types in fields_config.items():
+        if field not in result_df.columns:
+            continue
+        
+        # 确保 field_types 是一个列表
+        if not isinstance(field_types, list):
+            field_types = [field_types]
+        
+        # 对同一个字段应用多种处理方式
+        for field_type in field_types:
+            if field_type == 'problem_description':
+                result_df[field] = result_df[field].apply(clean_problem_description)
+            elif field_type == 'name':
+                result_df[field] = result_df[field].apply(desensitize_name)
+            elif field_type == 'phone':
+                result_df[field] = result_df[field].apply(desensitize_phone)
+            elif field_type == 'landline':
+                result_df[field] = result_df[field].apply(desensitize_landline)
+            elif field_type == 'address':
+                result_df[field] = result_df[field].apply(desensitize_address)
+    
+    return result_df
+
 @app.route('/api/upload', methods=['POST'])
 @admin_required
 def upload_file():
@@ -3072,6 +3187,82 @@ app.config['UPLOAD_FOLDER'] = 'uploads'
 def serve_uploaded_file(filename):
     from flask import send_from_directory
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+
+# 数据清洗脱敏API端点 - 获取文件字段
+@app.route('/api/tools/data-cleaning/fields', methods=['POST'])
+@protected
+def get_cleaning_fields():
+    session = Session()
+    try:
+        if 'file' not in request.files:
+            return jsonify({'error': 'No file part'}), 400
+        
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({'error': 'No selected file'}), 400
+        
+        # 读取Excel文件
+        df = pd.read_excel(file)
+        
+        # 获取所有字段名
+        fields = list(df.columns)
+        
+        session.commit()
+        return jsonify({'fields': fields}), 200
+    except Exception as e:
+        session.rollback()
+        print(f"Error in get_cleaning_fields: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        session.close()
+
+# 数据清洗脱敏API端点 - 处理文件
+@app.route('/api/tools/data-cleaning', methods=['POST'])
+@protected
+def process_cleaning():
+    session = Session()
+    try:
+        if 'file' not in request.files:
+            return jsonify({'error': 'No file part'}), 400
+        
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({'error': 'No selected file'}), 400
+        
+        # 读取字段配置
+        fields_config = {}
+        if 'fields' in request.form:
+            import json
+            fields_config = json.loads(request.form['fields'])
+        
+        # 读取Excel文件
+        df = pd.read_excel(file)
+        
+        # 执行数据清洗和脱敏
+        processed_df = clean_and_desensitize_data(df, fields_config)
+        
+        # 保存处理后的文件
+        import tempfile
+        import os
+        
+        with tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False) as temp:
+            temp_path = temp.name
+        
+        processed_df.to_excel(temp_path, index=False)
+        
+        # 返回文件
+        from flask import send_file
+        return send_file(temp_path, as_attachment=True, download_name='cleaned_data.xlsx', mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    except Exception as e:
+        session.rollback()
+        print(f"Error in process_cleaning: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        session.close()
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
