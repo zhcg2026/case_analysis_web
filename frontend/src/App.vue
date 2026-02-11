@@ -2,6 +2,7 @@
 import { ref, onMounted, nextTick, watch, computed } from 'vue';
 import * as echarts from 'echarts';
 import cloudbase from '@cloudbase/js-sdk';
+import axios from 'axios';
 
 // 打印CloudBase SDK版本
 console.log('CloudBase SDK版本:', cloudbase.version);
@@ -52,6 +53,17 @@ const cloudbaseInstance = ref(null);
 const huiwentaiTasks = ref([]);
 const huiwentaiLoading = ref(false);
 const huiwentaiError = ref('');
+
+// 城管通模块状态管理
+const chengguantongQuery = ref('');
+const chengguantongResponse = ref('');
+const chengguantongLoading = ref(false);
+const chengguantongError = ref('');
+const showResponse = ref(false);
+const chatHistory = ref([]);
+const showHistory = ref(false);
+
+// 阿里云百炼API配置已移至后端，前端不再需要配置API Key
 
 // CMS表单状态
 const showAddCategoryForm = ref(false);
@@ -3199,6 +3211,108 @@ async function fetchDesensitizationFields() {
   }
 }
 
+// 城管通模块方法
+
+// 调用后端API进行城管通查询
+async function callBaiLianAPI(query) {
+  try {
+    chengguantongLoading.value = true;
+    chengguantongError.value = '';
+    
+    console.log('开始调用后端城管通API');
+    console.log('请求参数:', {
+      message: query
+    });
+    
+    const token = localStorage.getItem('token');
+    if (!token) {
+      chengguantongError.value = '请先登录';
+      return;
+    }
+    
+    const response = await fetch('http://localhost:5000/api/chengguantong/ask', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ message: query }),
+      timeout: 30000 // 添加30秒超时
+    });
+    
+    console.log('API调用成功，响应状态:', response.status);
+    
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || `API调用失败: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    console.log('API调用成功，响应数据:', data);
+    
+    if (data.response) {
+      chengguantongResponse.value = data.response;
+      showResponse.value = true;
+      
+      // 添加到历史记录
+      chatHistory.value.unshift({
+        id: Date.now(),
+        query: query,
+        response: data.response,
+        timestamp: new Date().toLocaleString()
+      });
+      
+      // 限制历史记录数量
+      if (chatHistory.value.length > 10) {
+        chatHistory.value = chatHistory.value.slice(0, 10);
+      }
+    } else {
+      chengguantongError.value = '未收到有效的响应';
+      console.error('响应数据格式异常:', data);
+    }
+  } catch (error) {
+    console.error('调用后端城管通API失败:', error);
+    console.error('错误消息:', error.message);
+    
+    let errorMessage = 'API调用失败';
+    if (error.message.includes('Network Error')) {
+      errorMessage = '网络错误，请检查网络连接或防火墙设置';
+    } else if (error.message.includes('timeout')) {
+      errorMessage = 'API调用超时，请检查网络连接';
+    } else {
+      errorMessage = `API调用失败: ${error.message || '未知错误'}`;
+    }
+    
+    chengguantongError.value = errorMessage;
+  } finally {
+    chengguantongLoading.value = false;
+    console.log('API调用完成');
+  }
+}
+
+// 防抖函数
+function debounce(func, wait) {
+  let timeout;
+  return function executedFunction(...args) {
+    const later = () => {
+      clearTimeout(timeout);
+      func(...args);
+    };
+    clearTimeout(timeout);
+    timeout = setTimeout(later, wait);
+  };
+}
+
+// 重置城管通模块状态
+function resetChengguantong() {
+  chengguantongQuery.value = '';
+  chengguantongResponse.value = '';
+  chengguantongError.value = '';
+  showResponse.value = false;
+  chatHistory.value = [];
+  showHistory.value = false;
+}
+
 // 汇问台相关方法
 
 // 测试CloudBase连接
@@ -4112,9 +4226,67 @@ watch(
       <!-- 城管通模块 -->
       <div v-if="activeModule === 'chengguantong' && (!userInfo || userInfo.role === 'admin' || (userInfo.permissions && userInfo.permissions.chengguantong))" class="tab-content">
         <h2 class="section-title">城管通</h2>
-        <div class="chengguantong-section">
-          <p>城管通功能开发中...</p>
-          <p>采用本地大模型+RAG技术实现城市管理问答知识库</p>
+        <div class="chengguantong-section" style="max-width: 1200px; margin: 0 auto;">
+          <!-- 第一行：提示文字 -->
+          <div class="tip-section" style="margin-bottom: 20px; padding: 15px; background-color: #e3f2fd; border: 1px solid #bbdefb; border-radius: 4px; color: #1565c0;">
+            <p style="margin: 0;"><strong>功能说明：</strong>运城城管通智能问答系统，基于阿里云百炼大模型，提供城市管理相关问题的专业解答。</p>
+          </div>
+          
+          <!-- 输入区域 - 模仿大模型对话界面 -->
+          <div class="chat-interface" style="display: flex; flex-direction: column; gap: 20px; width: 100%; margin: 0 auto;">
+            <!-- 问题输入区域 -->
+            <div class="input-container" style="width: 100%;">
+              <textarea 
+          id="chengguantong-query" 
+          v-model="chengguantongQuery" 
+          placeholder="请输入您的城市管理相关问题..." 
+          rows="3" 
+          :disabled="chengguantongLoading"
+          style="width: 100%; 
+                 padding: 20px; 
+                 border: 1px solid #ddd; 
+                 border-radius: 16px; 
+                 resize: vertical; 
+                 font-size: 18px; 
+                 font-family: Arial, sans-serif; 
+                 min-height: 90px; 
+                 /* 移除max-width限制，让文本框占满容器 */
+                 line-height: 1.6;
+                 box-sizing: border-box;"  <!-- 确保padding不超出宽度 -->
+        ></textarea>
+              
+              <div class="button-group" style="display: flex; justify-content: center; gap: 10px; margin-top: 10px;">
+                <button 
+                  @click="resetChengguantong"
+                  :disabled="chengguantongLoading"
+                  class="btn-secondary"
+                  style="padding: 12px 20px; background-color: #95a5a6; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px;"
+                >
+                  清空
+                </button>
+                <button 
+                  @click="callBaiLianAPI(chengguantongQuery)"
+                  :disabled="chengguantongLoading || !chengguantongQuery"
+                  class="btn-primary"
+                  style="padding: 12px 30px; background-color: #2196f3; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: bold;"
+                >
+                  <span v-if="chengguantongLoading">处理中...</span>
+                  <span v-else>发送</span>
+                </button>
+              </div>
+              
+              <div v-if="chengguantongError" class="error-message" style="padding: 10px; background-color: #ffebee; color: #c62828; border: 1px solid #ffcdd2; border-radius: 6px; margin-top: 10px;">
+                {{ chengguantongError }}
+              </div>
+            </div>
+            
+            <!-- 响应结果 -->
+            <div v-if="showResponse && chengguantongResponse" class="response-container" style="width: 100%; padding: 24px; border: 1px solid #e0e0e0; border-radius: 12px; background-color: #f9f9f9; box-shadow: 0 2px 8px rgba(0,0,0,0.05); box-sizing: border-box;">
+              <div class="response-content" style="line-height: 1.7; color: #333; white-space: pre-wrap; word-wrap: break-word; overflow-wrap: break-word; font-size: 16px;">
+                {{ chengguantongResponse }}
+              </div>
+            </div>
+          </div>
         </div>
       </div>
       

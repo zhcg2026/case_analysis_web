@@ -304,6 +304,10 @@ API_KEY = '58a51ac5-3b75-4c5e-85ac-1fb4ef652bd0'
 API_URL = 'https://ark.cn-beijing.volces.com/api/v3/chat/completions'
 MODEL = 'doubao-seed-1-8-251228'
 
+# 阿里云百炼API配置
+BAILIAN_API_KEY = 'sk-9ee20f6ad5dd459aa8952e5ae979bead'
+BAILIAN_API_URL = 'https://dashscope.aliyuncs.com/api/v1/apps/b608e4ed05c44c19bf7e71679c859689/completion'
+
 # 数据清洗脱敏相关函数
 import re
 
@@ -3263,6 +3267,77 @@ def process_cleaning():
         return jsonify({'error': str(e)}), 500
     finally:
         session.close()
+
+# 城管通API端点
+@app.route('/api/chengguantong/ask', methods=['POST'])
+@protected
+def chengguantong_ask():
+    try:
+        data = request.json
+        message = data.get('message')
+        
+        if not message:
+            return jsonify({'error': 'Missing message parameter'}), 400
+        
+        # 调用阿里云百炼API
+        headers = {
+            'Content-Type': 'application/json',
+            'Authorization': f'Bearer {BAILIAN_API_KEY}'
+        }
+        
+        payload = {
+            "input": {
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": message
+                    }
+                ]
+            },
+            "parameters": {
+                "temperature": 0.7
+            }
+        }
+        
+        # 调用API，添加重试机制
+        max_retries = 3
+        retry_delay = 5
+        
+        for attempt in range(max_retries):
+            try:
+                response = requests.post(
+                    BAILIAN_API_URL, 
+                    headers=headers, 
+                    json=payload, 
+                    timeout=(10, 300)  # 连接超时10秒，读取超时300秒
+                )
+                response.raise_for_status()
+                result = response.json()
+                
+                # 检查响应结构
+                if 'output' in result and 'text' in result['output']:
+                    return jsonify({
+                        'response': result['output']['text']
+                    }), 200
+                else:
+                    return jsonify({'error': 'Invalid API response structure'}), 500
+                    
+            except requests.exceptions.Timeout as e:
+                if attempt < max_retries - 1:
+                    print(f"API调用超时，{retry_delay}秒后重试... (尝试 {attempt+1}/{max_retries})")
+                    import time
+                    time.sleep(retry_delay)
+                    retry_delay *= 2  # 指数退避
+                else:
+                    return jsonify({'error': f'多次尝试后仍然超时 - {str(e)}'}), 500
+            except Exception as e:
+                return jsonify({'error': f'API调用失败: {str(e)}'}), 500
+                
+    except Exception as e:
+        print(f"Error in chengguantong_ask: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
