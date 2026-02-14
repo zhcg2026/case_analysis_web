@@ -53,6 +53,9 @@ const cloudbaseInstance = ref(null);
 const huiwentaiTasks = ref([]);
 const huiwentaiLoading = ref(false);
 const huiwentaiError = ref('');
+const huiwentaiActiveTab = ref('tasks'); // tasks, daily-reports
+const huiwentaiDailyReports = ref([]);
+const expandedReportId = ref(null); // 当前展开的日报ID
 
 // 城管通模块状态管理
 const chengguantongQuery = ref('');
@@ -3392,6 +3395,142 @@ async function fetchHuiwentaiTasks() {
   }
 }
 
+// 读取daily-reports集合数据
+async function fetchHuiwentaiDailyReports() {
+  try {
+    huiwentaiLoading.value = true;
+    huiwentaiError.value = '';
+    
+    console.log('开始读取daily-reports数据');
+    
+    // 使用用户提供的云环境ID
+    const envId = 'cloud1-2g359sgd56ce6c79';
+    console.log('云环境ID:', envId);
+    
+    // 初始化CloudBase实例
+    console.log('初始化CloudBase实例...');
+    const app = cloudbase.init({
+      env: envId
+    });
+    console.log('CloudBase实例初始化成功');
+    
+    // 匿名登录
+    console.log('开始匿名登录...');
+    try {
+      await app.auth().signInAnonymously();
+      console.log('匿名登录成功');
+    } catch (e) {
+      console.error('匿名登录失败:', e);
+      throw new Error(`匿名登录失败: ${e.message}`);
+    }
+    
+    // 获取数据库引用
+    console.log('获取数据库引用...');
+    const db = app.database();
+    console.log('数据库引用获取成功');
+    
+    // 读取daily-reports集合数据
+    console.log('读取daily-reports集合...');
+    const result = await db.collection('daily-reports').get();
+    console.log('数据读取成功:', result);
+    console.log('完整的result对象:', JSON.stringify(result, null, 2));
+    
+    if (result && result.data) {
+      huiwentaiDailyReports.value = result.data;
+      console.log('读取daily-reports数据成功:', result.data);
+      console.log('数据条数:', result.data.length);
+      if (result.data.length > 0) {
+        console.log('第一条数据结构:', JSON.stringify(result.data[0], null, 2));
+        console.log('第一条数据的所有字段:', Object.keys(result.data[0]));
+      }
+    } else {
+      huiwentaiDailyReports.value = [];
+      console.log('daily-reports集合为空');
+    }
+  } catch (error) {
+    console.error('读取daily-reports数据失败:', error);
+    huiwentaiError.value = `读取数据失败: ${error.message || '未知错误'}`;
+    huiwentaiDailyReports.value = [];
+  } finally {
+    huiwentaiLoading.value = false;
+    console.log('daily-reports数据读取操作完成');
+  }
+}
+
+// 切换汇问台标签页
+function switchHuiwentaiTab(tab) {
+  huiwentaiActiveTab.value = tab;
+  if (tab === 'tasks') {
+    fetchHuiwentaiTasks();
+  } else if (tab === 'daily-reports') {
+    fetchHuiwentaiDailyReports();
+  }
+}
+
+// 切换日报展开/收起状态
+function toggleReportExpand(report) {
+  const reportId = report._id || report.id || Date.now();
+  if (expandedReportId.value === reportId) {
+    expandedReportId.value = null;
+  } else {
+    expandedReportId.value = reportId;
+  }
+}
+
+// 从日报内容中提取关键信息
+function parseReportSummary(report) {
+  const result = {
+    date: report.reportDate || '未知日期',
+    person: report.dutyStaff || '未知',
+    shift: report.shiftName || '未知',
+    reported: report.accepted !== undefined && report.accepted !== null ? report.accepted : '-',
+    accepted: report.collectorAccepted !== undefined && report.collectorAccepted !== null ? report.collectorAccepted : '-',
+    completed: report.completed !== undefined && report.completed !== null ? report.completed : '-'
+  };
+  
+  return result;
+}
+
+// 格式化完整日报内容
+function formatReportContent(report) {
+  const summary = parseReportSummary(report);
+  let content = '';
+  
+  // 第一部分：日期和值班人员
+  content += `${summary.date}值班人员：\n`;
+  content += `  ${summary.person}\n\n`;
+  
+  // 第一部分：系统运行
+  content += '一、系统运行\n';
+  content += `上报${summary.reported}件，受理${summary.accepted}件，办结${summary.completed}件。\n\n`;
+  content += `采集员上报受理:${report.collectorAccepted || 0}\n`;
+  content += `重点领域日常巡查受理:${report.keyAreaPatrol || 0}\n`;
+  content += `12345系统转办:${report.system12345 || 0}\n`;
+  content += `民呼我应:${report.minhuWoYing || 0}\n`;
+  content += `视频监控: ${report.videoMonitor || 0}\n`;
+  content += `智能分析:${report.smartAnalysis || 0}\n`;
+  content += `市民举报系统受理:${report.citizenReport || 0}\n\n`;
+  
+  // 第二部分：电话热线
+  content += '二、电话热线\n';
+  content += `总计: ${report.phoneTotal || 0}办结：${report.phoneCompleted || 0}\n`;
+  content += `1.12345电话：${report.phone12345 || 0}\n`;
+  content += `2.市民热线：${report.citizenHotline || 0}`;
+  
+  return content;
+}
+
+// 获取日报完整内容
+function getReportContent(report) {
+  const content = report.content || report.text || report.reportContent || report.body || report.data;
+  if (typeof content === 'string') {
+    return content;
+  } else if (typeof content === 'object') {
+    return JSON.stringify(content, null, 2);
+  }
+  return '无内容';
+}
+
 // 监听切换到汇问台模块时加载数据
 watch(
   () => activeModule.value,
@@ -3506,9 +3645,46 @@ watch(
       <div v-if="activeModule === 'huiwentai'" class="tab-content">
         <h2 class="section-title">汇问台</h2>
         <div class="huiwentai-section" style="max-width: 1000px; margin: 0 auto;">
+          <!-- 标签页导航 -->
+          <div class="huiwentai-tabs" style="display: flex; margin-bottom: 24px; border-bottom: 2px solid #e8e8e8; background: #fafafa; border-radius: 8px 8px 0 0; overflow: hidden;">
+            <div 
+              class="huiwentai-tab" 
+              :class="{ active: huiwentaiActiveTab === 'tasks' }"
+              @click="switchHuiwentaiTab('tasks')"
+              style="padding: 14px 28px; cursor: pointer; font-size: 16px; font-weight: 500; color: #666; border-bottom: 3px solid transparent; transition: all 0.3s; position: relative; background: transparent;"
+              :style="{ 
+                color: huiwentaiActiveTab === 'tasks' ? '#1890ff' : '#666',
+                background: huiwentaiActiveTab === 'tasks' ? '#e6f7ff' : 'transparent',
+                borderBottomColor: huiwentaiActiveTab === 'tasks' ? '#1890ff' : 'transparent',
+                fontWeight: huiwentaiActiveTab === 'tasks' ? '600' : '500'
+              }"
+            >
+              问题列表
+            </div>
+            <div 
+              class="huiwentai-tab" 
+              :class="{ active: huiwentaiActiveTab === 'daily-reports' }"
+              @click="switchHuiwentaiTab('daily-reports')"
+              style="padding: 14px 28px; cursor: pointer; font-size: 16px; font-weight: 500; color: #666; border-bottom: 3px solid transparent; transition: all 0.3s; position: relative; background: transparent;"
+              :style="{ 
+                color: huiwentaiActiveTab === 'daily-reports' ? '#1890ff' : '#666',
+                background: huiwentaiActiveTab === 'daily-reports' ? '#e6f7ff' : 'transparent',
+                borderBottomColor: huiwentaiActiveTab === 'daily-reports' ? '#1890ff' : 'transparent',
+                fontWeight: huiwentaiActiveTab === 'daily-reports' ? '600' : '500'
+              }"
+            >
+              日报数据
+            </div>
+          </div>
+          
           <!-- 刷新按钮 -->
           <div style="margin-bottom: 20px; text-align: right;">
-            <button class="refresh-btn" @click="fetchHuiwentaiTasks" :disabled="huiwentaiLoading" style="padding: 8px 16px; background-color: #1890ff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">
+            <button 
+              class="refresh-btn" 
+              @click="huiwentaiActiveTab === 'tasks' ? fetchHuiwentaiTasks() : fetchHuiwentaiDailyReports()" 
+              :disabled="huiwentaiLoading" 
+              style="padding: 8px 16px; background-color: #1890ff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;"
+            >
               {{ huiwentaiLoading ? '加载中...' : '刷新数据' }}
             </button>
           </div>
@@ -3526,13 +3702,13 @@ watch(
               <li>1. 云环境ID是否正确</li>
               <li>2. 云数据库安全规则是否允许读取操作</li>
               <li>3. 网络连接是否正常</li>
-              <li>4. tasks集合是否存在</li>
+              <li>4. {{ huiwentaiActiveTab === 'tasks' ? 'tasks' : 'daily-reports' }}集合是否存在</li>
             </ul>
             <p style="font-size: 14px; color: #999; margin-top: 10px;">详细错误信息请查看浏览器控制台</p>
           </div>
           
-          <!-- 数据表格 -->
-          <div v-else class="tasks-table">
+          <!-- 任务数据标签页内容 -->
+          <div v-else-if="huiwentaiActiveTab === 'tasks'" class="tasks-table">
             <table style="width: 100%; border-collapse: collapse; margin-top: 20px; text-align: left;">
               <thead>
                 <tr style="background-color: #f5f5f5;">
@@ -3557,6 +3733,104 @@ watch(
               </tbody>
             </table>
           </div>
+          
+          <!-- 日报数据标签页内容 -->
+          <div v-else-if="huiwentaiActiveTab === 'daily-reports'" class="daily-reports-section">
+            <div v-if="huiwentaiDailyReports.length === 0" style="padding: 40px; text-align: center; color: #999;">
+              暂无日报数据
+            </div>
+            <div v-else class="reports-list" style="display: flex; flex-direction: column; gap: 16px; margin-top: 20px;">
+              <div 
+                v-for="report in huiwentaiDailyReports" 
+                :key="report._id"
+                class="report-card"
+                @click="toggleReportExpand(report)"
+                style="border-radius: 10px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.06); cursor: pointer; transition: all 0.3s ease;"
+                :style="{ 
+                  backgroundColor: expandedReportId === (report._id || report.id) 
+                    ? (parseReportSummary(report).shift.includes('夜') ? '#f9f0ff' : '#e6f7ff') 
+                    : (parseReportSummary(report).shift.includes('夜') ? '#fdfbf7' : '#f0f9ff'),
+                  transform: expandedReportId === (report._id || report.id) ? 'scale(1.01)' : 'scale(1)',
+                  boxShadow: expandedReportId === (report._id || report.id) 
+                    ? (parseReportSummary(report).shift.includes('夜') ? '0 4px 16px rgba(114, 46, 209, 0.15)' : '0 4px 16px rgba(24, 144, 255, 0.15)') 
+                    : '0 2px 8px rgba(0,0,0,0.06)'
+                }"
+              >
+                <!-- 卡片头部 - 关键信息 -->
+                <div 
+                  class="report-summary" 
+                  style="padding: 16px 20px; display: flex; justify-content: space-between; align-items: center; background-color: #fafafa; transition: background-color 0.3s;"
+                  :style="{
+                    backgroundColor: parseReportSummary(report).shift.includes('夜') ? '#faf5ff' : '#f0f9ff'
+                  }"
+                >
+                  <div style="display: flex; gap: 32px; align-items: center;">
+                    <div style="min-width: 120px;">
+                      <span style="font-size: 12px; color: #999;">日期</span>
+                      <div style="font-size: 16px; font-weight: 600; color: #333; margin-top: 4px;">
+                        {{ parseReportSummary(report).date }}
+                      </div>
+                    </div>
+                    <div style="min-width: 100px;">
+                      <span style="font-size: 12px; color: #999;">值班人员</span>
+                      <div style="font-size: 16px; color: #333; margin-top: 4px;">
+                        {{ parseReportSummary(report).person }}
+                      </div>
+                    </div>
+                    <div style="min-width: 90px;">
+                      <span style="font-size: 12px; color: #999;">班次</span>
+                      <div style="margin-top: 4px;">
+                        <span 
+                          style="display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 14px; font-weight: 500;"
+                          :style="{
+                            backgroundColor: parseReportSummary(report).shift.includes('夜') ? '#f9f0ff' : '#e6f7ff',
+                            color: parseReportSummary(report).shift.includes('夜') ? '#722ed1' : '#1890ff',
+                            border: parseReportSummary(report).shift.includes('夜') ? '1px solid #d3adf7' : '1px solid #91d5ff'
+                          }"
+                        >
+                          {{ parseReportSummary(report).shift }}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <div style="display: flex; gap: 24px; align-items: center;">
+                    <div style="text-align: center;">
+                      <span style="font-size: 12px; color: #999;">上报</span>
+                      <div style="font-size: 20px; font-weight: 600; color: #1890ff; margin-top: 4px;">
+                        {{ parseReportSummary(report).reported }}
+                      </div>
+                    </div>
+                    <div style="text-align: center;">
+                      <span style="font-size: 12px; color: #999;">受理</span>
+                      <div style="font-size: 20px; font-weight: 600; color: #52c41a; margin-top: 4px;">
+                        {{ parseReportSummary(report).accepted }}
+                      </div>
+                    </div>
+                    <div style="text-align: center;">
+                      <span style="font-size: 12px; color: #999;">办结</span>
+                      <div style="font-size: 20px; font-weight: 600; color: #fa8c16; margin-top: 4px;">
+                        {{ parseReportSummary(report).completed }}
+                      </div>
+                    </div>
+                    <div style="margin-left: 16px; color: #999; font-size: 20px;">
+                      {{ expandedReportId === (report._id || report.id) ? '▼' : '▶' }}
+                    </div>
+                  </div>
+                </div>
+                
+                <!-- 展开的详细内容 -->
+                <div 
+                  v-if="expandedReportId === (report._id || report.id)"
+                  class="report-detail"
+                  style="padding: 24px 20px; border-top: 1px solid #f0f0f0; background-color: white;"
+                >
+                  <div style="white-space: pre-wrap; line-height: 2.2; color: #333; font-size: 15px; font-family: 'Microsoft YaHei', sans-serif;">
+                    {{ formatReportContent(report) }}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -3572,8 +3846,8 @@ watch(
           <div style="margin-bottom: 20px;">
             <div style="display: flex; gap: 15px; margin-bottom: 15px;">
               <div style="flex: 1;">
-                <label for="department-select" style="display: block; margin-bottom: 5px; font-weight: bold; text-align: center;">选择部门：</label>
-                <select id="department-select" v-model="selectedDepartment" :disabled="loading" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">
+                <label for="department-select" style="display: block; margin-bottom: 5px; font-weight: bold;">选择部门：</label>
+                <select id="department-select" v-model="selectedDepartment" :disabled="loading" style="width: 100%; padding: 8px; /* 原10px */ border: 1px solid #ddd; border-radius: 4px; font-size: 14px; box-sizing: border-box; /* 新增 */">
                   <option value="">-- 请选择部门 --</option>
                   <option value="城市综合行政执法队">城市综合行政执法队</option>
                   <option value="市容环卫中心">市容环卫中心</option>
@@ -3582,8 +3856,8 @@ watch(
                 </select>
               </div>
               <div style="flex: 1;">
-                <label for="table-select-assessment" style="display: block; margin-bottom: 5px; font-weight: bold; text-align: center;">选择数据表：</label>
-                <select id="table-select-assessment" v-model="selectedAssessmentTable" :disabled="loading" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">
+                <label for="table-select-assessment" style="display: block; margin-bottom: 5px; font-weight: bold; /* text-align: center; 已删除 */">选择数据表：</label>
+                <select id="table-select-assessment" v-model="selectedAssessmentTable" :disabled="loading" style="width: 100%; padding: 8px; /* 原10px */ border: 1px solid #ddd; border-radius: 4px; font-size: 14px; box-sizing: border-box; /* 新增 */">
                   <option value="">-- 请选择 --</option>
                   <option v-for="table in tables" :key="table" :value="table">
                     {{ table }}
@@ -3591,7 +3865,7 @@ watch(
                 </select>
               </div>
             </div>
-            <button class="start-btn" @click="startAssessment" :disabled="loading" style="padding: 10px 20px; background-color: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px;">
+            <button class="start-btn" @click="startAssessment" :disabled="loading" style="padding: 8px 16px; background-color: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">
               {{ loading ? '计算中...' : '开始计算' }}
             </button>
             <div v-if="assessmentMessage" class="message" style="margin-top: 10px; padding: 10px; background-color: #f0f0f0; border-radius: 4px;">{{ assessmentMessage }}</div>
@@ -3918,7 +4192,7 @@ watch(
                   id="natural-language-input" 
                   v-model="naturalLanguageQuery" 
                   placeholder="例如：帮我查询12月份所有的市容环卫中心的案件" 
-                  rows="4" 
+                  rows="1" 
                   :disabled="toolLoading"
                   style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; resize: vertical; font-size: 14px;"
                 ></textarea>
@@ -5060,6 +5334,11 @@ body {
   width: 100%;
   margin-top: 0;
 }
+/* 覆盖原有的 #app 样式 */
+#app {
+  padding: 0; /* 或者只保留左右 */
+  /* padding: 0 2rem; */
+}
 
 .tab-content {
   background-color: #fff;
@@ -5375,7 +5654,7 @@ body {
   min-height: 300px;
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: stretch;
   justify-content: flex-start;
   gap: 20px;
 }
@@ -6088,6 +6367,16 @@ body {
 }
 
 /* 额外样式调整 */
+/* 汇问台标签页样式 */
+.huiwentai-tab:hover {
+  color: #1890ff;
+}
+
+.huiwentai-tab.active {
+  color: #1890ff;
+  border-bottom-color: #1890ff;
+}
+
 @media (max-width: 768px) {
   .header {
     padding: 20px;
