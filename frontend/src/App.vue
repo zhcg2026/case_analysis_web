@@ -18,6 +18,23 @@ const message = ref(''); // 通用消息
 const analysisMessage = ref(''); // 数据分析消息
 const assessmentMessage = ref(''); // 考核计分消息
 const selectedFile = ref(null);
+
+// 计算属性：安全处理文章文件路径
+const currentArticleFileUrl = computed(() => {
+  if (!currentArticle.value?.file_path) return '';
+  let filePath = currentArticle.value.file_path;
+  // 如果是旧的完整路径，只提取文件名部分
+  if (filePath.includes('backend/uploads/')) {
+    const fileName = filePath.split('backend/uploads/').pop();
+    return `/uploads/${fileName}`;
+  }
+  // 如果已经是 uploads/ 开头，直接加 /
+  if (filePath.startsWith('uploads/')) {
+    return `/${filePath}`;
+  }
+  // 其他情况，直接用
+  return filePath.startsWith('/') ? filePath : `/${filePath}`;
+});
 const activeModule = ref('home'); // home, data, assessment, analysis, spotcheck, tools, chengguantong, cms, map, huiwentai
 
 // 地图服务状态管理
@@ -5281,7 +5298,7 @@ watch(
                 <span style="font-size: 24px;">📎</span>
                 <h4 style="margin: 0; font-size: 16px; color: #333;">相关附件</h4>
               </div>
-              <a :href="`/${currentArticle.file_path}`" :download="currentArticle.file_path.split('/').pop()" style="display: inline-flex; align-items: center; gap: 8px; padding: 10px 18px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; text-decoration: none; border-radius: 6px; font-size: 14px; font-weight: 500; transition: all 0.3s ease; cursor: pointer;" @mouseenter="$event.currentTarget.style.transform='translateY(-2px)'; $event.currentTarget.style.boxShadow='0 4px 12px rgba(102, 126, 234, 0.4)'" @mouseleave="$event.currentTarget.style.transform='translateY(0)'; $event.currentTarget.style.boxShadow='none'">
+              <a :href="currentArticleFileUrl" :download="currentArticle.file_path.split('/').pop()" style="display: inline-flex; align-items: center; gap: 8px; padding: 10px 18px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; text-decoration: none; border-radius: 6px; font-size: 14px; font-weight: 500; transition: all 0.3s ease; cursor: pointer;" @mouseenter="$event.currentTarget.style.transform='translateY(-2px)'; $event.currentTarget.style.boxShadow='0 4px 12px rgba(102, 126, 234, 0.4)'" @mouseleave="$event.currentTarget.style.transform='translateY(0)'; $event.currentTarget.style.boxShadow='none'">
                 <span>⬇️</span>
                 <span>下载文件</span>
               </a>

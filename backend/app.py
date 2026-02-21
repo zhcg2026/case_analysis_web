@@ -512,9 +512,9 @@ def upload_cms_file():
         file.save(file_path)
         
         session.commit()
-        # 返回文件路径
+        # 返回文件路径（只返回相对路径）
         return jsonify({
-            'file_path': file_path,
+            'file_path': f'uploads/{unique_filename}',
             'filename': file.filename
         }), 200
     except Exception as e:
@@ -561,9 +561,9 @@ def upload_image():
         
         session.commit()
         
-        # TinyMCE需要的响应格式
+        # TinyMCE需要的响应格式（返回相对路径）
         return jsonify({
-            'location': f"http://localhost:5000/{file_path}"
+            'location': f"/uploads/{unique_filename}"
         }), 200
     except Exception as e:
         session.rollback()
