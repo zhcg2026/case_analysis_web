@@ -503,7 +503,7 @@ def upload_cms_file():
         unique_filename = f"{uuid.uuid4()}.{file_extension}"
         
         # 确保uploads目录存在
-        upload_folder = 'uploads'
+        upload_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
         if not os.path.exists(upload_folder):
             os.makedirs(upload_folder)
         
@@ -551,7 +551,7 @@ def upload_image():
         unique_filename = f"{uuid.uuid4()}.{file_extension}"
         
         # 确保uploads目录存在
-        upload_folder = 'uploads'
+        upload_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
         if not os.path.exists(upload_folder):
             os.makedirs(upload_folder)
         
@@ -3292,7 +3292,7 @@ def get_articles_by_category(category_id):
 
 # 配置静态文件服务
 import os
-app.config['UPLOAD_FOLDER'] = 'uploads'
+app.config['UPLOAD_FOLDER'] = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
 
 # 静态文件服务路由
 @app.route('/uploads/<path:filename>')
