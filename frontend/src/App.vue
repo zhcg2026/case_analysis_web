@@ -3,6 +3,7 @@ import { ref, onMounted, nextTick, watch, computed } from 'vue';
 import * as echarts from 'echarts';
 import cloudbase from '@cloudbase/js-sdk';
 import axios from 'axios';
+import headerBg from './image/header.jpeg';
 
 // 打印CloudBase SDK版本
 console.log('CloudBase SDK版本:', cloudbase.version);
@@ -1307,7 +1308,7 @@ async function fetchTables() {
     initTableVisibility();
     console.log('当前表格可见性配置:', tableVisibility.value);
     
-    const response = await fetch('http://localhost:5000/api/tables', {
+    const response = await fetch('/api/tables', {
       headers: getAuthHeaders()
     });
     const data = await response.json();
@@ -1364,7 +1365,7 @@ async function uploadFile() {
   try {
     loading.value = true;
     message.value = '上传中...';
-    const response = await fetch('http://localhost:5000/api/upload', {
+    const response = await fetch('/api/upload', {
       method: 'POST',
       headers: getAuthHeaders(),
       body: formData
@@ -1416,7 +1417,7 @@ async function startAnalysis() {
     currentStep.value = 3;
     analysisMessage.value = '调用大模型分析...';
     
-    const response = await fetch('http://localhost:5000/api/analyze', {
+    const response = await fetch('/api/analyze', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -1475,7 +1476,7 @@ async function startAssessment() {
     loading.value = true;
     assessmentMessage.value = '计算中...';
     
-    const response = await fetch('http://localhost:5000/api/assess', {
+    const response = await fetch('/api/assess', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -1666,7 +1667,7 @@ async function login() {
     loginLoading.value = true;
     loginError.value = '';
     
-    const response = await fetch('http://localhost:5000/api/login', {
+    const response = await fetch('/api/login', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -1720,7 +1721,7 @@ async function checkTokenValidity() {
     const token = localStorage.getItem('token');
     if (!token) return;
     
-    const response = await fetch('http://localhost:5000/api/user', {
+    const response = await fetch('/api/user', {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${token}`
@@ -1766,7 +1767,7 @@ async function fetchUsers() {
     const token = localStorage.getItem('token');
     if (!token) return;
     
-    const response = await fetch('http://localhost:5000/api/users', {
+    const response = await fetch('/api/users', {
       headers: getAuthHeaders()
     });
     const data = await response.json();
@@ -1798,7 +1799,7 @@ async function saveUser() {
     let response;
     if (editingUser.value) {
       // 编辑用户
-      response = await fetch(`http://localhost:5000/api/users/${editingUser.value.id}`, {
+      response = await fetch(`/api/users/${editingUser.value.id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -1808,7 +1809,7 @@ async function saveUser() {
       });
     } else {
       // 添加用户
-      response = await fetch('http://localhost:5000/api/users', {
+      response = await fetch('/api/users', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1867,7 +1868,7 @@ async function deleteUser(userId) {
     adminLoading.value = true;
     adminError.value = '';
     
-    const response = await fetch(`http://localhost:5000/api/users/${userId}`, {
+    const response = await fetch(`/api/users/${userId}`, {
       method: 'DELETE',
       headers: getAuthHeaders()
     });
@@ -1948,7 +1949,7 @@ async function uploadAndAnalyzeSpotcheck() {
       spotcheckLoading.value = false;
     }, 60000); // 60秒超时
     
-    const response = await fetch('http://localhost:5000/api/spotcheck', {
+    const response = await fetch('/api/spotcheck', {
       method: 'POST',
       headers: getAuthHeaders(),
       body: formData,
@@ -2031,7 +2032,7 @@ async function saveUserPermissions() {
     adminLoading.value = true;
     adminError.value = '';
     
-    const response = await fetch(`http://localhost:5000/api/users/${editingPermissionsUser.value.id}/permissions`, {
+    const response = await fetch(`/api/users/${editingPermissionsUser.value.id}/permissions`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
@@ -2069,7 +2070,7 @@ async function fetchTablesForManagement() {
     adminLoading.value = true;
     adminError.value = '';
     
-    const response = await fetch('http://localhost:5000/api/tables', {
+    const response = await fetch('/api/tables', {
       headers: getAuthHeaders()
     });
     const data = await response.json();
@@ -2142,7 +2143,7 @@ async function deleteTable(tableName) {
     adminLoading.value = true;
     adminError.value = '';
     
-    const response = await fetch(`http://localhost:5000/api/tables/${tableName}`, {
+    const response = await fetch(`/api/tables/${tableName}`, {
       method: 'DELETE',
       headers: getAuthHeaders()
     });
@@ -2197,7 +2198,7 @@ async function fetchCMSCategories() {
     cmsLoading.value = true;
     cmsError.value = '';
     
-    const response = await fetch('http://localhost:5000/api/categories');
+    const response = await fetch('/api/categories');
     const data = await response.json();
     
     if (data.categories) {
@@ -2224,7 +2225,7 @@ async function fetchCMSArticles(categoryId) {
     cmsLoading.value = true;
     cmsError.value = '';
     
-    const response = await fetch(`http://localhost:5000/api/articles/category/${categoryId}?include_drafts=true`);
+    const response = await fetch(`/api/articles/category/${categoryId}?include_drafts=true`);
     const data = await response.json();
     
     if (data.articles) {
@@ -2241,7 +2242,7 @@ async function fetchCMSArticles(categoryId) {
 // 获取所有CMS文章
 async function fetchAllCMSArticles() {
   try {
-    const response = await fetch('http://localhost:5000/api/articles?include_drafts=true');
+    const response = await fetch('/api/articles?include_drafts=true');
     const data = await response.json();
     
     if (data.articles) {
@@ -2286,7 +2287,7 @@ async function saveCategory() {
     let response;
     if (editingCategory.value) {
       // 编辑栏目
-      response = await fetch(`http://localhost:5000/api/categories/${editingCategory.value.id}`, {
+      response = await fetch(`/api/categories/${editingCategory.value.id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -2296,7 +2297,7 @@ async function saveCategory() {
       });
     } else {
       // 添加栏目
-      response = await fetch('http://localhost:5000/api/categories', {
+      response = await fetch('/api/categories', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -2338,7 +2339,7 @@ async function deleteCategory(categoryId) {
       return;
     }
     
-    const response = await fetch(`http://localhost:5000/api/categories/${categoryId}`, {
+    const response = await fetch(`/api/categories/${categoryId}`, {
       method: 'DELETE',
       headers: {
         'Authorization': `Bearer ${token}`
@@ -2410,7 +2411,7 @@ async function saveArticle() {
     let response;
     if (editingArticle.value) {
       // 编辑文章
-      response = await fetch(`http://localhost:5000/api/articles/${editingArticle.value.id}`, {
+      response = await fetch(`/api/articles/${editingArticle.value.id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -2420,7 +2421,7 @@ async function saveArticle() {
       });
     } else {
       // 添加文章
-      response = await fetch('http://localhost:5000/api/articles', {
+      response = await fetch('/api/articles', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -2463,7 +2464,7 @@ async function deleteArticle(articleId) {
       return;
     }
     
-    const response = await fetch(`http://localhost:5000/api/articles/${articleId}`, {
+    const response = await fetch(`/api/articles/${articleId}`, {
       method: 'DELETE',
       headers: {
         'Authorization': `Bearer ${token}`
@@ -2490,7 +2491,7 @@ async function editArticle(article) {
   try {
     cmsLoading.value = true;
     // 获取完整的文章详情，包括content字段
-    const response = await fetch(`http://localhost:5000/api/articles/${article.id}`);
+    const response = await fetch(`/api/articles/${article.id}`);
     const articleDetail = await response.json();
     
     if (articleDetail.error) {
@@ -2619,7 +2620,7 @@ async function fetchArticleDetail(articleId) {
     articleDetailLoading.value = true;
     articleDetailError.value = '';
     
-    const response = await fetch(`http://localhost:5000/api/articles/${articleId}`);
+    const response = await fetch(`/api/articles/${articleId}`);
     const data = await response.json();
     
     if (data.error) {
@@ -2664,7 +2665,7 @@ async function uploadCMSFile(event) {
     formData.append('file', file);
     
     const token = localStorage.getItem('token');
-    const response = await fetch('http://localhost:5000/api/upload/file', {
+    const response = await fetch('/api/upload/file', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${token}`
@@ -2708,7 +2709,7 @@ async function uploadImage(event) {
     formData.append('file', file);
     
     const token = localStorage.getItem('token');
-    const response = await fetch('http://localhost:5000/api/upload/image', {
+    const response = await fetch('/api/upload/image', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${token}`
@@ -2754,7 +2755,7 @@ async function executeNaturalLanguageQuery() {
     queryResult.value = null;
     generatedSQL.value = '';
     
-    const response = await fetch('http://localhost:5000/api/tools/natural-language-query', {
+    const response = await fetch('/api/tools/natural-language-query', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -2827,7 +2828,7 @@ async function processHuanweiFile() {
     const formData = new FormData();
     formData.append('file', huanweiFile.value);
     
-    const response = await fetch('http://localhost:5000/api/tools/huanwei-assignment', {
+    const response = await fetch('/api/tools/huanwei-assignment', {
       method: 'POST',
       headers: getAuthHeaders(),
       body: formData
@@ -2895,7 +2896,7 @@ async function processLocationFile() {
     locationMessage.value = '提取中...';
     locationError.value = '';
     
-    const response = await fetch('http://localhost:5000/api/tools/extract-location', {
+    const response = await fetch('/api/tools/extract-location', {
       method: 'POST',
       headers: getAuthHeaders(),
       body: formData
@@ -2982,7 +2983,7 @@ async function processCleaningFile() {
     formData.append('file', cleaningFile.value);
     formData.append('fields', JSON.stringify({ [selectedCleaningField.value]: 'problem_description' }));
     
-    const response = await fetch('http://localhost:5000/api/tools/data-cleaning', {
+    const response = await fetch('/api/tools/data-cleaning', {
       method: 'POST',
       headers: getAuthHeaders(),
       body: formData
@@ -3043,7 +3044,7 @@ async function fetchCleaningFields() {
     const formData = new FormData();
     formData.append('file', cleaningFile.value);
     
-    const response = await fetch('http://localhost:5000/api/tools/data-cleaning/fields', {
+    const response = await fetch('/api/tools/data-cleaning/fields', {
       method: 'POST',
       headers: getAuthHeaders(),
       body: formData
@@ -3116,7 +3117,7 @@ async function processDesensitizationFile() {
     formData.append('file', desensitizationFile.value);
     formData.append('fields', JSON.stringify({ [selectedDesensitizationField.value]: selectedDesensitizationType.value }));
     
-    const response = await fetch('http://localhost:5000/api/tools/data-cleaning', {
+    const response = await fetch('/api/tools/data-cleaning', {
       method: 'POST',
       headers: getAuthHeaders(),
       body: formData
@@ -3178,7 +3179,7 @@ async function fetchDesensitizationFields() {
     const formData = new FormData();
     formData.append('file', desensitizationFile.value);
     
-    const response = await fetch('http://localhost:5000/api/tools/data-cleaning/fields', {
+    const response = await fetch('/api/tools/data-cleaning/fields', {
       method: 'POST',
       headers: getAuthHeaders(),
       body: formData
@@ -3233,7 +3234,7 @@ async function callBaiLianAPI(query) {
       return;
     }
     
-    const response = await fetch('http://localhost:5000/api/chengguantong/ask', {
+    const response = await fetch('/api/chengguantong/ask', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -3387,8 +3388,25 @@ async function fetchHuiwentaiTasks() {
     }
   } catch (error) {
     console.error('读取tasks数据失败:', error);
-    huiwentaiError.value = `读取数据失败: ${error.message || '未知错误'}`;
-    huiwentaiTasks.value = [];
+    huiwentaiError.value = `读取数据失败: ${error.message || '未知错误'}\n\n提示：请检查CloudBase云环境配置，或使用示例数据`;
+    // 使用示例数据
+    huiwentaiTasks.value = [
+      {
+        taskId: 'TASK001',
+        description: '示例问题：街道堆放垃圾',
+        request: '请及时清理',
+        contact: '13800138000',
+        createdAt: new Date().toISOString()
+      },
+      {
+        taskId: 'TASK002',
+        description: '示例问题：路灯损坏',
+        request: '请维修路灯',
+        contact: '13900139000',
+        createdAt: new Date().toISOString()
+      }
+    ];
+    console.log('使用示例数据');
   } finally {
     huiwentaiLoading.value = false;
     console.log('数据读取操作完成');
@@ -3449,8 +3467,47 @@ async function fetchHuiwentaiDailyReports() {
     }
   } catch (error) {
     console.error('读取daily-reports数据失败:', error);
-    huiwentaiError.value = `读取数据失败: ${error.message || '未知错误'}`;
-    huiwentaiDailyReports.value = [];
+    huiwentaiError.value = `读取数据失败: ${error.message || '未知错误'}\n\n提示：请检查CloudBase云环境配置，或使用示例数据`;
+    // 使用示例数据
+    huiwentaiDailyReports.value = [
+      {
+        reportDate: '2026-02-20',
+        dutyStaff: '张三',
+        shiftName: '白班',
+        accepted: 15,
+        collectorAccepted: 10,
+        completed: 12,
+        keyAreaPatrol: 3,
+        system12345: 5,
+        minhuWoYing: 2,
+        videoMonitor: 1,
+        smartAnalysis: 1,
+        citizenReport: 3,
+        phoneTotal: 20,
+        phoneCompleted: 18,
+        phone12345: 12,
+        citizenHotline: 8
+      },
+      {
+        reportDate: '2026-02-19',
+        dutyStaff: '李四',
+        shiftName: '夜班',
+        accepted: 8,
+        collectorAccepted: 5,
+        completed: 7,
+        keyAreaPatrol: 2,
+        system12345: 3,
+        minhuWoYing: 1,
+        videoMonitor: 0,
+        smartAnalysis: 0,
+        citizenReport: 2,
+        phoneTotal: 10,
+        phoneCompleted: 9,
+        phone12345: 6,
+        citizenHotline: 4
+      }
+    ];
+    console.log('使用示例日报数据');
   } finally {
     huiwentaiLoading.value = false;
     console.log('daily-reports数据读取操作完成');
@@ -3545,7 +3602,7 @@ watch(
 <template>
   <div class="system-container">
     <!-- 顶部标题栏 -->
-    <div class="header">
+    <div class="header" :style="{ backgroundImage: `url(${headerBg})` }">
       <h1>运城市智慧城市管理平台-一站通</h1>
       <div v-if="isLoggedIn" class="user-info">
         <span class="username">{{ userInfo?.username }} ({{ userInfo?.role }})</span>
@@ -3837,17 +3894,24 @@ watch(
       <!-- 考核计分模块 -->
       <div v-if="activeModule === 'assessment' && (!userInfo || userInfo.role === 'admin' || (userInfo.permissions && userInfo.permissions.assessment))" class="tab-content">
         <h2 class="section-title">考核计分</h2>
-        <div class="assessment-section" style="max-width: 800px; margin: 0 auto;">
-          <!-- 添加说明文本 -->
-          <div style="margin-bottom: 20px; padding: 10px; background-color: #fff3cd; border: 1px solid #ffeeba; border-radius: 4px; color: #856404;">
-            <p style="margin: 0;"><strong>说明：</strong>超时案件计算=结案时间&gt;捆绑处置截止时间判定的，与实际超时计算有出入</p>
+        <div class="assessment-section" style="max-width: 900px; margin: 0 auto;">
+          <!-- 说明信息 -->
+          <div style="margin-bottom: 25px; padding: 16px; background: linear-gradient(135deg, #fff3cd 0%, #ffe082 5%); border-left: 4px solid #ffc107; border-radius: 6px; color: #856404;">
+            <div style="display: flex; align-items: flex-start; gap: 12px;">
+              <span style="font-size: 20px; flex-shrink: 0;">⚠️</span>
+              <div>
+                <div style="font-weight: 600; margin-bottom: 6px;">计算说明</div>
+                <p style="margin: 0; line-height: 1.5; font-size: 14px;">超时案件计算：结案时间 > 捆绑处置截止时间判定的，与实际超时计算有出入</p>
+              </div>
+            </div>
           </div>
           
-          <div style="margin-bottom: 20px;">
-            <div style="display: flex; gap: 15px; margin-bottom: 15px;">
-              <div style="flex: 1;">
-                <label for="department-select" style="display: block; margin-bottom: 5px; font-weight: bold;">选择部门：</label>
-                <select id="department-select" v-model="selectedDepartment" :disabled="loading" style="width: 100%; padding: 8px; /* 原10px */ border: 1px solid #ddd; border-radius: 4px; font-size: 14px; box-sizing: border-box; /* 新增 */">
+          <!-- 配置区域 -->
+          <div style="padding: 25px; background: white; border-radius: 8px; margin-bottom: 25px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);">
+            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; margin-bottom: 20px;">
+              <div>
+                <label for="department-select" style="display: block; font-weight: 600; margin-bottom: 10px; color: #333;">选择部门：</label>
+                <select id="department-select" v-model="selectedDepartment" :disabled="loading" style="width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; box-sizing: border-box; transition: all 0.3s ease; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);">
                   <option value="">-- 请选择部门 --</option>
                   <option value="城市综合行政执法队">城市综合行政执法队</option>
                   <option value="市容环卫中心">市容环卫中心</option>
@@ -3855,9 +3919,9 @@ watch(
                   <option value="园林绿化服务中心（公园广场）">园林绿化服务中心（公园广场）</option>
                 </select>
               </div>
-              <div style="flex: 1;">
-                <label for="table-select-assessment" style="display: block; margin-bottom: 5px; font-weight: bold; /* text-align: center; 已删除 */">选择数据表：</label>
-                <select id="table-select-assessment" v-model="selectedAssessmentTable" :disabled="loading" style="width: 100%; padding: 8px; /* 原10px */ border: 1px solid #ddd; border-radius: 4px; font-size: 14px; box-sizing: border-box; /* 新增 */">
+              <div>
+                <label for="table-select-assessment" style="display: block; font-weight: 600; margin-bottom: 10px; color: #333;">选择数据表：</label>
+                <select id="table-select-assessment" v-model="selectedAssessmentTable" :disabled="loading" style="width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; box-sizing: border-box; transition: all 0.3s ease; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);">
                   <option value="">-- 请选择 --</option>
                   <option v-for="table in tables" :key="table" :value="table">
                     {{ table }}
@@ -3865,71 +3929,101 @@ watch(
                 </select>
               </div>
             </div>
-            <button class="start-btn" @click="startAssessment" :disabled="loading" style="padding: 8px 16px; background-color: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">
-              {{ loading ? '计算中...' : '开始计算' }}
+            
+            <!-- 操作按钮 -->
+            <button 
+              class="start-btn" 
+              @click="startAssessment" 
+              :disabled="loading || !selectedDepartment || !selectedAssessmentTable"
+              style="width: 100%; padding: 12px 24px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: 600; transition: all 0.3s ease; disabled: { opacity: 0.6, cursor: 'not-allowed' };"
+              @mouseenter="$event.target.style.transform='translateY(-2px)'; $event.target.style.boxShadow='0 4px 12px rgba(102, 126, 234, 0.4)'"
+              @mouseleave="$event.target.style.transform='translateY(0)'; $event.target.style.boxShadow='none'"
+            >
+              <span v-if="loading">⏳ 计算中...</span>
+              <span v-else>📊 开始计算</span>
             </button>
-            <div v-if="assessmentMessage" class="message" style="margin-top: 10px; padding: 10px; background-color: #f0f0f0; border-radius: 4px;">{{ assessmentMessage }}</div>
+            
+            <!-- 消息提示 -->
+            <div v-if="assessmentMessage" style="margin-top: 15px; padding: 12px; background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; border-radius: 4px;">
+              ✓ {{ assessmentMessage }}
+            </div>
           </div>
           
           <!-- 考核结果显示 -->
-          <div v-if="assessmentResult" class="assessment-result" style="margin-top: 30px; padding: 20px; border: 1px solid #ddd; border-radius: 4px; background-color: #f9f9f9;">
-            <h3 style="margin-top: 0; padding-bottom: 10px; border-bottom: 1px solid #ddd;">考核结果</h3>
-            <div class="result-summary" style="margin-bottom: 20px;">
-              <p style="margin: 5px 0;">总案件数：{{ assessmentResult.total_cases }}</p>
-              <p style="margin: 5px 0;">平均得分：{{ assessmentResult.score }}分</p>
+          <div v-if="assessmentResult" style="background: white; border-radius: 8px; padding: 25px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);">
+            <h3 style="margin: 0 0 20px 0; padding-bottom: 15px; border-bottom: 2px solid #667eea; font-size: 20px; color: #333;">📋 考核结果</h3>
+            
+            <!-- 结果摘要 -->
+            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; margin-bottom: 30px;">
+              <div style="padding: 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 8px; color: white;">
+                <div style="font-size: 14px; opacity: 0.9; margin-bottom: 8px;">总案件数</div>
+                <div style="font-size: 32px; font-weight: bold;">{{ assessmentResult.total_cases }}</div>
+              </div>
+              <div style="padding: 20px; background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); border-radius: 8px; color: white;">
+                <div style="font-size: 14px; opacity: 0.9; margin-bottom: 8px;">平均得分</div>
+                <div style="font-size: 32px; font-weight: bold;">{{ assessmentResult.score }} 分</div>
+              </div>
             </div>
-            <div v-if="assessmentResult.team_results" class="team-ranking">
-              <h4 style="margin-top: 20px; margin-bottom: 10px;">片区排名</h4>
-              <table class="ranking-table" style="width: 100%; border-collapse: collapse; margin-top: 10px;">
-                <thead>
-                  <tr style="background-color: #f2f2f2;">
-                    <th style="padding: 8px; text-align: left; border: 1px solid #ddd;">排名</th>
-                    <th style="padding: 8px; text-align: left; border: 1px solid #ddd;">片区名称</th>
-                    <th style="padding: 8px; text-align: left; border: 1px solid #ddd;">案件总数</th>
-                    <th style="padding: 8px; text-align: left; border: 1px solid #ddd;">按期结案数</th>
-                    <th style="padding: 8px; text-align: left; border: 1px solid #ddd;">超期结案数</th>
-                    <th style="padding: 8px; text-align: left; border: 1px solid #ddd;">延期次数</th>
-                    <th style="padding: 8px; text-align: left; border: 1px solid #ddd;">返工次数</th>
-                    <th style="padding: 8px; text-align: left; border: 1px solid #ddd;">考核得分</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-for="team in assessmentResult.team_results" :key="team.department" style="background-color: white;">
-                    <td style="padding: 8px; border: 1px solid #ddd;">{{ team.rank }}</td>
-                    <td style="padding: 8px; border: 1px solid #ddd;">{{ team.department }}</td>
-                    <td style="padding: 8px; border: 1px solid #ddd;">{{ team.total_cases }}</td>
-                    <td style="padding: 8px; border: 1px solid #ddd;">{{ team.on_time_count }}</td>
-                    <td style="padding: 8px; border: 1px solid #ddd;">{{ team.overdue_count }}</td>
-                    <td style="padding: 8px; border: 1px solid #ddd;">{{ team.delay_count }}</td>
-                    <td style="padding: 8px; border: 1px solid #ddd;">{{ team.rework_count }}</td>
-                    <td style="padding: 8px; border: 1px solid #ddd;">{{ team.score }}</td>
-                  </tr>
-                </tbody>
-              </table>
+            
+            <!-- 排名表格 -->
+            <div v-if="assessmentResult.team_results">
+              <h4 style="margin: 0 0 15px 0; color: #333; font-size: 16px;">🏆 片区排名</h4>
+              <div style="overflow-x: auto;">
+                <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+                  <thead>
+                    <tr style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
+                      <th style="padding: 12px; text-align: center; font-weight: 600;">排名</th>
+                      <th style="padding: 12px; text-align: left; font-weight: 600;">片区名称</th>
+                      <th style="padding: 12px; text-align: center; font-weight: 600;">案件总数</th>
+                      <th style="padding: 12px; text-align: center; font-weight: 600;">按期结案</th>
+                      <th style="padding: 12px; text-align: center; font-weight: 600;">超期结案</th>
+                      <th style="padding: 12px; text-align: center; font-weight: 600;">延期次数</th>
+                      <th style="padding: 12px; text-align: center; font-weight: 600;">返工次数</th>
+                      <th style="padding: 12px; text-align: center; font-weight: 600;">得分</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="(team, index) in assessmentResult.team_results" :key="team.department" :style="{ backgroundColor: index % 2 === 0 ? '#f8f9fa' : '#ffffff', transition: 'all 0.3s ease' }" @mouseenter="$event.currentTarget.style.backgroundColor='#e8eef9'" @mouseleave="$event.currentTarget.style.backgroundColor=(index % 2 === 0 ? '#f8f9fa' : '#ffffff')">
+                      <td style="padding: 12px; text-align: center; font-weight: 600; color: #667eea;">
+                        <span style="display: inline-block; width: 32px; height: 32px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 50%; line-height: 32px; font-size: 14px;">{{ team.rank }}</span>
+                      </td>
+                      <td style="padding: 12px; text-align: left; color: #333;">{{ team.department }}</td>
+                      <td style="padding: 12px; text-align: center; color: #555;">{{ team.total_cases }}</td>
+                      <td style="padding: 12px; text-align: center; color: #2ecc71; font-weight: 600;">{{ team.on_time_count }}</td>
+                      <td style="padding: 12px; text-align: center; color: #e74c3c; font-weight: 600;">{{ team.overdue_count }}</td>
+                      <td style="padding: 12px; text-align: center; color: #f39c12;">{{ team.delay_count }}</td>
+                      <td style="padding: 12px; text-align: center; color: #9b59b6;">{{ team.rework_count }}</td>
+                      <td style="padding: 12px; text-align: center; font-weight: bold; font-size: 16px;">
+                        <span style="display: inline-block; padding: 4px 12px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 20px;">{{ team.score }}</span>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
             </div>
-
           </div>
         </div>
       </div>
       
       <!-- 数据分析模块 -->
       <div v-if="activeModule === 'analysis' && (!userInfo || userInfo.role === 'admin' || (userInfo.permissions && userInfo.permissions.data_analysis))" class="tab-content">
-        <h2 class="section-title">分析配置</h2>
-        <div class="config-section" style="max-width: 800px; margin: 0 auto;">
-          <div style="margin-bottom: 20px;">
-            <div style="display: flex; gap: 15px; margin-bottom: 15px;">
-              <div style="flex: 1;">
-                <label for="table-select" style="display: block; margin-bottom: 5px; font-weight: bold;">选择表：</label>
-                <select id="table-select" v-model="selectedTable" :disabled="loading" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+        <h2 class="section-title">📊 数据分析</h2>
+        <div class="config-section" style="max-width: 900px; margin: 0 auto;">
+          <!-- 分析配置区域 -->
+          <div style="padding: 25px; background: white; border-radius: 8px; margin-bottom: 25px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);">
+            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; margin-bottom: 20px;">
+              <div>
+                <label for="table-select" style="display: block; font-weight: 600; margin-bottom: 10px; color: #333;">选择数据表：</label>
+                <select id="table-select" v-model="selectedTable" :disabled="loading" style="width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; box-sizing: border-box; transition: all 0.3s ease; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);">
                   <option value="">-- 请选择 --</option>
                   <option v-for="table in tables" :key="table" :value="table">
                     {{ table }}
                   </option>
                 </select>
               </div>
-              <div style="flex: 1;">
-                <label for="analysis-select" style="display: block; margin-bottom: 5px; font-weight: bold;">分析类型：</label>
-                <select id="analysis-select" v-model="selectedAnalysisType" :disabled="loading" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+              <div>
+                <label for="analysis-select" style="display: block; font-weight: 600; margin-bottom: 10px; color: #333;">分析类型：</label>
+                <select id="analysis-select" v-model="selectedAnalysisType" :disabled="loading" style="width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; box-sizing: border-box; transition: all 0.3s ease; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);">
                   <option value="">-- 请选择 --</option>
                   <option v-for="type in analysisTypes" :key="type.value" :value="type.value">
                     {{ type.label }}
@@ -3938,115 +4032,140 @@ watch(
               </div>
             </div>
             
-            <button class="analyze-btn" @click="startAnalysis" :disabled="loading || !selectedTable || !selectedAnalysisType" style="padding: 10px 20px; background-color: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px;">
-              {{ loading ? '分析中...' : '开始分析' }}
+            <!-- 操作按钮 -->
+            <button 
+              class="analyze-btn" 
+              @click="startAnalysis" 
+              :disabled="loading || !selectedTable || !selectedAnalysisType"
+              style="width: 100%; padding: 12px 24px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: 600; transition: all 0.3s ease; disabled: { opacity: 0.6, cursor: 'not-allowed' };"
+              @mouseenter="$event.target.style.transform='translateY(-2px)'; $event.target.style.boxShadow='0 4px 12px rgba(102, 126, 234, 0.4)'"
+              @mouseleave="$event.target.style.transform='translateY(0)'; $event.target.style.boxShadow='none'"
+            >
+              <span v-if="loading">⏳ 分析中...</span>
+              <span v-else>🔍 开始分析</span>
             </button>
-            <div v-if="analysisMessage" class="message" style="margin-top: 10px; padding: 10px; background-color: #f0f0f0; border-radius: 4px;">{{ analysisMessage }}</div>
+            
+            <!-- 消息提示 -->
+            <div v-if="analysisMessage" style="margin-top: 15px; padding: 12px; background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; border-radius: 4px;">
+              ✓ {{ analysisMessage }}
+            </div>
             
             <!-- 分析进度显示 -->
-            <div v-if="loading" class="analysis-progress" style="margin-top: 15px;">
-              <div class="progress-step" v-for="(step, index) in analysisSteps" :key="index" :class="{ active: currentStep >= index }" style="display: flex; align-items: center; margin-bottom: 10px;">
-                <div class="step-indicator" style="margin-right: 10px;">{{ step.icon }}</div>
-                <div class="step-text">{{ step.text }}</div>
+            <div v-if="loading" style="margin-top: 25px; padding: 20px; background: linear-gradient(135deg, #f5f7ff 0%, #f8f6ff 100%); border-radius: 6px; border-left: 4px solid #667eea;">
+              <div style="font-weight: 600; color: #667eea; margin-bottom: 15px; font-size: 14px;">⏳ 分析进度</div>
+              <div v-for="(step, index) in analysisSteps" :key="index" style="display: flex; align-items: center; margin-bottom: 10px; padding: 8px; border-radius: 4px; background: rgba(255, 255, 255, 0.5); transition: all 0.3s ease;" :class="{ active: currentStep >= index }">
+                <div style="display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 50%; margin-right: 12px; font-size: 16px; flex-shrink: 0;">{{ step.icon }}</div>
+                <div style="color: #333; font-size: 14px; font-weight: 500;">{{ step.text }}</div>
               </div>
             </div>
           </div>
         </div>
         
         <!-- 分析结果 -->
-        <div v-if="analysisResult" class="result-section">
-          <h3 class="result-title">{{ analysisResult.table_name }} - {{ getAnalysisTypeName(analysisResult.analysis_type) }}</h3>
-          <p class="data-summary">{{ analysisResult.data_summary }}</p>
+        <div v-if="analysisResult" style="background: white; border-radius: 8px; padding: 25px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);">
+          <!-- 结果标题 -->
+          <div style="margin-bottom: 25px; padding-bottom: 15px; border-bottom: 2px solid #667eea;">
+            <h3 style="margin: 0; font-size: 20px; color: #333;">📈 {{ analysisResult.table_name }} - {{ getAnalysisTypeName(analysisResult.analysis_type) }}</h3>
+            <p style="margin: 12px 0 0 0; color: #666; font-size: 14px; line-height: 1.6;">{{ analysisResult.data_summary }}</p>
+          </div>
+          
           <div class="result-details">
             <!-- 图表展示 -->
-            <div v-if="analysisResult.chart_data" class="charts-section">
-              <h4 class="details-subtitle">数据可视化：</h4>
-              <div class="chart-container">
+            <div v-if="analysisResult.chart_data" class="charts-section" style="margin-bottom: 30px;">
+              <h4 style="margin: 0 0 20px 0; color: #667eea; font-size: 16px; font-weight: 600; display: flex; align-items: center; gap: 8px;">
+                <span>📊</span>
+                <span>数据可视化</span>
+              </h4>
+              <div class="chart-container" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 20px;">
                 <!-- 时间分析图表 -->
                 <template v-if="analysisResult.analysis_type === 'time_analysis'">
-                  <div class="chart-item">
-                    <h5>日案件量趋势</h5>
-                    <div ref="dailyChart" class="chart"></div>
+                  <div class="chart-item" style="padding: 20px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e8e8e8;">
+                    <h5 style="margin: 0 0 15px 0; color: #333; font-size: 14px; font-weight: 600;">📅 日案件量趋势</h5>
+                    <div ref="dailyChart" class="chart" style="height: 300px;"></div>
                   </div>
-                  <div class="chart-item">
-                    <h5>小时级高峰时段</h5>
-                    <div ref="hourlyChart" class="chart"></div>
+                  <div class="chart-item" style="padding: 20px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e8e8e8;">
+                    <h5 style="margin: 0 0 15px 0; color: #333; font-size: 14px; font-weight: 600;">⏰ 小时级高峰时段</h5>
+                    <div ref="hourlyChart" class="chart" style="height: 300px;"></div>
                   </div>
                 </template>
                 <!-- 空间分析图表 -->
                 <template v-if="analysisResult.analysis_type === 'space_analysis'">
-                  <div class="chart-item" v-if="analysisResult.chart_data?.street">
-                    <h5>各街道案件密度</h5>
-                    <div ref="spaceChart" class="chart"></div>
+                  <div class="chart-item" v-if="analysisResult.chart_data?.street" style="padding: 20px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e8e8e8;">
+                    <h5 style="margin: 0 0 15px 0; color: #333; font-size: 14px; font-weight: 600;">🏘️ 各街道案件密度</h5>
+                    <div ref="spaceChart" class="chart" style="height: 300px;"></div>
                   </div>
-                  <div class="chart-item" v-if="analysisResult.chart_data?.community">
-                    <h5>各社区案件密度</h5>
-                    <div ref="spaceChart2" class="chart"></div>
+                  <div class="chart-item" v-if="analysisResult.chart_data?.community" style="padding: 20px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e8e8e8;">
+                    <h5 style="margin: 0 0 15px 0; color: #333; font-size: 14px; font-weight: 600;">🏢 各社区案件密度</h5>
+                    <div ref="spaceChart2" class="chart" style="height: 300px;"></div>
                   </div>
-                  <div class="chart-item" v-if="analysisResult.chart_data?.area">
-                    <h5>各片区案件密度</h5>
-                    <div ref="spaceChart3" class="chart"></div>
+                  <div class="chart-item" v-if="analysisResult.chart_data?.area" style="padding: 20px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e8e8e8;">
+                    <h5 style="margin: 0 0 15px 0; color: #333; font-size: 14px; font-weight: 600;">📍 各片区案件密度</h5>
+                    <div ref="spaceChart3" class="chart" style="height: 300px;"></div>
                   </div>
                 </template>
                 <!-- 来源分析图表 -->
                 <template v-if="analysisResult.analysis_type === 'source_analysis'">
-                  <div class="chart-item" v-if="analysisResult.chart_data?.source">
-                    <h5>案件来源分布</h5>
-                    <div ref="sourceChart" class="chart"></div>
+                  <div class="chart-item" v-if="analysisResult.chart_data?.source" style="padding: 20px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e8e8e8; grid-column: 1 / -1;">
+                    <h5 style="margin: 0 0 15px 0; color: #333; font-size: 14px; font-weight: 600;">🔗 案件来源分布</h5>
+                    <div ref="sourceChart" class="chart" style="height: 300px;"></div>
                   </div>
                 </template>
                 <!-- 案件类型分析图表 -->
                 <template v-if="analysisResult.analysis_type === 'type_analysis'">
-                  <div class="chart-item" v-if="analysisResult.chart_data?.type">
-                    <h5>案件类型分布</h5>
-                    <div ref="sourceChart" class="chart"></div>
+                  <div class="chart-item" v-if="analysisResult.chart_data?.type" style="padding: 20px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e8e8e8; grid-column: 1 / -1;">
+                    <h5 style="margin: 0 0 15px 0; color: #333; font-size: 14px; font-weight: 600;">📋 案件类型分布</h5>
+                    <div ref="sourceChart" class="chart" style="height: 300px;"></div>
                   </div>
                 </template>
                 <!-- 重复案件分析图表 -->
                 <template v-if="analysisResult.analysis_type === 'duplicate_analysis'">
-                  <div class="chart-item" v-if="analysisResult.chart_data?.problem_duplicates">
-                    <h5>问题描述重复TOP10</h5>
-                    <div ref="dailyChart" class="chart"></div>
+                  <div class="chart-item" v-if="analysisResult.chart_data?.problem_duplicates" style="padding: 20px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e8e8e8;">
+                    <h5 style="margin: 0 0 15px 0; color: #333; font-size: 14px; font-weight: 600;">❓ 问题描述重复TOP10</h5>
+                    <div ref="dailyChart" class="chart" style="height: 300px;"></div>
                   </div>
-                  <div class="chart-item" v-if="analysisResult.chart_data?.address_duplicates">
-                    <h5>地址描述重复TOP10</h5>
-                    <div ref="sourceChart" class="chart"></div>
+                  <div class="chart-item" v-if="analysisResult.chart_data?.address_duplicates" style="padding: 20px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e8e8e8;">
+                    <h5 style="margin: 0 0 15px 0; color: #333; font-size: 14px; font-weight: 600;">📍 地址描述重复TOP10</h5>
+                    <div ref="sourceChart" class="chart" style="height: 300px;"></div>
                   </div>
-                  <div class="chart-item" v-if="analysisResult.chart_data?.address_type_distribution">
-                    <h5>地址描述类型占比</h5>
-                    <div ref="spaceChart" class="chart"></div>
+                  <div class="chart-item" v-if="analysisResult.chart_data?.address_type_distribution" style="padding: 20px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e8e8e8;">
+                    <h5 style="margin: 0 0 15px 0; color: #333; font-size: 14px; font-weight: 600;">🏷️ 地址描述类型占比</h5>
+                    <div ref="spaceChart" class="chart" style="height: 300px;"></div>
                   </div>
-                  <div class="chart-item" v-if="analysisResult.chart_data?.combined_duplicates">
-                    <h5>组合重复TOP10</h5>
-                    <div ref="spaceChart2" class="chart"></div>
+                  <div class="chart-item" v-if="analysisResult.chart_data?.combined_duplicates" style="padding: 20px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e8e8e8;">
+                    <h5 style="margin: 0 0 15px 0; color: #333; font-size: 14px; font-weight: 600;">🔀 组合重复TOP10</h5>
+                    <div ref="spaceChart2" class="chart" style="height: 300px;"></div>
                   </div>
-                  <div class="chart-item" v-if="analysisResult.chart_data?.violation_type_distribution">
-                    <h5>重复案件违规类型占比</h5>
-                    <div ref="spaceChart3" class="chart"></div>
+                  <div class="chart-item" v-if="analysisResult.chart_data?.violation_type_distribution" style="padding: 20px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e8e8e8;">
+                    <h5 style="margin: 0 0 15px 0; color: #333; font-size: 14px; font-weight: 600;">⚠️ 重复案件违规类型占比</h5>
+                    <div ref="spaceChart3" class="chart" style="height: 300px;"></div>
                   </div>
                 </template>
                 
                 <!-- 对比上月分析图表 -->
                 <template v-if="analysisResult.analysis_type === 'monthly_comparison'">
-                  <div class="chart-item" v-if="analysisResult.chart_data?.monthly_comparison">
-                    <h5>上月vs本月案件量对比</h5>
-                    <div ref="dailyChart" class="chart"></div>
+                  <div class="chart-item" v-if="analysisResult.chart_data?.monthly_comparison" style="padding: 20px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e8e8e8; grid-column: 1 / -1;">
+                    <h5 style="margin: 0 0 15px 0; color: #333; font-size: 14px; font-weight: 600;">📊 上月vs本月案件量对比</h5>
+                    <div ref="dailyChart" class="chart" style="height: 300px;"></div>
                   </div>
-                  <div class="chart-item" v-if="analysisResult.chart_data?.case_size_comparison">
-                    <h5>案件大小类别变化</h5>
-                    <div ref="sourceChart" class="chart"></div>
+                  <div class="chart-item" v-if="analysisResult.chart_data?.case_size_comparison" style="padding: 20px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e8e8e8;">
+                    <h5 style="margin: 0 0 15px 0; color: #333; font-size: 14px; font-weight: 600;">📈 案件大小类别变化</h5>
+                    <div ref="sourceChart" class="chart" style="height: 300px;"></div>
                   </div>
-                  <div class="chart-item" v-if="analysisResult.chart_data?.problem_trend">
-                    <h5>问题趋势变化</h5>
-                    <div ref="spaceChart" class="chart"></div>
+                  <div class="chart-item" v-if="analysisResult.chart_data?.problem_trend" style="padding: 20px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e8e8e8;">
+                    <h5 style="margin: 0 0 15px 0; color: #333; font-size: 14px; font-weight: 600;">📉 问题趋势变化</h5>
+                    <div ref="spaceChart" class="chart" style="height: 300px;"></div>
                   </div>
                 </template>
               </div>
             </div>
-            <!-- 分析结果 -->
-            <div v-if="analysisResult.analysis" class="analysis-content">
-              <h4 class="details-subtitle">智能分析结果：</h4>
-              <div class="analysis-text" v-html="analysisResult.analysis.replace(/\n/g, '<br>')"></div>
+            
+            <!-- 智能分析结果 -->
+            <div v-if="analysisResult.analysis" style="margin-top: 30px; padding: 20px; background: linear-gradient(135deg, #f5f7ff 0%, #f8f6ff 100%); border-radius: 8px; border-left: 4px solid #667eea;">
+              <h4 style="margin: 0 0 15px 0; color: #667eea; font-size: 16px; font-weight: 600; display: flex; align-items: center; gap: 8px;">
+                <span>🤖</span>
+                <span>AI智能分析</span>
+              </h4>
+              <div style="line-height: 1.8; color: #333; font-size: 15px;" v-html="analysisResult.analysis.replace(/\n/g, '<br>')"></div>
             </div>
           </div>
         </div>
@@ -4055,67 +4174,90 @@ watch(
       <!-- 案件抽查模块 -->
       <div v-if="activeModule === 'spotcheck' && (!userInfo || userInfo.role === 'admin' || (userInfo.permissions && userInfo.permissions.spotcheck))" class="tab-content">
         <h2 class="section-title">案件抽查</h2>
-        <div class="spotcheck-section">
-          <!-- 第一行：提示文字 -->
-          <div class="tip-section">
-            <p>该模块允许上传文件（docx或者xlsx），并发送给大模型进行分析，然后返回结果。</p>
+        <div class="spotcheck-section" style="max-width: 900px; margin: 0 auto;">
+          <!-- 提示信息 -->
+          <div style="margin-bottom: 25px; padding: 16px; background: linear-gradient(135deg, #e3f2fd 0%, #f3e5f5 100%); border-left: 4px solid #667eea; border-radius: 6px; color: #555;">
+            <div style="display: flex; align-items: flex-start; gap: 12px;">
+              <span style="font-size: 20px; flex-shrink: 0;">ℹ️</span>
+              <div>
+                <div style="font-weight: 600; color: #667eea; margin-bottom: 6px;">文件上传说明</div>
+                <p style="margin: 0; line-height: 1.5;">支持上传 DOCX 或 XLSX 格式的文件，系统将使用大模型进行智能分析，并返回详细的案件质量评估结果。</p>
+              </div>
+            </div>
           </div>
           
-          <!-- 第二行：文件选择和按钮 -->
-          <div class="upload-section">
-            <div class="form-group">
+          <!-- 文件上传区域 -->
+          <div style="padding: 25px; background: white; border: 2px dashed #667eea; border-radius: 8px; margin-bottom: 25px;">
+            <div class="form-group" style="margin-bottom: 20px;">
+              <label for="spotcheck-file-input" style="display: block; font-weight: 600; margin-bottom: 12px; color: #333;">选择要分析的文件：</label>
               <input 
                 type="file" 
                 id="spotcheck-file-input"
-                accept=".docx,.xlsx" 
+                accept=".docx,.xlsx"
                 @change="handleSpotcheckFileSelect"
+                style="padding: 10px; border: 1px solid #ddd; border-radius: 6px; width: 100%; box-sizing: border-box; cursor: pointer;"
               >
-              <div v-if="spotcheckFile" class="file-info">
-                已选择：{{ spotcheckFile.name }}
+              <div v-if="spotcheckFile" style="margin-top: 12px; padding: 10px 12px; background-color: #e8f5e9; color: #2e7d32; border-radius: 4px; border-left: 3px solid #4caf50;">
+                ✓ 已选择：{{ spotcheckFile.name }}
               </div>
             </div>
             
-            <div class="button-group">
+            <!-- 操作按钮 -->
+            <div style="display: flex; gap: 12px;">
               <button 
                 @click="uploadAndAnalyzeSpotcheck"
                 :disabled="!spotcheckFile || spotcheckLoading"
-                class="btn-primary"
+                style="flex: 1; padding: 12px 24px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 16px; transition: all 0.3s ease; disabled: { opacity: 0.6, cursor: 'not-allowed' };"
+                @mouseenter="$event.target.style.transform='translateY(-2px)'; $event.target.style.boxShadow='0 4px 12px rgba(102, 126, 234, 0.4)'"
+                @mouseleave="$event.target.style.transform='translateY(0)'; $event.target.style.boxShadow='none'"
               >
-                <span v-if="spotcheckLoading">分析中...</span>
-                <span v-else>上传并分析</span>
+                <span v-if="spotcheckLoading">⏳ 分析中...</span>
+                <span v-else>📤 上传并分析</span>
               </button>
               <button 
                 @click="clearSpotcheck"
                 :disabled="spotcheckLoading"
-                class="btn-secondary"
+                style="padding: 12px 24px; background-color: #95a5a6; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; transition: all 0.3s ease;"
+                @mouseenter="$event.target.style.backgroundColor='#7f8c8d'"
+                @mouseleave="$event.target.style.backgroundColor='#95a5a6'"
               >
-                清除
+                🔄 清除
               </button>
             </div>
             
-            <div v-if="spotcheckMessage" class="message success">
-              {{ spotcheckMessage }}
+            <!-- 消息提示 -->
+            <div v-if="spotcheckMessage" style="margin-top: 15px; padding: 12px; background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; border-radius: 4px;">
+              ✓ {{ spotcheckMessage }}
             </div>
-            <div v-if="spotcheckError" class="message error">
-              {{ spotcheckError }}
+            <div v-if="spotcheckError" style="margin-top: 15px; padding: 12px; background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; border-radius: 4px;">
+              ✗ {{ spotcheckError }}
             </div>
           </div>
           
-          <!-- 第三行：分析结果（去除评分结果） -->
-          <div v-if="spotcheckResult" class="result-section">
-            <div class="result-card">
-              <!-- 文件内容显示 -->
-              <div v-if="spotcheckResult.file_content" class="file-content">
-                <h5>读取的文件内容：</h5>
-                <div class="content-display">
-                  <p v-for="(line, index) in spotcheckResult.file_content.split('\n')" :key="index" v-if="line && line.trim()">
-                    {{ line }}
-                  </p>
-                </div>
+          <!-- 分析结果 -->
+          <div v-if="spotcheckResult" style="background: white; border-radius: 8px; padding: 25px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);">
+            <h3 style="margin-top: 0; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 2px solid #667eea; font-size: 20px; color: #333;">分析结果</h3>
+            
+            <!-- 文件内容 -->
+            <div v-if="spotcheckResult.file_content" style="margin-bottom: 25px;">
+              <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 15px;">
+                <span style="font-size: 18px;">📄</span>
+                <h4 style="margin: 0; color: #667eea; font-size: 16px;">读取的文件内容</h4>
               </div>
-              
-              <div v-if="spotcheckResult.analysis" class="analysis-content">
-                <h5>分析内容：</h5>
+              <div style="background-color: #f8f9fa; padding: 15px; border-radius: 6px; border-left: 3px solid #667eea; max-height: 300px; overflow-y: auto;">
+                <p v-for="(line, index) in spotcheckResult.file_content.split('\n')" :key="index" v-if="line && line.trim()" style="margin: 8px 0; line-height: 1.5; color: #555; font-size: 14px;">
+                  {{ line }}
+                </p>
+              </div>
+            </div>
+            
+            <!-- 分析内容 -->
+            <div v-if="spotcheckResult.analysis">
+              <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 15px;">
+                <span style="font-size: 18px;">🔍</span>
+                <h4 style="margin: 0; color: #667eea; font-size: 16px;">AI智能分析</h4>
+              </div>
+              <div style="background-color: #f8f9fa; padding: 20px; border-radius: 6px; border-left: 3px solid #764ba2; line-height: 1.8; color: #333;">
                 <div v-html="spotcheckResult.analysis"></div>
               </div>
             </div>
@@ -4526,8 +4668,9 @@ watch(
                  min-height: 90px; 
                  /* 移除max-width限制，让文本框占满容器 */
                  line-height: 1.6;
-                 box-sizing: border-box;"  <!-- 确保padding不超出宽度 -->
+                 box-sizing: border-box;"
         ></textarea>
+              <!-- 确保padding不超出宽度 -->
               
               <div class="button-group" style="display: flex; justify-content: center; gap: 10px; margin-top: 10px;">
                 <button 
@@ -5085,43 +5228,69 @@ watch(
     </div>
     
     <!-- 文章详情弹窗 -->
-    <div v-if="showArticleDetail" class="article-detail-modal" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background-color: rgba(0, 0, 0, 0.5); display: flex; justify-content: center; align-items: center; z-index: 1000;">
-      <div class="article-detail-content" style="background-color: white; border-radius: 8px; padding: 30px; width: 90%; max-width: 800px; max-height: 80vh; overflow-y: auto; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);">
-        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px;">
-          <h2 style="margin: 0; font-size: 24px; color: #333; text-align: left;">{{ currentArticle?.title }}</h2>
-          <button @click="closeArticleDetail" style="background: none; border: none; font-size: 24px; cursor: pointer; color: #999; padding: 0; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center;">&times;</button>
+    <div v-if="showArticleDetail" class="article-detail-modal" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: linear-gradient(135deg, rgba(0, 0, 0, 0.4) 0%, rgba(0, 0, 0, 0.6) 100%); display: flex; justify-content: center; align-items: center; z-index: 1000; animation: fadeIn 0.3s ease;">
+      <div class="article-detail-content" style="background: white; border-radius: 12px; padding: 0; width: 90%; max-width: 900px; max-height: 85vh; overflow-y: auto; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25); animation: slideUp 0.3s ease;">
+        <!-- 文章头部 -->
+        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px 30px 20px 30px; position: relative; border-radius: 12px 12px 0 0;">
+          <h2 style="margin: 0 0 15px 0; font-size: 28px; color: white; text-align: left; line-height: 1.4;">{{ currentArticle?.title }}</h2>
+          
+          <!-- 文章元信息 -->
+          <div style="display: flex; gap: 25px; flex-wrap: wrap; font-size: 14px; color: rgba(255, 255, 255, 0.9);">
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <span style="font-size: 16px;">📁</span>
+              <span>{{ getCategoryName(currentArticle?.category_id) }}</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <span style="font-size: 16px;">📅</span>
+              <span>{{ formatDate(currentArticle?.published_at || currentArticle?.created_at) }}</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <span style="font-size: 16px;">👁️</span>
+              <span>浏览量：{{ currentArticle?.view_count }} 次</span>
+            </div>
+          </div>
         </div>
         
-        <div v-if="articleDetailLoading" style="text-align: center; padding: 40px;">
-          <div>加载中...</div>
+        <!-- 文章内容 -->
+        <div style="padding: 30px;">
+          <div v-if="articleDetailLoading" style="text-align: center; padding: 60px 20px;">
+            <div style="font-size: 18px; color: #666;">加载中...</div>
+          </div>
+          
+          <div v-else-if="articleDetailError" style="text-align: center; padding: 40px; background-color: #fff3cd; color: #856404; border-radius: 8px; border: 1px solid #ffc107;">
+            <div style="font-size: 16px; margin-bottom: 15px;">{{ articleDetailError }}</div>
+            <button @click="closeArticleDetail" style="padding: 8px 20px; background-color: #ffc107; color: #333; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; transition: all 0.3s ease;" @mouseenter="$event.target.style.backgroundColor='#ffb300'" @mouseleave="$event.target.style.backgroundColor='#ffc107'">关闭</button>
+          </div>
+          
+          <div v-else-if="currentArticle" style="color: #333;">
+            <!-- 摘要部分 -->
+            <div v-if="currentArticle.summary" style="margin-bottom: 25px; padding: 18px; background: linear-gradient(135deg, #f5f7ff 0%, #fffbf5 100%); border-left: 4px solid #667eea; border-radius: 6px;">
+              <div style="font-weight: 600; color: #667eea; margin-bottom: 8px; font-size: 14px;">摘要</div>
+              <div style="line-height: 1.6; color: #555; font-size: 15px;">{{ currentArticle.summary }}</div>
+            </div>
+            
+            <!-- 正文内容 -->
+            <div style="margin-bottom: 30px;">
+              <div style="line-height: 1.8; color: #333; font-size: 16px;" v-html="currentArticle.content"></div>
+            </div>
+            
+            <!-- 附件部分 -->
+            <div v-if="currentArticle.file_path" style="margin-top: 30px; padding: 20px; background-color: #f8f9fa; border-radius: 8px; border: 2px dashed #ddd;">
+              <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
+                <span style="font-size: 24px;">📎</span>
+                <h4 style="margin: 0; font-size: 16px; color: #333;">相关附件</h4>
+              </div>
+              <a :href="`/${currentArticle.file_path}`" :download="currentArticle.file_path.split('/').pop()" style="display: inline-flex; align-items: center; gap: 8px; padding: 10px 18px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; text-decoration: none; border-radius: 6px; font-size: 14px; font-weight: 500; transition: all 0.3s ease; cursor: pointer;" @mouseenter="$event.currentTarget.style.transform='translateY(-2px)'; $event.currentTarget.style.boxShadow='0 4px 12px rgba(102, 126, 234, 0.4)'" @mouseleave="$event.currentTarget.style.transform='translateY(0)'; $event.currentTarget.style.boxShadow='none'">
+                <span>⬇️</span>
+                <span>下载文件</span>
+              </a>
+            </div>
+          </div>
         </div>
         
-        <div v-else-if="articleDetailError" style="text-align: center; padding: 40px; color: #e74c3c;">
-          <div>{{ articleDetailError }}</div>
-          <button @click="closeArticleDetail" style="margin-top: 20px; padding: 8px 16px; background-color: #3498db; color: white; border: none; border-radius: 4px; cursor: pointer;">关闭</button>
-        </div>
-        
-        <div v-else-if="currentArticle" style="line-height: 1.6; color: #333;">
-          <div style="display: flex; gap: 20px; margin-bottom: 20px; font-size: 14px; color: #666;">
-            <span>栏目：{{ getCategoryName(currentArticle.category_id) }}</span>
-            <span>发布时间：{{ currentArticle.published_at || currentArticle.created_at }}</span>
-            <span>浏览量：{{ currentArticle.view_count }}</span>
-          </div>
-          
-          <div v-if="currentArticle.summary" style="margin-bottom: 20px; padding: 15px; background-color: #f8f9fa; border-left: 4px solid #3498db; border-radius: 0 4px 4px 0;">
-            {{ currentArticle.summary }}
-          </div>
-          
-          <div style="margin-bottom: 20px; min-height: 200px;">
-            <div v-html="currentArticle.content"></div>
-          </div>
-          
-          <div v-if="currentArticle.file_path" style="margin-top: 20px; padding: 15px; background-color: #f8f9fa; border-radius: 4px;">
-            <h4 style="margin: 0 0 10px 0; font-size: 16px; color: #333;">附件</h4>
-            <a :href="`http://localhost:5000/${currentArticle.file_path}`" :download="currentArticle.file_path.split('/').pop()" style="display: inline-block; padding: 8px 16px; background-color: #3498db; color: white; text-decoration: none; border-radius: 4px; font-size: 14px;">
-              下载文件
-            </a>
-          </div>
+        <!-- 关闭按钮 (底部) -->
+        <div style="padding: 15px 30px; background-color: #f8f9fa; border-top: 1px solid #eee; border-radius: 0 0 12px 12px; text-align: right;">
+          <button @click="closeArticleDetail" style="padding: 8px 20px; background-color: #95a5a6; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; transition: all 0.3s ease;" @mouseenter="$event.target.style.backgroundColor='#7f8c8d'" @mouseleave="$event.target.style.backgroundColor='#95a5a6'">关闭</button>
         </div>
       </div>
     </div>
@@ -5187,7 +5356,6 @@ body > *:first-child,
 
 /* 标题栏背景图 */
 .header {
-  background-image: url('https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=blue%20tech%20background%20with%20digital%20earth%20and%20data%20network%20connections%2C%20modern%20smart%20city%20technology%20concept%2C%20abstract%20digital%20lines%20and%20points%2C%20dark%20blue%20gradient%20background%2C%20no%20text%2C%20clean%20design&image_size=landscape_16_9');
   background-size: 100% 100%;
   background-position: center;
   background-repeat: no-repeat;
@@ -6392,5 +6560,63 @@ body {
     flex: 1;
     min-width: 100px;
   }
+}
+
+/* CMS首页栏目标题样式 */
+.column-title {
+  display: inline-block;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white !important;
+  padding: 8px 16px !important;
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+  transition: all 0.3s ease;
+}
+
+.column-title:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+/* 栏目卡片样式优化 */
+.cms-column {
+  background: linear-gradient(to bottom, #ffffff 0%, #f8f9fa 100%) !important;
+  border-left: 4px solid #667eea !important;
+  transition: all 0.3s ease;
+}
+
+.cms-column:hover {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15) !important;
+  transform: translateY(-4px);
+}
+
+/* 文章详情页面动画 */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(30px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* 文章详情modal样式 */
+.article-detail-modal {
+  animation: fadeIn 0.3s ease;
+}
+
+.article-detail-content {
+  animation: slideUp 0.3s ease;
 }
 </style>

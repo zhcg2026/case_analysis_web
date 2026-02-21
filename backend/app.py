@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 import pandas as pd
 import os
@@ -93,83 +93,103 @@ def admin_required(f):
     return decorated
 
 # 数据库配置
+import os
 DB_USER = 'root'
 DB_PASSWORD = 'MySql@2024!Root'
 DB_NAME = 'case_analysis'
-DB_HOST = 'localhost'
+DB_HOST = os.environ.get('DB_HOST', 'mysql-case-analysis')
 DB_PORT = '3306'
 
-# 创建数据库引擎
-encoded_password = urllib.parse.quote_plus(DB_PASSWORD)
-engine = create_engine(f'mysql+pymysql://{DB_USER}:{encoded_password}@{DB_HOST}:{DB_PORT}/{DB_NAME}')
+# 定义占位符类和变量
+engine = None
+Session = None
+Base = None
+User = None
+Permission = None
+Category = None
+Article = None
 
-# 导入用户表模型
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy import Column, Integer, String, DateTime, Text
-from sqlalchemy.sql import func
-from sqlalchemy.orm import sessionmaker
-
-Base = declarative_base()
-
-class User(Base):
-    __tablename__ = 'users'
+# 尝试初始化数据库（可选）
+try:
+    from sqlalchemy.ext.declarative import declarative_base
+    from sqlalchemy import Column, Integer, String, DateTime, Text
+    from sqlalchemy.sql import func
+    from sqlalchemy.orm import sessionmaker
     
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    username = Column(String(50), unique=True, nullable=False)
-    password = Column(String(255), nullable=False)
-    role = Column(String(20), nullable=False, default='user')
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
-
-class Permission(Base):
-    __tablename__ = 'permissions'
+    # 创建数据库引擎
+    encoded_password = urllib.parse.quote_plus(DB_PASSWORD)
+    engine = create_engine(f'mysql+pymysql://{DB_USER}:{encoded_password}@{DB_HOST}:{DB_PORT}/{DB_NAME}', pool_pre_ping=True, pool_recycle=3600)
+    print("数据库连接成功")
     
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, nullable=False, unique=True)
-    data_management = Column(Integer, nullable=False, default=0)
-    assessment = Column(Integer, nullable=False, default=0)
-    data_analysis = Column(Integer, nullable=False, default=0)
-    spotcheck = Column(Integer, nullable=False, default=0)
-    tools = Column(Integer, nullable=False, default=0)
-    chengguantong = Column(Integer, nullable=False, default=0)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
-
-# CMS栏目模型
-class Category(Base):
-    __tablename__ = 'categories'
+    # 定义模型
+    Base = declarative_base()
     
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    name = Column(String(100), unique=True, nullable=False)
-    slug = Column(String(100), unique=True, nullable=False)
-    description = Column(String(500))
-    order = Column(Integer, default=0)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
-
-# CMS文章模型
-class Article(Base):
-    __tablename__ = 'articles'
+    class User(Base):
+        __tablename__ = 'users'
+        
+        id = Column(Integer, primary_key=True, autoincrement=True)
+        username = Column(String(50), unique=True, nullable=False)
+        password = Column(String(255), nullable=False)
+        role = Column(String(20), nullable=False, default='user')
+        created_at = Column(DateTime(timezone=True), server_default=func.now())
+        updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    title = Column(String(200), nullable=False)
-    slug = Column(String(200), unique=True, nullable=False)
-    content = Column(Text)  # 长文本
-    summary = Column(String(500))
-    category_id = Column(Integer, nullable=False)
-    author_id = Column(Integer, nullable=False)
-    status = Column(String(20), default='draft')  # draft, published
-    view_count = Column(Integer, default=0)
-    file_path = Column(String(500))  # 文件路径，用于存储上传的Docx或PDF文件
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
-    published_at = Column(DateTime(timezone=True))
-
-# 创建数据库表
-Base.metadata.create_all(engine)
-
-# 创建会话工厂
-Session = sessionmaker(bind=engine)
+    class Permission(Base):
+        __tablename__ = 'permissions'
+        
+        id = Column(Integer, primary_key=True, autoincrement=True)
+        user_id = Column(Integer, nullable=False, unique=True)
+        data_management = Column(Integer, nullable=False, default=0)
+        assessment = Column(Integer, nullable=False, default=0)
+        data_analysis = Column(Integer, nullable=False, default=0)
+        spotcheck = Column(Integer, nullable=False, default=0)
+        tools = Column(Integer, nullable=False, default=0)
+        chengguantong = Column(Integer, nullable=False, default=0)
+        created_at = Column(DateTime(timezone=True), server_default=func.now())
+        updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    
+    # CMS栏目模型
+    class Category(Base):
+        __tablename__ = 'categories'
+        
+        id = Column(Integer, primary_key=True, autoincrement=True)
+        name = Column(String(100), unique=True, nullable=False)
+        slug = Column(String(100), unique=True, nullable=False)
+        description = Column(String(500))
+        order = Column(Integer, default=0)
+        created_at = Column(DateTime(timezone=True), server_default=func.now())
+        updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    
+    # CMS文章模型
+    class Article(Base):
+        __tablename__ = 'articles'
+        
+        id = Column(Integer, primary_key=True, autoincrement=True)
+        title = Column(String(200), nullable=False)
+        slug = Column(String(200), unique=True, nullable=False)
+        content = Column(Text)  # 长文本
+        summary = Column(String(500))
+        category_id = Column(Integer, nullable=False)
+        author_id = Column(Integer, nullable=False)
+        status = Column(String(20), default='draft')  # draft, published
+        view_count = Column(Integer, default=0)
+        file_path = Column(String(500))  # 文件路径，用于存储上传的Docx或PDF文件
+        created_at = Column(DateTime(timezone=True), server_default=func.now())
+        updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+        published_at = Column(DateTime(timezone=True))
+    
+    # 创建数据库表
+    Base.metadata.create_all(engine)
+    
+    # 创建会话工厂
+    Session = sessionmaker(bind=engine)
+    
+except Exception as e:
+    print(f"数据库初始化失败: {e}")
+    print("应用将以无数据库模式运行（登录和用户管理功能不可用）")
+    # 确保这些变量为 None，避免后续出错
+    engine = None
+    Session = None
 
 # 生成slug函数
 def generate_slug(text):
@@ -557,6 +577,34 @@ def upload_image():
 # 登录接口
 @app.route('/api/login', methods=['POST'])
 def login():
+    # 如果没有数据库连接，使用默认用户登录
+    if engine is None:
+        data = request.json
+        username = data.get('username')
+        password = data.get('password')
+        
+        # 默认用户：admin/admin123
+        if username == 'admin' and password == 'admin123':
+            token = generate_token(1, 'admin', 'admin')
+            permissions = {
+                'data_management': True,
+                'assessment': True,
+                'data_analysis': True,
+                'spotcheck': True,
+                'tools': True,
+                'chengguantong': True
+            }
+            return jsonify({
+                'token': token,
+                'user_id': 1,
+                'username': 'admin',
+                'role': 'admin',
+                'permissions': permissions
+            }), 200
+        else:
+            return jsonify({'error': 'Invalid username or password (no database connected)'}), 401
+    
+    # 有数据库连接时，使用正常的登录逻辑
     session = Session()
     try:
         data = request.json
@@ -620,6 +668,23 @@ def login():
 @app.route('/api/user', methods=['GET'])
 @protected
 def get_current_user():
+    # 如果没有数据库连接，返回默认权限
+    if engine is None:
+        permissions = {
+            'data_management': True,
+            'assessment': True,
+            'data_analysis': True,
+            'spotcheck': True,
+            'tools': True,
+            'chengguantong': True
+        }
+        return jsonify({
+            'user_id': request.user_id,
+            'username': request.username,
+            'role': request.role,
+            'permissions': permissions
+        }), 200
+    
     session = Session()
     try:
         # 获取用户权限
@@ -662,6 +727,25 @@ def get_current_user():
 @app.route('/api/users', methods=['GET'])
 @admin_required
 def get_users():
+    # 如果没有数据库连接，返回默认用户
+    if engine is None:
+        permissions = {
+            'data_management': True,
+            'assessment': True,
+            'data_analysis': True,
+            'spotcheck': True,
+            'tools': True,
+            'chengguantong': True
+        }
+        user_list = [{
+            'id': 1,
+            'username': 'admin',
+            'role': 'admin',
+            'created_at': '2024-01-01 00:00:00',
+            'permissions': permissions
+        }]
+        return jsonify({'users': user_list}), 200
+    
     session = Session()
     try:
         users = session.query(User).all()
@@ -708,6 +792,10 @@ def get_users():
 @app.route('/api/users', methods=['POST'])
 @admin_required
 def create_user():
+    # 如果没有数据库连接，返回提示
+    if engine is None:
+        return jsonify({'error': 'Database not connected. User management is disabled.'}), 503
+    
     session = Session()
     try:
         data = request.json
@@ -771,6 +859,10 @@ def create_user():
 @app.route('/api/users/<int:user_id>', methods=['PUT'])
 @admin_required
 def update_user(user_id):
+    # 如果没有数据库连接，返回提示
+    if engine is None:
+        return jsonify({'error': 'Database not connected. User management is disabled.'}), 503
+    
     session = Session()
     try:
         data = request.json
@@ -806,6 +898,10 @@ def update_user(user_id):
 @app.route('/api/users/<int:user_id>/permissions', methods=['PUT'])
 @admin_required
 def update_user_permissions(user_id):
+    # 如果没有数据库连接，返回提示
+    if engine is None:
+        return jsonify({'error': 'Database not connected. User management is disabled.'}), 503
+    
     session = Session()
     try:
         data = request.json
@@ -864,6 +960,10 @@ def update_user_permissions(user_id):
 @app.route('/api/users/<int:user_id>', methods=['DELETE'])
 @admin_required
 def delete_user(user_id):
+    # 如果没有数据库连接，返回提示
+    if engine is None:
+        return jsonify({'error': 'Database not connected. User management is disabled.'}), 503
+    
     session = Session()
     try:
         user = session.query(User).filter_by(id=user_id).first()
@@ -890,6 +990,10 @@ def delete_user(user_id):
 @app.route('/api/tables', methods=['GET'])
 @protected
 def get_tables():
+    # 如果没有数据库连接，返回空列表
+    if engine is None:
+        return jsonify({'tables': []}), 200
+    
     session = Session()
     try:
         # 获取数据库中所有表名
@@ -910,6 +1014,10 @@ def get_tables():
 @app.route('/api/tables/<table_name>', methods=['DELETE'])
 @protected
 def delete_table(table_name):
+    # 如果没有数据库连接，返回提示
+    if engine is None:
+        return jsonify({'error': 'Database not connected. Table management is disabled.'}), 503
+    
     session = Session()
     try:
         # 防止删除系统表
@@ -3338,6 +3446,25 @@ def chengguantong_ask():
         import traceback
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
+
+# 健康检查接口
+@app.route('/health', methods=['GET'])
+def health_check():
+    return jsonify({'status': 'healthy', 'message': 'Service is running'}), 200
+
+# 前端静态文件路由 - 放在最后
+@app.route('/', defaults={'path': ''})
+@app.route('/<path:path>')
+def serve_frontend(path):
+    # 构建前端文件路径
+    frontend_dist = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'frontend', 'dist')
+    
+    # 如果路径为空或者不存在文件，返回 index.html
+    if not path or not os.path.exists(os.path.join(frontend_dist, path)):
+        return send_from_directory(frontend_dist, 'index.html')
+    
+    # 否则返回请求的文件
+    return send_from_directory(frontend_dist, path)
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)

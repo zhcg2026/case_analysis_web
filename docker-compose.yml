@@ -1,0 +1,47 @@
+version: '3.8'
+
+services:
+  mysql-case-analysis:
+    image: mysql:8.0
+    container_name: mysql-case-analysis
+    environment:
+      - MYSQL_ROOT_PASSWORD=MySql@2024!Root
+      - MYSQL_DATABASE=case_analysis
+    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-pMySql@2024!Root"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  case-analysis-app:
+    build: .
+    container_name: case-analysis-web
+    ports:
+      - "5000:5000"
+    environment:
+      - FLASK_ENV=production
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./backend/uploads:/app/backend/uploads
+      - ./backend/app.py:/app/backend/app.py
+      - ./frontend/dist:/app/frontend/dist
+    depends_on:
+      mysql-case-analysis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+
+volumes:
+  mysql-data:
