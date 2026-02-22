@@ -2248,14 +2248,24 @@ async function fetchCMSArticles(categoryId, page = 1) {
     cmsError.value = '';
     cmsArticlesPage.value = page;
     
+    console.log('=== 调试信息：fetchCMSArticles 开始 ===');
+    console.log('请求URL:', `/api/articles/category/${categoryId}?include_drafts=true&page=${page}&per_page=${cmsArticlesPerPage.value}`);
+    
     const response = await fetch(`/api/articles/category/${categoryId}?include_drafts=true&page=${page}&per_page=${cmsArticlesPerPage.value}`);
     const data = await response.json();
+    
+    console.log('后端返回数据:', data);
     
     if (data.articles) {
       cmsArticles.value = data.articles;
       cmsArticlesTotal.value = data.total || 0;
       cmsArticlesPages.value = data.pages || 0;
+      
+      console.log('文章总数:', cmsArticlesTotal.value);
+      console.log('总页数:', cmsArticlesPages.value);
+      console.log('当前页:', cmsArticlesPage.value);
     }
+    console.log('=== 调试信息：fetchCMSArticles 结束 ===');
   } catch (error) {
     cmsError.value = '获取文章失败，请稍后重试';
     console.error('Error fetching CMS articles:', error);
@@ -2635,14 +2645,24 @@ async function fetchAllArticles(categoryId, page = 1) {
     allArticlesLoading.value = true;
     allArticlesPage.value = page;
     
+    console.log('=== 调试信息：fetchAllArticles 开始 ===');
+    console.log('请求URL:', `/api/articles/category/${categoryId}?include_drafts=false&page=${page}&per_page=${allArticlesPerPage.value}`);
+    
     const response = await fetch(`/api/articles/category/${categoryId}?include_drafts=false&page=${page}&per_page=${allArticlesPerPage.value}`);
     const data = await response.json();
+    
+    console.log('后端返回数据:', data);
     
     if (data.articles) {
       allArticlesList.value = data.articles;
       allArticlesTotal.value = data.total || 0;
       allArticlesPages.value = data.pages || 0;
+      
+      console.log('文章总数:', allArticlesTotal.value);
+      console.log('总页数:', allArticlesPages.value);
+      console.log('当前页:', allArticlesPage.value);
     }
+    console.log('=== 调试信息：fetchAllArticles 结束 ===');
   } catch (error) {
     console.error('Error fetching all articles:', error);
   } finally {
