@@ -5131,7 +5131,7 @@ watch(
                       </table>
                       
                       <!-- 分页控件 -->
-                      <div v-if="cmsArticlesPages > 1" class="pagination">
+                      <div v-if="cmsArticlesTotal > 0" class="pagination">
                         <span class="pagination-info">共 {{ cmsArticlesTotal }} 条，第 {{ cmsArticlesPage }}/{{ cmsArticlesPages }} 页</span>
                         <div class="pagination-buttons">
                           <button class="page-btn" @click="fetchCMSArticles(selectedCategory?.id, 1)" :disabled="cmsArticlesPage === 1">首页</button>
@@ -5466,7 +5466,7 @@ watch(
           </div>
           
           <!-- 分页控件 -->
-          <div v-if="allArticlesPages > 1" class="pagination" style="display: flex; justify-content: space-between; align-items: center; margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 4px; flex-wrap: wrap; gap: 10px;">
+          <div v-if="allArticlesTotal > 0" class="pagination" style="display: flex; justify-content: space-between; align-items: center; margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 4px; flex-wrap: wrap; gap: 10px;">
             <span class="pagination-info" style="font-size: 14px; color: #666;">共 {{ allArticlesTotal }} 条，第 {{ allArticlesPage }}/{{ allArticlesPages }} 页</span>
             <div class="pagination-buttons" style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
               <button class="page-btn" @click="fetchAllArticles(allArticlesCategoryId, 1)" :disabled="allArticlesPage === 1" style="padding: 8px 14px; background: white; color: #333; border: 1px solid #ddd; border-radius: 4px; cursor: pointer; font-size: 14px; transition: all 0.2s ease;">首页</button>
