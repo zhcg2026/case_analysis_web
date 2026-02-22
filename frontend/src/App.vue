@@ -58,6 +58,7 @@ const assessmentResult = ref(null);
 // CMS状态管理
 const cmsCategories = ref([]);
 const cmsArticles = ref([]);
+const allHomeArticles = ref([]);
 const selectedCategory = ref(null);
 const cmsLoading = ref(false);
 const cmsError = ref('');
@@ -2270,7 +2271,7 @@ async function fetchAllCMSArticles() {
     const data = await response.json();
     
     if (data.articles) {
-      cmsArticles.value = data.articles;
+      allHomeArticles.value = data.articles;
     }
   } catch (error) {
     console.error('Error fetching all CMS articles:', error);
@@ -2290,6 +2291,19 @@ function getCategoryName(categoryId) {
   const idToFind = Number(categoryId);
   const category = cmsCategories.value.find(cat => Number(cat.id) === idToFind);
   return category ? category.name : '未知栏目';
+}
+
+// 根据栏目ID获取文章（首页用）
+function getCategoryArticles(categoryId) {
+  // 过滤出指定栏目的文章，按时间排序（最新的在前），只返回前5条
+  return allHomeArticles.value
+    .filter(article => Number(article.category_id) === Number(categoryId))
+    .sort((a, b) => {
+      const dateA = new Date(a.published_at || a.created_at);
+      const dateB = new Date(b.published_at || b.created_at);
+      return dateB - dateA; // 降序排序
+    })
+    .slice(0, 5); // 只返回前5条
 }
 
 // 生成页码列表
@@ -2613,18 +2627,7 @@ const allArticlesTotal = ref(0);
 const allArticlesPages = ref(0);
 const allArticlesLoading = ref(false);
 
-// 根据栏目ID获取文章
-function getCategoryArticles(categoryId) {
-  // 过滤出指定栏目的文章，按时间排序（最新的在前），只返回前5条
-  return cmsArticles.value
-    .filter(article => Number(article.category_id) === Number(categoryId))
-    .sort((a, b) => {
-      const dateA = new Date(a.published_at || a.created_at);
-      const dateB = new Date(b.published_at || b.created_at);
-      return dateB - dateA; // 降序排序
-    })
-    .slice(0, 5); // 只返回前5条
-}
+
 
 // 获取全部文章分页数据
 async function fetchAllArticles(categoryId, page = 1) {
