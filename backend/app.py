@@ -3252,6 +3252,8 @@ def get_articles_by_category(category_id):
     session = Session()
     try:
         # 获取查询参数
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 10, type=int)
         include_drafts = request.args.get('include_drafts', 'false').lower() == 'true'
         
         # 构建查询
@@ -3261,26 +3263,45 @@ def get_articles_by_category(category_id):
         if not include_drafts:
             query = query.filter_by(status='published')
         
-        # 执行查询
-        articles = query.order_by(Article.created_at.desc()).all()
+        # 计算总数
+        total = query.count()
+        
+        # 分页
+        articles = query.order_by(Article.created_at.desc()).offset((page-1)*per_page).limit(per_page).all()
         
         # 转换为字典列表
         articles_list = []
         for article in articles:
-            articles_list.append({
-                'id': article.id,
-                'title': article.title,
-                'slug': article.slug,
-                'summary': article.summary,
-                'category_id': article.category_id,
-                'view_count': article.view_count,
-                'status': article.status,
-                'created_at': article.created_at.strftime('%Y-%m-%d %H:%M:%S') if article.created_at else None,
-                'published_at': article.published_at.strftime('%Y-%m-%d %H:%M:%S') if article.published_at else None
-            })
+            try:
+                article_dict = {
+                    'id': article.id,
+                    'title': article.title,
+                    'slug': article.slug,
+                    'summary': article.summary,
+                    'category_id': article.category_id,
+                    'view_count': article.view_count,
+                    'status': article.status,
+                    'created_at': article.created_at.strftime('%Y-%m-%d %H:%M:%S') if article.created_at else None,
+                    'published_at': article.published_at.strftime('%Y-%m-%d %H:%M:%S') if article.published_at else None
+                }
+                # 尝试获取file_path字段
+                try:
+                    article_dict['file_path'] = article.file_path
+                except AttributeError:
+                    article_dict['file_path'] = None
+                articles_list.append(article_dict)
+            except Exception as article_error:
+                print(f"Error processing article {article.id}: {str(article_error)}")
+                continue
         
         session.commit()
-        return jsonify({'articles': articles_list}), 200
+        return jsonify({
+            'articles': articles_list,
+            'total': total,
+            'page': page,
+            'per_page': per_page,
+            'pages': (total + per_page - 1) // per_page
+        }), 200
     except Exception as e:
         session.rollback()
         print(f"Error in get_articles_by_category: {str(e)}")

@@ -65,6 +65,10 @@ const showArticleDetail = ref(false);
 const currentArticle = ref(null);
 const articleDetailLoading = ref(false);
 const articleDetailError = ref('');
+const cmsArticlesPage = ref(1);
+const cmsArticlesPerPage = ref(10);
+const cmsArticlesTotal = ref(0);
+const cmsArticlesPages = ref(0);
 
 // 汇问台状态管理
 const cloudbaseInstance = ref(null);
@@ -2237,16 +2241,19 @@ async function fetchCMSCategories() {
 }
 
 // 获取CMS文章
-async function fetchCMSArticles(categoryId) {
+async function fetchCMSArticles(categoryId, page = 1) {
   try {
     cmsLoading.value = true;
     cmsError.value = '';
+    cmsArticlesPage.value = page;
     
-    const response = await fetch(`/api/articles/category/${categoryId}?include_drafts=true`);
+    const response = await fetch(`/api/articles/category/${categoryId}?include_drafts=true&page=${page}&per_page=${cmsArticlesPerPage.value}`);
     const data = await response.json();
     
     if (data.articles) {
       cmsArticles.value = data.articles;
+      cmsArticlesTotal.value = data.total || 0;
+      cmsArticlesPages.value = data.pages || 0;
     }
   } catch (error) {
     cmsError.value = '获取文章失败，请稍后重试';
@@ -2273,7 +2280,8 @@ async function fetchAllCMSArticles() {
 // 切换CMS栏目
 async function switchCMSCategory(category) {
   selectedCategory.value = category;
-  await fetchCMSArticles(category.id);
+  cmsArticlesPage.value = 1;
+  await fetchCMSArticles(category.id, 1);
 }
 
 // 获取栏目名称
@@ -2282,6 +2290,43 @@ function getCategoryName(categoryId) {
   const idToFind = Number(categoryId);
   const category = cmsCategories.value.find(cat => Number(cat.id) === idToFind);
   return category ? category.name : '未知栏目';
+}
+
+// 生成页码列表
+function getPageNumbers() {
+  const pages = [];
+  const totalPages = cmsArticlesPages.value;
+  const currentPage = cmsArticlesPage.value;
+  
+  if (totalPages <= 7) {
+    for (let i = 1; i <= totalPages; i++) {
+      pages.push(i);
+    }
+  } else {
+    if (currentPage <= 4) {
+      for (let i = 1; i <= 5; i++) {
+        pages.push(i);
+      }
+      pages.push('...');
+      pages.push(totalPages);
+    } else if (currentPage >= totalPages - 3) {
+      pages.push(1);
+      pages.push('...');
+      for (let i = totalPages - 4; i <= totalPages; i++) {
+        pages.push(i);
+      }
+    } else {
+      pages.push(1);
+      pages.push('...');
+      for (let i = currentPage - 1; i <= currentPage + 1; i++) {
+        pages.push(i);
+      }
+      pages.push('...');
+      pages.push(totalPages);
+    }
+  }
+  
+  return pages;
 }
 
 // 添加/编辑栏目
@@ -2454,7 +2499,7 @@ async function saveArticle() {
     } else {
       // 重新获取栏目列表和文章列表
       await fetchCMSCategories();
-      await fetchCMSArticles(selectedCategory.value?.id || cmsCategories.value[0]?.id);
+      await fetchCMSArticles(selectedCategory.value?.id || cmsCategories.value[0]?.id, cmsArticlesPage.value);
       closeArticleForm();
     }
   } catch (error) {
@@ -2492,8 +2537,13 @@ async function deleteArticle(articleId) {
     if (data.error) {
       cmsError.value = data.error;
     } else {
-      // 重新获取文章列表
-      await fetchCMSArticles(selectedCategory.value?.id || cmsCategories.value[0]?.id);
+      // 重新获取文章列表 - 检查当前页是否还有内容
+      let newPage = cmsArticlesPage.value;
+      // 如果当前页只剩这一篇文章，删除后回到上一页
+      if (cmsArticles.value.length === 1 && newPage > 1) {
+        newPage = newPage - 1;
+      }
+      await fetchCMSArticles(selectedCategory.value?.id || cmsCategories.value[0]?.id, newPage);
     }
   } catch (error) {
     cmsError.value = '删除失败，请稍后重试';
@@ -2557,6 +2607,11 @@ function closeArticleForm() {
 const showAllArticlesModal = ref(false);
 const allArticlesCategoryId = ref(null);
 const allArticlesList = ref([]);
+const allArticlesPage = ref(1);
+const allArticlesPerPage = ref(10);
+const allArticlesTotal = ref(0);
+const allArticlesPages = ref(0);
+const allArticlesLoading = ref(false);
 
 // 根据栏目ID获取文章
 function getCategoryArticles(categoryId) {
@@ -2571,19 +2626,33 @@ function getCategoryArticles(categoryId) {
     .slice(0, 5); // 只返回前5条
 }
 
+// 获取全部文章分页数据
+async function fetchAllArticles(categoryId, page = 1) {
+  try {
+    allArticlesLoading.value = true;
+    allArticlesPage.value = page;
+    
+    const response = await fetch(`/api/articles/category/${categoryId}?include_drafts=false&page=${page}&per_page=${allArticlesPerPage.value}`);
+    const data = await response.json();
+    
+    if (data.articles) {
+      allArticlesList.value = data.articles;
+      allArticlesTotal.value = data.total || 0;
+      allArticlesPages.value = data.pages || 0;
+    }
+  } catch (error) {
+    console.error('Error fetching all articles:', error);
+  } finally {
+    allArticlesLoading.value = false;
+  }
+}
+
 // 显示全部文章弹窗
-function showAllArticles(categoryId) {
-  // 过滤出该栏目的所有文章并排序
-  allArticlesList.value = cmsArticles.value
-    .filter(article => Number(article.category_id) === Number(categoryId))
-    .sort((a, b) => {
-      const dateA = new Date(a.published_at || a.created_at);
-      const dateB = new Date(b.published_at || b.created_at);
-      return dateB - dateA; // 降序排序
-    });
-  
+async function showAllArticles(categoryId) {
   allArticlesCategoryId.value = categoryId;
+  allArticlesPage.value = 1;
   showAllArticlesModal.value = true;
+  await fetchAllArticles(categoryId, 1);
 }
 
 // 关闭全部文章弹窗
@@ -2591,6 +2660,46 @@ function closeAllArticlesModal() {
   showAllArticlesModal.value = false;
   allArticlesCategoryId.value = null;
   allArticlesList.value = [];
+  allArticlesPage.value = 1;
+  allArticlesTotal.value = 0;
+  allArticlesPages.value = 0;
+}
+
+// 生成全部文章页码列表
+function getAllArticlesPageNumbers() {
+  const pages = [];
+  const totalPages = allArticlesPages.value;
+  const currentPage = allArticlesPage.value;
+  
+  if (totalPages <= 7) {
+    for (let i = 1; i <= totalPages; i++) {
+      pages.push(i);
+    }
+  } else {
+    if (currentPage <= 4) {
+      for (let i = 1; i <= 5; i++) {
+        pages.push(i);
+      }
+      pages.push('...');
+      pages.push(totalPages);
+    } else if (currentPage >= totalPages - 3) {
+      pages.push(1);
+      pages.push('...');
+      for (let i = totalPages - 4; i <= totalPages; i++) {
+        pages.push(i);
+      }
+    } else {
+      pages.push(1);
+      pages.push('...');
+      for (let i = currentPage - 1; i <= currentPage + 1; i++) {
+        pages.push(i);
+      }
+      pages.push('...');
+      pages.push(totalPages);
+    }
+  }
+  
+  return pages;
 }
 
 // 生成slug函数
@@ -5020,6 +5129,23 @@ watch(
                           </tr>
                         </tbody>
                       </table>
+                      
+                      <!-- 分页控件 -->
+                      <div v-if="cmsArticlesPages > 1" class="pagination">
+                        <span class="pagination-info">共 {{ cmsArticlesTotal }} 条，第 {{ cmsArticlesPage }}/{{ cmsArticlesPages }} 页</span>
+                        <div class="pagination-buttons">
+                          <button class="page-btn" @click="fetchCMSArticles(selectedCategory?.id, 1)" :disabled="cmsArticlesPage === 1">首页</button>
+                          <button class="page-btn" @click="fetchCMSArticles(selectedCategory?.id, cmsArticlesPage - 1)" :disabled="cmsArticlesPage === 1">上一页</button>
+                          <template v-for="page in getPageNumbers()" :key="page">
+                            <button v-if="page !== '...'" class="page-btn" :class="{ active: page === cmsArticlesPage }" @click="fetchCMSArticles(selectedCategory?.id, page)">
+                              {{ page }}
+                            </button>
+                            <span v-else class="page-ellipsis">...</span>
+                          </template>
+                          <button class="page-btn" @click="fetchCMSArticles(selectedCategory?.id, cmsArticlesPage + 1)" :disabled="cmsArticlesPage === cmsArticlesPages">下一页</button>
+                          <button class="page-btn" @click="fetchCMSArticles(selectedCategory?.id, cmsArticlesPages)" :disabled="cmsArticlesPage === cmsArticlesPages">末页</button>
+                        </div>
+                      </div>
                     </div>
                     <div v-else class="empty-state">
                       <p>暂无文章</p>
@@ -5320,18 +5446,40 @@ watch(
           <h2 style="margin: 0; font-size: 24px; color: #333; text-align: left;">{{ getCategoryName(allArticlesCategoryId) }} - 全部文章</h2>
           <button @click="closeAllArticlesModal" style="background: none; border: none; font-size: 24px; cursor: pointer; color: #999; padding: 0; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center;">&times;</button>
         </div>
-        <div v-if="allArticlesList.length === 0" style="text-align: center; padding: 40px; color: #999;">
+        <div v-if="allArticlesLoading" style="text-align: center; padding: 40px; color: #666;">
+          <div>加载中...</div>
+        </div>
+        <div v-else-if="allArticlesList.length === 0" style="text-align: center; padding: 40px; color: #999;">
           <div>该栏目下暂无文章</div>
         </div>
-        <div v-else class="articles-list" style="list-style: none; padding: 0; margin: 0;">
-          <div v-for="article in allArticlesList" :key="article.id" class="article-item" style="margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; padding: 8px; border-radius: 4px; transition: all 0.3s ease;" @click="() => { fetchArticleDetail(article.id); closeAllArticlesModal(); }" @mouseenter="$event.currentTarget.style.backgroundColor='#f5f5f5'" @mouseleave="$event.currentTarget.style.backgroundColor='transparent'">
-            <span style="flex: 1; font-size: 16px; color: #333; line-height: 1.4; text-align: left;">
-              <span style="margin-right: 12px; color: #1890ff;">•</span>
-              {{ article.title }}
-            </span>
-            <span style="font-size: 14px; color: #999; white-space: nowrap; margin-left: 15px;">
-              [{{ formatDate(article.published_at || article.created_at) }}]
-            </span>
+        <div v-else>
+          <div class="articles-list" style="list-style: none; padding: 0; margin: 0;">
+            <div v-for="article in allArticlesList" :key="article.id" class="article-item" style="margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; padding: 8px; border-radius: 4px; transition: all 0.3s ease;" @click="() => { fetchArticleDetail(article.id); closeAllArticlesModal(); }" @mouseenter="$event.currentTarget.style.backgroundColor='#f5f5f5'" @mouseleave="$event.currentTarget.style.backgroundColor='transparent'">
+              <span style="flex: 1; font-size: 16px; color: #333; line-height: 1.4; text-align: left;">
+                <span style="margin-right: 12px; color: #1890ff;">•</span>
+                {{ article.title }}
+              </span>
+              <span style="font-size: 14px; color: #999; white-space: nowrap; margin-left: 15px;">
+                [{{ formatDate(article.published_at || article.created_at) }}]
+              </span>
+            </div>
+          </div>
+          
+          <!-- 分页控件 -->
+          <div v-if="allArticlesPages > 1" class="pagination" style="display: flex; justify-content: space-between; align-items: center; margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 4px; flex-wrap: wrap; gap: 10px;">
+            <span class="pagination-info" style="font-size: 14px; color: #666;">共 {{ allArticlesTotal }} 条，第 {{ allArticlesPage }}/{{ allArticlesPages }} 页</span>
+            <div class="pagination-buttons" style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+              <button class="page-btn" @click="fetchAllArticles(allArticlesCategoryId, 1)" :disabled="allArticlesPage === 1" style="padding: 8px 14px; background: white; color: #333; border: 1px solid #ddd; border-radius: 4px; cursor: pointer; font-size: 14px; transition: all 0.2s ease;">首页</button>
+              <button class="page-btn" @click="fetchAllArticles(allArticlesCategoryId, allArticlesPage - 1)" :disabled="allArticlesPage === 1" style="padding: 8px 14px; background: white; color: #333; border: 1px solid #ddd; border-radius: 4px; cursor: pointer; font-size: 14px; transition: all 0.2s ease;">上一页</button>
+              <template v-for="page in getAllArticlesPageNumbers()" :key="page">
+                <button v-if="page !== '...'" class="page-btn" :class="{ active: page === allArticlesPage }" @click="fetchAllArticles(allArticlesCategoryId, page)" :style="page === allArticlesPage ? 'background: #007bff; color: white; border-color: #007bff;' : ''" style="padding: 8px 14px; background: white; color: #333; border: 1px solid #ddd; border-radius: 4px; cursor: pointer; font-size: 14px; transition: all 0.2s ease;">
+                  {{ page }}
+                </button>
+                <span v-else class="page-ellipsis" style="padding: 0 8px; color: #666; font-size: 16px;">...</span>
+              </template>
+              <button class="page-btn" @click="fetchAllArticles(allArticlesCategoryId, allArticlesPage + 1)" :disabled="allArticlesPage === allArticlesPages" style="padding: 8px 14px; background: white; color: #333; border: 1px solid #ddd; border-radius: 4px; cursor: pointer; font-size: 14px; transition: all 0.2s ease;">下一页</button>
+              <button class="page-btn" @click="fetchAllArticles(allArticlesCategoryId, allArticlesPages)" :disabled="allArticlesPage === allArticlesPages" style="padding: 8px 14px; background: white; color: #333; border: 1px solid #ddd; border-radius: 4px; cursor: pointer; font-size: 14px; transition: all 0.2s ease;">末页</button>
+            </div>
           </div>
         </div>
       </div>
@@ -6636,5 +6784,65 @@ body {
 
 .article-detail-content {
   animation: slideUp 0.3s ease;
+}
+
+/* 分页控件样式 */
+.pagination {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 20px;
+  padding: 15px;
+  background: #f8f9fa;
+  border-radius: 4px;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.pagination-info {
+  font-size: 14px;
+  color: #666;
+}
+
+.pagination-buttons {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.page-btn {
+  padding: 8px 14px;
+  background: white;
+  color: #333;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s ease;
+}
+
+.page-btn:hover:not(:disabled) {
+  background: #007bff;
+  color: white;
+  border-color: #007bff;
+}
+
+.page-btn:disabled {
+  background: #e9ecef;
+  color: #adb5bd;
+  cursor: not-allowed;
+}
+
+.page-btn.active {
+  background: #007bff;
+  color: white;
+  border-color: #007bff;
+}
+
+.page-ellipsis {
+  padding: 0 8px;
+  color: #666;
+  font-size: 16px;
 }
 </style>
