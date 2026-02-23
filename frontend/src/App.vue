@@ -209,7 +209,8 @@ const editingPermissions = ref({
   spotcheck: false,
   tools: false,
   chengguantong: false,
-  map: false
+  map: false,
+  huiwentai: false
 });
 
 // 从本地存储获取token和用户信息
@@ -2031,7 +2032,8 @@ function editUserPermissions(user) {
     spotcheck: Boolean(user.permissions?.spotcheck) || false,
     tools: Boolean(user.permissions?.tools) || false,
     chengguantong: Boolean(user.permissions?.chengguantong) || false,
-    map: Boolean(user.permissions?.map) || false
+    map: Boolean(user.permissions?.map) || false,
+    huiwentai: Boolean(user.permissions?.huiwentai) || false
   };
   
   // 打印设置后的权限值
@@ -2207,7 +2209,8 @@ function closeEditPermissionsForm() {
     spotcheck: false,
     tools: false,
     chengguantong: false,
-    map: false
+    map: false,
+    huiwentai: false
   };
   adminError.value = '';
 }
@@ -3801,7 +3804,7 @@ watch(
       <div v-if="!userInfo || userInfo?.role === 'admin' || (userInfo?.permissions && userInfo?.permissions.chengguantong)" class="tab" :class="{ active: activeModule === 'chengguantong' }" @click="switchModule('chengguantong')">
         城管通
       </div>
-      <div class="tab" :class="{ active: activeModule === 'huiwentai' }" @click="switchModule('huiwentai')">
+      <div v-if="!userInfo || userInfo?.role === 'admin' || (userInfo?.permissions && userInfo?.permissions.huiwentai)" class="tab" :class="{ active: activeModule === 'huiwentai' }" @click="switchModule('huiwentai')">
         汇问台
       </div>
       <div v-if="!userInfo || userInfo?.role === 'admin' || (userInfo?.permissions && userInfo?.permissions.tools)" class="tab" :class="{ active: activeModule === 'tools' }" @click="switchModule('tools')">
@@ -3848,7 +3851,7 @@ watch(
 
       
       <!-- 汇问台模块 -->
-      <div v-if="activeModule === 'huiwentai'" class="tab-content">
+      <div v-if="activeModule === 'huiwentai' && (!userInfo || userInfo.role === 'admin' || (userInfo.permissions && userInfo.permissions.huiwentai))" class="tab-content">
         <h2 class="section-title">汇问台</h2>
         <div class="huiwentai-section" style="max-width: 1000px; margin: 0 auto;">
           <!-- 标签页导航 -->
@@ -5240,6 +5243,10 @@ watch(
               <div class="permission-item">
                 <input type="checkbox" id="perm-map" v-model="editingPermissions.map" />
                 <label for="perm-map">地图服务</label>
+              </div>
+              <div class="permission-item">
+                <input type="checkbox" id="perm-huiwentai" v-model="editingPermissions.huiwentai" />
+                <label for="perm-huiwentai">汇问台</label>
               </div>
             </div>
             <div v-if="adminError" class="admin-error">{{ adminError }}</div>

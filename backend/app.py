@@ -145,6 +145,8 @@ try:
         spotcheck = Column(Integer, nullable=False, default=0)
         tools = Column(Integer, nullable=False, default=0)
         chengguantong = Column(Integer, nullable=False, default=0)
+        map = Column(Integer, nullable=False, default=0)
+        huiwentai = Column(Integer, nullable=False, default=0)
         created_at = Column(DateTime(timezone=True), server_default=func.now())
         updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     
@@ -628,14 +630,16 @@ def login():
         token = generate_token(user.id, user.username, user.role)
         
         # 获取用户权限
-        permission = session.execute(text("SELECT data_management, assessment, data_analysis, spotcheck, tools, chengguantong FROM permissions WHERE user_id = :user_id"), {'user_id': user.id}).fetchone()
+        permission = session.execute(text("SELECT data_management, assessment, data_analysis, spotcheck, tools, chengguantong, map, huiwentai FROM permissions WHERE user_id = :user_id"), {'user_id': user.id}).fetchone()
         permissions = {
             'data_management': False,
             'assessment': False,
             'data_analysis': False,
             'spotcheck': False,
             'tools': False,
-            'chengguantong': False
+            'chengguantong': False,
+            'map': False,
+            'huiwentai': False
         }
         if permission:
             permissions = {
@@ -644,7 +648,9 @@ def login():
                 'data_analysis': permission[2],
                 'spotcheck': permission[3],
                 'tools': permission[4],
-                'chengguantong': permission[5]
+                'chengguantong': permission[5],
+                'map': permission[6],
+                'huiwentai': permission[7]
             }
         
         session.commit()
@@ -676,7 +682,9 @@ def get_current_user():
             'data_analysis': True,
             'spotcheck': True,
             'tools': True,
-            'chengguantong': True
+            'chengguantong': True,
+            'map': True,
+            'huiwentai': True
         }
         return jsonify({
             'user_id': request.user_id,
@@ -688,14 +696,16 @@ def get_current_user():
     session = Session()
     try:
         # 获取用户权限
-        permission = session.execute(text("SELECT data_management, assessment, data_analysis, spotcheck, tools, chengguantong FROM permissions WHERE user_id = :user_id"), {'user_id': request.user_id}).fetchone()
+        permission = session.execute(text("SELECT data_management, assessment, data_analysis, spotcheck, tools, chengguantong, map, huiwentai FROM permissions WHERE user_id = :user_id"), {'user_id': request.user_id}).fetchone()
         permissions = {
             'data_management': False,
             'assessment': False,
             'data_analysis': False,
             'spotcheck': False,
             'tools': False,
-            'chengguantong': False
+            'chengguantong': False,
+            'map': False,
+            'huiwentai': False
         }
         if permission:
             permissions = {
@@ -704,7 +714,9 @@ def get_current_user():
                 'data_analysis': permission[2],
                 'spotcheck': permission[3],
                 'tools': permission[4],
-                'chengguantong': permission[5]
+                'chengguantong': permission[5],
+                'map': permission[6],
+                'huiwentai': permission[7]
             }
         
         session.commit()
@@ -735,7 +747,9 @@ def get_users():
             'data_analysis': True,
             'spotcheck': True,
             'tools': True,
-            'chengguantong': True
+            'chengguantong': True,
+            'map': True,
+            'huiwentai': True
         }
         user_list = [{
             'id': 1,
@@ -752,14 +766,16 @@ def get_users():
         user_list = []
         for user in users:
             # 获取用户权限
-            permission = session.execute(text("SELECT data_management, assessment, data_analysis, spotcheck, tools, chengguantong FROM permissions WHERE user_id = :user_id"), {'user_id': user.id}).fetchone()
+            permission = session.execute(text("SELECT data_management, assessment, data_analysis, spotcheck, tools, chengguantong, map, huiwentai FROM permissions WHERE user_id = :user_id"), {'user_id': user.id}).fetchone()
             permissions = {
                 'data_management': False,
                 'assessment': False,
                 'data_analysis': False,
                 'spotcheck': False,
                 'tools': False,
-                'chengguantong': False
+                'chengguantong': False,
+                'map': False,
+                'huiwentai': False
             }
             if permission:
                 permissions = {
@@ -768,7 +784,9 @@ def get_users():
                     'data_analysis': permission[2],
                     'spotcheck': permission[3],
                     'tools': permission[4],
-                    'chengguantong': permission[5]
+                    'chengguantong': permission[5],
+                    'map': permission[6],
+                    'huiwentai': permission[7]
                 }
             user_list.append({
                 'id': user.id,
@@ -822,14 +840,16 @@ def create_user():
         session.commit()
         
         # 为新用户添加默认权限
-        session.execute(text("INSERT INTO permissions (user_id, data_management, assessment, data_analysis, spotcheck, tools, chengguantong) VALUES (:user_id, :data_management, :assessment, :data_analysis, :spotcheck, :tools, :chengguantong)"), {
+        session.execute(text("INSERT INTO permissions (user_id, data_management, assessment, data_analysis, spotcheck, tools, chengguantong, map, huiwentai) VALUES (:user_id, :data_management, :assessment, :data_analysis, :spotcheck, :tools, :chengguantong, :map, :huiwentai)"), {
             'user_id': new_user.id,
             'data_management': False,
             'assessment': False,
             'data_analysis': False,
             'spotcheck': False,
             'tools': False,
-            'chengguantong': False
+            'chengguantong': False,
+            'map': False,
+            'huiwentai': False
         })
         session.commit()
         
@@ -843,7 +863,9 @@ def create_user():
                 'data_analysis': False,
                 'spotcheck': False,
                 'tools': False,
-                'chengguantong': False
+                'chengguantong': False,
+                'map': False,
+                'huiwentai': False
             }
         }), 201
     except Exception as e:
@@ -912,26 +934,30 @@ def update_user_permissions(user_id):
             return jsonify({'error': 'User not found'}), 404
         
         # 更新用户权限
-        session.execute(text("UPDATE permissions SET data_management = :data_management, assessment = :assessment, data_analysis = :data_analysis, spotcheck = :spotcheck, tools = :tools, chengguantong = :chengguantong WHERE user_id = :user_id"), {
+        session.execute(text("UPDATE permissions SET data_management = :data_management, assessment = :assessment, data_analysis = :data_analysis, spotcheck = :spotcheck, tools = :tools, chengguantong = :chengguantong, map = :map, huiwentai = :huiwentai WHERE user_id = :user_id"), {
             'user_id': user_id,
             'data_management': data.get('data_management', False),
             'assessment': data.get('assessment', False),
             'data_analysis': data.get('data_analysis', False),
             'spotcheck': data.get('spotcheck', False),
             'tools': data.get('tools', False),
-            'chengguantong': data.get('chengguantong', False)
+            'chengguantong': data.get('chengguantong', False),
+            'map': data.get('map', False),
+            'huiwentai': data.get('huiwentai', False)
         })
         session.commit()
         
         # 返回更新后的权限
-        permission = session.execute(text("SELECT data_management, assessment, data_analysis, spotcheck, tools, chengguantong FROM permissions WHERE user_id = :user_id"), {'user_id': user_id}).fetchone()
+        permission = session.execute(text("SELECT data_management, assessment, data_analysis, spotcheck, tools, chengguantong, map, huiwentai FROM permissions WHERE user_id = :user_id"), {'user_id': user_id}).fetchone()
         permissions = {
             'data_management': False,
             'assessment': False,
             'data_analysis': False,
             'spotcheck': False,
             'tools': False,
-            'chengguantong': False
+            'chengguantong': False,
+            'map': False,
+            'huiwentai': False
         }
         if permission:
             permissions = {
@@ -940,7 +966,9 @@ def update_user_permissions(user_id):
                 'data_analysis': permission[2],
                 'spotcheck': permission[3],
                 'tools': permission[4],
-                'chengguantong': permission[5]
+                'chengguantong': permission[5],
+                'map': permission[6],
+                'huiwentai': permission[7]
             }
         
         return jsonify({
