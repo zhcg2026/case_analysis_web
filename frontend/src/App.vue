@@ -1283,6 +1283,13 @@ function formatDate(dateString) {
   return `${month}-${day}`;
 }
 
+// 截断标题，最多显示12个字符
+function truncateTitle(title) {
+  if (!title) return '';
+  if (title.length <= 12) return title;
+  return title.substring(0, 12) + '...';
+}
+
 // 初始化时获取数据库表
 onMounted(() => {
   fetchTables();
@@ -4093,7 +4100,7 @@ watch(
                   <div v-for="article in getCategoryArticles(category.id)" :key="article.id" class="article-item" style="margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; padding: 8px; border-radius: 4px; transition: all 0.3s ease;" @click="fetchArticleDetail(article.id)" :style="{ backgroundColor: 'hover' === 'hover' ? '#f5f5f5' : 'transparent' }" @mouseenter="$event.currentTarget.style.backgroundColor='#f5f5f5'" @mouseleave="$event.currentTarget.style.backgroundColor='transparent'">
                     <span style="flex: 1; font-size: 16px; color: #333; line-height: 1.4; text-align: left;">
                       <span style="margin-right: 12px; color: #1890ff;">•</span>
-                      {{ article.title }}
+                      {{ truncateTitle(article.title) }}
                     </span>
                     <span style="font-size: 14px; color: #999; white-space: nowrap; margin-left: 15px;">
                       [{{ formatDate(article.published_at || article.created_at) }}]
