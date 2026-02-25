@@ -35,7 +35,8 @@ const currentArticleFileUrl = computed(() => {
   // 其他情况，直接用
   return filePath.startsWith('/') ? filePath : `/${filePath}`;
 });
-const activeModule = ref('home'); // home, data, assessment, analysis, spotcheck, tools, chengguantong, cms, map, huiwentai
+const activeModule = ref('home'); // home, data, assessment, analysis, spotcheck, tools, chengguantong, cms, map, huiwentai, ai-apps
+const aiAppsActiveTab = ref('analysis'); // analysis, spotcheck, chengguantong
 
 // 地图服务状态管理
 const mapInstance = ref(null);
@@ -1283,11 +1284,11 @@ function formatDate(dateString) {
   return `${month}-${day}`;
 }
 
-// 截断标题，最多显示12个字符
+// 截断标题，最多显示10个字符
 function truncateTitle(title) {
   if (!title) return '';
-  if (title.length <= 12) return title;
-  return title.substring(0, 12) + '...';
+  if (title.length <= 10) return title;
+  return title.substring(0, 10) + '...';
 }
 
 // 初始化时获取数据库表
@@ -1774,6 +1775,11 @@ function switchModule(module) {
   // 切换到数据分析模块时重新获取表列表（应用可见性过滤）
   if (module === 'analysis') {
     console.log('切换到数据分析模块，获取可见的数据表');
+    fetchTables();
+  }
+  // 切换到AI应用模块时重新获取表列表（应用可见性过滤）
+  if (module === 'ai-apps') {
+    console.log('切换到AI应用模块，获取可见的数据表');
     fetchTables();
   }
   // 切换到考核计分模块时也需要获取表列表（应用可见性过滤）
@@ -4054,17 +4060,11 @@ watch(
       <div v-if="!userInfo || userInfo?.role === 'admin' || (userInfo?.permissions && userInfo?.permissions.assessment)" class="tab" :class="{ active: activeModule === 'assessment' }" @click="switchModule('assessment')">
         考核计分
       </div>
-      <div v-if="!userInfo || userInfo?.role === 'admin' || (userInfo?.permissions && userInfo?.permissions.data_analysis)" class="tab" :class="{ active: activeModule === 'analysis' }" @click="switchModule('analysis')">
-        数据分析
-      </div>
-      <div v-if="!userInfo || userInfo?.role === 'admin' || (userInfo?.permissions && userInfo?.permissions.spotcheck)" class="tab" :class="{ active: activeModule === 'spotcheck' }" @click="switchModule('spotcheck')">
-        案件抽查
+      <div v-if="(!userInfo || userInfo?.role === 'admin' || (userInfo?.permissions && (userInfo?.permissions.data_analysis || userInfo?.permissions.spotcheck || userInfo?.permissions.chengguantong)))" class="tab" :class="{ active: activeModule === 'ai-apps' }" @click="switchModule('ai-apps')">
+        AI应用
       </div>
       <div v-if="!userInfo || userInfo?.role === 'admin' || (userInfo?.permissions && userInfo?.permissions.map)" class="tab" :class="{ active: activeModule === 'map' }" @click="switchModule('map')">
         地图服务
-      </div>
-      <div v-if="!userInfo || userInfo?.role === 'admin' || (userInfo?.permissions && userInfo?.permissions.chengguantong)" class="tab" :class="{ active: activeModule === 'chengguantong' }" @click="switchModule('chengguantong')">
-        城管通
       </div>
       <div v-if="!userInfo || userInfo?.role === 'admin' || (userInfo?.permissions && userInfo?.permissions.huiwentai)" class="tab" :class="{ active: activeModule === 'huiwentai' }" @click="switchModule('huiwentai')">
         汇问台
@@ -4135,6 +4135,387 @@ watch(
         </div>
       </div>
       
+      <!-- AI应用模块 -->
+      <div v-if="activeModule === 'ai-apps'" class="tab-content">
+        <h2 class="section-title">AI应用</h2>
+        
+        <!-- AI应用标签页导航 -->
+        <div class="ai-apps-tabs" style="display: flex; margin-bottom: 24px; border-bottom: 2px solid #e8e8e8; background: #fafafa; border-radius: 8px 8px 0 0; overflow: hidden;">
+          <div 
+            v-if="!userInfo || userInfo?.role === 'admin' || (userInfo?.permissions && userInfo?.permissions.data_analysis)"
+            class="ai-apps-tab" 
+            :class="{ active: aiAppsActiveTab === 'analysis' }"
+            @click="aiAppsActiveTab = 'analysis'"
+            style="padding: 14px 28px; cursor: pointer; font-size: 16px; font-weight: 500; color: #666; border-bottom: 3px solid transparent; transition: all 0.3s; position: relative; background: transparent;"
+            :style="{ 
+              color: aiAppsActiveTab === 'analysis' ? '#1890ff' : '#666',
+              background: aiAppsActiveTab === 'analysis' ? '#e6f7ff' : 'transparent',
+              borderBottomColor: aiAppsActiveTab === 'analysis' ? '#1890ff' : 'transparent',
+              fontWeight: aiAppsActiveTab === 'analysis' ? '600' : '500'
+            }"
+          >
+            数据分析
+          </div>
+          <div 
+            v-if="!userInfo || userInfo?.role === 'admin' || (userInfo?.permissions && userInfo?.permissions.spotcheck)"
+            class="ai-apps-tab" 
+            :class="{ active: aiAppsActiveTab === 'spotcheck' }"
+            @click="aiAppsActiveTab = 'spotcheck'"
+            style="padding: 14px 28px; cursor: pointer; font-size: 16px; font-weight: 500; color: #666; border-bottom: 3px solid transparent; transition: all 0.3s; position: relative; background: transparent;"
+            :style="{ 
+              color: aiAppsActiveTab === 'spotcheck' ? '#1890ff' : '#666',
+              background: aiAppsActiveTab === 'spotcheck' ? '#e6f7ff' : 'transparent',
+              borderBottomColor: aiAppsActiveTab === 'spotcheck' ? '#1890ff' : 'transparent',
+              fontWeight: aiAppsActiveTab === 'spotcheck' ? '600' : '500'
+            }"
+          >
+            案件抽查
+          </div>
+          <div 
+            v-if="!userInfo || userInfo?.role === 'admin' || (userInfo?.permissions && userInfo?.permissions.chengguantong)"
+            class="ai-apps-tab" 
+            :class="{ active: aiAppsActiveTab === 'chengguantong' }"
+            @click="aiAppsActiveTab = 'chengguantong'"
+            style="padding: 14px 28px; cursor: pointer; font-size: 16px; font-weight: 500; color: #666; border-bottom: 3px solid transparent; transition: all 0.3s; position: relative; background: transparent;"
+            :style="{ 
+              color: aiAppsActiveTab === 'chengguantong' ? '#1890ff' : '#666',
+              background: aiAppsActiveTab === 'chengguantong' ? '#e6f7ff' : 'transparent',
+              borderBottomColor: aiAppsActiveTab === 'chengguantong' ? '#1890ff' : 'transparent',
+              fontWeight: aiAppsActiveTab === 'chengguantong' ? '600' : '500'
+            }"
+          >
+            城管通
+          </div>
+        </div>
+        
+        <!-- 数据分析标签页内容 -->
+        <div v-if="aiAppsActiveTab === 'analysis' && (!userInfo || userInfo?.role === 'admin' || (userInfo?.permissions && userInfo?.permissions.data_analysis))">
+          <h2 class="section-title">📊 数据分析</h2>
+        <div class="config-section" style="max-width: 900px; margin: 0 auto;">
+          <!-- 分析配置区域 -->
+          <div style="padding: 25px; background: white; border-radius: 8px; margin-bottom: 25px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);">
+            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; margin-bottom: 20px;">
+              <div>
+                <label for="table-select" style="display: block; font-weight: 600; margin-bottom: 10px; color: #333;">选择数据表：</label>
+                <select id="table-select" v-model="selectedTable" :disabled="loading" style="width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; box-sizing: border-box; transition: all 0.3s ease; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);">
+                  <option value="">-- 请选择 --</option>
+                  <option v-for="table in tables" :key="table" :value="table">
+                    {{ table }}
+                  </option>
+                </select>
+              </div>
+              <div>
+                <label for="analysis-select" style="display: block; font-weight: 600; margin-bottom: 10px; color: #333;">分析类型：</label>
+                <select id="analysis-select" v-model="selectedAnalysisType" :disabled="loading" style="width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; box-sizing: border-box; transition: all 0.3s ease; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);">
+                  <option value="">-- 请选择 --</option>
+                  <option v-for="type in analysisTypes" :key="type.value" :value="type.value">
+                    {{ type.label }}
+                  </option>
+                </select>
+              </div>
+            </div>
+            
+            <!-- 操作按钮 -->
+            <button 
+              class="analyze-btn" 
+              @click="startAnalysis" 
+              :disabled="loading || !selectedTable || !selectedAnalysisType"
+              style="width: 100%; padding: 12px 24px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: 600; transition: all 0.3s ease; disabled: { opacity: 0.6, cursor: 'not-allowed' };"
+              @mouseenter="$event.target.style.transform='translateY(-2px)'; $event.target.style.boxShadow='0 4px 12px rgba(102, 126, 234, 0.4)'"
+              @mouseleave="$event.target.style.transform='translateY(0)'; $event.target.style.boxShadow='none'"
+            >
+              <span v-if="loading">⏳ 分析中...</span>
+              <span v-else>🔍 开始分析</span>
+            </button>
+            
+            <!-- 消息提示 -->
+            <div v-if="analysisMessage" style="margin-top: 15px; padding: 12px; background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; border-radius: 4px;">
+              ✓ {{ analysisMessage }}
+            </div>
+            
+            <!-- 分析进度显示 -->
+            <div v-if="loading" style="margin-top: 25px; padding: 20px; background: linear-gradient(135deg, #f5f7ff 0%, #f8f6ff 100%); border-radius: 6px; border-left: 4px solid #667eea;">
+              <div style="font-weight: 600; color: #667eea; margin-bottom: 15px; font-size: 14px;">⏳ 分析进度</div>
+              <div v-for="(step, index) in analysisSteps" :key="index" style="display: flex; align-items: center; margin-bottom: 10px; padding: 8px; border-radius: 4px; background: rgba(255, 255, 255, 0.5); transition: all 0.3s ease;" :class="{ active: currentStep >= index }">
+                <div style="display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 50%; margin-right: 12px; font-size: 16px; flex-shrink: 0;">{{ step.icon }}</div>
+                <div style="color: #333; font-size: 14px; font-weight: 500;">{{ step.text }}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- 分析结果 -->
+        <div v-if="analysisResult" style="background: white; border-radius: 8px; padding: 25px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);">
+          <!-- 结果标题 -->
+          <div style="margin-bottom: 25px; padding-bottom: 15px; border-bottom: 2px solid #667eea;">
+            <h3 style="margin: 0; font-size: 20px; color: #333;">📈 {{ analysisResult.table_name }} - {{ getAnalysisTypeName(analysisResult.analysis_type) }}</h3>
+            <p style="margin: 12px 0 0 0; color: #666; font-size: 14px; line-height: 1.6;">{{ analysisResult.data_summary }}</p>
+          </div>
+          
+          <div class="result-details">
+            <!-- 图表展示 -->
+            <div v-if="analysisResult.chart_data" class="charts-section" style="margin-bottom: 30px;">
+              <h4 style="margin: 0 0 20px 0; color: #667eea; font-size: 16px; font-weight: 600; display: flex; align-items: center; gap: 8px;">
+                <span>📊</span>
+                <span>数据可视化</span>
+              </h4>
+              <div class="chart-container" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 20px;">
+                <!-- 时间分析图表 -->
+                <template v-if="analysisResult.analysis_type === 'time_analysis'">
+                  <div class="chart-item" style="padding: 20px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e8e8e8;">
+                    <h5 style="margin: 0 0 15px 0; color: #333; font-size: 14px; font-weight: 600;">📅 日案件量趋势</h5>
+                    <div ref="dailyChart" class="chart" style="height: 300px;"></div>
+                  </div>
+                  <div class="chart-item" style="padding: 20px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e8e8e8;">
+                    <h5 style="margin: 0 0 15px 0; color: #333; font-size: 14px; font-weight: 600;">⏰ 小时级高峰时段</h5>
+                    <div ref="hourlyChart" class="chart" style="height: 300px;"></div>
+                  </div>
+                </template>
+                <!-- 空间分析图表 -->
+                <template v-if="analysisResult.analysis_type === 'space_analysis'">
+                  <div class="chart-item" v-if="analysisResult.chart_data?.street" style="padding: 20px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e8e8e8;">
+                    <h5 style="margin: 0 0 15px 0; color: #333; font-size: 14px; font-weight: 600;">🏘️ 各街道案件密度</h5>
+                    <div ref="spaceChart" class="chart" style="height: 300px;"></div>
+                  </div>
+                  <div class="chart-item" v-if="analysisResult.chart_data?.community" style="padding: 20px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e8e8e8;">
+                    <h5 style="margin: 0 0 15px 0; color: #333; font-size: 14px; font-weight: 600;">🏢 各社区案件密度</h5>
+                    <div ref="spaceChart2" class="chart" style="height: 300px;"></div>
+                  </div>
+                  <div class="chart-item" v-if="analysisResult.chart_data?.area" style="padding: 20px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e8e8e8;">
+                    <h5 style="margin: 0 0 15px 0; color: #333; font-size: 14px; font-weight: 600;">📍 各片区案件密度</h5>
+                    <div ref="spaceChart3" class="chart" style="height: 300px;"></div>
+                  </div>
+                </template>
+                <!-- 来源分析图表 -->
+                <template v-if="analysisResult.analysis_type === 'source_analysis'">
+                  <div class="chart-item" v-if="analysisResult.chart_data?.source" style="padding: 20px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e8e8e8; grid-column: 1 / -1;">
+                    <h5 style="margin: 0 0 15px 0; color: #333; font-size: 14px; font-weight: 600;">🔗 案件来源分布</h5>
+                    <div ref="sourceChart" class="chart" style="height: 300px;"></div>
+                  </div>
+                </template>
+                <!-- 案件类型分析图表 -->
+                <template v-if="analysisResult.analysis_type === 'type_analysis'">
+                  <div class="chart-item" v-if="analysisResult.chart_data?.type" style="padding: 20px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e8e8e8; grid-column: 1 / -1;">
+                    <h5 style="margin: 0 0 15px 0; color: #333; font-size: 14px; font-weight: 600;">📋 案件类型分布</h5>
+                    <div ref="sourceChart" class="chart" style="height: 300px;"></div>
+                  </div>
+                </template>
+                <!-- 重复案件分析图表 -->
+                <template v-if="analysisResult.analysis_type === 'duplicate_analysis'">
+                  <div class="chart-item" v-if="analysisResult.chart_data?.problem_duplicates" style="padding: 20px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e8e8e8;">
+                    <h5 style="margin: 0 0 15px 0; color: #333; font-size: 14px; font-weight: 600;">❓ 问题描述重复TOP10</h5>
+                    <div ref="dailyChart" class="chart" style="height: 300px;"></div>
+                  </div>
+                  <div class="chart-item" v-if="analysisResult.chart_data?.address_duplicates" style="padding: 20px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e8e8e8;">
+                    <h5 style="margin: 0 0 15px 0; color: #333; font-size: 14px; font-weight: 600;">📍 地址描述重复TOP10</h5>
+                    <div ref="sourceChart" class="chart" style="height: 300px;"></div>
+                  </div>
+                  <div class="chart-item" v-if="analysisResult.chart_data?.address_type_distribution" style="padding: 20px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e8e8e8;">
+                    <h5 style="margin: 0 0 15px 0; color: #333; font-size: 14px; font-weight: 600;">🏷️ 地址描述类型占比</h5>
+                    <div ref="spaceChart" class="chart" style="height: 300px;"></div>
+                  </div>
+                  <div class="chart-item" v-if="analysisResult.chart_data?.combined_duplicates" style="padding: 20px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e8e8e8;">
+                    <h5 style="margin: 0 0 15px 0; color: #333; font-size: 14px; font-weight: 600;">🔀 组合重复TOP10</h5>
+                    <div ref="spaceChart2" class="chart" style="height: 300px;"></div>
+                  </div>
+                  <div class="chart-item" v-if="analysisResult.chart_data?.violation_type_distribution" style="padding: 20px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e8e8e8;">
+                    <h5 style="margin: 0 0 15px 0; color: #333; font-size: 14px; font-weight: 600;">⚠️ 重复案件违规类型占比</h5>
+                    <div ref="spaceChart3" class="chart" style="height: 300px;"></div>
+                  </div>
+                </template>
+                
+                <!-- 对比上月分析图表 -->
+                <template v-if="analysisResult.analysis_type === 'monthly_comparison'">
+                  <div class="chart-item" v-if="analysisResult.chart_data?.monthly_comparison" style="padding: 20px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e8e8e8; grid-column: 1 / -1;">
+                    <h5 style="margin: 0 0 15px 0; color: #333; font-size: 14px; font-weight: 600;">📊 上月vs本月案件量对比</h5>
+                    <div ref="dailyChart" class="chart" style="height: 300px;"></div>
+                  </div>
+                  <div class="chart-item" v-if="analysisResult.chart_data?.case_size_comparison" style="padding: 20px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e8e8e8;">
+                    <h5 style="margin: 0 0 15px 0; color: #333; font-size: 14px; font-weight: 600;">📈 案件大小类别变化</h5>
+                    <div ref="sourceChart" class="chart" style="height: 300px;"></div>
+                  </div>
+                  <div class="chart-item" v-if="analysisResult.chart_data?.problem_trend" style="padding: 20px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e8e8e8;">
+                    <h5 style="margin: 0 0 15px 0; color: #333; font-size: 14px; font-weight: 600;">📉 问题趋势变化</h5>
+                    <div ref="spaceChart" class="chart" style="height: 300px;"></div>
+                  </div>
+                </template>
+              </div>
+            </div>
+            
+            <!-- 智能分析结果 -->
+            <div v-if="analysisResult.analysis" style="margin-top: 30px; padding: 20px; background: linear-gradient(135deg, #f5f7ff 0%, #f8f6ff 100%); border-radius: 8px; border-left: 4px solid #667eea;">
+              <h4 style="margin: 0 0 15px 0; color: #667eea; font-size: 16px; font-weight: 600; display: flex; align-items: center; gap: 8px;">
+                <span>🤖</span>
+                <span>AI智能分析</span>
+              </h4>
+              <div style="line-height: 1.8; color: #333; font-size: 15px;" v-html="analysisResult.analysis.replace(/\n/g, '<br>')"></div>
+            </div>
+          </div>
+        </div>
+        </div>
+        
+        <!-- 案件抽查标签页内容 -->
+        <div v-if="aiAppsActiveTab === 'spotcheck' && (!userInfo || userInfo?.role === 'admin' || (userInfo?.permissions && userInfo?.permissions.spotcheck))">
+          <h2 class="section-title">案件抽查</h2>
+        <div class="spotcheck-section" style="max-width: 900px; margin: 0 auto;">
+          <!-- 提示信息 -->
+          <div style="margin-bottom: 25px; padding: 16px; background: linear-gradient(135deg, #e3f2fd 0%, #f3e5f5 100%); border-left: 4px solid #667eea; border-radius: 6px; color: #555;">
+            <div style="display: flex; align-items: flex-start; gap: 12px;">
+              <span style="font-size: 20px; flex-shrink: 0;">ℹ️</span>
+              <div>
+                <div style="font-weight: 600; color: #667eea; margin-bottom: 6px;">文件上传说明</div>
+                <p style="margin: 0; line-height: 1.5;">支持上传 DOCX 或 XLSX 格式的文件，系统将使用大模型进行智能分析，并返回详细的案件质量评估结果。</p>
+              </div>
+            </div>
+          </div>
+          
+          <!-- 文件上传区域 -->
+          <div style="padding: 25px; background: white; border: 2px dashed #667eea; border-radius: 8px; margin-bottom: 25px;">
+            <div class="form-group" style="margin-bottom: 20px;">
+              <label for="spotcheck-file-input" style="display: block; font-weight: 600; margin-bottom: 12px; color: #333;">选择要分析的文件：</label>
+              <input 
+                type="file" 
+                id="spotcheck-file-input"
+                accept=".docx,.xlsx"
+                @change="handleSpotcheckFileSelect"
+                style="padding: 10px; border: 1px solid #ddd; border-radius: 6px; width: 100%; box-sizing: border-box; cursor: pointer;"
+              >
+              <div v-if="spotcheckFile" style="margin-top: 12px; padding: 10px 12px; background-color: #e8f5e9; color: #2e7d32; border-radius: 4px; border-left: 3px solid #4caf50;">
+                ✓ 已选择：{{ spotcheckFile.name }}
+              </div>
+            </div>
+            
+            <!-- 操作按钮 -->
+            <div style="display: flex; gap: 12px;">
+              <button 
+                @click="uploadAndAnalyzeSpotcheck"
+                :disabled="!spotcheckFile || spotcheckLoading"
+                style="flex: 1; padding: 12px 24px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 16px; transition: all 0.3s ease; disabled: { opacity: 0.6, cursor: 'not-allowed' };"
+                @mouseenter="$event.target.style.transform='translateY(-2px)'; $event.target.style.boxShadow='0 4px 12px rgba(102, 126, 234, 0.4)'"
+                @mouseleave="$event.target.style.transform='translateY(0)'; $event.target.style.boxShadow='none'"
+              >
+                <span v-if="spotcheckLoading">⏳ 分析中...</span>
+                <span v-else>📤 上传并分析</span>
+              </button>
+              <button 
+                @click="clearSpotcheck"
+                :disabled="spotcheckLoading"
+                style="padding: 12px 24px; background-color: #95a5a6; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; transition: all 0.3s ease;"
+                @mouseenter="$event.target.style.backgroundColor='#7f8c8d'"
+                @mouseleave="$event.target.style.backgroundColor='#95a5a6'"
+              >
+                🔄 清除
+              </button>
+            </div>
+            
+            <!-- 消息提示 -->
+            <div v-if="spotcheckMessage" style="margin-top: 15px; padding: 12px; background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; border-radius: 4px;">
+              ✓ {{ spotcheckMessage }}
+            </div>
+            <div v-if="spotcheckError" style="margin-top: 15px; padding: 12px; background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; border-radius: 4px;">
+              ✗ {{ spotcheckError }}
+            </div>
+          </div>
+          
+          <!-- 分析结果 -->
+          <div v-if="spotcheckResult" style="background: white; border-radius: 8px; padding: 25px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);">
+            <h3 style="margin-top: 0; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 2px solid #667eea; font-size: 20px; color: #333;">分析结果</h3>
+            
+            <!-- 文件内容 -->
+            <div v-if="spotcheckResult.file_content" style="margin-bottom: 25px;">
+              <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 15px;">
+                <span style="font-size: 18px;">📄</span>
+                <h4 style="margin: 0; color: #667eea; font-size: 16px;">读取的文件内容</h4>
+              </div>
+              <div style="background-color: #f8f9fa; padding: 15px; border-radius: 6px; border-left: 3px solid #667eea; max-height: 300px; overflow-y: auto;">
+                <p v-for="(line, index) in spotcheckResult.file_content.split('\n')" :key="index" v-if="line && line.trim()" style="margin: 8px 0; line-height: 1.5; color: #555; font-size: 14px;">
+                  {{ line }}
+                </p>
+              </div>
+            </div>
+            
+            <!-- 分析内容 -->
+            <div v-if="spotcheckResult.analysis">
+              <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 15px;">
+                <span style="font-size: 18px;">🔍</span>
+                <h4 style="margin: 0; color: #667eea; font-size: 16px;">AI智能分析</h4>
+              </div>
+              <div style="background-color: #f8f9fa; padding: 20px; border-radius: 6px; border-left: 3px solid #764ba2; line-height: 1.8; color: #333;">
+                <div v-html="spotcheckResult.analysis"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        </div>
+        
+        <!-- 城管通标签页内容 -->
+        <div v-if="aiAppsActiveTab === 'chengguantong' && (!userInfo || userInfo?.role === 'admin' || (userInfo?.permissions && userInfo?.permissions.chengguantong))">
+          <h2 class="section-title">城管通</h2>
+        <div class="chengguantong-section" style="max-width: 1200px; margin: 0 auto;">
+          <!-- 第一行：提示文字 -->
+          <div class="tip-section" style="margin-bottom: 20px; padding: 15px; background-color: #e3f2fd; border: 1px solid #bbdefb; border-radius: 4px; color: #1565c0;">
+            <p style="margin: 0;"><strong>功能说明：</strong>运城城管通智能问答系统，基于阿里云百炼大模型，提供城市管理相关问题的专业解答。</p>
+          </div>
+          
+          <!-- 输入区域 - 模仿大模型对话界面 -->
+          <div class="chat-interface" style="display: flex; flex-direction: column; gap: 20px; width: 100%; margin: 0 auto;">
+            <!-- 问题输入区域 -->
+            <div class="input-container" style="width: 100%;">
+              <textarea 
+          id="chengguantong-query" 
+          v-model="chengguantongQuery" 
+          placeholder="请输入您的城市管理相关问题..." 
+          rows="3" 
+          :disabled="chengguantongLoading"
+          style="width: 100%; 
+                 padding: 20px; 
+                 border: 1px solid #ddd; 
+                 border-radius: 16px; 
+                 resize: vertical; 
+                 font-size: 18px; 
+                 font-family: Arial, sans-serif; 
+                 min-height: 90px; 
+                 /* 移除max-width限制，让文本框占满容器 */
+                 line-height: 1.6;
+                 box-sizing: border-box;"
+        ></textarea>
+              <!-- 确保padding不超出宽度 -->
+              
+              <div class="button-group" style="display: flex; justify-content: center; gap: 10px; margin-top: 10px;">
+                <button 
+                  @click="resetChengguantong"
+                  :disabled="chengguantongLoading"
+                  class="btn-secondary"
+                  style="padding: 12px 20px; background-color: #95a5a6; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px;"
+                >
+                  清空
+                </button>
+                <button 
+                  @click="callBaiLianAPI(chengguantongQuery)"
+                  :disabled="chengguantongLoading || !chengguantongQuery"
+                  class="btn-primary"
+                  style="padding: 12px 30px; background-color: #2196f3; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: bold;"
+                >
+                  <span v-if="chengguantongLoading">处理中...</span>
+                  <span v-else>发送</span>
+                </button>
+              </div>
+              
+              <div v-if="chengguantongError" class="error-message" style="padding: 10px; background-color: #ffebee; color: #c62828; border: 1px solid #ffcdd2; border-radius: 6px; margin-top: 10px;">
+                {{ chengguantongError }}
+              </div>
+            </div>
+            
+            <!-- 响应结果 -->
+            <div v-if="showResponse && chengguantongResponse" class="response-container" style="width: 100%; padding: 24px; border: 1px solid #e0e0e0; border-radius: 12px; background-color: #f9f9f9; box-shadow: 0 2px 8px rgba(0,0,0,0.05); box-sizing: border-box;">
+              <div class="response-content" style="line-height: 1.7; color: #333; white-space: pre-wrap; word-wrap: break-word; overflow-wrap: break-word; font-size: 16px;">
+                {{ chengguantongResponse }}
+              </div>
+            </div>
+          </div>
+        </div>
+        </div>
+      </div>
 
       
       <!-- 汇问台模块 -->
@@ -4438,266 +4819,6 @@ watch(
                     </tr>
                   </tbody>
                 </table>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-      
-      <!-- 数据分析模块 -->
-      <div v-if="activeModule === 'analysis' && (!userInfo || userInfo.role === 'admin' || (userInfo.permissions && userInfo.permissions.data_analysis))" class="tab-content">
-        <h2 class="section-title">📊 数据分析</h2>
-        <div class="config-section" style="max-width: 900px; margin: 0 auto;">
-          <!-- 分析配置区域 -->
-          <div style="padding: 25px; background: white; border-radius: 8px; margin-bottom: 25px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);">
-            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; margin-bottom: 20px;">
-              <div>
-                <label for="table-select" style="display: block; font-weight: 600; margin-bottom: 10px; color: #333;">选择数据表：</label>
-                <select id="table-select" v-model="selectedTable" :disabled="loading" style="width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; box-sizing: border-box; transition: all 0.3s ease; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);">
-                  <option value="">-- 请选择 --</option>
-                  <option v-for="table in tables" :key="table" :value="table">
-                    {{ table }}
-                  </option>
-                </select>
-              </div>
-              <div>
-                <label for="analysis-select" style="display: block; font-weight: 600; margin-bottom: 10px; color: #333;">分析类型：</label>
-                <select id="analysis-select" v-model="selectedAnalysisType" :disabled="loading" style="width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; box-sizing: border-box; transition: all 0.3s ease; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);">
-                  <option value="">-- 请选择 --</option>
-                  <option v-for="type in analysisTypes" :key="type.value" :value="type.value">
-                    {{ type.label }}
-                  </option>
-                </select>
-              </div>
-            </div>
-            
-            <!-- 操作按钮 -->
-            <button 
-              class="analyze-btn" 
-              @click="startAnalysis" 
-              :disabled="loading || !selectedTable || !selectedAnalysisType"
-              style="width: 100%; padding: 12px 24px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: 600; transition: all 0.3s ease; disabled: { opacity: 0.6, cursor: 'not-allowed' };"
-              @mouseenter="$event.target.style.transform='translateY(-2px)'; $event.target.style.boxShadow='0 4px 12px rgba(102, 126, 234, 0.4)'"
-              @mouseleave="$event.target.style.transform='translateY(0)'; $event.target.style.boxShadow='none'"
-            >
-              <span v-if="loading">⏳ 分析中...</span>
-              <span v-else>🔍 开始分析</span>
-            </button>
-            
-            <!-- 消息提示 -->
-            <div v-if="analysisMessage" style="margin-top: 15px; padding: 12px; background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; border-radius: 4px;">
-              ✓ {{ analysisMessage }}
-            </div>
-            
-            <!-- 分析进度显示 -->
-            <div v-if="loading" style="margin-top: 25px; padding: 20px; background: linear-gradient(135deg, #f5f7ff 0%, #f8f6ff 100%); border-radius: 6px; border-left: 4px solid #667eea;">
-              <div style="font-weight: 600; color: #667eea; margin-bottom: 15px; font-size: 14px;">⏳ 分析进度</div>
-              <div v-for="(step, index) in analysisSteps" :key="index" style="display: flex; align-items: center; margin-bottom: 10px; padding: 8px; border-radius: 4px; background: rgba(255, 255, 255, 0.5); transition: all 0.3s ease;" :class="{ active: currentStep >= index }">
-                <div style="display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 50%; margin-right: 12px; font-size: 16px; flex-shrink: 0;">{{ step.icon }}</div>
-                <div style="color: #333; font-size: 14px; font-weight: 500;">{{ step.text }}</div>
-              </div>
-            </div>
-          </div>
-        </div>
-        
-        <!-- 分析结果 -->
-        <div v-if="analysisResult" style="background: white; border-radius: 8px; padding: 25px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);">
-          <!-- 结果标题 -->
-          <div style="margin-bottom: 25px; padding-bottom: 15px; border-bottom: 2px solid #667eea;">
-            <h3 style="margin: 0; font-size: 20px; color: #333;">📈 {{ analysisResult.table_name }} - {{ getAnalysisTypeName(analysisResult.analysis_type) }}</h3>
-            <p style="margin: 12px 0 0 0; color: #666; font-size: 14px; line-height: 1.6;">{{ analysisResult.data_summary }}</p>
-          </div>
-          
-          <div class="result-details">
-            <!-- 图表展示 -->
-            <div v-if="analysisResult.chart_data" class="charts-section" style="margin-bottom: 30px;">
-              <h4 style="margin: 0 0 20px 0; color: #667eea; font-size: 16px; font-weight: 600; display: flex; align-items: center; gap: 8px;">
-                <span>📊</span>
-                <span>数据可视化</span>
-              </h4>
-              <div class="chart-container" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 20px;">
-                <!-- 时间分析图表 -->
-                <template v-if="analysisResult.analysis_type === 'time_analysis'">
-                  <div class="chart-item" style="padding: 20px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e8e8e8;">
-                    <h5 style="margin: 0 0 15px 0; color: #333; font-size: 14px; font-weight: 600;">📅 日案件量趋势</h5>
-                    <div ref="dailyChart" class="chart" style="height: 300px;"></div>
-                  </div>
-                  <div class="chart-item" style="padding: 20px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e8e8e8;">
-                    <h5 style="margin: 0 0 15px 0; color: #333; font-size: 14px; font-weight: 600;">⏰ 小时级高峰时段</h5>
-                    <div ref="hourlyChart" class="chart" style="height: 300px;"></div>
-                  </div>
-                </template>
-                <!-- 空间分析图表 -->
-                <template v-if="analysisResult.analysis_type === 'space_analysis'">
-                  <div class="chart-item" v-if="analysisResult.chart_data?.street" style="padding: 20px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e8e8e8;">
-                    <h5 style="margin: 0 0 15px 0; color: #333; font-size: 14px; font-weight: 600;">🏘️ 各街道案件密度</h5>
-                    <div ref="spaceChart" class="chart" style="height: 300px;"></div>
-                  </div>
-                  <div class="chart-item" v-if="analysisResult.chart_data?.community" style="padding: 20px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e8e8e8;">
-                    <h5 style="margin: 0 0 15px 0; color: #333; font-size: 14px; font-weight: 600;">🏢 各社区案件密度</h5>
-                    <div ref="spaceChart2" class="chart" style="height: 300px;"></div>
-                  </div>
-                  <div class="chart-item" v-if="analysisResult.chart_data?.area" style="padding: 20px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e8e8e8;">
-                    <h5 style="margin: 0 0 15px 0; color: #333; font-size: 14px; font-weight: 600;">📍 各片区案件密度</h5>
-                    <div ref="spaceChart3" class="chart" style="height: 300px;"></div>
-                  </div>
-                </template>
-                <!-- 来源分析图表 -->
-                <template v-if="analysisResult.analysis_type === 'source_analysis'">
-                  <div class="chart-item" v-if="analysisResult.chart_data?.source" style="padding: 20px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e8e8e8; grid-column: 1 / -1;">
-                    <h5 style="margin: 0 0 15px 0; color: #333; font-size: 14px; font-weight: 600;">🔗 案件来源分布</h5>
-                    <div ref="sourceChart" class="chart" style="height: 300px;"></div>
-                  </div>
-                </template>
-                <!-- 案件类型分析图表 -->
-                <template v-if="analysisResult.analysis_type === 'type_analysis'">
-                  <div class="chart-item" v-if="analysisResult.chart_data?.type" style="padding: 20px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e8e8e8; grid-column: 1 / -1;">
-                    <h5 style="margin: 0 0 15px 0; color: #333; font-size: 14px; font-weight: 600;">📋 案件类型分布</h5>
-                    <div ref="sourceChart" class="chart" style="height: 300px;"></div>
-                  </div>
-                </template>
-                <!-- 重复案件分析图表 -->
-                <template v-if="analysisResult.analysis_type === 'duplicate_analysis'">
-                  <div class="chart-item" v-if="analysisResult.chart_data?.problem_duplicates" style="padding: 20px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e8e8e8;">
-                    <h5 style="margin: 0 0 15px 0; color: #333; font-size: 14px; font-weight: 600;">❓ 问题描述重复TOP10</h5>
-                    <div ref="dailyChart" class="chart" style="height: 300px;"></div>
-                  </div>
-                  <div class="chart-item" v-if="analysisResult.chart_data?.address_duplicates" style="padding: 20px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e8e8e8;">
-                    <h5 style="margin: 0 0 15px 0; color: #333; font-size: 14px; font-weight: 600;">📍 地址描述重复TOP10</h5>
-                    <div ref="sourceChart" class="chart" style="height: 300px;"></div>
-                  </div>
-                  <div class="chart-item" v-if="analysisResult.chart_data?.address_type_distribution" style="padding: 20px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e8e8e8;">
-                    <h5 style="margin: 0 0 15px 0; color: #333; font-size: 14px; font-weight: 600;">🏷️ 地址描述类型占比</h5>
-                    <div ref="spaceChart" class="chart" style="height: 300px;"></div>
-                  </div>
-                  <div class="chart-item" v-if="analysisResult.chart_data?.combined_duplicates" style="padding: 20px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e8e8e8;">
-                    <h5 style="margin: 0 0 15px 0; color: #333; font-size: 14px; font-weight: 600;">🔀 组合重复TOP10</h5>
-                    <div ref="spaceChart2" class="chart" style="height: 300px;"></div>
-                  </div>
-                  <div class="chart-item" v-if="analysisResult.chart_data?.violation_type_distribution" style="padding: 20px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e8e8e8;">
-                    <h5 style="margin: 0 0 15px 0; color: #333; font-size: 14px; font-weight: 600;">⚠️ 重复案件违规类型占比</h5>
-                    <div ref="spaceChart3" class="chart" style="height: 300px;"></div>
-                  </div>
-                </template>
-                
-                <!-- 对比上月分析图表 -->
-                <template v-if="analysisResult.analysis_type === 'monthly_comparison'">
-                  <div class="chart-item" v-if="analysisResult.chart_data?.monthly_comparison" style="padding: 20px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e8e8e8; grid-column: 1 / -1;">
-                    <h5 style="margin: 0 0 15px 0; color: #333; font-size: 14px; font-weight: 600;">📊 上月vs本月案件量对比</h5>
-                    <div ref="dailyChart" class="chart" style="height: 300px;"></div>
-                  </div>
-                  <div class="chart-item" v-if="analysisResult.chart_data?.case_size_comparison" style="padding: 20px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e8e8e8;">
-                    <h5 style="margin: 0 0 15px 0; color: #333; font-size: 14px; font-weight: 600;">📈 案件大小类别变化</h5>
-                    <div ref="sourceChart" class="chart" style="height: 300px;"></div>
-                  </div>
-                  <div class="chart-item" v-if="analysisResult.chart_data?.problem_trend" style="padding: 20px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e8e8e8;">
-                    <h5 style="margin: 0 0 15px 0; color: #333; font-size: 14px; font-weight: 600;">📉 问题趋势变化</h5>
-                    <div ref="spaceChart" class="chart" style="height: 300px;"></div>
-                  </div>
-                </template>
-              </div>
-            </div>
-            
-            <!-- 智能分析结果 -->
-            <div v-if="analysisResult.analysis" style="margin-top: 30px; padding: 20px; background: linear-gradient(135deg, #f5f7ff 0%, #f8f6ff 100%); border-radius: 8px; border-left: 4px solid #667eea;">
-              <h4 style="margin: 0 0 15px 0; color: #667eea; font-size: 16px; font-weight: 600; display: flex; align-items: center; gap: 8px;">
-                <span>🤖</span>
-                <span>AI智能分析</span>
-              </h4>
-              <div style="line-height: 1.8; color: #333; font-size: 15px;" v-html="analysisResult.analysis.replace(/\n/g, '<br>')"></div>
-            </div>
-          </div>
-        </div>
-      </div>
-      
-      <!-- 案件抽查模块 -->
-      <div v-if="activeModule === 'spotcheck' && (!userInfo || userInfo.role === 'admin' || (userInfo.permissions && userInfo.permissions.spotcheck))" class="tab-content">
-        <h2 class="section-title">案件抽查</h2>
-        <div class="spotcheck-section" style="max-width: 900px; margin: 0 auto;">
-          <!-- 提示信息 -->
-          <div style="margin-bottom: 25px; padding: 16px; background: linear-gradient(135deg, #e3f2fd 0%, #f3e5f5 100%); border-left: 4px solid #667eea; border-radius: 6px; color: #555;">
-            <div style="display: flex; align-items: flex-start; gap: 12px;">
-              <span style="font-size: 20px; flex-shrink: 0;">ℹ️</span>
-              <div>
-                <div style="font-weight: 600; color: #667eea; margin-bottom: 6px;">文件上传说明</div>
-                <p style="margin: 0; line-height: 1.5;">支持上传 DOCX 或 XLSX 格式的文件，系统将使用大模型进行智能分析，并返回详细的案件质量评估结果。</p>
-              </div>
-            </div>
-          </div>
-          
-          <!-- 文件上传区域 -->
-          <div style="padding: 25px; background: white; border: 2px dashed #667eea; border-radius: 8px; margin-bottom: 25px;">
-            <div class="form-group" style="margin-bottom: 20px;">
-              <label for="spotcheck-file-input" style="display: block; font-weight: 600; margin-bottom: 12px; color: #333;">选择要分析的文件：</label>
-              <input 
-                type="file" 
-                id="spotcheck-file-input"
-                accept=".docx,.xlsx"
-                @change="handleSpotcheckFileSelect"
-                style="padding: 10px; border: 1px solid #ddd; border-radius: 6px; width: 100%; box-sizing: border-box; cursor: pointer;"
-              >
-              <div v-if="spotcheckFile" style="margin-top: 12px; padding: 10px 12px; background-color: #e8f5e9; color: #2e7d32; border-radius: 4px; border-left: 3px solid #4caf50;">
-                ✓ 已选择：{{ spotcheckFile.name }}
-              </div>
-            </div>
-            
-            <!-- 操作按钮 -->
-            <div style="display: flex; gap: 12px;">
-              <button 
-                @click="uploadAndAnalyzeSpotcheck"
-                :disabled="!spotcheckFile || spotcheckLoading"
-                style="flex: 1; padding: 12px 24px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 16px; transition: all 0.3s ease; disabled: { opacity: 0.6, cursor: 'not-allowed' };"
-                @mouseenter="$event.target.style.transform='translateY(-2px)'; $event.target.style.boxShadow='0 4px 12px rgba(102, 126, 234, 0.4)'"
-                @mouseleave="$event.target.style.transform='translateY(0)'; $event.target.style.boxShadow='none'"
-              >
-                <span v-if="spotcheckLoading">⏳ 分析中...</span>
-                <span v-else>📤 上传并分析</span>
-              </button>
-              <button 
-                @click="clearSpotcheck"
-                :disabled="spotcheckLoading"
-                style="padding: 12px 24px; background-color: #95a5a6; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; transition: all 0.3s ease;"
-                @mouseenter="$event.target.style.backgroundColor='#7f8c8d'"
-                @mouseleave="$event.target.style.backgroundColor='#95a5a6'"
-              >
-                🔄 清除
-              </button>
-            </div>
-            
-            <!-- 消息提示 -->
-            <div v-if="spotcheckMessage" style="margin-top: 15px; padding: 12px; background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; border-radius: 4px;">
-              ✓ {{ spotcheckMessage }}
-            </div>
-            <div v-if="spotcheckError" style="margin-top: 15px; padding: 12px; background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; border-radius: 4px;">
-              ✗ {{ spotcheckError }}
-            </div>
-          </div>
-          
-          <!-- 分析结果 -->
-          <div v-if="spotcheckResult" style="background: white; border-radius: 8px; padding: 25px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);">
-            <h3 style="margin-top: 0; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 2px solid #667eea; font-size: 20px; color: #333;">分析结果</h3>
-            
-            <!-- 文件内容 -->
-            <div v-if="spotcheckResult.file_content" style="margin-bottom: 25px;">
-              <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 15px;">
-                <span style="font-size: 18px;">📄</span>
-                <h4 style="margin: 0; color: #667eea; font-size: 16px;">读取的文件内容</h4>
-              </div>
-              <div style="background-color: #f8f9fa; padding: 15px; border-radius: 6px; border-left: 3px solid #667eea; max-height: 300px; overflow-y: auto;">
-                <p v-for="(line, index) in spotcheckResult.file_content.split('\n')" :key="index" v-if="line && line.trim()" style="margin: 8px 0; line-height: 1.5; color: #555; font-size: 14px;">
-                  {{ line }}
-                </p>
-              </div>
-            </div>
-            
-            <!-- 分析内容 -->
-            <div v-if="spotcheckResult.analysis">
-              <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 15px;">
-                <span style="font-size: 18px;">🔍</span>
-                <h4 style="margin: 0; color: #667eea; font-size: 16px;">AI智能分析</h4>
-              </div>
-              <div style="background-color: #f8f9fa; padding: 20px; border-radius: 6px; border-left: 3px solid #764ba2; line-height: 1.8; color: #333;">
-                <div v-html="spotcheckResult.analysis"></div>
               </div>
             </div>
           </div>
@@ -5074,74 +5195,6 @@ watch(
           <div style="padding: 40px; text-align: center; background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px;">
             <h3 style="margin-bottom: 20px;">其他功能</h3>
             <p>该功能正在开发中，敬请期待...</p>
-          </div>
-        </div>
-      </div>
-      
-      <!-- 城管通模块 -->
-      <div v-if="activeModule === 'chengguantong' && (!userInfo || userInfo.role === 'admin' || (userInfo.permissions && userInfo.permissions.chengguantong))" class="tab-content">
-        <h2 class="section-title">城管通</h2>
-        <div class="chengguantong-section" style="max-width: 1200px; margin: 0 auto;">
-          <!-- 第一行：提示文字 -->
-          <div class="tip-section" style="margin-bottom: 20px; padding: 15px; background-color: #e3f2fd; border: 1px solid #bbdefb; border-radius: 4px; color: #1565c0;">
-            <p style="margin: 0;"><strong>功能说明：</strong>运城城管通智能问答系统，基于阿里云百炼大模型，提供城市管理相关问题的专业解答。</p>
-          </div>
-          
-          <!-- 输入区域 - 模仿大模型对话界面 -->
-          <div class="chat-interface" style="display: flex; flex-direction: column; gap: 20px; width: 100%; margin: 0 auto;">
-            <!-- 问题输入区域 -->
-            <div class="input-container" style="width: 100%;">
-              <textarea 
-          id="chengguantong-query" 
-          v-model="chengguantongQuery" 
-          placeholder="请输入您的城市管理相关问题..." 
-          rows="3" 
-          :disabled="chengguantongLoading"
-          style="width: 100%; 
-                 padding: 20px; 
-                 border: 1px solid #ddd; 
-                 border-radius: 16px; 
-                 resize: vertical; 
-                 font-size: 18px; 
-                 font-family: Arial, sans-serif; 
-                 min-height: 90px; 
-                 /* 移除max-width限制，让文本框占满容器 */
-                 line-height: 1.6;
-                 box-sizing: border-box;"
-        ></textarea>
-              <!-- 确保padding不超出宽度 -->
-              
-              <div class="button-group" style="display: flex; justify-content: center; gap: 10px; margin-top: 10px;">
-                <button 
-                  @click="resetChengguantong"
-                  :disabled="chengguantongLoading"
-                  class="btn-secondary"
-                  style="padding: 12px 20px; background-color: #95a5a6; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px;"
-                >
-                  清空
-                </button>
-                <button 
-                  @click="callBaiLianAPI(chengguantongQuery)"
-                  :disabled="chengguantongLoading || !chengguantongQuery"
-                  class="btn-primary"
-                  style="padding: 12px 30px; background-color: #2196f3; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: bold;"
-                >
-                  <span v-if="chengguantongLoading">处理中...</span>
-                  <span v-else>发送</span>
-                </button>
-              </div>
-              
-              <div v-if="chengguantongError" class="error-message" style="padding: 10px; background-color: #ffebee; color: #c62828; border: 1px solid #ffcdd2; border-radius: 6px; margin-top: 10px;">
-                {{ chengguantongError }}
-              </div>
-            </div>
-            
-            <!-- 响应结果 -->
-            <div v-if="showResponse && chengguantongResponse" class="response-container" style="width: 100%; padding: 24px; border: 1px solid #e0e0e0; border-radius: 12px; background-color: #f9f9f9; box-shadow: 0 2px 8px rgba(0,0,0,0.05); box-sizing: border-box;">
-              <div class="response-content" style="line-height: 1.7; color: #333; white-space: pre-wrap; word-wrap: break-word; overflow-wrap: break-word; font-size: 16px;">
-                {{ chengguantongResponse }}
-              </div>
-            </div>
           </div>
         </div>
       </div>
