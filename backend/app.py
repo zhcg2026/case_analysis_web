@@ -93,11 +93,10 @@ def admin_required(f):
     return decorated
 
 # 数据库配置
-import os
 DB_USER = 'root'
 DB_PASSWORD = 'MySql@2024!Root'
 DB_NAME = 'case_analysis'
-DB_HOST = os.environ.get('DB_HOST', 'mysql-case-analysis')
+DB_HOST = 'mysql-case-analysis'
 DB_PORT = '3306'
 
 # 定义占位符类和变量
@@ -179,6 +178,17 @@ try:
         created_at = Column(DateTime(timezone=True), server_default=func.now())
         updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
         published_at = Column(DateTime(timezone=True))
+    
+    # 业务平台模型
+    class BusinessPlatform(Base):
+        __tablename__ = 'business_platforms'
+        
+        id = Column(Integer, primary_key=True, autoincrement=True)
+        name = Column(String(100), nullable=False, unique=True)  # 平台名称
+        url = Column(String(500), nullable=False)  # 平台地址
+        image_path = Column(String(500))  # 封面图片路径
+        created_at = Column(DateTime(timezone=True), server_default=func.now())
+        updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     
     # 创建数据库表
     Base.metadata.create_all(engine)
@@ -1009,6 +1019,158 @@ def delete_user(user_id):
     except Exception as e:
         session.rollback()
         print(f"Error in delete_user: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        session.close()
+
+# 业务平台API接口
+
+# 获取所有业务平台
+@app.route('/api/business-platforms', methods=['GET'])
+def get_business_platforms():
+    # 如果没有数据库连接，返回空列表
+    if engine is None:
+        return jsonify({'platforms': []}), 200
+    
+    session = Session()
+    try:
+        platforms = session.query(BusinessPlatform).all()
+        platform_list = []
+        for platform in platforms:
+            platform_list.append({
+                'id': platform.id,
+                'name': platform.name,
+                'url': platform.url,
+                'image_path': platform.image_path,
+                'created_at': platform.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+                'updated_at': platform.updated_at.strftime('%Y-%m-%d %H:%M:%S')
+            })
+        session.commit()
+        return jsonify({'platforms': platform_list}), 200
+    except Exception as e:
+        session.rollback()
+        print(f"Error in get_business_platforms: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        session.close()
+
+# 添加业务平台
+@app.route('/api/business-platforms', methods=['POST'])
+@admin_required
+def add_business_platform():
+    # 如果没有数据库连接，返回提示
+    if engine is None:
+        return jsonify({'error': 'Database not connected. Business platform management is disabled.'}), 503
+    
+    session = Session()
+    try:
+        data = request.json
+        name = data.get('name')
+        url = data.get('url')
+        image_path = data.get('image_path')
+        
+        if not name or not url:
+            return jsonify({'error': 'Missing name or url'}), 400
+        
+        # 检查平台名称是否已存在
+        existing_platform = session.query(BusinessPlatform).filter_by(name=name).first()
+        if existing_platform:
+            return jsonify({'error': 'Platform name already exists'}), 400
+        
+        # 创建新平台
+        new_platform = BusinessPlatform(
+            name=name,
+            url=url,
+            image_path=image_path
+        )
+        session.add(new_platform)
+        session.commit()
+        
+        return jsonify({
+            'id': new_platform.id,
+            'name': new_platform.name,
+            'url': new_platform.url,
+            'image_path': new_platform.image_path
+        }), 201
+    except Exception as e:
+        session.rollback()
+        print(f"Error in add_business_platform: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        session.close()
+
+# 更新业务平台
+@app.route('/api/business-platforms/<int:platform_id>', methods=['PUT'])
+@admin_required
+def update_business_platform(platform_id):
+    # 如果没有数据库连接，返回提示
+    if engine is None:
+        return jsonify({'error': 'Database not connected. Business platform management is disabled.'}), 503
+    
+    session = Session()
+    try:
+        data = request.json
+        platform = session.query(BusinessPlatform).filter_by(id=platform_id).first()
+        if not platform:
+            return jsonify({'error': 'Platform not found'}), 404
+        
+        # 更新平台信息
+        if 'name' in data:
+            # 检查新名称是否与其他平台重复
+            if data['name'] != platform.name:
+                existing_platform = session.query(BusinessPlatform).filter_by(name=data['name']).first()
+                if existing_platform:
+                    return jsonify({'error': 'Platform name already exists'}), 400
+            platform.name = data['name']
+        if 'url' in data:
+            platform.url = data['url']
+        if 'image_path' in data:
+            platform.image_path = data['image_path']
+        
+        session.commit()
+        
+        return jsonify({
+            'id': platform.id,
+            'name': platform.name,
+            'url': platform.url,
+            'image_path': platform.image_path
+        }), 200
+    except Exception as e:
+        session.rollback()
+        print(f"Error in update_business_platform: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        session.close()
+
+# 删除业务平台
+@app.route('/api/business-platforms/<int:platform_id>', methods=['DELETE'])
+@admin_required
+def delete_business_platform(platform_id):
+    # 如果没有数据库连接，返回提示
+    if engine is None:
+        return jsonify({'error': 'Database not connected. Business platform management is disabled.'}), 503
+    
+    session = Session()
+    try:
+        platform = session.query(BusinessPlatform).filter_by(id=platform_id).first()
+        if not platform:
+            return jsonify({'error': 'Platform not found'}), 404
+        
+        session.delete(platform)
+        session.commit()
+        
+        return jsonify({'message': 'Platform deleted successfully'}), 200
+    except Exception as e:
+        session.rollback()
+        print(f"Error in delete_business_platform: {str(e)}")
         import traceback
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500

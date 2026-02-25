@@ -80,6 +80,10 @@ const huiwentaiActiveTab = ref('tasks'); // tasks, daily-reports
 const huiwentaiDailyReports = ref([]);
 const expandedReportId = ref(null); // 当前展开的日报ID
 
+// 业务平台展示状态管理
+const displayBusinessPlatforms = ref([]);
+const businessPlatformsLoading = ref(false);
+
 // 城管通模块状态管理
 const chengguantongQuery = ref('');
 const chengguantongResponse = ref('');
@@ -130,7 +134,7 @@ const loginError = ref('');
 
 // 管理员管理状态
 const adminActiveTab = ref('users'); // users, system
-const systemConfigTab = ref('data'); // data, general, security, logs, cms
+const systemConfigTab = ref('data'); // data, general, security, logs, cms, business-platforms
 const users = ref([]);
 const showAddUserForm = ref(false);
 const editingUser = ref(null);
@@ -141,6 +145,20 @@ const newUser = ref({
 });
 const adminLoading = ref(false);
 const adminError = ref('');
+
+// 业务平台管理状态
+const businessPlatforms = ref([]);
+const showAddPlatformForm = ref(false);
+const editingPlatform = ref(null);
+const newPlatform = ref({
+  name: '',
+  url: '',
+  image_path: ''
+});
+const platformLoading = ref(false);
+const platformError = ref('');
+const platformFileUploadLoading = ref(false);
+const platformFileUploadError = ref('');
 
 // 表格可见性状态管理
 const tableVisibility = ref({});
@@ -1272,6 +1290,8 @@ onMounted(() => {
   initTableVisibility();
   // 首页也需要获取CMS数据
   fetchCMSCategories();
+  // 获取业务平台数据用于展示
+  fetchDisplayBusinessPlatforms();
 });
 
 // 监听系统配置标签页变化，当切换到cms标签时获取CMS数据
@@ -1280,9 +1300,223 @@ watch(
   (newTab) => {
     if (newTab === 'cms') {
       fetchCMSCategories();
+    } else if (newTab === 'business-platforms') {
+      fetchBusinessPlatforms();
     }
   }
 );
+
+// 获取业务平台列表用于展示
+async function fetchDisplayBusinessPlatforms() {
+  try {
+    businessPlatformsLoading.value = true;
+    
+    const response = await fetch('/api/business-platforms');
+    const data = await response.json();
+    if (data.platforms) {
+      displayBusinessPlatforms.value = data.platforms;
+    }
+  } catch (error) {
+    console.error('Error fetching business platforms for display:', error);
+  } finally {
+    businessPlatformsLoading.value = false;
+  }
+}
+
+// 获取业务平台列表
+async function fetchBusinessPlatforms() {
+  try {
+    platformLoading.value = true;
+    platformError.value = '';
+    
+    const response = await fetch('/api/business-platforms', {
+      headers: getAuthHeaders()
+    });
+    const data = await response.json();
+    if (data.platforms) {
+      businessPlatforms.value = data.platforms;
+    }
+  } catch (error) {
+    platformError.value = '获取业务平台列表失败: ' + error.message;
+    console.error('Error fetching business platforms:', error);
+  } finally {
+    platformLoading.value = false;
+  }
+}
+
+// 上传平台封面图片
+async function uploadPlatformImage(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  
+  try {
+    platformFileUploadLoading.value = true;
+    platformFileUploadError.value = '';
+    
+    // 检查登录状态
+    console.log('Upload initiated, isLoggedIn:', isLoggedIn.value);
+    console.log('User info:', userInfo.value);
+    
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    // 确保获取正确的认证头
+    const authHeaders = getAuthHeaders();
+    console.log('Upload headers:', authHeaders);
+    
+    const response = await fetch('/api/upload/image', {
+      method: 'POST',
+      headers: authHeaders,
+      body: formData
+    });
+    
+    console.log('Upload response status:', response.status);
+    const data = await response.json();
+    console.log('Upload response data:', data);
+    
+    if (data.location) {
+      if (editingPlatform.value) {
+        editingPlatform.value.image_path = data.location;
+      } else {
+        newPlatform.value.image_path = data.location;
+      }
+    } else if (data.error) {
+      platformFileUploadError.value = '上传失败: ' + data.error;
+    } else {
+      platformFileUploadError.value = '上传失败: 未知错误';
+    }
+  } catch (error) {
+    platformFileUploadError.value = '上传失败: ' + error.message;
+    console.error('Error uploading platform image:', error);
+  } finally {
+    platformFileUploadLoading.value = false;
+  }
+}
+
+// 添加业务平台
+async function addBusinessPlatform() {
+  if (!newPlatform.value.name || !newPlatform.value.url) {
+    platformError.value = '请输入平台名称和地址';
+    return;
+  }
+  
+  try {
+    platformLoading.value = true;
+    platformError.value = '';
+    
+    const response = await fetch('/api/business-platforms', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeaders()
+      },
+      body: JSON.stringify(newPlatform.value)
+    });
+    
+    const data = await response.json();
+    if (data.id) {
+      businessPlatforms.value.push(data);
+      showAddPlatformForm.value = false;
+      newPlatform.value = {
+        name: '',
+        url: '',
+        image_path: ''
+      };
+    } else if (data.error) {
+      platformError.value = data.error;
+    }
+  } catch (error) {
+    platformError.value = '添加失败: ' + error.message;
+    console.error('Error adding business platform:', error);
+  } finally {
+    platformLoading.value = false;
+  }
+}
+
+// 编辑业务平台
+async function updateBusinessPlatform() {
+  if (!editingPlatform.value.name || !editingPlatform.value.url) {
+    platformError.value = '请输入平台名称和地址';
+    return;
+  }
+  
+  try {
+    platformLoading.value = true;
+    platformError.value = '';
+    
+    const response = await fetch(`/api/business-platforms/${editingPlatform.value.id}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeaders()
+      },
+      body: JSON.stringify(editingPlatform.value)
+    });
+    
+    const data = await response.json();
+    if (data.id) {
+      const index = businessPlatforms.value.findIndex(p => p.id === data.id);
+      if (index !== -1) {
+        businessPlatforms.value[index] = data;
+      }
+      editingPlatform.value = null;
+    } else if (data.error) {
+      platformError.value = data.error;
+    }
+  } catch (error) {
+    platformError.value = '更新失败: ' + error.message;
+    console.error('Error updating business platform:', error);
+  } finally {
+    platformLoading.value = false;
+  }
+}
+
+// 删除业务平台
+async function deleteBusinessPlatform(platformId) {
+  if (!confirm('确定要删除这个业务平台吗？')) return;
+  
+  try {
+    platformLoading.value = true;
+    platformError.value = '';
+    
+    const response = await fetch(`/api/business-platforms/${platformId}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders()
+    });
+    
+    const data = await response.json();
+    if (data.message) {
+      businessPlatforms.value = businessPlatforms.value.filter(p => p.id !== platformId);
+    } else if (data.error) {
+      platformError.value = data.error;
+    }
+  } catch (error) {
+    platformError.value = '删除失败: ' + error.message;
+    console.error('Error deleting business platform:', error);
+  } finally {
+    platformLoading.value = false;
+  }
+}
+
+// 开始编辑业务平台
+function startEditPlatform(platform) {
+  editingPlatform.value = { ...platform };
+}
+
+// 取消编辑
+function cancelEditPlatform() {
+  editingPlatform.value = null;
+}
+
+// 取消添加
+function cancelAddPlatform() {
+  showAddPlatformForm.value = false;
+  newPlatform.value = {
+    name: '',
+    url: '',
+    image_path: ''
+  };
+}
 
 // 测试函数，用于调试栏目名称显示问题
 function testCategoryName() {
@@ -1549,6 +1783,10 @@ function switchModule(module) {
   if (module === 'home') {
     fetchCMSCategories();
   }
+  // 切换到业务平台模块时获取业务平台数据
+  if (module === 'business') {
+    fetchDisplayBusinessPlatforms();
+  }
   // 切换到地图服务模块时初始化地图
   if (module === 'map') {
     nextTick(() => {
@@ -1570,8 +1808,8 @@ function initMap() {
   try {
     // 初始化地图实例
     mapInstance.value = new window.AMap.Map('map-container', {
-      zoom: 11,
-      center: [110.99825, 35.0378], // 运城市中心坐标
+      zoom: 13,
+      center: [110.976935, 35.06161], // 指定坐标
       resizeEnable: true,
       mapStyle: 'amap://styles/light'
     });
@@ -1579,16 +1817,16 @@ function initMap() {
     // 高德地图2.0版本已移除内置控件，使用地图默认控件
     // 如需添加控件，请参考高德地图2.0文档使用新控件库
     
-    // 添加运城市标记
+    // 添加指定坐标标记
     const marker = new window.AMap.Marker({
-      position: [110.99825, 35.0378],
-      title: '运城市',
+      position: [110.976935, 35.06161],
+      title: '指定位置',
       map: mapInstance.value
     });
     
     // 添加信息窗口
     const infoWindow = new window.AMap.InfoWindow({
-      content: '<div style="padding: 10px;"><h3>运城市</h3><p>山西省地级市</p></div>',
+      content: '<div style="padding: 10px;"><h3>指定位置</h3><p>坐标: 110.976935, 35.06161</p></div>',
       offset: new window.AMap.Pixel(0, -30)
     });
     
@@ -1779,8 +2017,9 @@ async function checkTokenValidity() {
 // 获取请求头，包含token
 function getAuthHeaders() {
   const token = localStorage.getItem('token');
+  console.log('Token from localStorage:', token ? 'Found' : 'Not found');
   return {
-    'Authorization': `Bearer ${token}`
+    'Authorization': token ? `Bearer ${token}` : ''
   };
 }
 
@@ -2228,11 +2467,9 @@ async function fetchCMSCategories() {
     
     if (data.categories) {
       cmsCategories.value = data.categories;
-      // 默认选择第一个栏目
-      if (data.categories.length > 0 && !selectedCategory.value) {
-        selectedCategory.value = data.categories[0];
-        await fetchCMSArticles(data.categories[0].id);
-      }
+      // 默认选择"全部"文章
+      selectedCategory.value = { id: 'all', name: '全部' };
+      await fetchCMSArticles('all', 1);
       // 获取所有栏目的文章，确保首页能显示所有栏目
       await fetchAllCMSArticles();
     }
@@ -2252,9 +2489,20 @@ async function fetchCMSArticles(categoryId, page = 1) {
     cmsArticlesPage.value = page;
     
     console.log('=== 调试信息：fetchCMSArticles 开始 ===');
-    console.log('请求URL:', `/api/articles/category/${categoryId}?include_drafts=true&page=${page}&per_page=${cmsArticlesPerPage.value}`);
+    console.log('categoryId:', categoryId);
     
-    const response = await fetch(`/api/articles/category/${categoryId}?include_drafts=true&page=${page}&per_page=${cmsArticlesPerPage.value}`);
+    let url;
+    if (categoryId === 'all' || !categoryId) {
+      // 获取所有文章
+      url = `/api/articles?include_drafts=true&page=${page}&per_page=${cmsArticlesPerPage.value}`;
+    } else {
+      // 获取指定栏目的文章
+      url = `/api/articles/category/${categoryId}?include_drafts=true&page=${page}&per_page=${cmsArticlesPerPage.value}`;
+    }
+    
+    console.log('请求URL:', url);
+    
+    const response = await fetch(url);
     const data = await response.json();
     
     console.log('后端返回数据:', data);
@@ -2280,7 +2528,8 @@ async function fetchCMSArticles(categoryId, page = 1) {
 // 获取所有CMS文章
 async function fetchAllCMSArticles() {
   try {
-    const response = await fetch('/api/articles?include_drafts=true');
+    // 获取大量文章，确保首页能显示所有栏目的文章
+    const response = await fetch('/api/articles?include_drafts=true&per_page=1000');
     const data = await response.json();
     
     if (data.articles) {
@@ -2293,9 +2542,15 @@ async function fetchAllCMSArticles() {
 
 // 切换CMS栏目
 async function switchCMSCategory(category) {
-  selectedCategory.value = category;
-  cmsArticlesPage.value = 1;
-  await fetchCMSArticles(category.id, 1);
+  if (category === 'all' || (category && category.id === 'all')) {
+    selectedCategory.value = { id: 'all', name: '全部' };
+    cmsArticlesPage.value = 1;
+    await fetchCMSArticles('all', 1);
+  } else {
+    selectedCategory.value = category;
+    cmsArticlesPage.value = 1;
+    await fetchCMSArticles(category.id, 1);
+  }
 }
 
 // 获取栏目名称
@@ -3810,8 +4065,11 @@ watch(
       <div v-if="!userInfo || userInfo?.role === 'admin' || (userInfo?.permissions && userInfo?.permissions.tools)" class="tab" :class="{ active: activeModule === 'tools' }" @click="switchModule('tools')">
         小工具
       </div>
+      <div class="tab" :class="{ active: activeModule === 'business' }" @click="switchModule('business')">
+        业务平台
+      </div>
       <div v-if="!userInfo || userInfo?.role === 'admin'" class="tab" :class="{ active: activeModule === 'admin' }" @click="switchModule('admin')">
-        管理员管理
+        系统后台
       </div>
     </div>
     
@@ -3843,6 +4101,28 @@ watch(
                   </div>
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- 业务平台模块 -->
+      <div v-if="activeModule === 'business'" class="tab-content">
+        <h2 class="section-title">业务平台</h2>
+        <div class="business-platforms-section" style="max-width: 1200px; margin: 0 auto; padding: 20px;">
+          <div v-if="businessPlatformsLoading" class="loading" style="font-size: 16px; padding: 60px; text-align: center; color: #666;">加载中...</div>
+          <div v-else-if="displayBusinessPlatforms.length === 0" class="empty" style="font-size: 16px; padding: 60px; text-align: center; color: #999;">暂无业务平台</div>
+          <div v-else class="platform-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 40px;">
+            <div v-for="platform in displayBusinessPlatforms" :key="platform.id" class="platform-item" style="padding: 25px; border: 1px solid #e0e0e0; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); background-color: #ffffff; transition: all 0.3s ease;" @mouseenter="$event.currentTarget.style.transform='translateY(-5px)'; $event.currentTarget.style.boxShadow='0 5px 15px rgba(0,0,0,0.15)'" @mouseleave="$event.currentTarget.style.transform='translateY(0)'; $event.currentTarget.style.boxShadow='0 2px 8px rgba(0,0,0,0.1)'">
+              <a :href="platform.url" target="_blank" style="text-decoration: none; color: #333; display: block;">
+                <div class="platform-image-container" style="display: flex; justify-content: center; margin-bottom: 15px;">
+                  <img v-if="platform.image_path" :src="platform.image_path" :alt="platform.name" style="width: 250px; height: 180px; object-fit: cover; transition: transform 0.3s ease;" @mouseenter="$event.currentTarget.style.transform='scale(1.05)'" @mouseleave="$event.currentTarget.style.transform='scale(1)'">
+                  <div v-else class="platform-image-placeholder" style="width: 250px; height: 180px; background-color: #f5f5f5; display: flex; align-items: center; justify-content: center; font-size: 48px;">🏢</div>
+                </div>
+                <div class="platform-info" style="text-align: center;">
+                  <h4 style="margin: 0; font-size: 18px; color: #333;">{{ platform.name }}</h4>
+                </div>
+              </a>
             </div>
           </div>
         </div>
@@ -4942,6 +5222,7 @@ watch(
               <button class="config-tab" :class="{ active: systemConfigTab === 'security' }" @click="systemConfigTab = 'security'">安全配置</button>
               <button class="config-tab" :class="{ active: systemConfigTab === 'logs' }" @click="systemConfigTab = 'logs'">系统日志</button>
               <button class="config-tab" :class="{ active: systemConfigTab === 'cms' }" @click="systemConfigTab = 'cms'">内容管理</button>
+              <button class="config-tab" :class="{ active: systemConfigTab === 'business-platforms' }" @click="systemConfigTab = 'business-platforms'">业务平台</button>
             </div>
             
             <!-- 配置内容 -->
@@ -5130,7 +5411,18 @@ watch(
                   <!-- 文章管理 -->
                   <div class="cms-management" style="margin-top: 30px;">
                     <h5 class="management-title">文章管理</h5>
-                    <button class="add-btn" @click="addNewArticle">添加文章</button>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                      <div style="display: flex; align-items: center; gap: 10px;">
+                        <label style="font-size: 14px;">选择栏目：</label>
+                        <select v-model="selectedCategory" @change="switchCMSCategory(selectedCategory)" style="padding: 6px 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">
+                          <option value="all">全部</option>
+                          <option v-for="category in cmsCategories" :key="category.id" :value="category">
+                            {{ category.name }}
+                          </option>
+                        </select>
+                      </div>
+                      <button class="add-btn" @click="addNewArticle">添加文章</button>
+                    </div>
                     <div v-if="cmsArticles.length > 0" class="article-list">
                       <table class="article-table">
                         <thead>
@@ -5160,21 +5452,117 @@ watch(
                       <div v-if="cmsArticlesTotal > 0" class="pagination">
                         <span class="pagination-info">共 {{ cmsArticlesTotal }} 条，第 {{ cmsArticlesPage }}/{{ cmsArticlesPages }} 页</span>
                         <div class="pagination-buttons">
-                          <button class="page-btn" @click="fetchCMSArticles(selectedCategory?.id, 1)" :disabled="cmsArticlesPage === 1">首页</button>
-                          <button class="page-btn" @click="fetchCMSArticles(selectedCategory?.id, cmsArticlesPage - 1)" :disabled="cmsArticlesPage === 1">上一页</button>
+                          <button class="page-btn" @click="fetchCMSArticles(selectedCategory?.id === 'all' ? 'all' : selectedCategory?.id, 1)" :disabled="cmsArticlesPage === 1">首页</button>
+                          <button class="page-btn" @click="fetchCMSArticles(selectedCategory?.id === 'all' ? 'all' : selectedCategory?.id, cmsArticlesPage - 1)" :disabled="cmsArticlesPage === 1">上一页</button>
                           <template v-for="page in getPageNumbers()" :key="page">
-                            <button v-if="page !== '...'" class="page-btn" :class="{ active: page === cmsArticlesPage }" @click="fetchCMSArticles(selectedCategory?.id, page)">
+                            <button v-if="page !== '...'" class="page-btn" :class="{ active: page === cmsArticlesPage }" @click="fetchCMSArticles(selectedCategory?.id === 'all' ? 'all' : selectedCategory?.id, page)">
                               {{ page }}
                             </button>
                             <span v-else class="page-ellipsis">...</span>
                           </template>
-                          <button class="page-btn" @click="fetchCMSArticles(selectedCategory?.id, cmsArticlesPage + 1)" :disabled="cmsArticlesPage === cmsArticlesPages">下一页</button>
-                          <button class="page-btn" @click="fetchCMSArticles(selectedCategory?.id, cmsArticlesPages)" :disabled="cmsArticlesPage === cmsArticlesPages">末页</button>
+                          <button class="page-btn" @click="fetchCMSArticles(selectedCategory?.id === 'all' ? 'all' : selectedCategory?.id, cmsArticlesPage + 1)" :disabled="cmsArticlesPage === cmsArticlesPages">下一页</button>
+                          <button class="page-btn" @click="fetchCMSArticles(selectedCategory?.id === 'all' ? 'all' : selectedCategory?.id, cmsArticlesPages)" :disabled="cmsArticlesPage === cmsArticlesPages">末页</button>
                         </div>
                       </div>
                     </div>
                     <div v-else class="empty-state">
                       <p>暂无文章</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- 业务平台管理 -->
+              <div v-if="systemConfigTab === 'business-platforms'" class="config-panel">
+                <div class="panel-header">
+                  <h4 class="panel-title">业务平台管理</h4>
+                  <p class="panel-description">管理系统的业务平台信息</p>
+                </div>
+                <div class="panel-body">
+                  <!-- 平台列表 -->
+                  <div class="cms-management">
+                    <h5 class="management-title">平台列表</h5>
+                    <button class="add-btn" @click="showAddPlatformForm = true">添加业务平台</button>
+                    <div v-if="businessPlatforms.length > 0" class="category-list">
+                      <table class="category-table">
+                        <thead>
+                          <tr>
+                            <th>ID</th>
+                            <th>平台名称</th>
+                            <th>平台地址</th>
+                            <th>封面图片</th>
+                            <th>操作</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr v-for="platform in businessPlatforms" :key="platform.id">
+                            <td>{{ platform.id }}</td>
+                            <td>{{ platform.name }}</td>
+                            <td><a :href="platform.url" target="_blank">{{ platform.url }}</a></td>
+                            <td>
+                              <img v-if="platform.image_path" :src="platform.image_path" alt="" class="platform-image" width="100">
+                              <span v-else>-</span>
+                            </td>
+                            <td>
+                              <button class="edit-btn" @click="startEditPlatform(platform)">编辑</button>
+                              <button class="delete-btn" @click="deleteBusinessPlatform(platform.id)">删除</button>
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                    <div v-else class="empty-state">
+                      <p>暂无业务平台</p>
+                    </div>
+                  </div>
+                  
+                  <!-- 添加平台表单 -->
+                  <div v-if="showAddPlatformForm" class="cms-management" style="margin-top: 30px;">
+                    <h5 class="management-title">添加业务平台</h5>
+                    <div class="form-group mb-3">
+                      <label for="platform-name">平台名称</label>
+                      <input type="text" v-model="newPlatform.name" class="form-control" id="platform-name" placeholder="输入平台名称">
+                    </div>
+                    <div class="form-group mb-3">
+                      <label for="platform-url">平台地址</label>
+                      <input type="url" v-model="newPlatform.url" class="form-control" id="platform-url" placeholder="输入平台地址">
+                    </div>
+                    <div class="form-group mb-3">
+                      <label for="platform-image">封面图片</label>
+                      <input type="file" @change="uploadPlatformImage" class="form-control" id="platform-image" accept="image/*">
+                      <div v-if="platformFileUploadLoading" class="mt-2 text-info">上传中...</div>
+                      <div v-if="platformFileUploadError" class="mt-2 text-danger">{{ platformFileUploadError }}</div>
+                      <img v-if="newPlatform.image_path" :src="newPlatform.image_path" alt="预览" class="platform-image-preview mt-2" width="200">
+                    </div>
+                    <div v-if="platformError" class="mt-2 text-danger">{{ platformError }}</div>
+                    <div class="form-actions mt-3">
+                      <button class="add-btn" @click="addBusinessPlatform" :disabled="platformLoading">{{ platformLoading ? '添加中...' : '添加' }}</button>
+                      <button class="cancel-btn" @click="cancelAddPlatform">取消</button>
+                    </div>
+                  </div>
+                  
+                  <!-- 编辑平台表单 -->
+                  <div v-if="editingPlatform" class="cms-management" style="margin-top: 30px;">
+                    <h5 class="management-title">编辑业务平台</h5>
+                    <div class="form-group mb-3">
+                      <label for="edit-platform-name">平台名称</label>
+                      <input type="text" v-model="editingPlatform.name" class="form-control" id="edit-platform-name" placeholder="输入平台名称">
+                    </div>
+                    <div class="form-group mb-3">
+                      <label for="edit-platform-url">平台地址</label>
+                      <input type="url" v-model="editingPlatform.url" class="form-control" id="edit-platform-url" placeholder="输入平台地址">
+                    </div>
+                    <div class="form-group mb-3">
+                      <label for="edit-platform-image">封面图片</label>
+                      <input type="file" @change="uploadPlatformImage" class="form-control" id="edit-platform-image" accept="image/*">
+                      <div v-if="platformFileUploadLoading" class="mt-2 text-info">上传中...</div>
+                      <div v-if="platformFileUploadError" class="mt-2 text-danger">{{ platformFileUploadError }}</div>
+                      <img v-if="editingPlatform.image_path" :src="editingPlatform.image_path" alt="预览" class="platform-image-preview mt-2" width="200">
+                    </div>
+                    <div v-if="platformError" class="mt-2 text-danger">{{ platformError }}</div>
+                    <div class="form-actions mt-3">
+                      <button class="add-btn" @click="updateBusinessPlatform" :disabled="platformLoading">{{ platformLoading ? '更新中...' : '更新' }}</button>
+                      <button class="cancel-btn" @click="cancelEditPlatform">取消</button>
                     </div>
                   </div>
                 </div>
