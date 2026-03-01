@@ -3894,6 +3894,7 @@ async function fetchHuiwentaiDailyReports() {
         reportDate: '2026-02-20',
         dutyStaff: '张三',
         shiftName: '白班',
+        reported: 15,
         accepted: 15,
         collectorAccepted: 10,
         completed: 12,
@@ -3912,6 +3913,7 @@ async function fetchHuiwentaiDailyReports() {
         reportDate: '2026-02-19',
         dutyStaff: '李四',
         shiftName: '夜班',
+        reported: 8,
         accepted: 8,
         collectorAccepted: 5,
         completed: 7,
@@ -3960,8 +3962,8 @@ function parseReportSummary(report) {
     date: report.reportDate || '未知日期',
     person: report.dutyStaff || '未知',
     shift: report.shiftName || '未知',
-    reported: report.accepted !== undefined && report.accepted !== null ? report.accepted : '-',
-    accepted: report.collectorAccepted !== undefined && report.collectorAccepted !== null ? report.collectorAccepted : '-',
+    reported: report.reported !== undefined && report.reported !== null ? report.reported : '-',
+    accepted: report.accepted !== undefined && report.accepted !== null ? report.accepted : '-',
     completed: report.completed !== undefined && report.completed !== null ? report.completed : '-'
   };
   
@@ -3980,13 +3982,13 @@ function formatReportContent(report) {
   // 第一部分：系统运行
   content += '一、系统运行\n';
   content += `上报${summary.reported}件，受理${summary.accepted}件，办结${summary.completed}件。\n\n`;
-  content += `采集员上报受理:${report.collectorAccepted || 0}\n`;
-  content += `重点领域日常巡查受理:${report.keyAreaPatrol || 0}\n`;
+  content += `采集员上报:${report.collectorAccepted || 0}\n`;
+  content += `重点领域日常巡查:${report.keyAreaPatrol || 0}\n`;
   content += `12345系统转办:${report.system12345 || 0}\n`;
   content += `民呼我应:${report.minhuWoYing || 0}\n`;
   content += `视频监控: ${report.videoMonitor || 0}\n`;
   content += `智能分析:${report.smartAnalysis || 0}\n`;
-  content += `市民举报系统受理:${report.citizenReport || 0}\n\n`;
+  content += `市民举报系统:${report.citizenReport || 0}\n\n`;
   
   // 第二部分：电话热线
   content += '二、电话热线\n';
