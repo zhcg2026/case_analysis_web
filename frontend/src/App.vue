@@ -55,6 +55,13 @@ const spotcheckError = ref('');
 const selectedDepartment = ref('');
 const selectedAssessmentTable = ref('');
 const assessmentResult = ref(null);
+const assessmentActiveTab = ref('old'); // 'old' 为原版，'new' 为新版
+
+// 新版考核计分状态管理
+const selectedDepartmentV2 = ref('');
+const selectedAssessmentTableV2 = ref('');
+const assessmentResultV2 = ref(null);
+const assessmentMessageV2 = ref('');
 
 // CMS状态管理
 const cmsCategories = ref([]);
@@ -1763,6 +1770,51 @@ async function startAssessment() {
     }
   } catch (error) {
     assessmentMessage.value = 'Error calculating assessment: ' + error.message;
+    console.error('Error calculating assessment:', error);
+  } finally {
+    loading.value = false;
+  }
+}
+
+// 开始新版考核计算
+async function startAssessmentV2() {
+  if (!selectedDepartmentV2.value || !selectedAssessmentTableV2.value) {
+    assessmentMessageV2.value = '请选择部门和数据表';
+    return;
+  }
+
+  const token = localStorage.getItem('token');
+  if (!token) {
+    assessmentMessageV2.value = '请先登录';
+    return;
+  }
+
+  try {
+    loading.value = true;
+    assessmentMessageV2.value = '计算中...';
+    
+    const response = await fetch('/api/assess/v2', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeaders()
+      },
+      body: JSON.stringify({
+        table_name: selectedAssessmentTableV2.value,
+        department: selectedDepartmentV2.value
+      })
+    });
+    
+    const data = await response.json();
+    
+    if (data.error) {
+      assessmentMessageV2.value = 'Error: ' + data.error;
+    } else {
+      assessmentResultV2.value = data;
+      assessmentMessageV2.value = '计算完成';
+    }
+  } catch (error) {
+    assessmentMessageV2.value = 'Error calculating assessment: ' + error.message;
     console.error('Error calculating assessment:', error);
   } finally {
     loading.value = false;
@@ -4720,111 +4772,248 @@ watch(
       <!-- 考核计分模块 -->
       <div v-if="activeModule === 'assessment' && (!userInfo || userInfo.role === 'admin' || (userInfo.permissions && userInfo.permissions.assessment))" class="tab-content">
         <h2 class="section-title">考核计分</h2>
+        
+        <!-- 标签页导航 -->
+        <div class="assessment-tabs" style="display: flex; margin-bottom: 20px; border-bottom: 1px solid #dee2e6;">
+          <div 
+            class="assessment-tab" 
+            :class="{ active: assessmentActiveTab === 'old' }"
+            @click="assessmentActiveTab = 'old'"
+            style="padding: 10px 20px; cursor: pointer; border-bottom: 3px solid transparent; margin-right: 10px; font-weight: bold;"
+            :style="assessmentActiveTab === 'old' ? { borderBottomColor: '#667eea', color: '#667eea' } : {}"
+          >
+            考核计分（原版）
+          </div>
+          <div 
+            class="assessment-tab" 
+            :class="{ active: assessmentActiveTab === 'new' }"
+            @click="assessmentActiveTab = 'new'"
+            style="padding: 10px 20px; cursor: pointer; border-bottom: 3px solid transparent; margin-right: 10px; font-weight: bold;"
+            :style="assessmentActiveTab === 'new' ? { borderBottomColor: '#667eea', color: '#667eea' } : {}"
+          >
+            考核计分（新版）
+          </div>
+        </div>
+        
         <div class="assessment-section" style="max-width: 900px; margin: 0 auto;">
-          <!-- 说明信息 -->
-          <div style="margin-bottom: 25px; padding: 16px; background: linear-gradient(135deg, #fff3cd 0%, #ffe082 5%); border-left: 4px solid #ffc107; border-radius: 6px; color: #856404;">
-            <div style="display: flex; align-items: flex-start; gap: 12px;">
-              <span style="font-size: 20px; flex-shrink: 0;">⚠️</span>
-              <div>
-                <div style="font-weight: 600; margin-bottom: 6px;">计算说明</div>
-                <p style="margin: 0; line-height: 1.5; font-size: 14px;">超时案件计算：结案时间 > 捆绑处置截止时间判定的，与实际超时计算有出入</p>
+          <!-- 原版考核计分内容 -->
+          <div v-if="assessmentActiveTab === 'old'">
+            <!-- 说明信息 -->
+            <div style="margin-bottom: 25px; padding: 16px; background: linear-gradient(135deg, #fff3cd 0%, #ffe082 5%); border-left: 4px solid #ffc107; border-radius: 6px; color: #856404;">
+              <div style="display: flex; align-items: flex-start; gap: 12px;">
+                <span style="font-size: 20px; flex-shrink: 0;">⚠️</span>
+                <div>
+                  <div style="font-weight: 600; margin-bottom: 6px;">计算说明</div>
+                  <p style="margin: 0; line-height: 1.5; font-size: 14px;">超时案件计算：结案时间 > 捆绑处置截止时间判定的，与实际超时计算有出入</p>
+                </div>
+              </div>
+            </div>
+            
+            <!-- 配置区域 -->
+            <div style="padding: 25px; background: white; border-radius: 8px; margin-bottom: 25px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);">
+              <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; margin-bottom: 20px;">
+                <div>
+                  <label for="department-select" style="display: block; font-weight: 600; margin-bottom: 10px; color: #333;">选择部门：</label>
+                  <select id="department-select" v-model="selectedDepartment" :disabled="loading" style="width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; box-sizing: border-box; transition: all 0.3s ease; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);">
+                    <option value="">-- 请选择部门 --</option>
+                    <option value="城市综合行政执法队">城市综合行政执法队</option>
+                    <option value="市容环卫中心">市容环卫中心</option>
+                    <option value="园林绿化服务中心（片区）">园林绿化服务中心（片区）</option>
+                    <option value="园林绿化服务中心（公园广场）">园林绿化服务中心（公园广场）</option>
+                  </select>
+                </div>
+                <div>
+                  <label for="table-select-assessment" style="display: block; font-weight: 600; margin-bottom: 10px; color: #333;">选择数据表：</label>
+                  <select id="table-select-assessment" v-model="selectedAssessmentTable" :disabled="loading" style="width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; box-sizing: border-box; transition: all 0.3s ease; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);">
+                    <option value="">-- 请选择 --</option>
+                    <option v-for="table in tables" :key="table" :value="table">
+                      {{ table }}
+                    </option>
+                  </select>
+                </div>
+              </div>
+              
+              <!-- 操作按钮 -->
+              <button 
+                class="start-btn" 
+                @click="startAssessment" 
+                :disabled="loading || !selectedDepartment || !selectedAssessmentTable"
+                style="width: 100%; padding: 12px 24px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: 600; transition: all 0.3s ease; disabled: { opacity: 0.6, cursor: 'not-allowed' };"
+                @mouseenter="$event.target.style.transform='translateY(-2px)'; $event.target.style.boxShadow='0 4px 12px rgba(102, 126, 234, 0.4)'"
+                @mouseleave="$event.target.style.transform='translateY(0)'; $event.target.style.boxShadow='none'"
+              >
+                <span v-if="loading">⏳ 计算中...</span>
+                <span v-else>📊 开始计算</span>
+              </button>
+              
+              <!-- 消息提示 -->
+              <div v-if="assessmentMessage" style="margin-top: 15px; padding: 12px; background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; border-radius: 4px;">
+                ✓ {{ assessmentMessage }}
+              </div>
+            </div>
+            
+            <!-- 考核结果显示 -->
+            <div v-if="assessmentResult" style="background: white; border-radius: 8px; padding: 25px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);">
+              <h3 style="margin: 0 0 20px 0; padding-bottom: 15px; border-bottom: 2px solid #667eea; font-size: 20px; color: #333;">📋 考核结果</h3>
+              
+              <!-- 结果摘要 -->
+              <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; margin-bottom: 30px;">
+                <div style="padding: 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 8px; color: white;">
+                  <div style="font-size: 14px; opacity: 0.9; margin-bottom: 8px;">总案件数</div>
+                  <div style="font-size: 32px; font-weight: bold;">{{ assessmentResult.total_cases }}</div>
+                </div>
+                <div style="padding: 20px; background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); border-radius: 8px; color: white;">
+                  <div style="font-size: 14px; opacity: 0.9; margin-bottom: 8px;">平均得分</div>
+                  <div style="font-size: 32px; font-weight: bold;">{{ assessmentResult.score }} 分</div>
+                </div>
+              </div>
+              
+              <!-- 排名表格 -->
+              <div v-if="assessmentResult.team_results">
+                <h4 style="margin: 0 0 15px 0; color: #333; font-size: 16px;">🏆 片区排名</h4>
+                <div style="overflow-x: auto;">
+                  <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+                    <thead>
+                      <tr style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
+                        <th style="padding: 12px; text-align: center; font-weight: 600;">排名</th>
+                        <th style="padding: 12px; text-align: left; font-weight: 600;">片区名称</th>
+                        <th style="padding: 12px; text-align: center; font-weight: 600;">案件总数</th>
+                        <th style="padding: 12px; text-align: center; font-weight: 600;">按期结案</th>
+                        <th style="padding: 12px; text-align: center; font-weight: 600;">超期结案</th>
+                        <th style="padding: 12px; text-align: center; font-weight: 600;">延期次数</th>
+                        <th style="padding: 12px; text-align: center; font-weight: 600;">返工次数</th>
+                        <th style="padding: 12px; text-align: center; font-weight: 600;">得分</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr v-for="(team, index) in assessmentResult.team_results" :key="team.department" :style="{ backgroundColor: index % 2 === 0 ? '#f8f9fa' : '#ffffff', transition: 'all 0.3s ease' }" @mouseenter="$event.currentTarget.style.backgroundColor='#e8eef9'" @mouseleave="$event.currentTarget.style.backgroundColor=(index % 2 === 0 ? '#f8f9fa' : '#ffffff')">
+                        <td style="padding: 12px; text-align: center; font-weight: 600; color: #667eea;">
+                          <span style="display: inline-block; width: 32px; height: 32px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 50%; line-height: 32px; font-size: 14px;">{{ team.rank }}</span>
+                        </td>
+                        <td style="padding: 12px; text-align: left; color: #333;">{{ team.department }}</td>
+                        <td style="padding: 12px; text-align: center; color: #555;">{{ team.total_cases }}</td>
+                        <td style="padding: 12px; text-align: center; color: #2ecc71; font-weight: 600;">{{ team.on_time_count }}</td>
+                        <td style="padding: 12px; text-align: center; color: #e74c3c; font-weight: 600;">{{ team.overdue_count }}</td>
+                        <td style="padding: 12px; text-align: center; color: #f39c12;">{{ team.delay_count }}</td>
+                        <td style="padding: 12px; text-align: center; color: #9b59b6;">{{ team.rework_count }}</td>
+                        <td style="padding: 12px; text-align: center; font-weight: bold; font-size: 16px;">
+                          <span style="display: inline-block; padding: 4px 12px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 20px;">{{ team.score }}</span>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
           </div>
           
-          <!-- 配置区域 -->
-          <div style="padding: 25px; background: white; border-radius: 8px; margin-bottom: 25px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);">
-            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; margin-bottom: 20px;">
-              <div>
-                <label for="department-select" style="display: block; font-weight: 600; margin-bottom: 10px; color: #333;">选择部门：</label>
-                <select id="department-select" v-model="selectedDepartment" :disabled="loading" style="width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; box-sizing: border-box; transition: all 0.3s ease; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);">
-                  <option value="">-- 请选择部门 --</option>
-                  <option value="城市综合行政执法队">城市综合行政执法队</option>
-                  <option value="市容环卫中心">市容环卫中心</option>
-                  <option value="园林绿化服务中心（片区）">园林绿化服务中心（片区）</option>
-                  <option value="园林绿化服务中心（公园广场）">园林绿化服务中心（公园广场）</option>
-                </select>
-              </div>
-              <div>
-                <label for="table-select-assessment" style="display: block; font-weight: 600; margin-bottom: 10px; color: #333;">选择数据表：</label>
-                <select id="table-select-assessment" v-model="selectedAssessmentTable" :disabled="loading" style="width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; box-sizing: border-box; transition: all 0.3s ease; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);">
-                  <option value="">-- 请选择 --</option>
-                  <option v-for="table in tables" :key="table" :value="table">
-                    {{ table }}
-                  </option>
-                </select>
+          <!-- 新版考核计分内容 -->
+          <div v-if="assessmentActiveTab === 'new'">
+            <!-- 说明信息 -->
+            <div style="margin-bottom: 25px; padding: 16px; background: linear-gradient(135deg, #d1ecf1 0%, #bee5eb 5%); border-left: 4px solid #17a2b8; border-radius: 6px; color: #0c5460;">
+              <div style="display: flex; align-items: flex-start; gap: 12px;">
+                <span style="font-size: 20px; flex-shrink: 0;">ℹ️</span>
+                <div>
+                  <div style="font-weight: 600; margin-bottom: 6px;">计算说明</div>
+                  <p style="margin: 0; line-height: 1.5; font-size: 14px;">超时案件计算：根据表中"是否超时"字段判定，为空表示不超时，不为空表示超时</p>
+                </div>
               </div>
             </div>
             
-            <!-- 操作按钮 -->
-            <button 
-              class="start-btn" 
-              @click="startAssessment" 
-              :disabled="loading || !selectedDepartment || !selectedAssessmentTable"
-              style="width: 100%; padding: 12px 24px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: 600; transition: all 0.3s ease; disabled: { opacity: 0.6, cursor: 'not-allowed' };"
-              @mouseenter="$event.target.style.transform='translateY(-2px)'; $event.target.style.boxShadow='0 4px 12px rgba(102, 126, 234, 0.4)'"
-              @mouseleave="$event.target.style.transform='translateY(0)'; $event.target.style.boxShadow='none'"
-            >
-              <span v-if="loading">⏳ 计算中...</span>
-              <span v-else>📊 开始计算</span>
-            </button>
-            
-            <!-- 消息提示 -->
-            <div v-if="assessmentMessage" style="margin-top: 15px; padding: 12px; background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; border-radius: 4px;">
-              ✓ {{ assessmentMessage }}
-            </div>
-          </div>
-          
-          <!-- 考核结果显示 -->
-          <div v-if="assessmentResult" style="background: white; border-radius: 8px; padding: 25px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);">
-            <h3 style="margin: 0 0 20px 0; padding-bottom: 15px; border-bottom: 2px solid #667eea; font-size: 20px; color: #333;">📋 考核结果</h3>
-            
-            <!-- 结果摘要 -->
-            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; margin-bottom: 30px;">
-              <div style="padding: 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 8px; color: white;">
-                <div style="font-size: 14px; opacity: 0.9; margin-bottom: 8px;">总案件数</div>
-                <div style="font-size: 32px; font-weight: bold;">{{ assessmentResult.total_cases }}</div>
+            <!-- 配置区域 -->
+            <div style="padding: 25px; background: white; border-radius: 8px; margin-bottom: 25px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);">
+              <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; margin-bottom: 20px;">
+                <div>
+                  <label for="department-select-v2" style="display: block; font-weight: 600; margin-bottom: 10px; color: #333;">选择部门：</label>
+                  <select id="department-select-v2" v-model="selectedDepartmentV2" :disabled="loading" style="width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; box-sizing: border-box; transition: all 0.3s ease; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);">
+                    <option value="">-- 请选择部门 --</option>
+                    <option value="城市综合行政执法队">城市综合行政执法队</option>
+                    <option value="市容环卫中心">市容环卫中心</option>
+                    <option value="园林绿化服务中心（片区）">园林绿化服务中心（片区）</option>
+                    <option value="园林绿化服务中心（公园广场）">园林绿化服务中心（公园广场）</option>
+                  </select>
+                </div>
+                <div>
+                  <label for="table-select-assessment-v2" style="display: block; font-weight: 600; margin-bottom: 10px; color: #333;">选择数据表：</label>
+                  <select id="table-select-assessment-v2" v-model="selectedAssessmentTableV2" :disabled="loading" style="width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; box-sizing: border-box; transition: all 0.3s ease; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);">
+                    <option value="">-- 请选择 --</option>
+                    <option v-for="table in tables" :key="table" :value="table">
+                      {{ table }}
+                    </option>
+                  </select>
+                </div>
               </div>
-              <div style="padding: 20px; background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); border-radius: 8px; color: white;">
-                <div style="font-size: 14px; opacity: 0.9; margin-bottom: 8px;">平均得分</div>
-                <div style="font-size: 32px; font-weight: bold;">{{ assessmentResult.score }} 分</div>
+              
+              <!-- 操作按钮 -->
+              <button 
+                class="start-btn" 
+                @click="startAssessmentV2" 
+                :disabled="loading || !selectedDepartmentV2 || !selectedAssessmentTableV2"
+                style="width: 100%; padding: 12px 24px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: 600; transition: all 0.3s ease; disabled: { opacity: 0.6, cursor: 'not-allowed' };"
+                @mouseenter="$event.target.style.transform='translateY(-2px)'; $event.target.style.boxShadow='0 4px 12px rgba(102, 126, 234, 0.4)'"
+                @mouseleave="$event.target.style.transform='translateY(0)'; $event.target.style.boxShadow='none'"
+              >
+                <span v-if="loading">⏳ 计算中...</span>
+                <span v-else>📊 开始计算</span>
+              </button>
+              
+              <!-- 消息提示 -->
+              <div v-if="assessmentMessageV2" style="margin-top: 15px; padding: 12px; background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; border-radius: 4px;">
+                ✓ {{ assessmentMessageV2 }}
               </div>
             </div>
             
-            <!-- 排名表格 -->
-            <div v-if="assessmentResult.team_results">
-              <h4 style="margin: 0 0 15px 0; color: #333; font-size: 16px;">🏆 片区排名</h4>
-              <div style="overflow-x: auto;">
-                <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
-                  <thead>
-                    <tr style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
-                      <th style="padding: 12px; text-align: center; font-weight: 600;">排名</th>
-                      <th style="padding: 12px; text-align: left; font-weight: 600;">片区名称</th>
-                      <th style="padding: 12px; text-align: center; font-weight: 600;">案件总数</th>
-                      <th style="padding: 12px; text-align: center; font-weight: 600;">按期结案</th>
-                      <th style="padding: 12px; text-align: center; font-weight: 600;">超期结案</th>
-                      <th style="padding: 12px; text-align: center; font-weight: 600;">延期次数</th>
-                      <th style="padding: 12px; text-align: center; font-weight: 600;">返工次数</th>
-                      <th style="padding: 12px; text-align: center; font-weight: 600;">得分</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr v-for="(team, index) in assessmentResult.team_results" :key="team.department" :style="{ backgroundColor: index % 2 === 0 ? '#f8f9fa' : '#ffffff', transition: 'all 0.3s ease' }" @mouseenter="$event.currentTarget.style.backgroundColor='#e8eef9'" @mouseleave="$event.currentTarget.style.backgroundColor=(index % 2 === 0 ? '#f8f9fa' : '#ffffff')">
-                      <td style="padding: 12px; text-align: center; font-weight: 600; color: #667eea;">
-                        <span style="display: inline-block; width: 32px; height: 32px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 50%; line-height: 32px; font-size: 14px;">{{ team.rank }}</span>
-                      </td>
-                      <td style="padding: 12px; text-align: left; color: #333;">{{ team.department }}</td>
-                      <td style="padding: 12px; text-align: center; color: #555;">{{ team.total_cases }}</td>
-                      <td style="padding: 12px; text-align: center; color: #2ecc71; font-weight: 600;">{{ team.on_time_count }}</td>
-                      <td style="padding: 12px; text-align: center; color: #e74c3c; font-weight: 600;">{{ team.overdue_count }}</td>
-                      <td style="padding: 12px; text-align: center; color: #f39c12;">{{ team.delay_count }}</td>
-                      <td style="padding: 12px; text-align: center; color: #9b59b6;">{{ team.rework_count }}</td>
-                      <td style="padding: 12px; text-align: center; font-weight: bold; font-size: 16px;">
-                        <span style="display: inline-block; padding: 4px 12px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 20px;">{{ team.score }}</span>
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
+            <!-- 考核结果显示 -->
+            <div v-if="assessmentResultV2" style="background: white; border-radius: 8px; padding: 25px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);">
+              <h3 style="margin: 0 0 20px 0; padding-bottom: 15px; border-bottom: 2px solid #667eea; font-size: 20px; color: #333;">📋 考核结果</h3>
+              
+              <!-- 结果摘要 -->
+              <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; margin-bottom: 30px;">
+                <div style="padding: 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 8px; color: white;">
+                  <div style="font-size: 14px; opacity: 0.9; margin-bottom: 8px;">总案件数</div>
+                  <div style="font-size: 32px; font-weight: bold;">{{ assessmentResultV2.total_cases }}</div>
+                </div>
+                <div style="padding: 20px; background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); border-radius: 8px; color: white;">
+                  <div style="font-size: 14px; opacity: 0.9; margin-bottom: 8px;">平均得分</div>
+                  <div style="font-size: 32px; font-weight: bold;">{{ assessmentResultV2.score }} 分</div>
+                </div>
+              </div>
+              
+              <!-- 排名表格 -->
+              <div v-if="assessmentResultV2.team_results">
+                <h4 style="margin: 0 0 15px 0; color: #333; font-size: 16px;">🏆 片区排名</h4>
+                <div style="overflow-x: auto;">
+                  <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+                    <thead>
+                      <tr style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
+                        <th style="padding: 12px; text-align: center; font-weight: 600;">排名</th>
+                        <th style="padding: 12px; text-align: left; font-weight: 600;">片区名称</th>
+                        <th style="padding: 12px; text-align: center; font-weight: 600;">案件总数</th>
+                        <th style="padding: 12px; text-align: center; font-weight: 600;">按期结案</th>
+                        <th style="padding: 12px; text-align: center; font-weight: 600;">超期结案</th>
+                        <th style="padding: 12px; text-align: center; font-weight: 600;">延期次数</th>
+                        <th style="padding: 12px; text-align: center; font-weight: 600;">返工次数</th>
+                        <th style="padding: 12px; text-align: center; font-weight: 600;">得分</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr v-for="(team, index) in assessmentResultV2.team_results" :key="team.department" :style="{ backgroundColor: index % 2 === 0 ? '#f8f9fa' : '#ffffff', transition: 'all 0.3s ease' }" @mouseenter="$event.currentTarget.style.backgroundColor='#e8eef9'" @mouseleave="$event.currentTarget.style.backgroundColor=(index % 2 === 0 ? '#f8f9fa' : '#ffffff')">
+                        <td style="padding: 12px; text-align: center; font-weight: 600; color: #667eea;">
+                          <span style="display: inline-block; width: 32px; height: 32px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 50%; line-height: 32px; font-size: 14px;">{{ team.rank }}</span>
+                        </td>
+                        <td style="padding: 12px; text-align: left; color: #333;">{{ team.department }}</td>
+                        <td style="padding: 12px; text-align: center; color: #555;">{{ team.total_cases }}</td>
+                        <td style="padding: 12px; text-align: center; color: #2ecc71; font-weight: 600;">{{ team.on_time_count }}</td>
+                        <td style="padding: 12px; text-align: center; color: #e74c3c; font-weight: 600;">{{ team.overdue_count }}</td>
+                        <td style="padding: 12px; text-align: center; color: #f39c12;">{{ team.delay_count }}</td>
+                        <td style="padding: 12px; text-align: center; color: #9b59b6;">{{ team.rework_count }}</td>
+                        <td style="padding: 12px; text-align: center; font-weight: bold; font-size: 16px;">
+                          <span style="display: inline-block; padding: 4px 12px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 20px;">{{ team.score }}</span>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
           </div>
