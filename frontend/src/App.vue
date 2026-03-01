@@ -111,7 +111,17 @@ const reportsTotalPages = computed(() => {
 });
 
 const activeModule = ref('home'); // home, data, assessment, analysis, spotcheck, tools, chengguantong, cms, map, huiwentai, ai-apps
-const aiAppsActiveTab = ref('analysis'); // analysis, spotcheck, chengguantong
+const aiAppsActiveTab = ref('analysis'); // analysis, analysis-v2, spotcheck, chengguantong
+
+// 数据分析（新版）状态管理
+const selectedTableV2 = ref('');
+const analysisPrompt = ref('');
+const selectedModel = ref('volcengine'); // 'volcengine' 或 'bailian'
+const analysisV2Loading = ref(false);
+const analysisV2Result = ref(null);
+const analysisV2Message = ref('');
+const analysisV2Error = ref('');
+const chartRefs = ref([]);
 
 // 地图服务状态管理
 const mapInstance = ref(null);
@@ -1894,6 +1904,143 @@ async function startAnalysis() {
     loading.value = false;
     console.log('分析完成，加载状态已重置');
   }
+}
+
+// 数据分析（新版）开始分析
+async function startAnalysisV2() {
+  if (!selectedTableV2.value || !analysisPrompt.value) {
+    analysisV2Error.value = '请选择数据表并输入分析提示词';
+    return;
+  }
+
+  const token = localStorage.getItem('token');
+  if (!token) {
+    analysisV2Error.value = '请先登录';
+    return;
+  }
+
+  try {
+    analysisV2Loading.value = true;
+    analysisV2Error.value = '';
+    analysisV2Message.value = '分析中...';
+    analysisV2Result.value = null;
+    
+    const response = await fetch('/api/analyze-v2', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeaders()
+      },
+      body: JSON.stringify({
+        table_name: selectedTableV2.value,
+        prompt: analysisPrompt.value,
+        model: selectedModel.value
+      })
+    });
+    
+    const data = await response.json();
+    
+    if (data.error) {
+      analysisV2Error.value = 'Error: ' + data.error;
+    } else {
+      analysisV2Result.value = data;
+      analysisV2Message.value = '分析完成';
+      
+      // 等待DOM更新后渲染图表
+      setTimeout(() => {
+        renderAnalysisV2Charts();
+      }, 100);
+    }
+  } catch (error) {
+    analysisV2Error.value = 'Error analyzing data: ' + error.message;
+    console.error('Error analyzing data:', error);
+  } finally {
+    analysisV2Loading.value = false;
+  }
+}
+
+// 渲染数据分析（新版）图表
+function renderAnalysisV2Charts() {
+  if (!analysisV2Result.value || !analysisV2Result.value.charts) return;
+  
+  analysisV2Result.value.charts.forEach((chart, index) => {
+    if (chart.type === 'image') return;
+    
+    const chartEl = chartRefs.value[index];
+    if (!chartEl) return;
+    
+    try {
+      const chartInstance = echarts.init(chartEl);
+      chartInstance.setOption(chart.data);
+      
+      // 响应窗口大小变化
+      window.addEventListener('resize', () => {
+        chartInstance.resize();
+      });
+    } catch (error) {
+      console.error('Error rendering chart:', error);
+    }
+  });
+}
+
+// 格式化分析报告内容
+function formatAnalysisReport(content) {
+  if (!content) return '';
+  
+  let formatted = content;
+  
+  // 删除段落中的多余空格
+  formatted = formatted.replace(/[ \t]+/g, ' ');
+  formatted = formatted.replace(/^[ \t]+/gm, '');
+  formatted = formatted.replace(/[ \t]+$/gm, '');
+  
+  // 处理换行
+  formatted = formatted.replace(/\n/g, '<br>');
+  
+  // 处理标题（#开头）
+  formatted = formatted.replace(/^### (.*)$/gm, '<h3 style="color: #1e293b; font-size: 16px; font-weight: 700; margin-top: 16px; margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid #e2e8f0;">$1</h3>');
+  formatted = formatted.replace(/^## (.*)$/gm, '<h2 style="color: #1e293b; font-size: 17px; font-weight: 700; margin-top: 18px; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 2px solid #667eea;">$1</h2>');
+  formatted = formatted.replace(/^# (.*)$/gm, '<h1 style="color: #1e293b; font-size: 18px; font-weight: 800; margin-top: 20px; margin-bottom: 12px; padding-bottom: 10px; border-bottom: 2px solid #667eea;">$1</h1>');
+  
+  // 处理粗体（**内容**）
+  formatted = formatted.replace(/\*\*(.*?)\*\*/g, '<strong style="color: #1e293b; font-weight: 700;">$1</strong>');
+  
+  // 处理斜体（*内容*）
+  formatted = formatted.replace(/\*(.*?)\*/g, '<em style="color: #475569; font-style: italic;">$1</em>');
+  
+  // 处理列表项（- 开头）
+  formatted = formatted.replace(/^- (.*)$/gm, '<li style="margin: 4px 0; padding-left: 8px; color: #334155; border-left: 2px solid #667eea; padding-left: 10px;">$1</li>');
+  
+  // 处理列表容器
+  formatted = formatted.replace(/(<li.*<\/li>)/s, '<ul style="list-style: none; padding: 0; margin: 10px 0;">$1</ul>');
+  
+  // 处理分隔线（---）
+  formatted = formatted.replace(/^---$/gm, '<hr style="border: none; border-top: 1px solid #e2e8f0; margin: 16px 0;">');
+  
+  // 处理代码块（```开头结尾）
+  formatted = formatted.replace(/```([\s\S]*?)```/g, '<pre style="background: #1e293b; color: #e2e8f0; padding: 12px; border-radius: 6px; overflow-x: auto; font-family: monospace; font-size: 13px; margin: 12px 0;"><code>$1</code></pre>');
+  
+  return formatted;
+}
+
+// 复制报告
+function copyReport() {
+  if (!analysisV2Result.value?.report) return;
+  
+  // 移除HTML标签，只保留纯文本
+  let text = analysisV2Result.value.report;
+  text = text.replace(/<[^>]*>/g, '');
+  text = text.replace(/&nbsp;/g, ' ');
+  
+  navigator.clipboard.writeText(text).then(() => {
+    analysisV2Message.value = '报告已复制到剪贴板！';
+    setTimeout(() => {
+      analysisV2Message.value = '';
+    }, 2000);
+  }).catch(err => {
+    analysisV2Error.value = '复制失败，请手动复制';
+    console.error('复制失败:', err);
+  });
 }
 
 // 开始考核计算
@@ -4494,6 +4641,21 @@ watch(
             数据分析
           </div>
           <div 
+            v-if="!userInfo || userInfo?.role === 'admin' || (userInfo?.permissions && userInfo?.permissions.data_analysis)"
+            class="ai-apps-tab" 
+            :class="{ active: aiAppsActiveTab === 'analysis-v2' }"
+            @click="aiAppsActiveTab = 'analysis-v2'"
+            style="padding: 14px 28px; cursor: pointer; font-size: 16px; font-weight: 500; color: #666; border-bottom: 3px solid transparent; transition: all 0.3s; position: relative; background: transparent;"
+            :style="{ 
+              color: aiAppsActiveTab === 'analysis-v2' ? '#1890ff' : '#666',
+              background: aiAppsActiveTab === 'analysis-v2' ? '#e6f7ff' : 'transparent',
+              borderBottomColor: aiAppsActiveTab === 'analysis-v2' ? '#1890ff' : 'transparent',
+              fontWeight: aiAppsActiveTab === 'analysis-v2' ? '600' : '500'
+            }"
+          >
+            数据分析（新版）
+          </div>
+          <div 
             v-if="!userInfo || userInfo?.role === 'admin' || (userInfo?.permissions && userInfo?.permissions.spotcheck)"
             class="ai-apps-tab" 
             :class="{ active: aiAppsActiveTab === 'spotcheck' }"
@@ -4686,6 +4848,131 @@ watch(
                 <span>AI智能分析</span>
               </h4>
               <div style="line-height: 1.8; color: #333; font-size: 15px;" v-html="analysisResult.analysis.replace(/\n/g, '<br>')"></div>
+            </div>
+          </div>
+        </div>
+        </div>
+        
+        <!-- 数据分析（新版）标签页内容 -->
+        <div v-if="aiAppsActiveTab === 'analysis-v2' && (!userInfo || userInfo?.role === 'admin' || (userInfo?.permissions && userInfo?.permissions.data_analysis))">
+          <h2 class="section-title">📊 数据分析（新版）</h2>
+        <div class="config-section" style="max-width: 900px; margin: 0 auto;">
+          <!-- 分析配置区域 -->
+          <div style="padding: 25px; background: white; border-radius: 8px; margin-bottom: 25px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);">
+            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; margin-bottom: 20px;">
+              <div>
+                <label for="table-select-v2" style="display: block; font-weight: 600; margin-bottom: 10px; color: #333;">选择数据表：</label>
+                <select id="table-select-v2" v-model="selectedTableV2" :disabled="analysisV2Loading" style="width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; box-sizing: border-box; transition: all 0.3s ease; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);">
+                  <option value="">-- 请选择 --</option>
+                  <option v-for="table in tables" :key="table" :value="table">
+                    {{ table }}
+                  </option>
+                </select>
+              </div>
+              <div>
+                <label for="model-select" style="display: block; font-weight: 600; margin-bottom: 10px; color: #333;">选择大模型：</label>
+                <select id="model-select" v-model="selectedModel" :disabled="analysisV2Loading" style="width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; box-sizing: border-box; transition: all 0.3s ease; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);">
+                  <option value="volcengine">火山引擎（豆包）</option>
+                </select>
+              </div>
+            </div>
+            
+            <div style="margin-bottom: 20px;">
+              <label for="analysis-prompt" style="display: block; font-weight: 600; margin-bottom: 10px; color: #333;">分析提示词：</label>
+              <textarea 
+                id="analysis-prompt" 
+                v-model="analysisPrompt" 
+                :disabled="analysisV2Loading"
+                rows="5"
+                placeholder="请输入您的分析需求，例如：请分析这个数据表中的案件来源分布情况，并生成图表展示"
+                style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; box-sizing: border-box; resize: vertical; min-height: 120px; transition: all 0.3s ease; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);"
+              ></textarea>
+            </div>
+            
+            <!-- 操作按钮 -->
+            <button 
+              @click="startAnalysisV2" 
+              :disabled="analysisV2Loading || !selectedTableV2 || !analysisPrompt"
+              style="width: 100%; padding: 12px 24px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: 600; transition: all 0.3s ease;"
+              @mouseenter="$event.target.style.transform='translateY(-2px)'; $event.target.style.boxShadow='0 4px 12px rgba(102, 126, 234, 0.4)'"
+              @mouseleave="$event.target.style.transform='translateY(0)'; $event.target.style.boxShadow='none'"
+            >
+              <span v-if="analysisV2Loading">⏳ 分析中...</span>
+              <span v-else>🔍 开始分析</span>
+            </button>
+            
+            <!-- 消息提示 -->
+            <div v-if="analysisV2Message" style="margin-top: 15px; padding: 12px; background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; border-radius: 4px;">
+              ✓ {{ analysisV2Message }}
+            </div>
+            <div v-if="analysisV2Error" style="margin-top: 15px; padding: 12px; background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; border-radius: 4px;">
+              ✗ {{ analysisV2Error }}
+            </div>
+          </div>
+        </div>
+        
+        <!-- 分析结果 -->
+        <div v-if="analysisV2Result" style="background: white; border-radius: 8px; padding: 25px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);">
+          <!-- 结果标题 -->
+          <div style="margin-bottom: 25px; padding-bottom: 15px; border-bottom: 2px solid #667eea;">
+            <h3 style="margin: 0; font-size: 20px; color: #333;">📈 {{ analysisV2Result.table_name }} - 智能分析报告</h3>
+          </div>
+          
+          <div class="result-details">
+            <!-- 图表展示 -->
+            <div v-if="analysisV2Result.charts" class="charts-section" style="margin-bottom: 30px;">
+              <h4 style="margin: 0 0 20px 0; color: #667eea; font-size: 16px; font-weight: 600; display: flex; align-items: center; gap: 8px;">
+                <span>📊</span>
+                <span>数据可视化</span>
+              </h4>
+              <div class="chart-container" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 20px;">
+                <div v-for="(chart, index) in analysisV2Result.charts" :key="index" class="chart-item" style="padding: 20px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e8e8e8;">
+                  <h5 style="margin: 0 0 15px 0; color: #333; font-size: 14px; font-weight: 600;">{{ chart.title }}</h5>
+                  <div v-if="chart.type === 'image'" style="text-align: center;">
+                    <img :src="chart.data" :alt="chart.title" style="max-width: 100%; height: auto; border-radius: 4px;" />
+                  </div>
+                  <div v-else :ref="el => { if (el) chartRefs[index] = el }" class="chart" style="height: 300px;"></div>
+                </div>
+              </div>
+            </div>
+            
+            <!-- 分析报告 -->
+            <div v-if="analysisV2Result.report" style="margin-top: 30px;">
+              <div style="padding: 25px; background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); border-radius: 12px; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+                <div style="margin-bottom: 20px; padding-bottom: 15px; border-bottom: 2px solid #e2e8f0;">
+                  <div style="display: flex; align-items: center; gap: 12px;">
+                    <div style="width: 48px; height: 48px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                      <span style="font-size: 24px;">🤖</span>
+                    </div>
+                    <div>
+                      <h4 style="margin: 0; color: #1e293b; font-size: 20px; font-weight: 700;">AI智能分析报告</h4>
+                      <p style="margin: 4px 0 0 0; color: #64748b; font-size: 14px;">基于大数据和AI智能生成的深度分析</p>
+                    </div>
+                  </div>
+                </div>
+                
+                <div class="report-content" style="line-height: 1.6; color: #334155; font-size: 14px; padding: 10px 0; text-align: left;">
+                  <div v-html="formatAnalysisReport(analysisV2Result.report)" style="word-wrap: break-word; overflow-wrap: break-word;"></div>
+                </div>
+                
+                <div style="margin-top: 20px; padding-top: 15px; border-top: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center;">
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#667eea" stroke-width="2">
+                      <circle cx="12" cy="12" r="10"></circle>
+                      <polyline points="12 6 12 12 16 14"></polyline>
+                    </svg>
+                    <span style="color: #64748b; font-size: 13px;">{{ new Date().toLocaleString('zh-CN') }}</span>
+                  </div>
+                  <button 
+                    @click="copyReport"
+                    style="padding: 8px 16px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 600; transition: all 0.3s ease;"
+                    @mouseenter="$event.target.style.transform='translateY(-1px)'; $event.target.style.boxShadow='0 4px 12px rgba(102, 126, 234, 0.4)'"
+                    @mouseleave="$event.target.style.transform='translateY(0)'; $event.target.style.boxShadow='none'"
+                  >
+                    📋 复制报告
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </div>

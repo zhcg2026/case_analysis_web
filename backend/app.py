@@ -3462,6 +3462,416 @@ def natural_language_query():
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
+# 数据分析（新版）API
+@app.route('/api/analyze-v2', methods=['POST'])
+@protected
+def analyze_v2():
+    try:
+        data = request.json
+        table_name = data.get('table_name')
+        user_prompt = data.get('prompt')
+        model_choice = 'volcengine'  # 强制使用火山引擎，因为阿里云百炼当前配置的是城管通专用应用
+        
+        if not table_name or not user_prompt:
+            return jsonify({'error': 'Missing table_name or prompt'}), 400
+        
+        # 从数据库读取数据
+        df = pd.read_sql_table(table_name, engine)
+        
+        # 准备数据样本（限制数据量避免token超限）
+        sample_size = min(100, len(df))
+        df_sample = df.head(sample_size)
+        
+        # 数据信息
+        data_info = f"数据表名：{table_name}\n"
+        data_info += f"总记录数：{len(df)}\n"
+        data_info += f"列名：{', '.join(df.columns.tolist())}\n\n"
+        data_info += f"数据样本（前{sample_size}条）：\n"
+        data_info += df_sample.to_csv(index=False, sep='\t', na_rep='空')
+        
+        # 第一步：让大模型分析需要什么样的图表
+        chart_requirement_system_prompt = "你是一个专业的数据可视化专家。请根据用户的分析需求和提供的数据，分析应该生成什么类型的图表。"
+        
+        chart_requirement_prompt = f"{data_info}\n\n用户分析需求：{user_prompt}\n\n"
+        chart_requirement_prompt += "请根据以上数据和用户需求，分析应该生成什么类型的图表。\n"
+        chart_requirement_prompt += "请以JSON格式返回，格式如下：\n"
+        chart_requirement_prompt += '{\n'
+        chart_requirement_prompt += '  "charts": [\n'
+        chart_requirement_prompt += '    {\n'
+        chart_requirement_prompt += '      "title": "图表标题",\n'
+        chart_requirement_prompt += '      "chart_type": "line|bar|pie|scatter",\n'
+        chart_requirement_prompt += '      "x_field": "X轴字段名",\n'
+        chart_requirement_prompt += '      "y_field": "Y轴字段名（可选，用于计数可以留空）",\n'
+        chart_requirement_prompt += '      "description": "图表说明"\n'
+        chart_requirement_prompt += '    }\n'
+        chart_requirement_prompt += '  ]\n'
+        chart_requirement_prompt += '}\n'
+        chart_requirement_prompt += "注意：只返回JSON，不要有其他文字。图表类型只能是line（折线图）、bar（柱状图）、pie（饼图）、scatter（散点图）中的一种。"
+        
+        charts = []
+        
+        # 根据选择调用不同的大模型获取图表需求
+        if model_choice == 'volcengine':
+            try:
+                headers = {
+                    'Content-Type': 'application/json',
+                    'Authorization': f'Bearer {API_KEY}'
+                }
+                
+                payload = {
+                    "model": MODEL,
+                    "messages": [
+                        {
+                            "role": "system",
+                            "content": chart_requirement_system_prompt
+                        },
+                        {
+                            "role": "user",
+                            "content": chart_requirement_prompt
+                        }
+                    ],
+                    "temperature": 0.3,
+                    "max_tokens": 2000
+                }
+                
+                response = requests.post(
+                    API_URL, 
+                    headers=headers, 
+                    json=payload, 
+                    timeout=(10, 120)
+                )
+                response.raise_for_status()
+                result = response.json()
+                chart_requirement_text = result['choices'][0]['message']['content']
+                
+                # 尝试解析JSON
+                import json
+                import re
+                json_match = re.search(r'\{[\s\S]*\}', chart_requirement_text)
+                if json_match:
+                    chart_requirement = json.loads(json_match.group())
+                    
+                    # 根据需求生成图表
+                    if 'charts' in chart_requirement:
+                        for chart_req in chart_requirement['charts']:
+                            try:
+                                chart_title = chart_req.get('title', '图表')
+                                chart_type = chart_req.get('chart_type', 'bar')
+                                x_field = chart_req.get('x_field')
+                                
+                                if x_field and x_field in df.columns:
+                                    if chart_type == 'pie':
+                                        # 饼图
+                                        value_counts = df[x_field].value_counts().head(15).reset_index()
+                                        value_counts.columns = [x_field, 'count']
+                                        
+                                        charts.append({
+                                            'title': chart_title,
+                                            'type': 'echarts',
+                                            'data': {
+                                                'title': {'text': chart_title},
+                                                'tooltip': {'trigger': 'item'},
+                                                'series': [{
+                                                    'data': [{'name': str(row[x_field]), 'value': row['count']} for _, row in value_counts.iterrows()],
+                                                    'type': 'pie',
+                                                    'radius': '50%'
+                                                }]
+                                            }
+                                        })
+                                    elif chart_type == 'line':
+                                        # 折线图 - 检查是否是时间字段
+                                        is_time_field = any(keyword in x_field for keyword in ['时间', '日期', 'date', 'time'])
+                                        if is_time_field:
+                                            df_temp = df.copy()
+                                            df_temp[x_field] = pd.to_datetime(df_temp[x_field], errors='coerce')
+                                            df_valid = df_temp.dropna(subset=[x_field])
+                                            if len(df_valid) > 0:
+                                                df_valid['day'] = df_valid[x_field].dt.day
+                                                counts = df_valid.groupby('day').size().reset_index(name='count')
+                                                
+                                                charts.append({
+                                                    'title': chart_title,
+                                                    'type': 'echarts',
+                                                    'data': {
+                                                        'title': {'text': chart_title},
+                                                        'tooltip': {'trigger': 'axis'},
+                                                        'xAxis': {'type': 'category', 'data': counts['day'].tolist()},
+                                                        'yAxis': {'type': 'value'},
+                                                        'series': [{'data': counts['count'].tolist(), 'type': 'line', 'smooth': True}]
+                                                    }
+                                                })
+                                        else:
+                                            # 普通字段的折线图
+                                            counts = df[x_field].value_counts().head(15).reset_index()
+                                            counts.columns = [x_field, 'count']
+                                            
+                                            charts.append({
+                                                'title': chart_title,
+                                                'type': 'echarts',
+                                                'data': {
+                                                    'title': {'text': chart_title},
+                                                    'tooltip': {'trigger': 'axis'},
+                                                    'xAxis': {'type': 'category', 'data': [str(x) for x in counts[x_field].tolist()], 'axisLabel': {'rotate': 45}},
+                                                    'yAxis': {'type': 'value'},
+                                                    'series': [{'data': counts['count'].tolist(), 'type': 'line', 'smooth': True}]
+                                                }
+                                            })
+                                    else:
+                                        # 默认柱状图
+                                        counts = df[x_field].value_counts().head(15).reset_index()
+                                        counts.columns = [x_field, 'count']
+                                        
+                                        charts.append({
+                                            'title': chart_title,
+                                            'type': 'echarts',
+                                            'data': {
+                                                'title': {'text': chart_title},
+                                                'tooltip': {'trigger': 'axis'},
+                                                'xAxis': {'type': 'category', 'data': [str(x) for x in counts[x_field].tolist()], 'axisLabel': {'rotate': 45}},
+                                                'yAxis': {'type': 'value'},
+                                                'series': [{'data': counts['count'].tolist(), 'type': 'bar'}]
+                                            }
+                                        })
+                            except Exception as e:
+                                print(f"生成图表失败: {e}")
+                                continue
+            except Exception as e:
+                print(f"获取图表需求失败: {e}")
+        
+        # 如果没有生成图表，生成一些基础图表作为后备
+        if not charts:
+            try:
+                # 检查是否有时间字段
+                time_col = None
+                for col in df.columns:
+                    if '时间' in col or '日期' in col or 'date' in col.lower():
+                        time_col = col
+                        break
+                
+                if time_col:
+                    try:
+                        df[time_col] = pd.to_datetime(df[time_col], errors='coerce')
+                        df_valid = df.dropna(subset=[time_col])
+                        if len(df_valid) > 0:
+                            df_valid['day'] = df_valid[time_col].dt.day
+                            daily_counts = df_valid.groupby('day').size().reset_index(name='count')
+                            
+                            charts.append({
+                                'title': '日案件量趋势',
+                                'type': 'echarts',
+                                'data': {
+                                    'title': {'text': '日案件量趋势'},
+                                    'tooltip': {'trigger': 'axis'},
+                                    'xAxis': {'type': 'category', 'data': daily_counts['day'].tolist()},
+                                    'yAxis': {'type': 'value'},
+                                    'series': [{'data': daily_counts['count'].tolist(), 'type': 'line', 'smooth': True}]
+                                }
+                            })
+                    except Exception as e:
+                        print(f"生成时间图表失败: {e}")
+                
+                # 检查是否有类型字段
+                type_col = None
+                for col in df.columns:
+                    if '类型' in col or '小类' in col or '大类' in col:
+                        type_col = col
+                        break
+                
+                if type_col:
+                    try:
+                        type_counts = df[type_col].value_counts().head(10).reset_index()
+                        type_counts.columns = [type_col, 'count']
+                        
+                        charts.append({
+                            'title': '案件类型分布TOP10',
+                            'type': 'echarts',
+                            'data': {
+                                'title': {'text': '案件类型分布TOP10'},
+                                'tooltip': {'trigger': 'item'},
+                                'xAxis': {'type': 'category', 'data': type_counts[type_col].tolist(), 'axisLabel': {'rotate': 45}},
+                                'yAxis': {'type': 'value'},
+                                'series': [{'data': type_counts['count'].tolist(), 'type': 'bar'}]
+                            }
+                        })
+                    except Exception as e:
+                        print(f"生成类型图表失败: {e}")
+                
+                # 检查是否有来源字段
+                source_col = None
+                for col in df.columns:
+                    if '来源' in col or 'source' in col.lower():
+                        source_col = col
+                        break
+                
+                if source_col:
+                    try:
+                        source_counts = df[source_col].value_counts().reset_index()
+                        source_counts.columns = [source_col, 'count']
+                        
+                        charts.append({
+                            'title': '案件来源分布',
+                            'type': 'echarts',
+                            'data': {
+                                'title': {'text': '案件来源分布'},
+                                'tooltip': {'trigger': 'item'},
+                                'series': [{
+                                    'data': [{'name': row[source_col], 'value': row['count']} for _, row in source_counts.iterrows()],
+                                    'type': 'pie',
+                                    'radius': '50%'
+                                }]
+                            }
+                        })
+                    except Exception as e:
+                        print(f"生成来源图表失败: {e}")
+            except Exception as e:
+                print(f"生成后备图表时出错: {e}")
+        
+        # 第二步：生成分析报告
+        analysis_report = None
+        
+        # 构建报告提示词
+        system_prompt = "你是一个专业的数据分析助手，擅长分析城市管理相关的案件数据。请根据用户的需求和提供的数据，生成详细的分析报告。"
+        
+        final_prompt = f"{data_info}\n\n用户分析需求：{user_prompt}\n\n"
+        final_prompt += "已生成的图表：\n"
+        for i, chart in enumerate(charts):
+            final_prompt += f"{i+1}. {chart['title']}\n"
+        final_prompt += "\n请根据以上数据和用户需求，结合已生成的图表，生成一份详细的分析报告。\n"
+        final_prompt += "要求：\n"
+        final_prompt += "1. 分析报告内容要详细、有深度\n"
+        final_prompt += "2. 报告格式使用HTML，支持加粗、标题等格式\n"
+        final_prompt += "3. 请结合图表进行分析"
+        
+        # 根据选择调用不同的大模型
+        if model_choice == 'bailian':
+            # 调用阿里云百炼
+            headers = {
+                'Content-Type': 'application/json',
+                'Authorization': f'Bearer {BAILIAN_API_KEY}'
+            }
+            
+            payload = {
+                "input": {
+                    "messages": [
+                        {
+                            "role": "system",
+                            "content": system_prompt
+                        },
+                        {
+                            "role": "user",
+                            "content": final_prompt
+                        }
+                    ]
+                },
+                "parameters": {
+                    "temperature": 0.3
+                }
+            }
+            
+            max_retries = 3
+            retry_delay = 5
+            
+            for attempt in range(max_retries):
+                try:
+                    response = requests.post(
+                        BAILIAN_API_URL, 
+                        headers=headers, 
+                        json=payload, 
+                        timeout=(10, 300)
+                    )
+                    response.raise_for_status()
+                    result = response.json()
+                    
+                    if 'output' in result and 'text' in result['output']:
+                        analysis_report = result['output']['text']
+                        break
+                    else:
+                        analysis_report = "API返回格式错误"
+                        break
+                        
+                except requests.exceptions.Timeout as e:
+                    if attempt < max_retries - 1:
+                        print(f"API调用超时，{retry_delay}秒后重试... (尝试 {attempt+1}/{max_retries})")
+                        import time
+                        time.sleep(retry_delay)
+                        retry_delay *= 2
+                    else:
+                        analysis_report = f"API调用失败: 多次尝试后仍然超时 - {str(e)}"
+                        break
+                except Exception as e:
+                    analysis_report = f"API调用失败: {str(e)}"
+                    break
+        else:
+            # 调用火山引擎（默认）
+            headers = {
+                'Content-Type': 'application/json',
+                'Authorization': f'Bearer {API_KEY}'
+            }
+            
+            payload = {
+                "model": MODEL,
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": system_prompt
+                    },
+                    {
+                        "role": "user",
+                        "content": final_prompt
+                    }
+                ],
+                "temperature": 0.3,
+                "max_tokens": 4000
+            }
+            
+            max_retries = 3
+            retry_delay = 5
+            
+            for attempt in range(max_retries):
+                try:
+                    combined_headers = {
+                        **headers,
+                        'Accept': 'application/json',
+                        'Connection': 'keep-alive'
+                    }
+                    
+                    response = requests.post(
+                        API_URL, 
+                        headers=combined_headers, 
+                        json=payload, 
+                        timeout=(10, 300)
+                    )
+                    response.raise_for_status()
+                    result = response.json()
+                    analysis_report = result['choices'][0]['message']['content']
+                    break
+                except requests.exceptions.Timeout as e:
+                    if attempt < max_retries - 1:
+                        print(f"API调用超时，{retry_delay}秒后重试... (尝试 {attempt+1}/{max_retries})")
+                        import time
+                        time.sleep(retry_delay)
+                        retry_delay *= 2
+                    else:
+                        analysis_report = f"API调用失败: 多次尝试后仍然超时 - {str(e)}"
+                        break
+                except Exception as e:
+                    analysis_report = f"API调用失败: {str(e)}"
+                    break
+        
+        # 返回结果
+        result = {
+            'table_name': table_name,
+            'report': analysis_report,
+            'charts': charts
+        }
+        
+        return jsonify(result), 200
+    except Exception as e:
+        print(f"Error in analyze_v2: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
 # 小工具模块API - 市容环卫案件分配
 @app.route('/api/tools/huanwei-assignment', methods=['POST'])
 @protected
