@@ -35,6 +35,57 @@ const currentArticleFileUrl = computed(() => {
   // 其他情况，直接用
   return filePath.startsWith('/') ? filePath : `/${filePath}`;
 });
+
+// 计算属性：过滤后的问题列表（按月份）
+const filteredHuiwentaiTasks = computed(() => {
+  if (!selectedMonthTasks.value) {
+    return huiwentaiTasks.value;
+  }
+  return huiwentaiTasks.value.filter(task => {
+    if (!task.createdAt) return false;
+    const taskDate = new Date(task.createdAt);
+    const taskMonth = `${taskDate.getFullYear()}-${String(taskDate.getMonth() + 1).padStart(2, '0')}`;
+    return taskMonth === selectedMonthTasks.value;
+  });
+});
+
+// 计算属性：过滤后的日报数据（按月份）
+const filteredHuiwentaiDailyReports = computed(() => {
+  if (!selectedMonthReports.value) {
+    return huiwentaiDailyReports.value;
+  }
+  return huiwentaiDailyReports.value.filter(report => {
+    if (!report.reportDate) return false;
+    const reportDate = new Date(report.reportDate);
+    const reportMonth = `${reportDate.getFullYear()}-${String(reportDate.getMonth() + 1).padStart(2, '0')}`;
+    return reportMonth === selectedMonthReports.value;
+  });
+});
+
+// 计算属性：问题列表可用的月份选项
+const availableMonthsTasks = computed(() => {
+  const months = new Set();
+  huiwentaiTasks.value.forEach(task => {
+    if (task.createdAt) {
+      const taskDate = new Date(task.createdAt);
+      months.add(`${taskDate.getFullYear()}-${String(taskDate.getMonth() + 1).padStart(2, '0')}`);
+    }
+  });
+  return Array.from(months).sort().reverse();
+});
+
+// 计算属性：日报数据可用的月份选项
+const availableMonthsReports = computed(() => {
+  const months = new Set();
+  huiwentaiDailyReports.value.forEach(report => {
+    if (report.reportDate) {
+      const reportDate = new Date(report.reportDate);
+      months.add(`${reportDate.getFullYear()}-${String(reportDate.getMonth() + 1).padStart(2, '0')}`);
+    }
+  });
+  return Array.from(months).sort().reverse();
+});
+
 const activeModule = ref('home'); // home, data, assessment, analysis, spotcheck, tools, chengguantong, cms, map, huiwentai, ai-apps
 const aiAppsActiveTab = ref('analysis'); // analysis, spotcheck, chengguantong
 
@@ -87,6 +138,8 @@ const huiwentaiError = ref('');
 const huiwentaiActiveTab = ref('tasks'); // tasks, daily-reports
 const huiwentaiDailyReports = ref([]);
 const expandedReportId = ref(null); // 当前展开的日报ID
+const selectedMonthTasks = ref(''); // 问题列表选择的月份
+const selectedMonthReports = ref(''); // 日报数据选择的月份
 
 // 业务平台展示状态管理
 const displayBusinessPlatforms = ref([]);
@@ -4610,8 +4663,24 @@ watch(
             </div>
           </div>
           
-          <!-- 刷新按钮 -->
-          <div style="margin-bottom: 20px; text-align: right;">
+          <!-- 刷新按钮和月份选择 -->
+          <div style="margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center;">
+            <!-- 月份选择下拉框 -->
+            <div>
+              <label v-if="huiwentaiActiveTab === 'tasks'" style="margin-right: 10px; font-size: 14px; color: #666;">选择月份：</label>
+              <select v-if="huiwentaiActiveTab === 'tasks'" v-model="selectedMonthTasks" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">
+                <option value="">全部</option>
+                <option v-for="month in availableMonthsTasks" :key="month" :value="month">{{ month }}</option>
+              </select>
+              
+              <label v-if="huiwentaiActiveTab === 'daily-reports'" style="margin-right: 10px; font-size: 14px; color: #666;">选择月份：</label>
+              <select v-if="huiwentaiActiveTab === 'daily-reports'" v-model="selectedMonthReports" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">
+                <option value="">全部</option>
+                <option v-for="month in availableMonthsReports" :key="month" :value="month">{{ month }}</option>
+              </select>
+            </div>
+            
+            <!-- 刷新按钮 -->
             <button 
               class="refresh-btn" 
               @click="huiwentaiActiveTab === 'tasks' ? fetchHuiwentaiTasks() : fetchHuiwentaiDailyReports()" 
@@ -4654,10 +4723,10 @@ watch(
                 </tr>
               </thead>
               <tbody>
-                <tr v-if="huiwentaiTasks.length === 0">
+                <tr v-if="filteredHuiwentaiTasks.length === 0">
                   <td colspan="6" style="padding: 40px; border: 1px solid #ddd; text-align: center;">暂无任务数据</td>
                 </tr>
-                <tr v-for="task in huiwentaiTasks" :key="task.taskId || task._id" style="background-color: white;">
+                <tr v-for="task in filteredHuiwentaiTasks" :key="task.taskId || task._id" style="background-color: white;">
                   <td style="padding: 12px; border: 1px solid #ddd;">{{ task.taskId || task._id || '无' }}</td>
                   <td style="padding: 12px; border: 1px solid #ddd;">{{ task.description || '无' }}</td>
                   <td style="padding: 12px; border: 1px solid #ddd;">{{ task.request || '无' }}</td>
@@ -4671,12 +4740,12 @@ watch(
           
           <!-- 日报数据标签页内容 -->
           <div v-else-if="huiwentaiActiveTab === 'daily-reports'" class="daily-reports-section">
-            <div v-if="huiwentaiDailyReports.length === 0" style="padding: 40px; text-align: center; color: #999;">
+            <div v-if="filteredHuiwentaiDailyReports.length === 0" style="padding: 40px; text-align: center; color: #999;">
               暂无日报数据
             </div>
             <div v-else class="reports-list" style="display: flex; flex-direction: column; gap: 16px; margin-top: 20px;">
               <div 
-                v-for="report in huiwentaiDailyReports" 
+                v-for="report in filteredHuiwentaiDailyReports" 
                 :key="report._id"
                 class="report-card"
                 @click="toggleReportExpand(report)"

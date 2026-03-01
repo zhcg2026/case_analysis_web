@@ -229,3 +229,19 @@ DB_NAME = 'case_analysis'
 DB_HOST = 'localhost'
 DB_PORT = '3306'
 
+# 常用部署
+# 本地构建前端
+cd C:\Users\Administrator\Documents\trae_projects\case_analysis_web\
+cd frontend
+npm run build
+# 上传文件到服务器，回到case_analysis_web目录
+cd ..
+# 上传修改的后端文件
+scp backend/app.py root@81.70.163.116:/root/case_analysis_web/backend/app.py
+# 上传构建好的前端文件（整个dist目录）
+scp -r frontend/dist root@81.70.163.116:/root/case_analysis_web/frontend/
+# 重新部署 服务器端执行
+cd /root/case_analysis_web
+chmod +x quick_deploy.sh
+./quick_deploy.sh
+# 程序没有问题，同步Git仓库
