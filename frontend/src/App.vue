@@ -86,6 +86,30 @@ const availableMonthsReports = computed(() => {
   return Array.from(months).sort().reverse();
 });
 
+// 计算属性：问题列表分页后的数据
+const paginatedHuiwentaiTasks = computed(() => {
+  const start = (tasksCurrentPage.value - 1) * tasksPageSize.value;
+  const end = start + tasksPageSize.value;
+  return filteredHuiwentaiTasks.value.slice(start, end);
+});
+
+// 计算属性：问题列表总页数
+const tasksTotalPages = computed(() => {
+  return Math.ceil(filteredHuiwentaiTasks.value.length / tasksPageSize.value) || 1;
+});
+
+// 计算属性：日报数据分页后的数据
+const paginatedHuiwentaiDailyReports = computed(() => {
+  const start = (reportsCurrentPage.value - 1) * reportsPageSize.value;
+  const end = start + reportsPageSize.value;
+  return filteredHuiwentaiDailyReports.value.slice(start, end);
+});
+
+// 计算属性：日报数据总页数
+const reportsTotalPages = computed(() => {
+  return Math.ceil(filteredHuiwentaiDailyReports.value.length / reportsPageSize.value) || 1;
+});
+
 const activeModule = ref('home'); // home, data, assessment, analysis, spotcheck, tools, chengguantong, cms, map, huiwentai, ai-apps
 const aiAppsActiveTab = ref('analysis'); // analysis, spotcheck, chengguantong
 
@@ -140,6 +164,10 @@ const huiwentaiDailyReports = ref([]);
 const expandedReportId = ref(null); // 当前展开的日报ID
 const selectedMonthTasks = ref(''); // 问题列表选择的月份
 const selectedMonthReports = ref(''); // 日报数据选择的月份
+const tasksCurrentPage = ref(1); // 问题列表当前页
+const tasksPageSize = ref(10); // 问题列表每页数量
+const reportsCurrentPage = ref(1); // 日报数据当前页
+const reportsPageSize = ref(20); // 日报数据每页数量
 
 // 业务平台展示状态管理
 const displayBusinessPlatforms = ref([]);
@@ -3896,6 +3924,7 @@ async function testCloudBaseConnection() {
 // 读取tasks集合数据
 async function fetchHuiwentaiTasks() {
   try {
+    tasksCurrentPage.value = 1;
     huiwentaiLoading.value = true;
     huiwentaiError.value = '';
     
@@ -3943,6 +3972,7 @@ async function fetchHuiwentaiTasks() {
 // 读取daily-reports集合数据
 async function fetchHuiwentaiDailyReports() {
   try {
+    reportsCurrentPage.value = 1;
     huiwentaiLoading.value = true;
     huiwentaiError.value = '';
     
@@ -4047,11 +4077,36 @@ async function fetchHuiwentaiDailyReports() {
 function switchHuiwentaiTab(tab) {
   huiwentaiActiveTab.value = tab;
   if (tab === 'tasks') {
+    tasksCurrentPage.value = 1;
     fetchHuiwentaiTasks();
   } else if (tab === 'daily-reports') {
+    reportsCurrentPage.value = 1;
     fetchHuiwentaiDailyReports();
   }
 }
+
+// 问题列表分页函数
+function goToTasksPage(page) {
+  if (page >= 1 && page <= tasksTotalPages.value) {
+    tasksCurrentPage.value = page;
+  }
+}
+
+// 日报数据分页函数
+function goToReportsPage(page) {
+  if (page >= 1 && page <= reportsTotalPages.value) {
+    reportsCurrentPage.value = page;
+  }
+}
+
+// 监听月份选择变化，重置当前页
+watch(selectedMonthTasks, () => {
+  tasksCurrentPage.value = 1;
+});
+
+watch(selectedMonthReports, () => {
+  reportsCurrentPage.value = 1;
+});
 
 // 切换日报展开/收起状态
 function toggleReportExpand(report) {
@@ -4726,7 +4781,7 @@ watch(
                 <tr v-if="filteredHuiwentaiTasks.length === 0">
                   <td colspan="6" style="padding: 40px; border: 1px solid #ddd; text-align: center;">暂无任务数据</td>
                 </tr>
-                <tr v-for="task in filteredHuiwentaiTasks" :key="task.taskId || task._id" style="background-color: white;">
+                <tr v-for="task in paginatedHuiwentaiTasks" :key="task.taskId || task._id" style="background-color: white;">
                   <td style="padding: 12px; border: 1px solid #ddd;">{{ task.taskId || task._id || '无' }}</td>
                   <td style="padding: 12px; border: 1px solid #ddd;">{{ task.description || '无' }}</td>
                   <td style="padding: 12px; border: 1px solid #ddd;">{{ task.request || '无' }}</td>
@@ -4736,6 +4791,25 @@ watch(
                 </tr>
               </tbody>
             </table>
+            
+            <!-- 问题列表分页组件 -->
+            <div style="margin-top: 20px; display: flex; justify-content: center; align-items: center; gap: 8px;">
+              <button 
+                @click="goToTasksPage(tasksCurrentPage - 1)" 
+                :disabled="tasksCurrentPage === 1"
+                style="padding: 6px 12px; border: 1px solid #ddd; background: white; cursor: pointer; border-radius: 4px;"
+                :style="{ opacity: tasksCurrentPage === 1 ? 0.5 : 1, cursor: tasksCurrentPage === 1 ? 'not-allowed' : 'pointer' }"
+              >上一页</button>
+              
+              <span style="padding: 0 10px;">第 {{ tasksCurrentPage }} 页 / 共 {{ tasksTotalPages }} 页</span>
+              
+              <button 
+                @click="goToTasksPage(tasksCurrentPage + 1)" 
+                :disabled="tasksCurrentPage === tasksTotalPages"
+                style="padding: 6px 12px; border: 1px solid #ddd; background: white; cursor: pointer; border-radius: 4px;"
+                :style="{ opacity: tasksCurrentPage === tasksTotalPages ? 0.5 : 1, cursor: tasksCurrentPage === tasksTotalPages ? 'not-allowed' : 'pointer' }"
+              >下一页</button>
+            </div>
           </div>
           
           <!-- 日报数据标签页内容 -->
@@ -4745,7 +4819,7 @@ watch(
             </div>
             <div v-else class="reports-list" style="display: flex; flex-direction: column; gap: 16px; margin-top: 20px;">
               <div 
-                v-for="report in filteredHuiwentaiDailyReports" 
+                v-for="report in paginatedHuiwentaiDailyReports" 
                 :key="report._id"
                 class="report-card"
                 @click="toggleReportExpand(report)"
@@ -4833,6 +4907,25 @@ watch(
                   </div>
                 </div>
               </div>
+            </div>
+            
+            <!-- 日报数据分页组件 -->
+            <div style="margin-top: 20px; display: flex; justify-content: center; align-items: center; gap: 8px;">
+              <button 
+                @click="goToReportsPage(reportsCurrentPage - 1)" 
+                :disabled="reportsCurrentPage === 1"
+                style="padding: 6px 12px; border: 1px solid #ddd; background: white; cursor: pointer; border-radius: 4px;"
+                :style="{ opacity: reportsCurrentPage === 1 ? 0.5 : 1, cursor: reportsCurrentPage === 1 ? 'not-allowed' : 'pointer' }"
+              >上一页</button>
+              
+              <span style="padding: 0 10px;">第 {{ reportsCurrentPage }} 页 / 共 {{ reportsTotalPages }} 页</span>
+              
+              <button 
+                @click="goToReportsPage(reportsCurrentPage + 1)" 
+                :disabled="reportsCurrentPage === reportsTotalPages"
+                style="padding: 6px 12px; border: 1px solid #ddd; background: white; cursor: pointer; border-radius: 4px;"
+                :style="{ opacity: reportsCurrentPage === reportsTotalPages ? 0.5 : 1, cursor: reportsCurrentPage === reportsTotalPages ? 'not-allowed' : 'pointer' }"
+              >下一页</button>
             </div>
           </div>
         </div>
