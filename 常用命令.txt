@@ -203,8 +203,29 @@ docker-compose up -d --build
 docker ps && docker logs 
 case-analysis-web
 ```
+# 部署阶段
+- 数据库配置 ：
 
+- 修改数据库连接配置，将 DB_HOST 从 localhost 改为 mysql-case-analysis （Docker 容器服务名）
+- 确保 MySQL 容器正常运行，数据库表结构正确
+- 前端构建 ：
+- 由于服务器资源限制，采用本地构建前端项目的策略
+- 上传本地构建结果到服务器，避免服务器构建卡住问题
+- 容器部署 ：
+- 使用 docker-compose 构建和部署应用
+- 确保所有容器正常运行，服务健康状态良好
 
+# 服务器数据库配置
+DB_USER = 'root'
+DB_PASSWORD = 'MySql@2024!Root'
+DB_NAME = 'case_analysis'
+DB_HOST = 'mysql-case-analysis'
+DB_PORT = '3306'
 
-
+# 本地数据库配置
+DB_USER = 'root'
+DB_PASSWORD = 'MySql@2024!Root'
+DB_NAME = 'case_analysis'
+DB_HOST = 'localhost'
+DB_PORT = '3306'
 

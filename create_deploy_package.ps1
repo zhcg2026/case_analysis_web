@@ -1,62 +1,39 @@
-# 创建部署包脚本
-Write-Host "========================================" -ForegroundColor Cyan
-Write-Host "   创建部署包" -ForegroundColor Cyan
-Write-Host "========================================" -ForegroundColor Cyan
-Write-Host ""
+# 本地构建部署脚本
+Write-Host "=== 本地构建部署脚本 ===" -ForegroundColor Green
 
-# 检查必要文件
-$requiredFiles = @(
-    "backend\app.py",
-    "frontend\dist",
-    "requirements.txt",
-    "Dockerfile",
-    "docker-compose.yml",
-    "quick_deploy.sh"
-)
-
-Write-Host "检查必要文件..." -ForegroundColor Yellow
-foreach ($file in $requiredFiles) {
-    if (Test-Path $file) {
-        Write-Host "  ✓ $file" -ForegroundColor Green
-    } else {
-        Write-Host "  ✗ $file" -ForegroundColor Red
-        exit 1
-    }
+# 1. 确认前端已构建
+if (-not (Test-Path "frontend\dist")) {
+    Write-Host "错误：前端未构建！请先运行 npm run build" -ForegroundColor Red
+    exit 1
 }
 
-Write-Host ""
-Write-Host "创建部署包..." -ForegroundColor Yellow
+Write-Host "✅ 前端构建已确认" -ForegroundColor Green
 
-# 复制文件到临时目录
-$tempDir = "deploy_temp"
-if (Test-Path $tempDir) {
-    Remove-Item -Recurse -Force $tempDir
+# 2. 创建部署包目录
+$deployDir = "deploy_package"
+if (Test-Path $deployDir) {
+    Remove-Item -Recurse -Force $deployDir
 }
-New-Item -ItemType Directory -Path $tempDir | Out-Null
+New-Item -ItemType Directory -Path $deployDir | Out-Null
+New-Item -ItemType Directory -Path "$deployDir\backend" | Out-Null
+New-Item -ItemType Directory -Path "$deployDir\frontend" | Out-Null
 
-# 复制文件
-Copy-Item -Path "backend" -Destination "$tempDir\" -Recurse
-Copy-Item -Path "frontend\dist" -Destination "$tempDir\frontend\" -Recurse
-Copy-Item -Path "requirements.txt" -Destination "$tempDir\"
-Copy-Item -Path "Dockerfile" -Destination "$tempDir\"
-Copy-Item -Path "docker-compose.yml" -Destination "$tempDir\"
-Copy-Item -Path "quick_deploy.sh" -Destination "$tempDir\"
+Write-Host "✅ 部署包目录已创建" -ForegroundColor Green
 
-# 创建压缩包
-$packageName = "deploy_package_$(Get-Date -Format 'yyyyMMdd_HHmmss').zip"
-Compress-Archive -Path "$tempDir\*" -DestinationPath $packageName -Force
+# 3. 复制必要文件
+Copy-Item "backend\app.py" -Destination "$deployDir\backend\"
+Copy-Item "frontend\dist" -Recurse -Destination "$deployDir\frontend\"
+Copy-Item "docker-compose.yml" -Destination "$deployDir\"
+Copy-Item "Dockerfile" -Destination "$deployDir\"
+Copy-Item "requirements.txt" -Destination "$deployDir\"
 
-# 清理临时目录
-Remove-Item -Recurse -Force $tempDir
+Write-Host "✅ 文件已复制到部署包" -ForegroundColor Green
 
-Write-Host ""
-Write-Host "✅ 部署包创建成功!" -ForegroundColor Green
-Write-Host "   文件: $packageName" -ForegroundColor White
-Write-Host ""
-Write-Host "下一步:" -ForegroundColor Yellow
-Write-Host "  1. 使用 SCP 或 SFTP 上传 $packageName 到服务器" -ForegroundColor White
-Write-Host "  2. 在服务器上执行:" -ForegroundColor White
-Write-Host "     cd /root/case_analysis_web" -ForegroundColor Gray
-Write-Host "     unzip $packageName" -ForegroundColor Gray
-Write-Host "     ./quick_deploy.sh" -ForegroundColor Gray
-Write-Host ""
+# 4. 显示部署包内容
+Write-Host "`n📦 部署包内容：" -ForegroundColor Cyan
+Get-ChildItem -Recurse $deployDir | Select-Object FullName
+
+Write-Host "`n✅ 部署包创建完成！" -ForegroundColor Green
+Write-Host "`n下一步操作：" -ForegroundColor Yellow
+Write-Host "1. 将 $deployDir 目录上传到服务器 /root/case_analysis_web/"
+Write-Host "2. 在服务器上执行：cd /root/case_analysis_web && docker-compose up -d --build"

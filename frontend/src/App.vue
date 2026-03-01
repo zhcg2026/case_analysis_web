@@ -3816,14 +3816,16 @@ async function fetchHuiwentaiTasks() {
         description: '示例问题：街道堆放垃圾',
         request: '请及时清理',
         contact: '13800138000',
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
+        processResult: '已清理完毕'
       },
       {
         taskId: 'TASK002',
         description: '示例问题：路灯损坏',
         request: '请维修路灯',
         contact: '13900139000',
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
+        processResult: ''
       }
     ];
     console.log('使用示例数据');
@@ -4596,11 +4598,12 @@ watch(
                   <th style="padding: 12px; border: 1px solid #ddd;">诉求</th>
                   <th style="padding: 12px; border: 1px solid #ddd; min-width: 150px;">联系方式</th>
                   <th style="padding: 12px; border: 1px solid #ddd;">创建时间</th>
+                  <th style="padding: 12px; border: 1px solid #ddd;">处理结果</th>
                 </tr>
               </thead>
               <tbody>
                 <tr v-if="huiwentaiTasks.length === 0">
-                  <td colspan="5" style="padding: 40px; border: 1px solid #ddd; text-align: center;">暂无任务数据</td>
+                  <td colspan="6" style="padding: 40px; border: 1px solid #ddd; text-align: center;">暂无任务数据</td>
                 </tr>
                 <tr v-for="task in huiwentaiTasks" :key="task.taskId || task._id" style="background-color: white;">
                   <td style="padding: 12px; border: 1px solid #ddd;">{{ task.taskId || task._id || '无' }}</td>
@@ -4608,6 +4611,7 @@ watch(
                   <td style="padding: 12px; border: 1px solid #ddd;">{{ task.request || '无' }}</td>
                   <td style="padding: 12px; border: 1px solid #ddd;">{{ task.contact || '无' }}</td>
                   <td style="padding: 12px; border: 1px solid #ddd;">{{ task.createdAt ? new Date(task.createdAt).toLocaleString() : '无' }}</td>
+                  <td style="padding: 12px; border: 1px solid #ddd;">{{ task.processResult || '' }}</td>
                 </tr>
               </tbody>
             </table>
