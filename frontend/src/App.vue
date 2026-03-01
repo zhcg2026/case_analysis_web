@@ -222,8 +222,70 @@ const loginLoading = ref(false);
 const loginError = ref('');
 
 // 管理员管理状态
-const adminActiveTab = ref('users'); // users, system
-const systemConfigTab = ref('data'); // data, general, security, logs, cms, business-platforms
+const adminActiveTab = ref('users'); // users, business, system
+const systemConfigTab = ref('general'); // general, security, logs
+const businessTab = ref('data'); // data, cms, business-platforms, assessment
+
+// 部门列表
+const assessmentDepartments = [
+  '城市综合行政执法队',
+  '市容环卫中心',
+  '园林绿化服务中心（片区）',
+  '园林绿化服务中心（公园广场）'
+];
+
+// 当前选择的部门
+const selectedAssessmentDepartment = ref('城市综合行政执法队');
+
+// 考核计分系数状态管理 - 按部门存储
+const assessmentCoefficients = ref({
+  '城市综合行政执法队': {
+    on_time: 1.0,
+    overdue: 0.4,
+    closure_weight: 0.8,
+    delay_weight: 0.1,
+    rework_weight: 0.1
+  },
+  '市容环卫中心': {
+    on_time: 1.0,
+    overdue: 0.4,
+    closure_weight: 0.8,
+    delay_weight: 0.1,
+    rework_weight: 0.1
+  },
+  '园林绿化服务中心（片区）': {
+    on_time: 1.0,
+    overdue: 0.4,
+    closure_weight: 0.8,
+    delay_weight: 0.1,
+    rework_weight: 0.1
+  },
+  '园林绿化服务中心（公园广场）': {
+    on_time: 1.0,
+    overdue: 0.4,
+    closure_weight: 0.8,
+    delay_weight: 0.1,
+    rework_weight: 0.1
+  }
+});
+
+// 安全获取当前部门系数
+function getCurrentDeptCoefficients() {
+  const dept = selectedAssessmentDepartment.value;
+  if (!assessmentCoefficients.value[dept]) {
+    assessmentCoefficients.value[dept] = {
+      on_time: 1.0,
+      overdue: 0.4,
+      closure_weight: 0.8,
+      delay_weight: 0.1,
+      rework_weight: 0.1
+    };
+  }
+  return assessmentCoefficients.value[dept];
+}
+const assessmentCoefficientsLoading = ref(false);
+const assessmentCoefficientsError = ref('');
+const assessmentCoefficientsMessage = ref('');
 const users = ref([]);
 const showAddUserForm = ref(false);
 const editingUser = ref(null);
@@ -1388,16 +1450,38 @@ onMounted(() => {
   fetchCMSCategories();
   // 获取业务平台数据用于展示
   fetchDisplayBusinessPlatforms();
+  // 获取考核计分系数
+  fetchAssessmentCoefficients();
 });
 
-// 监听系统配置标签页变化，当切换到cms标签时获取CMS数据
+// 监听业务管理标签页变化，当切换到cms标签时获取CMS数据
 watch(
-  () => systemConfigTab.value,
+  () => businessTab.value,
   (newTab) => {
     if (newTab === 'cms') {
       fetchCMSCategories();
     } else if (newTab === 'business-platforms') {
       fetchBusinessPlatforms();
+    } else if (newTab === 'data') {
+      fetchTablesForManagement();
+    } else if (newTab === 'assessment') {
+      fetchAssessmentCoefficients();
+    }
+  }
+);
+
+// 监听管理员标签页变化，当切换到业务管理时获取数据
+watch(
+  () => adminActiveTab.value,
+  (newTab) => {
+    if (newTab === 'business') {
+      if (businessTab.value === 'cms') {
+        fetchCMSCategories();
+      } else if (businessTab.value === 'business-platforms') {
+        fetchBusinessPlatforms();
+      } else if (businessTab.value === 'data') {
+        fetchTablesForManagement();
+      }
     }
   }
 );
@@ -1882,7 +1966,8 @@ async function startAssessmentV2() {
       },
       body: JSON.stringify({
         table_name: selectedAssessmentTableV2.value,
-        department: selectedDepartmentV2.value
+        department: selectedDepartmentV2.value,
+        coefficients: assessmentCoefficients.value
       })
     });
     
@@ -4172,6 +4257,92 @@ function getReportContent(report) {
   return '无内容';
 }
 
+// 获取考核计分系数
+async function fetchAssessmentCoefficients() {
+  try {
+    assessmentCoefficientsLoading.value = true;
+    assessmentCoefficientsError.value = '';
+    
+    const response = await fetch('/api/assessment-coefficients', {
+      headers: getAuthHeaders()
+    });
+    const data = await response.json();
+    
+    // 后端返回每个部门的系数对象
+    if (data && typeof data === 'object') {
+      // 确保所有部门都有系数配置
+      for (const dept of assessmentDepartments) {
+        if (!data[dept]) {
+          data[dept] = {
+            on_time: 1.0,
+            overdue: 0.4,
+            closure_weight: 0.8,
+            delay_weight: 0.1,
+            rework_weight: 0.1
+          };
+        }
+      }
+      assessmentCoefficients.value = data;
+    }
+  } catch (error) {
+    assessmentCoefficientsError.value = '获取考核系数失败: ' + error.message;
+    console.error('Error fetching assessment coefficients:', error);
+  } finally {
+    assessmentCoefficientsLoading.value = false;
+  }
+}
+
+// 保存考核计分系数
+async function saveAssessmentCoefficients() {
+  try {
+    assessmentCoefficientsLoading.value = true;
+    assessmentCoefficientsError.value = '';
+    assessmentCoefficientsMessage.value = '';
+    
+    const response = await fetch('/api/assessment-coefficients', {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeaders()
+      },
+      body: JSON.stringify({
+        department: selectedAssessmentDepartment.value,
+        ...assessmentCoefficients.value[selectedAssessmentDepartment.value]
+      })
+    });
+    const data = await response.json();
+    
+    if (data.message) {
+      assessmentCoefficientsMessage.value = '考核系数保存成功！';
+      // 保存成功后，从后端返回的数据中更新本地状态
+      if (data.coefficients) {
+        assessmentCoefficients.value = data.coefficients;
+      }
+      setTimeout(() => {
+        assessmentCoefficientsMessage.value = '';
+      }, 3000);
+    } else if (data.error) {
+      assessmentCoefficientsError.value = data.error;
+    }
+  } catch (error) {
+    assessmentCoefficientsError.value = '保存考核系数失败: ' + error.message;
+    console.error('Error saving assessment coefficients:', error);
+  } finally {
+    assessmentCoefficientsLoading.value = false;
+  }
+}
+
+// 重置考核计分系数
+function resetAssessmentCoefficients() {
+  assessmentCoefficients.value[selectedAssessmentDepartment.value] = {
+    on_time: 1.0,
+    overdue: 0.4,
+    closure_weight: 0.8,
+    delay_weight: 0.1,
+    rework_weight: 0.1
+  };
+}
+
 // 监听切换到汇问台模块时加载数据
 watch(
   () => activeModule.value,
@@ -4181,6 +4352,8 @@ watch(
     }
   }
 );
+
+
 </script>
 
 <template>
@@ -5587,6 +5760,9 @@ watch(
             <div class="admin-tab" :class="{ active: adminActiveTab === 'users' }" @click="adminActiveTab = 'users'">
               用户管理
             </div>
+            <div class="admin-tab" :class="{ active: adminActiveTab === 'business' }" @click="adminActiveTab = 'business'">
+              业务管理
+            </div>
             <div class="admin-tab" :class="{ active: adminActiveTab === 'system' }" @click="adminActiveTab = 'system'">
               系统配置
             </div>
@@ -5628,24 +5804,22 @@ watch(
             </div>
           </div>
           
-          <!-- 系统配置子模块 -->
-          <div v-if="adminActiveTab === 'system'" class="admin-subsection">
-            <h3 class="subsection-title">系统配置</h3>
+          <!-- 业务管理子模块 -->
+          <div v-if="adminActiveTab === 'business'" class="admin-subsection">
+            <h3 class="subsection-title">业务管理</h3>
             
             <!-- 配置标签页 -->
             <div class="config-tabs">
-              <button class="config-tab" :class="{ active: systemConfigTab === 'data' }" @click="systemConfigTab = 'data'">数据管理</button>
-              <button class="config-tab" :class="{ active: systemConfigTab === 'general' }" @click="systemConfigTab = 'general'">通用配置</button>
-              <button class="config-tab" :class="{ active: systemConfigTab === 'security' }" @click="systemConfigTab = 'security'">安全配置</button>
-              <button class="config-tab" :class="{ active: systemConfigTab === 'logs' }" @click="systemConfigTab = 'logs'">系统日志</button>
-              <button class="config-tab" :class="{ active: systemConfigTab === 'cms' }" @click="systemConfigTab = 'cms'">内容管理</button>
-              <button class="config-tab" :class="{ active: systemConfigTab === 'business-platforms' }" @click="systemConfigTab = 'business-platforms'">业务平台</button>
+              <button class="config-tab" :class="{ active: businessTab === 'data' }" @click="businessTab = 'data'">数据管理</button>
+              <button class="config-tab" :class="{ active: businessTab === 'cms' }" @click="businessTab = 'cms'">内容管理</button>
+              <button class="config-tab" :class="{ active: businessTab === 'business-platforms' }" @click="businessTab = 'business-platforms'">业务平台</button>
+              <button class="config-tab" :class="{ active: businessTab === 'assessment' }" @click="businessTab = 'assessment'">考核计分</button>
             </div>
             
             <!-- 配置内容 -->
             <div class="config-content">
               <!-- 数据管理配置 -->
-              <div v-if="systemConfigTab === 'data'" class="config-panel">
+              <div v-if="businessTab === 'data'" class="config-panel">
                 <div class="panel-header">
                   <h4 class="panel-title">数据库管理</h4>
                   <p class="panel-description">管理数据库中的数据表，可上传Excel文件和删除不需要的数据表</p>
@@ -5716,76 +5890,8 @@ watch(
                 </div>
               </div>
               
-              <!-- 通用配置 -->
-              <div v-if="systemConfigTab === 'general'" class="config-panel">
-                <div class="panel-header">
-                  <h4 class="panel-title">通用配置</h4>
-                  <p class="panel-description">系统通用设置</p>
-                </div>
-                <div class="panel-body">
-                  <div class="config-form">
-                    <div class="form-group">
-                      <label>系统名称</label>
-                      <input type="text" placeholder="运城市智慧城市管理平台" />
-                    </div>
-                    <div class="form-group">
-                      <label>系统版本</label>
-                      <input type="text" placeholder="1.0.0" disabled />
-                    </div>
-                    <div class="form-group">
-                      <label>默认语言</label>
-                      <select>
-                        <option value="zh-CN">简体中文</option>
-                        <option value="en-US">English</option>
-                      </select>
-                    </div>
-                    <div class="form-actions">
-                      <button class="save-btn">保存配置</button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              
-              <!-- 安全配置 -->
-              <div v-if="systemConfigTab === 'security'" class="config-panel">
-                <div class="panel-header">
-                  <h4 class="panel-title">安全配置</h4>
-                  <p class="panel-description">系统安全相关设置</p>
-                </div>
-                <div class="panel-body">
-                  <div class="config-form">
-                    <div class="form-group">
-                      <label>登录超时时间</label>
-                      <input type="number" placeholder="3600" />
-                      <span class="form-help">秒</span>
-                    </div>
-                    <div class="form-group">
-                      <label>密码复杂度要求</label>
-                      <input type="checkbox" />
-                      <span>启用密码强度检查</span>
-                    </div>
-                    <div class="form-actions">
-                      <button class="save-btn">保存配置</button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              
-              <!-- 系统日志 -->
-              <div v-if="systemConfigTab === 'logs'" class="config-panel">
-                <div class="panel-header">
-                  <h4 class="panel-title">系统日志</h4>
-                  <p class="panel-description">查看系统操作日志</p>
-                </div>
-                <div class="panel-body">
-                  <div class="logs-section">
-                    <p>系统日志功能开发中...</p>
-                  </div>
-                </div>
-              </div>
-              
               <!-- CMS内容管理 -->
-              <div v-if="systemConfigTab === 'cms'" class="config-panel">
+              <div v-if="businessTab === 'cms'" class="config-panel">
                 <div class="panel-header">
                   <h4 class="panel-title">内容管理</h4>
                   <p class="panel-description">管理系统内容，包括栏目和文章</p>
@@ -5890,7 +5996,7 @@ watch(
               </div>
               
               <!-- 业务平台管理 -->
-              <div v-if="systemConfigTab === 'business-platforms'" class="config-panel">
+              <div v-if="businessTab === 'business-platforms'" class="config-panel">
                 <div class="panel-header">
                   <h4 class="panel-title">业务平台管理</h4>
                   <p class="panel-description">管理系统的业务平台信息</p>
@@ -5981,6 +6087,204 @@ watch(
                       <button class="add-btn" @click="updateBusinessPlatform" :disabled="platformLoading">{{ platformLoading ? '更新中...' : '更新' }}</button>
                       <button class="cancel-btn" @click="cancelEditPlatform">取消</button>
                     </div>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- 考核计分配置 -->
+              <div v-if="businessTab === 'assessment'" class="config-panel">
+                <div class="panel-header">
+                  <h4 class="panel-title">考核计分系数配置</h4>
+                  <p class="panel-description">
+                    计分公式：score = ( (on_time_rate × 按时结案系数 + overdue_rate × 超时结案系数) × 结案率权重 + (1 - delay_rate) × 延期率权重 + (1 - rework_rate) × 返工率权重 ) × 100
+                  </p>
+                </div>
+                
+                <div class="panel-body">
+                  <div v-if="assessmentCoefficientsLoading" class="loading" style="text-align: center; padding: 40px; color: #666;">
+                    加载中...
+                  </div>
+                  
+                  <div v-else>
+                    <!-- 部门选择器 -->
+                    <div class="form-group" style="margin-bottom: 25px;">
+                      <label style="display: block; font-weight: 600; margin-bottom: 8px; color: #333;">选择考核部门</label>
+                      <select 
+                        v-model="selectedAssessmentDepartment" 
+                        style="width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; box-sizing: border-box;"
+                      >
+                        <option v-for="dept in assessmentDepartments" :key="dept" :value="dept">
+                          {{ dept }}
+                        </option>
+                      </select>
+                    </div>
+                    
+                    <div class="config-form" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px;">
+                      <div class="form-group">
+                        <label style="display: block; font-weight: 600; margin-bottom: 8px; color: #333;">按时结案系数 (on_time)</label>
+                        <input 
+                          type="number" 
+                          step="0.1" 
+                          v-model.number="getCurrentDeptCoefficients().on_time" 
+                          placeholder="1.0"
+                          style="width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; box-sizing: border-box;"
+                        />
+                      </div>
+                      
+                      <div class="form-group">
+                        <label style="display: block; font-weight: 600; margin-bottom: 8px; color: #333;">超时结案系数 (overdue)</label>
+                        <input 
+                          type="number" 
+                          step="0.1" 
+                          v-model.number="getCurrentDeptCoefficients().overdue" 
+                          placeholder="0.4"
+                          style="width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; box-sizing: border-box;"
+                        />
+                      </div>
+                      
+                      <div class="form-group">
+                        <label style="display: block; font-weight: 600; margin-bottom: 8px; color: #333;">结案率权重 (closure_weight)</label>
+                        <input 
+                          type="number" 
+                          step="0.1" 
+                          v-model.number="getCurrentDeptCoefficients().closure_weight" 
+                          placeholder="0.8"
+                          style="width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; box-sizing: border-box;"
+                        />
+                      </div>
+                      
+                      <div class="form-group">
+                        <label style="display: block; font-weight: 600; margin-bottom: 8px; color: #333;">延期率权重 (delay_weight)</label>
+                        <input 
+                          type="number" 
+                          step="0.1" 
+                          v-model.number="getCurrentDeptCoefficients().delay_weight" 
+                          placeholder="0.1"
+                          style="width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; box-sizing: border-box;"
+                        />
+                      </div>
+                      
+                      <div class="form-group" style="grid-column: 1 / -1;">
+                        <label style="display: block; font-weight: 600; margin-bottom: 8px; color: #333;">返工率权重 (rework_weight)</label>
+                        <input 
+                          type="number" 
+                          step="0.1" 
+                          v-model.number="getCurrentDeptCoefficients().rework_weight" 
+                          placeholder="0.1"
+                          style="width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; box-sizing: border-box;"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div v-if="assessmentCoefficientsMessage" class="message success" style="margin-top: 20px; padding: 12px; background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; border-radius: 4px;">
+                    ✓ {{ assessmentCoefficientsMessage }}
+                  </div>
+                  
+                  <div v-if="assessmentCoefficientsError" class="message error" style="margin-top: 20px; padding: 12px; background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; border-radius: 4px;">
+                    ✗ {{ assessmentCoefficientsError }}
+                  </div>
+                  
+                  <div class="form-actions" style="margin-top: 25px; display: flex; gap: 15px;">
+                    <button 
+                      class="save-btn" 
+                      @click="saveAssessmentCoefficients" 
+                      :disabled="assessmentCoefficientsLoading"
+                      style="padding: 12px 30px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: 600; transition: all 0.3s ease;"
+                    >
+                      <span v-if="assessmentCoefficientsLoading">保存中...</span>
+                      <span v-else>保存系数</span>
+                    </button>
+                    <button 
+                      class="cancel-btn" 
+                      @click="resetAssessmentCoefficients"
+                      style="padding: 12px 30px; background-color: #95a5a6; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: 600; transition: all 0.3s ease;"
+                    >
+                      重置默认
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- 系统配置子模块 -->
+          <div v-if="adminActiveTab === 'system'" class="admin-subsection">
+            <h3 class="subsection-title">系统配置</h3>
+            
+            <!-- 配置标签页 -->
+            <div class="config-tabs">
+              <button class="config-tab" :class="{ active: systemConfigTab === 'general' }" @click="systemConfigTab = 'general'">通用配置</button>
+              <button class="config-tab" :class="{ active: systemConfigTab === 'security' }" @click="systemConfigTab = 'security'">安全配置</button>
+              <button class="config-tab" :class="{ active: systemConfigTab === 'logs' }" @click="systemConfigTab = 'logs'">系统日志</button>
+            </div>
+            
+            <!-- 配置内容 -->
+            <div class="config-content">
+              <!-- 通用配置 -->
+              <div v-if="systemConfigTab === 'general'" class="config-panel">
+                <div class="panel-header">
+                  <h4 class="panel-title">通用配置</h4>
+                  <p class="panel-description">系统通用设置</p>
+                </div>
+                <div class="panel-body">
+                  <div class="config-form">
+                    <div class="form-group">
+                      <label>系统名称</label>
+                      <input type="text" placeholder="运城市智慧城市管理平台" />
+                    </div>
+                    <div class="form-group">
+                      <label>系统版本</label>
+                      <input type="text" placeholder="1.0.0" disabled />
+                    </div>
+                    <div class="form-group">
+                      <label>默认语言</label>
+                      <select>
+                        <option value="zh-CN">简体中文</option>
+                        <option value="en-US">English</option>
+                      </select>
+                    </div>
+                    <div class="form-actions">
+                      <button class="save-btn">保存配置</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- 安全配置 -->
+              <div v-if="systemConfigTab === 'security'" class="config-panel">
+                <div class="panel-header">
+                  <h4 class="panel-title">安全配置</h4>
+                  <p class="panel-description">系统安全相关设置</p>
+                </div>
+                <div class="panel-body">
+                  <div class="config-form">
+                    <div class="form-group">
+                      <label>登录超时时间</label>
+                      <input type="number" placeholder="3600" />
+                      <span class="form-help">秒</span>
+                    </div>
+                    <div class="form-group">
+                      <label>密码复杂度要求</label>
+                      <input type="checkbox" />
+                      <span>启用密码强度检查</span>
+                    </div>
+                    <div class="form-actions">
+                      <button class="save-btn">保存配置</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- 系统日志 -->
+              <div v-if="systemConfigTab === 'logs'" class="config-panel">
+                <div class="panel-header">
+                  <h4 class="panel-title">系统日志</h4>
+                  <p class="panel-description">查看系统操作日志</p>
+                </div>
+                <div class="panel-body">
+                  <div class="logs-section">
+                    <p>系统日志功能开发中...</p>
                   </div>
                 </div>
               </div>

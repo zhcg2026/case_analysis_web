@@ -1772,13 +1772,23 @@ def calculate_generic_score(cases):
         }
 }
 
-def calculate_law_enforcement_score_v2(cases):
+def calculate_law_enforcement_score_v2(cases, coefficients=None):
     """计算城市综合行政执法队8个片区的考核分数和排名（新版：使用是否超时字段判定）"""
+    if coefficients is None:
+        coefficients = {
+            'on_time': 1.0,
+            'overdue': 0.4,
+            'closure_weight': 0.8,
+            'delay_weight': 0.1,
+            'rework_weight': 0.1
+        }
+    
     target_departments = [
         "执法东片区", "执法北片区", "执法南片区", "执法西片区",
         "执法中片区", "大渠执法分队", "姚孟执法分队", "安邑执法分队"
     ]
     print(f"目标统计部门：{target_departments}")
+    print(f"使用的计分系数：{coefficients}")
     
     team_results = []
     
@@ -1818,9 +1828,9 @@ def calculate_law_enforcement_score_v2(cases):
         rework_rate = rework / total if total > 0 else 0
         
         score = (
-            (on_time_rate * 1 + overdue_rate * 0.4) * 0.8 +
-            (1 - delay_rate) * 0.1 +
-            (1 - rework_rate) * 0.1
+            (on_time_rate * coefficients['on_time'] + overdue_rate * coefficients['overdue']) * coefficients['closure_weight'] +
+            (1 - delay_rate) * coefficients['delay_weight'] +
+            (1 - rework_rate) * coefficients['rework_weight']
         ) * 100
         
         team_results.append({
@@ -1858,13 +1868,23 @@ def calculate_law_enforcement_score_v2(cases):
         'details': {}
     }
 
-def calculate_huanwei_score_v2(cases):
+def calculate_huanwei_score_v2(cases, coefficients=None):
     """计算市容环卫中心5个片区的考核分数和排名（新版：使用是否超时字段判定）"""
+    if coefficients is None:
+        coefficients = {
+            'on_time': 1.0,
+            'overdue': 0.4,
+            'closure_weight': 0.8,
+            'delay_weight': 0.1,
+            'rework_weight': 0.1
+        }
+    
     target_areas = [
         "环卫东片区", "环卫北片区", "环卫南片区",
         "环卫西片区", "环卫中片区"
     ]
     print(f"目标统计片区：{target_areas}")
+    print(f"使用的计分系数：{coefficients}")
     
     area_results = []
     
@@ -1904,9 +1924,9 @@ def calculate_huanwei_score_v2(cases):
         rework_rate = rework / total if total > 0 else 0
         
         score = (
-            (on_time_rate * 1 + overdue_rate * 0.4) * 0.8 +
-            (1 - delay_rate) * 0.1 +
-            (1 - rework_rate) * 0.1
+            (on_time_rate * coefficients['on_time'] + overdue_rate * coefficients['overdue']) * coefficients['closure_weight'] +
+            (1 - delay_rate) * coefficients['delay_weight'] +
+            (1 - rework_rate) * coefficients['rework_weight']
         ) * 100
         
         area_results.append({
@@ -1944,13 +1964,23 @@ def calculate_huanwei_score_v2(cases):
         'details': {}
     }
 
-def calculate_garden_score_v2(cases):
+def calculate_garden_score_v2(cases, coefficients=None):
     """计算园林各片区的考核得分并排名（新版：使用是否超时字段判定）"""
+    if coefficients is None:
+        coefficients = {
+            'on_time': 1.0,
+            'overdue': 0.4,
+            'closure_weight': 0.8,
+            'delay_weight': 0.1,
+            'rework_weight': 0.1
+        }
+    
     target_areas = [
         "园林东片区", "园林北片区", "园林南片区",
         "园林西片区", "园林中片区"
     ]
     print(f"目标统计片区：{target_areas}")
+    print(f"使用的计分系数：{coefficients}")
     
     area_results = []
     
@@ -1990,9 +2020,9 @@ def calculate_garden_score_v2(cases):
         rework_rate = rework / total if total > 0 else 0
         
         score = (
-            (on_time_rate * 1 + overdue_rate * 0.4) * 0.8 +
-            (1 - delay_rate) * 0.1 +
-            (1 - rework_rate) * 0.1
+            (on_time_rate * coefficients['on_time'] + overdue_rate * coefficients['overdue']) * coefficients['closure_weight'] +
+            (1 - delay_rate) * coefficients['delay_weight'] +
+            (1 - rework_rate) * coefficients['rework_weight']
         ) * 100
         
         area_results.append({
@@ -2030,10 +2060,20 @@ def calculate_garden_score_v2(cases):
         'details': {}
     }
 
-def calculate_park_score_v2(cases):
+def calculate_park_score_v2(cases, coefficients=None):
     """计算园林各公园考核得分（排除挂账案件）（新版：使用是否超时字段判定）"""
+    if coefficients is None:
+        coefficients = {
+            'on_time': 1.0,
+            'overdue': 0.4,
+            'closure_weight': 0.8,
+            'delay_weight': 0.1,
+            'rework_weight': 0.1
+        }
+    
     target_parks = ["南风广场", "天逸公园", "体育公园", "航天公园", "圣惠公园", "禹都公园", "人民公园"]
     print(f"目标统计公园：{target_parks}")
+    print(f"使用的计分系数：{coefficients}")
     
     non_guazhang_cases = []
     for case in cases:
@@ -2085,9 +2125,9 @@ def calculate_park_score_v2(cases):
         rework_rate = rework / total if total > 0 else 0
         
         score = (
-            (on_time_rate * 1 + overdue_rate * 0.4) * 0.8 +
-            (1 - delay_rate) * 0.1 +
-            (1 - rework_rate) * 0.1
+            (on_time_rate * coefficients['on_time'] + overdue_rate * coefficients['overdue']) * coefficients['closure_weight'] +
+            (1 - delay_rate) * coefficients['delay_weight'] +
+            (1 - rework_rate) * coefficients['rework_weight']
         ) * 100
         
         park_results.append({
@@ -2243,6 +2283,106 @@ def assess():
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
+import json
+import os
+
+# 系数配置文件路径
+COEFFICIENTS_FILE = os.path.join(os.path.dirname(__file__), 'assessment_coefficients.json')
+
+# 部门列表
+DEPARTMENTS = [
+    '城市综合行政执法队',
+    '市容环卫中心',
+    '园林绿化服务中心（片区）',
+    '园林绿化服务中心（公园广场）'
+]
+
+# 默认系数
+DEFAULT_COEFFICIENTS = {
+    'on_time': 1.0,
+    'overdue': 0.4,
+    'closure_weight': 0.8,
+    'delay_weight': 0.1,
+    'rework_weight': 0.1
+}
+
+def load_coefficients():
+    """从文件加载系数配置"""
+    try:
+        if os.path.exists(COEFFICIENTS_FILE):
+            with open(COEFFICIENTS_FILE, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            # 检查是否是旧格式（单个系数对象）
+            if 'on_time' in data and not any(dept in data for dept in DEPARTMENTS):
+                # 转换为新格式：将旧系数应用到所有部门
+                new_coefficients = {dept: data.copy() for dept in DEPARTMENTS}
+                # 保存转换后的格式
+                save_coefficients_to_file(new_coefficients)
+                return new_coefficients
+            # 检查是否是新格式但缺少某些部门
+            if isinstance(data, dict):
+                for dept in DEPARTMENTS:
+                    if dept not in data:
+                        data[dept] = DEFAULT_COEFFICIENTS.copy()
+                return data
+    except Exception as e:
+        print(f"Error loading coefficients: {e}")
+    # 返回每个部门的默认系数
+    return {dept: DEFAULT_COEFFICIENTS.copy() for dept in DEPARTMENTS}
+
+def save_coefficients_to_file(coefficients):
+    """保存系数配置到文件"""
+    try:
+        with open(COEFFICIENTS_FILE, 'w', encoding='utf-8') as f:
+            json.dump(coefficients, f, ensure_ascii=False, indent=2)
+        return True
+    except Exception as e:
+        print(f"Error saving coefficients: {e}")
+        return False
+
+# 加载初始系数
+assessment_coefficients = load_coefficients()
+
+@app.route('/api/assessment-coefficients', methods=['GET'])
+@protected
+def get_assessment_coefficients():
+    global assessment_coefficients
+    # 每次都从文件重新加载，确保获取最新配置
+    assessment_coefficients = load_coefficients()
+    return jsonify(assessment_coefficients), 200
+
+@app.route('/api/assessment-coefficients', methods=['PUT'])
+@protected
+def save_assessment_coefficients():
+    global assessment_coefficients
+    try:
+        data = request.json
+        department = data.get('department')
+        
+        if not department or department not in DEPARTMENTS:
+            return jsonify({'error': 'Invalid department'}), 400
+        
+        # 加载当前所有系数
+        all_coefficients = load_coefficients()
+        
+        # 更新指定部门的系数
+        all_coefficients[department] = {
+            'on_time': float(data.get('on_time', 1.0)),
+            'overdue': float(data.get('overdue', 0.4)),
+            'closure_weight': float(data.get('closure_weight', 0.8)),
+            'delay_weight': float(data.get('delay_weight', 0.1)),
+            'rework_weight': float(data.get('rework_weight', 0.1))
+        }
+        
+        # 保存到文件
+        if save_coefficients_to_file(all_coefficients):
+            assessment_coefficients = all_coefficients
+            return jsonify({'message': 'Coefficients saved successfully', 'coefficients': assessment_coefficients}), 200
+        else:
+            return jsonify({'error': 'Failed to save coefficients to file'}), 500
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
 @app.route('/api/assess/v2', methods=['POST'])
 @protected
 def assess_v2():
@@ -2254,17 +2394,26 @@ def assess_v2():
         if not table_name or not department:
             return jsonify({'error': 'Missing table_name or department'}), 400
         
+        # 每次都从文件重新加载最新的系数
+        current_coefficients = load_coefficients()
+        
+        # 获取该部门的系数
+        if department in current_coefficients:
+            coefficients = current_coefficients[department]
+        else:
+            coefficients = DEFAULT_COEFFICIENTS.copy()
+        
         df = pd.read_sql_table(table_name, engine)
         cases = df.to_dict('records')
         
         if department == '城市综合行政执法队':
-            result = calculate_law_enforcement_score_v2(cases)
+            result = calculate_law_enforcement_score_v2(cases, coefficients)
         elif department == '市容环卫中心':
-            result = calculate_huanwei_score_v2(cases)
+            result = calculate_huanwei_score_v2(cases, coefficients)
         elif department == '园林绿化服务中心（片区）':
-            result = calculate_garden_score_v2(cases)
+            result = calculate_garden_score_v2(cases, coefficients)
         elif department == '园林绿化服务中心（公园广场）':
-            result = calculate_park_score_v2(cases)
+            result = calculate_park_score_v2(cases, coefficients)
         else:
             result = calculate_generic_score(cases)
         
