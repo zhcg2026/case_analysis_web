@@ -4873,6 +4873,7 @@ watch(
                 <label for="model-select" style="display: block; font-weight: 600; margin-bottom: 10px; color: #333;">选择大模型：</label>
                 <select id="model-select" v-model="selectedModel" :disabled="analysisV2Loading" style="width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; box-sizing: border-box; transition: all 0.3s ease; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);">
                   <option value="volcengine">火山引擎（豆包）</option>
+                  <option value="bailian">阿里云百炼（通义千问）</option>
                 </select>
               </div>
             </div>
