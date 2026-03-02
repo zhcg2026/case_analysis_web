@@ -4500,6 +4500,25 @@ watch(
   }
 );
 
+// 获取问候语
+function getGreeting() {
+  const hour = new Date().getHours();
+  if (hour < 6) return '凌晨好';
+  if (hour < 9) return '早上好';
+  if (hour < 12) return '上午好';
+  if (hour < 14) return '中午好';
+  if (hour < 17) return '下午好';
+  if (hour < 19) return '傍晚好';
+  if (hour < 22) return '晚上好';
+  return '夜深了';
+}
+
+// 获取栏目图标
+function getColumnIcon(index) {
+  const icons = ['📌', '📰', '📋', '📢', '📑', '📰', '📋', '📢'];
+  return icons[index % icons.length];
+}
+
 
 </script>
 
@@ -4567,28 +4586,121 @@ watch(
     <!-- 主内容区 -->
     <div v-if="isLoggedIn" class="main-content">
       <!-- 首页模块 -->
-      <div v-if="activeModule === 'home'" class="tab-content">
+      <div v-if="activeModule === 'home'" class="tab-content home-page">
+        <!-- 欢迎横幅区域 -->
+        <div class="welcome-banner">
+          <div class="welcome-content">
+            <div class="welcome-text">
+              <h1 class="welcome-title">欢迎使用智慧城市管理平台</h1>
+              <p class="welcome-subtitle">一站式城市管理解决方案，让城市更智慧、更美好</p>
+            </div>
+            <div class="welcome-user" v-if="userInfo">
+              <div class="user-avatar">
+                <span>{{ userInfo.username?.charAt(0)?.toUpperCase() || 'U' }}</span>
+              </div>
+              <div class="user-greeting">
+                <span class="greeting-text">{{ getGreeting() }}</span>
+                <span class="user-name">{{ userInfo.username }}</span>
+              </div>
+            </div>
+          </div>
+          <div class="quick-actions">
+            <div class="quick-action-item" @click="switchModule('ai-apps')">
+              <div class="action-icon">🤖</div>
+              <span class="action-text">AI应用</span>
+            </div>
+            <div class="quick-action-item" @click="switchModule('assessment')">
+              <div class="action-icon">📊</div>
+              <span class="action-text">考核计分</span>
+            </div>
+            <div class="quick-action-item" @click="switchModule('business')">
+              <div class="action-icon">🏢</div>
+              <span class="action-text">业务平台</span>
+            </div>
+            <div class="quick-action-item" @click="switchModule('huiwentai')">
+              <div class="action-icon">💬</div>
+              <span class="action-text">汇问台</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 数据统计区域 -->
+        <div class="stats-section">
+          <div class="stats-card">
+            <div class="stats-icon" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+              <span>📁</span>
+            </div>
+            <div class="stats-info">
+              <span class="stats-number">{{ cmsCategories.length }}</span>
+              <span class="stats-label">内容栏目</span>
+            </div>
+          </div>
+          <div class="stats-card">
+            <div class="stats-icon" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
+              <span>📝</span>
+            </div>
+            <div class="stats-info">
+              <span class="stats-number">{{ allHomeArticles.length }}</span>
+              <span class="stats-label">文章总数</span>
+            </div>
+          </div>
+          <div class="stats-card">
+            <div class="stats-icon" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);">
+              <span>🏢</span>
+            </div>
+            <div class="stats-info">
+              <span class="stats-number">{{ displayBusinessPlatforms.length }}</span>
+              <span class="stats-label">业务平台</span>
+            </div>
+          </div>
+          <div class="stats-card">
+            <div class="stats-icon" style="background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);">
+              <span>📊</span>
+            </div>
+            <div class="stats-info">
+              <span class="stats-number">{{ tables.length }}</span>
+              <span class="stats-label">数据表</span>
+            </div>
+          </div>
+        </div>
+
         <!-- CMS内容展示 -->
-        <div class="cms-home-section" style="margin-top: 20px;">
-          <div class="cms-columns" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 40px;">
-            <div v-for="(category, index) in cmsCategories" :key="category.id" class="cms-column" style="padding: 25px; border: 1px solid #e0e0e0; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); background-color: #ffffff;">
-              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                <h3 class="column-title" style="font-size: 22px; font-weight: bold; margin: 0; color: #333;">{{ category.name }}</h3>
-                <a href="#" class="more-link" style="font-size: 16px; color: #666; text-decoration: none; padding: 6px 12px; border: 1px solid #ddd; border-radius: 4px;" @click.prevent="showAllArticles(category.id)">更多</a>
+        <div class="cms-home-section">
+          <div class="cms-columns">
+            <div v-for="(category, index) in cmsCategories" :key="category.id" class="cms-column">
+              <div class="column-header">
+                <div class="column-title-wrapper">
+                  <span class="column-icon">{{ getColumnIcon(index) }}</span>
+                  <h3 class="column-title">{{ category.name }}</h3>
+                </div>
+                <a href="#" class="more-link" @click.prevent="showAllArticles(category.id)">
+                  <span>更多</span>
+                  <span class="more-arrow">→</span>
+                </a>
               </div>
               <div class="column-articles">
-                <div v-if="cmsLoading" class="loading" style="font-size: 16px; padding: 20px; text-align: center; color: #666;">加载中...</div>
-                <div v-else-if="cmsError" class="error" style="font-size: 16px; padding: 20px; text-align: center; color: #ff4d4f;">{{ cmsError }}</div>
-                <div v-else-if="getCategoryArticles(category.id).length === 0" class="empty" style="font-size: 16px; padding: 20px; text-align: center; color: #999;">该栏目下暂无文章</div>
-                <div v-else class="articles-list" style="list-style: none; padding: 0; margin: 0;">
-                  <div v-for="article in getCategoryArticles(category.id)" :key="article.id" class="article-item" style="margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; padding: 8px; border-radius: 4px; transition: all 0.3s ease;" @click="fetchArticleDetail(article.id)" :style="{ backgroundColor: 'hover' === 'hover' ? '#f5f5f5' : 'transparent' }" @mouseenter="$event.currentTarget.style.backgroundColor='#f5f5f5'" @mouseleave="$event.currentTarget.style.backgroundColor='transparent'">
-                    <span style="flex: 1; font-size: 16px; color: #333; line-height: 1.4; text-align: left;">
-                      <span style="margin-right: 12px; color: #1890ff;">•</span>
-                      {{ truncateTitle(article.title) }}
-                    </span>
-                    <span style="font-size: 14px; color: #999; white-space: nowrap; margin-left: 15px;">
-                      [{{ formatDate(article.published_at || article.created_at) }}]
-                    </span>
+                <div v-if="cmsLoading" class="loading-state">
+                  <div class="loading-spinner"></div>
+                  <span>加载中...</span>
+                </div>
+                <div v-else-if="cmsError" class="error-state">
+                  <span class="error-icon">⚠️</span>
+                  <span>{{ cmsError }}</span>
+                </div>
+                <div v-else-if="getCategoryArticles(category.id).length === 0" class="empty-state">
+                  <span class="empty-icon">📭</span>
+                  <span>该栏目下暂无文章</span>
+                </div>
+                <div v-else class="articles-list">
+                  <div 
+                    v-for="(article, articleIndex) in getCategoryArticles(category.id)" 
+                    :key="article.id" 
+                    class="article-item"
+                    @click="fetchArticleDetail(article.id)"
+                  >
+                    <span class="article-index">{{ String(articleIndex + 1).padStart(2, '0') }}</span>
+                    <span class="article-title">{{ truncateTitle(article.title) }}</span>
+                    <span class="article-date">{{ formatDate(article.published_at || article.created_at) }}</span>
                   </div>
                 </div>
               </div>
@@ -6947,45 +7059,67 @@ body > *:first-child,
   border-top: 0 none !important;
 }
 
-/* 标题栏背景图 */
+/* ===================== 顶部标题栏样式 ===================== */
 .header {
-  background-size: 100% 100%;
-  background-position: center;
-  background-repeat: no-repeat;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   width: 1020px;
   height: 120px;
   margin: 0 auto;
-  padding: 0 20px;
+  padding: 0 30px;
   position: relative;
   overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 20px rgba(102, 126, 234, 0.3);
 }
 
 .header::before {
   content: '';
   position: absolute;
-  top: 0;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 60%);
+  animation: headerShimmer 8s linear infinite;
+  pointer-events: none;
+}
+
+@keyframes headerShimmer {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.header::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
   left: 0;
   right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.3);
-  z-index: 1;
+  height: 3px;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
 }
 
 .header h1 {
   position: absolute;
-  left: 20px;
   top: 50%;
+  left: 30px;
   transform: translateY(-50%);
   z-index: 2;
   color: white;
-  font-size: 24px;
+  font-size: 28px;
+  font-weight: 700;
   margin: 0;
-  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  letter-spacing: 2px;
+  text-align: left;
+  white-space: nowrap;
 }
 
 .header .user-info {
   position: absolute;
-  right: 20px;
+  right: 30px;
   bottom: 15px;
   z-index: 2;
   display: flex;
@@ -6996,22 +7130,30 @@ body > *:first-child,
 .header .username {
   color: white;
   font-size: 14px;
-  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
+  font-weight: 500;
+  background: rgba(255, 255, 255, 0.15);
+  padding: 8px 16px;
+  border-radius: 20px;
+  backdrop-filter: blur(10px);
 }
 
 .header .logout-btn {
-  padding: 6px 12px;
-  background-color: #e74c3c;
+  padding: 8px 20px;
+  background: rgba(255, 255, 255, 0.2);
   color: white;
-  border: none;
-  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 20px;
   cursor: pointer;
-  font-size: 12px;
-  transition: background-color 0.3s ease;
+  font-size: 13px;
+  font-weight: 500;
+  transition: all 0.3s ease;
+  backdrop-filter: blur(10px);
 }
 
 .header .logout-btn:hover {
-  background-color: #c0392b;
+  background: rgba(255, 255, 255, 0.3);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
 /* 确保body没有间隙 */
@@ -7065,26 +7207,32 @@ body {
 
 .nav-tabs {
   display: flex;
-  background-color: #34495e;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: #fff;
   margin-top: 0;
+  width: 1020px;
+  margin: 0 auto;
+  box-shadow: 0 2px 10px rgba(102, 126, 234, 0.2);
 }
 
 .tab {
   flex: 1;
-  padding: 15px;
+  padding: 14px 15px;
   text-align: center;
   cursor: pointer;
   transition: all 0.3s ease;
+  border-bottom: 3px solid transparent;
+  font-size: 15px;
 }
 
 .tab:hover {
-  background-color: #3a536b;
+  background: rgba(255, 255, 255, 0.15);
 }
 
 .tab.active {
-  background-color: #27ae60;
-  font-weight: bold;
+  background: rgba(255, 255, 255, 0.2);
+  font-weight: 600;
+  border-bottom-color: #fff;
 }
 
 .main-content {
@@ -7108,7 +7256,6 @@ body {
   box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
   width: 100%;
   margin: 0 auto;
-  max-width: 800px;
 }
 
 .section-title {
@@ -8153,6 +8300,382 @@ body {
     flex: 1;
     min-width: 100px;
   }
+}
+
+/* ===================== 首页优化样式 ===================== */
+
+/* 首页容器 */
+.home-page {
+  background: linear-gradient(135deg, #f5f7fa 0%, #e4e8ec 100%);
+  padding: 30px;
+  border-radius: 12px;
+}
+
+/* 欢迎横幅区域 */
+.welcome-banner {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 16px;
+  padding: 30px;
+  margin-bottom: 30px;
+  box-shadow: 0 10px 40px rgba(102, 126, 234, 0.3);
+  position: relative;
+  overflow: hidden;
+}
+
+.welcome-banner::before {
+  content: '';
+  position: absolute;
+  top: -50%;
+  right: -50%;
+  width: 100%;
+  height: 200%;
+  background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+  animation: shimmer 3s infinite;
+}
+
+@keyframes shimmer {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.welcome-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  position: relative;
+  z-index: 1;
+}
+
+.welcome-text {
+  text-align: left;
+}
+
+.welcome-title {
+  font-size: 28px;
+  font-weight: 700;
+  color: white;
+  margin: 0 0 10px 0;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.welcome-subtitle {
+  font-size: 16px;
+  color: rgba(255, 255, 255, 0.9);
+  margin: 0;
+}
+
+.welcome-user {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  background: rgba(255, 255, 255, 0.15);
+  padding: 15px 25px;
+  border-radius: 50px;
+  backdrop-filter: blur(10px);
+}
+
+.user-avatar {
+  width: 50px;
+  height: 50px;
+  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  font-weight: bold;
+  color: white;
+  box-shadow: 0 4px 15px rgba(240, 147, 251, 0.4);
+}
+
+.user-greeting {
+  display: flex;
+  flex-direction: column;
+}
+
+.greeting-text {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.user-name {
+  font-size: 18px;
+  font-weight: 600;
+  color: white;
+}
+
+/* 快捷入口 */
+.quick-actions {
+  display: flex;
+  gap: 20px;
+  margin-top: 25px;
+  position: relative;
+  z-index: 1;
+}
+
+.quick-action-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 15px 25px;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  backdrop-filter: blur(10px);
+}
+
+.quick-action-item:hover {
+  background: rgba(255, 255, 255, 0.25);
+  transform: translateY(-3px);
+}
+
+.action-icon {
+  font-size: 28px;
+}
+
+.action-text {
+  font-size: 14px;
+  color: white;
+  font-weight: 500;
+}
+
+/* 数据统计区域 */
+.stats-section {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 20px;
+  margin-bottom: 30px;
+}
+
+.stats-card {
+  background: white;
+  border-radius: 16px;
+  padding: 25px;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  transition: all 0.3s ease;
+}
+
+.stats-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+}
+
+.stats-icon {
+  width: 60px;
+  height: 60px;
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  flex-shrink: 0;
+}
+
+.stats-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.stats-number {
+  font-size: 32px;
+  font-weight: 700;
+  color: #1a1a2e;
+  line-height: 1;
+}
+
+.stats-label {
+  font-size: 14px;
+  color: #666;
+  margin-top: 5px;
+}
+
+/* CMS内容区域 */
+.cms-home-section {
+  background: white;
+  border-radius: 16px;
+  padding: 15px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+}
+
+.section-header {
+  margin-bottom: 25px;
+  text-align: left;
+}
+
+.section-main-title {
+  font-size: 22px;
+  font-weight: 700;
+  color: #1a1a2e;
+  margin: 0 0 8px 0;
+}
+
+.section-desc {
+  font-size: 14px;
+  color: #666;
+  margin: 0;
+}
+
+/* 栏目卡片 */
+.cms-columns {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+
+.cms-column {
+  background: linear-gradient(to bottom, #ffffff 0%, #fafbfc 100%);
+  border-radius: 6px;
+  padding: 6px;
+  border: 1px solid #eee;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+}
+
+.cms-column:hover {
+  border-color: #667eea;
+  box-shadow: 0 8px 30px rgba(102, 126, 234, 0.15);
+  transform: translateY(-3px);
+}
+
+.column-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding-bottom: 15px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.column-title-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.column-icon {
+  font-size: 24px;
+}
+
+.column-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #1a1a2e;
+  margin: 0;
+}
+
+.more-link {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 14px;
+  color: #667eea;
+  text-decoration: none;
+  padding: 8px 16px;
+  border-radius: 20px;
+  background: #f0f2ff;
+  transition: all 0.3s ease;
+}
+
+.more-link:hover {
+  background: #667eea;
+  color: white;
+}
+
+.more-arrow {
+  transition: transform 0.3s ease;
+}
+
+.more-link:hover .more-arrow {
+  transform: translateX(3px);
+}
+
+/* 文章列表 */
+.column-articles {
+  min-height: 150px;
+}
+
+.loading-state,
+.error-state,
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 25px;
+  color: #666;
+}
+
+.loading-spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid #f0f0f0;
+  border-top-color: #667eea;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-bottom: 15px;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.error-icon,
+.empty-icon {
+  font-size: 48px;
+  margin-bottom: 15px;
+}
+
+.articles-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.article-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  background: #fafbfc;
+}
+
+.article-item:hover {
+  background: linear-gradient(135deg, #f0f2ff 0%, #e8ecff 100%);
+  transform: translateX(5px);
+}
+
+.article-index {
+  font-size: 14px;
+  font-weight: 700;
+  color: #667eea;
+  background: linear-gradient(135deg, #f0f2ff 0%, #e8ecff 100%);
+  padding: 5px 10px;
+  border-radius: 8px;
+  min-width: 35px;
+  text-align: center;
+}
+
+.article-title {
+  flex: 1;
+  font-size: 15px;
+  color: #333;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.article-date {
+  font-size: 13px;
+  color: #999;
+  white-space: nowrap;
 }
 
 /* CMS首页栏目标题样式 */
