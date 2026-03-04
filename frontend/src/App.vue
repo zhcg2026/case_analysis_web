@@ -6938,9 +6938,14 @@ function getColumnIcon(index) {
     
     <!-- 页脚 -->
     <div v-if="isLoggedIn" class="footer">
-      <p>© 2026 运城市智慧城市管理平台-一站通</p> 
-      <p>联系电话：0359-2381078</p>
-      <p>电子邮箱：bnc9595@163.com</p>
+      <div class="footer-content">
+        <p class="footer-title">运城市智慧城市管理平台-一站通</p>
+        <div class="footer-info">
+          <span>📞 联系电话：0359-2381078</span>
+          <span>📧 电子邮箱：bnc9595@163.com</span>
+        </div>
+        <p class="footer-copyright">© 2026 All Rights Reserved</p>
+      </div>
     </div>
     
     <!-- 文章详情弹窗 -->
@@ -7679,13 +7684,63 @@ body {
 }
 
 .footer {
-  background-color: #2c3e50;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: #fff;
-  padding: 15px;
+  padding: 25px 30px;
   text-align: center;
-  font-size: 0.9em;
-  margin-top: 0 !important; /* 清除与main-content之间的空隙 */
+  margin-top: 0 !important;
   margin-bottom: 0 !important;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 -4px 20px rgba(102, 126, 234, 0.2);
+}
+
+.footer::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+}
+
+.footer-content {
+  position: relative;
+  z-index: 1;
+}
+
+.footer-title {
+  font-size: 1.1em;
+  font-weight: 600;
+  margin: 0 0 12px 0;
+  letter-spacing: 1px;
+}
+
+.footer-info {
+  display: flex;
+  justify-content: center;
+  gap: 30px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+  font-size: 0.9em;
+  opacity: 0.95;
+}
+
+.footer-info span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.1);
+  padding: 6px 14px;
+  border-radius: 15px;
+  backdrop-filter: blur(5px);
+}
+
+.footer-copyright {
+  font-size: 0.85em;
+  opacity: 0.8;
+  margin: 0;
 }
 
 /* 调试信息样式 */
