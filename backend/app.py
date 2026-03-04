@@ -3917,6 +3917,9 @@ def analyze_v2():
 @app.route('/api/tools/huanwei-assignment', methods=['POST'])
 @protected
 def huanwei_assignment():
+    import tempfile
+    import os
+    output_file = None
     try:
         # 检查是否有文件上传
         if 'file' not in request.files:
@@ -3930,38 +3933,67 @@ def huanwei_assignment():
         if not file.filename.endswith('.xlsx'):
             return jsonify({'error': 'Only xlsx files are allowed'}), 400
         
+        print(f"Processing huanwei assignment file: {file.filename}")
+        
         # 读取Excel文件
-        df = pd.read_excel(file)
+        try:
+            df = pd.read_excel(file)
+            print(f"Successfully read Excel file, rows: {len(df)}, columns: {list(df.columns)}")
+        except Exception as read_error:
+            print(f"Error reading Excel file: {str(read_error)}")
+            return jsonify({'error': f'读取Excel文件失败: {str(read_error)}'}), 400
         
         # 检查必要的列是否存在
         required_cols = ['处置部门', '所属片区']
         for col in required_cols:
             if col not in df.columns:
-                return jsonify({'error': f'Missing required column: {col}'}), 400
+                return jsonify({'error': f'Missing required column: {col}. 文件中必须包含以下列: {", ".join(required_cols)}'}), 400
         
         # 处理数据：仅更新处置部门列，所属片区列保持不变
         filter_condition = df["处置部门"] == "市容环卫中心"
+        matched_count = filter_condition.sum()
+        print(f"Found {matched_count} rows with '市容环卫中心' as 处置部门")
+        
         df["所属片区"] = df["所属片区"].astype(str)  # 确保是字符串类型
         # 基于所属片区列的值更新处置部门列，添加"环卫"前缀
         df.loc[filter_condition, "处置部门"] = "环卫" + df.loc[filter_condition, "所属片区"]
         
+        print(f"Updated {matched_count} rows with new department names")
+        
         # 生成输出文件名
-        import tempfile
-        import os
         with tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False) as temp:
             output_file = temp.name
         
         # 保存处理后的数据
         df.to_excel(output_file, index=False)
+        print(f"Successfully saved processed file to: {output_file}")
         
         # 读取文件内容并返回
         from flask import send_file
-        return send_file(output_file, as_attachment=True, download_name='hwcase_data_updated.xlsx', mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        response = send_file(output_file, as_attachment=True, download_name='hwcase_data_updated.xlsx', mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        
+        # 在响应发送后删除临时文件的回调
+        @response.call_on_close
+        def cleanup():
+            try:
+                if output_file and os.path.exists(output_file):
+                    os.remove(output_file)
+                    print(f"Cleaned up temporary file: {output_file}")
+            except Exception as cleanup_error:
+                print(f"Error cleaning up temporary file: {cleanup_error}")
+        
+        return response
     except Exception as e:
         print(f"Error in huanwei_assignment: {str(e)}")
         import traceback
         traceback.print_exc()
-        return jsonify({'error': str(e)}), 500
+        # 清理临时文件
+        if output_file and os.path.exists(output_file):
+            try:
+                os.remove(output_file)
+            except:
+                pass
+        return jsonify({'error': f'处理文件时出错: {str(e)}'}), 500
 
 # 小工具模块API - 地址信息提取
 @app.route('/api/tools/extract-location', methods=['POST'])

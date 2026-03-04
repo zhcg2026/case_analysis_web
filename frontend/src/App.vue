@@ -3608,32 +3608,65 @@ async function processHuanweiFile() {
   try {
     huanweiLoading.value = true;
     huanweiError.value = '';
-    huanweiMessage.value = '处理中...';
+    huanweiMessage.value = '正在上传文件，请稍候...';
     
     const formData = new FormData();
     formData.append('file', huanweiFile.value);
     
-    const response = await fetch('/api/tools/huanwei-assignment', {
-      method: 'POST',
-      headers: getAuthHeaders(),
-      body: formData
+    // 使用 axios 发送请求，更好地处理超时和错误
+    const response = await axios.post('/api/tools/huanwei-assignment', formData, {
+      headers: {
+        ...getAuthHeaders(),
+        'Content-Type': 'multipart/form-data'
+      },
+      responseType: 'blob', // 重要：设置响应类型为 blob
+      timeout: 300000, // 5分钟超时
+      maxContentLength: Infinity,
+      maxBodyLength: Infinity,
+      onUploadProgress: (progressEvent) => {
+        if (progressEvent.total) {
+          const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+          huanweiMessage.value = `上传中... ${percentCompleted}%`;
+        }
+      }
     });
     
-    if (response.ok) {
-      // 处理文件下载
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      huanweiDownloadUrl.value = url;
-      huanweiMessage.value = '处理完成，请点击下方链接下载文件';
-    } else {
-      const data = await response.json();
-      huanweiError.value = data.error || '处理失败';
-      huanweiMessage.value = '';
-    }
+    // 处理文件下载
+    const blob = new Blob([response.data], { 
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+    });
+    const url = window.URL.createObjectURL(blob);
+    huanweiDownloadUrl.value = url;
+    huanweiMessage.value = '处理完成，请点击下方链接下载文件';
+    
   } catch (error) {
-    huanweiError.value = '处理失败: ' + error.message;
-    huanweiMessage.value = '';
     console.error('Error processing huanwei file:', error);
+    
+    if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {
+      huanweiError.value = '请求超时，文件可能较大，请稍后重试或使用较小的文件';
+    } else if (error.code === 'ERR_NETWORK' || error.message.includes('Network Error')) {
+      huanweiError.value = '网络连接失败，请检查服务器是否正常运行';
+    } else if (error.response) {
+      // 服务器返回了错误响应
+      if (error.response.data instanceof Blob) {
+        // 尝试从 Blob 中解析错误信息
+        try {
+          const text = await error.response.data.text();
+          const data = JSON.parse(text);
+          huanweiError.value = data.error || `服务器错误 (${error.response.status})`;
+        } catch {
+          huanweiError.value = `服务器错误 (${error.response.status})`;
+        }
+      } else {
+        huanweiError.value = error.response.data?.error || `服务器错误 (${error.response.status})`;
+      }
+    } else if (error.request) {
+      // 请求已发送但没有收到响应
+      huanweiError.value = '服务器无响应，请检查服务器是否正常运行或联系管理员';
+    } else {
+      huanweiError.value = '处理失败: ' + (error.message || '未知错误');
+    }
+    huanweiMessage.value = '';
   } finally {
     huanweiLoading.value = false;
   }
