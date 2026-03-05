@@ -423,13 +423,41 @@ const sourceChart = ref(null);
 
 // 分析进度管理
 const analysisSteps = ref([
-  { icon: '📊', text: '读取数据...' },
-  { icon: '⏰', text: '处理时间数据...' },
-  { icon: '🤖', text: '调用大模型分析...' },
-  { icon: '📝', text: '生成分析报告...' },
-  { icon: '✅', text: '分析完成!' }
+  { icon: '📊', text: '读取数据...', status: 'pending' },
+  { icon: '⏰', text: '处理时间数据...', status: 'pending' },
+  { icon: '🤖', text: '调用大模型分析...', status: 'pending' },
+  { icon: '📝', text: '生成分析报告...', status: 'pending' },
+  { icon: '✅', text: '分析完成!', status: 'pending' }
 ]);
-const currentStep = ref(0);
+const currentStep = ref(-1);
+
+// 重置分析步骤状态
+function resetAnalysisSteps() {
+  analysisSteps.value.forEach(step => {
+    step.status = 'pending';
+  });
+  currentStep.value = -1;
+}
+
+// 更新步骤状态
+function updateStepStatus(stepIndex, status) {
+  if (stepIndex >= 0 && stepIndex < analysisSteps.value.length) {
+    // 更新当前步骤状态
+    analysisSteps.value[stepIndex].status = status;
+    currentStep.value = stepIndex;
+
+    // 如果是完成状态，标记之前的步骤都已完成
+    if (status === 'active') {
+      for (let i = 0; i < stepIndex; i++) {
+        analysisSteps.value[i].status = 'completed';
+      }
+    } else if (status === 'completed') {
+      for (let i = 0; i <= stepIndex; i++) {
+        analysisSteps.value[i].status = 'completed';
+      }
+    }
+  }
+}
 
 // 渲染图表
 function renderCharts() {
@@ -1444,11 +1472,11 @@ function formatDate(dateString) {
   return `${month}-${day}`;
 }
 
-// 截断标题，最多显示10个字符
+// 截断标题，最多显示20个字符
 function truncateTitle(title) {
   if (!title) return '';
-  if (title.length <= 10) return title;
-  return title.substring(0, 10) + '...';
+  if (title.length <= 20) return title;
+  return title.substring(0, 20) + '...';
 }
 
 // 初始化时获取数据库表
@@ -1848,22 +1876,20 @@ async function startAnalysis() {
 
   try {
     loading.value = true;
-    currentStep.value = 0;
+    resetAnalysisSteps();
     analysisMessage.value = '分析中...';
     console.log('开始分析，表名:', selectedTable.value, '分析类型:', selectedAnalysisType.value);
-    
+
     // 步骤1: 读取数据
-    currentStep.value = 1;
-    analysisMessage.value = '读取数据...';
-    
+    updateStepStatus(0, 'active');
+    await new Promise(resolve => setTimeout(resolve, 500)); // 模拟处理时间
+
     // 步骤2: 处理时间数据
-    currentStep.value = 2;
-    analysisMessage.value = '处理时间数据...';
-    
+    updateStepStatus(1, 'active');
+
     // 步骤3: 调用大模型分析
-    currentStep.value = 3;
-    analysisMessage.value = '调用大模型分析...';
-    
+    updateStepStatus(2, 'active');
+
     const response = await fetch('/api/analyze', {
       method: 'POST',
       headers: {
@@ -1875,31 +1901,33 @@ async function startAnalysis() {
         analysis_type: selectedAnalysisType.value
       })
     });
-    
+
     console.log('分析请求响应状态:', response.status);
-    
+
     // 步骤4: 生成分析报告
-    currentStep.value = 4;
-    analysisMessage.value = '生成分析报告...';
-    
+    updateStepStatus(3, 'active');
+
     const data = await response.json();
     console.log('分析请求响应数据:', data);
-    
+
     if (data.error) {
       analysisMessage.value = 'Error: ' + data.error;
       console.error('分析错误:', data.error);
+      resetAnalysisSteps();
     } else {
       analysisResult.value = data;
-          console.log('分析结果已保存:', analysisResult.value);
-          analysisMessage.value = '分析完成';
-          // 步骤5: 分析完成
-          currentStep.value = 4;
-          console.log('分析完成，结果已显示在当前页面');
-          console.log('当前模块:', activeModule.value);
+      console.log('分析结果已保存:', analysisResult.value);
+
+      // 步骤5: 分析完成
+      updateStepStatus(4, 'completed');
+      analysisMessage.value = '分析完成';
+      console.log('分析完成，结果已显示在当前页面');
+      console.log('当前模块:', activeModule.value);
     }
   } catch (error) {
     analysisMessage.value = 'Error analyzing data: ' + error.message;
     console.error('Error analyzing data:', error);
+    resetAnalysisSteps();
   } finally {
     loading.value = false;
     console.log('分析完成，加载状态已重置');
@@ -1999,8 +2027,8 @@ function formatAnalysisReport(content) {
   
   // 处理标题（#开头）
   formatted = formatted.replace(/^### (.*)$/gm, '<h3 style="color: #1e293b; font-size: 16px; font-weight: 700; margin-top: 16px; margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid #e2e8f0;">$1</h3>');
-  formatted = formatted.replace(/^## (.*)$/gm, '<h2 style="color: #1e293b; font-size: 17px; font-weight: 700; margin-top: 18px; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 2px solid #667eea;">$1</h2>');
-  formatted = formatted.replace(/^# (.*)$/gm, '<h1 style="color: #1e293b; font-size: 18px; font-weight: 800; margin-top: 20px; margin-bottom: 12px; padding-bottom: 10px; border-bottom: 2px solid #667eea;">$1</h1>');
+  formatted = formatted.replace(/^## (.*)$/gm, '<h2 style="color: #1e293b; font-size: 17px; font-weight: 700; margin-top: 18px; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 2px solid #4facfe;">$1</h2>');
+  formatted = formatted.replace(/^# (.*)$/gm, '<h1 style="color: #1e293b; font-size: 18px; font-weight: 800; margin-top: 20px; margin-bottom: 12px; padding-bottom: 10px; border-bottom: 2px solid #4facfe;">$1</h1>');
   
   // 处理粗体（**内容**）
   formatted = formatted.replace(/\*\*(.*?)\*\*/g, '<strong style="color: #1e293b; font-weight: 700;">$1</strong>');
@@ -2009,7 +2037,7 @@ function formatAnalysisReport(content) {
   formatted = formatted.replace(/\*(.*?)\*/g, '<em style="color: #475569; font-style: italic;">$1</em>');
   
   // 处理列表项（- 开头）
-  formatted = formatted.replace(/^- (.*)$/gm, '<li style="margin: 4px 0; padding-left: 8px; color: #334155; border-left: 2px solid #667eea; padding-left: 10px;">$1</li>');
+  formatted = formatted.replace(/^- (.*)$/gm, '<li style="margin: 4px 0; padding-left: 8px; color: #334155; border-left: 2px solid #4facfe; padding-left: 10px;">$1</li>');
   
   // 处理列表容器
   formatted = formatted.replace(/(<li.*<\/li>)/s, '<ul style="list-style: none; padding: 0; margin: 10px 0;">$1</ul>');
@@ -4660,7 +4688,7 @@ function getColumnIcon(index) {
         <!-- 数据统计区域 -->
         <div class="stats-section">
           <div class="stats-card">
-            <div class="stats-icon" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+            <div class="stats-icon" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);">
               <span>📁</span>
             </div>
             <div class="stats-info">
@@ -4669,7 +4697,7 @@ function getColumnIcon(index) {
             </div>
           </div>
           <div class="stats-card">
-            <div class="stats-icon" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
+            <div class="stats-icon" style="background: linear-gradient(135deg, #00c6fb 0%, #005bea 100%);">
               <span>📝</span>
             </div>
             <div class="stats-info">
@@ -4864,8 +4892,8 @@ function getColumnIcon(index) {
               class="analyze-btn" 
               @click="startAnalysis" 
               :disabled="loading || !selectedTable || !selectedAnalysisType"
-              style="width: 100%; padding: 12px 24px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: 600; transition: all 0.3s ease; disabled: { opacity: 0.6, cursor: 'not-allowed' };"
-              @mouseenter="$event.target.style.transform='translateY(-2px)'; $event.target.style.boxShadow='0 4px 12px rgba(102, 126, 234, 0.4)'"
+              style="width: 100%; padding: 12px 24px; background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: 600; transition: all 0.3s ease; disabled: { opacity: 0.6, cursor: 'not-allowed' };"
+              @mouseenter="$event.target.style.transform='translateY(-2px)'; $event.target.style.boxShadow='0 4px 12px rgba(79, 172, 254, 0.4)'"
               @mouseleave="$event.target.style.transform='translateY(0)'; $event.target.style.boxShadow='none'"
             >
               <span v-if="loading">⏳ 分析中...</span>
@@ -4878,11 +4906,38 @@ function getColumnIcon(index) {
             </div>
             
             <!-- 分析进度显示 -->
-            <div v-if="loading" style="margin-top: 25px; padding: 20px; background: linear-gradient(135deg, #f5f7ff 0%, #f8f6ff 100%); border-radius: 6px; border-left: 4px solid #667eea;">
-              <div style="font-weight: 600; color: #667eea; margin-bottom: 15px; font-size: 14px;">⏳ 分析进度</div>
-              <div v-for="(step, index) in analysisSteps" :key="index" style="display: flex; align-items: center; margin-bottom: 10px; padding: 8px; border-radius: 4px; background: rgba(255, 255, 255, 0.5); transition: all 0.3s ease;" :class="{ active: currentStep >= index }">
-                <div style="display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 50%; margin-right: 12px; font-size: 16px; flex-shrink: 0;">{{ step.icon }}</div>
-                <div style="color: #333; font-size: 14px; font-weight: 500;">{{ step.text }}</div>
+            <div v-if="loading" style="margin-top: 25px; padding: 20px; background: linear-gradient(135deg, #e8f8ff 0%, #e0f7ff 100%); border-radius: 6px; border-left: 4px solid #4facfe;">
+              <div style="font-weight: 600; color: #4facfe; margin-bottom: 15px; font-size: 14px;">⏳ 分析进度</div>
+              <div v-for="(step, index) in analysisSteps" :key="index"
+                   style="display: flex; align-items: center; margin-bottom: 10px; padding: 8px; border-radius: 4px; transition: all 0.4s ease;"
+                   :style="{
+                     background: step.status === 'completed' ? 'rgba(76, 175, 80, 0.15)' :
+                              step.status === 'active' ? 'rgba(79, 172, 254, 0.2)' :
+                              'rgba(255, 255, 255, 0.5)',
+                     opacity: step.status === 'pending' ? '0.5' : '1',
+                     transform: step.status !== 'pending' ? 'translateX(0)' : 'translateX(-10px)',
+                     animation: step.status === 'active' ? 'pulse 1.5s ease-in-out infinite' : 'none'
+                   }">
+                <div style="display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 50%; margin-right: 12px; font-size: 16px; flex-shrink: 0; transition: all 0.3s ease;"
+                     :style="{
+                       background: step.status === 'completed' ? 'linear-gradient(135deg, #4caf50 0%, #8bc34a 100%)' :
+                                  step.status === 'active' ? 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)' :
+                                  '#ccc',
+                       color: 'white',
+                       boxShadow: step.status === 'active' ? '0 0 10px rgba(79, 172, 254, 0.5)' : 'none'
+                     }">
+                  <span v-if="step.status === 'completed' && index < 4">✓</span>
+                  <span v-else>{{ step.icon }}</span>
+                </div>
+                <div style="color: #333; font-size: 14px; font-weight: 500;"
+                     :style="{ color: step.status === 'active' ? '#4facfe' : '#333' }">
+                  {{ step.text }}
+                </div>
+              </div>
+              <!-- 进度条 -->
+              <div style="margin-top: 15px; height: 4px; background: rgba(255,255,255,0.5); border-radius: 2px; overflow: hidden;">
+                <div style="height: 100%; background: linear-gradient(90deg, #4facfe 0%, #00f2fe 100%); transition: width 0.5s ease;"
+                     :style="{ width: ((currentStep + 1) / analysisSteps.length * 100) + '%' }"></div>
               </div>
             </div>
           </div>
@@ -4891,7 +4946,7 @@ function getColumnIcon(index) {
         <!-- 分析结果 -->
         <div v-if="analysisResult" style="background: white; border-radius: 8px; padding: 25px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);">
           <!-- 结果标题 -->
-          <div style="margin-bottom: 25px; padding-bottom: 15px; border-bottom: 2px solid #667eea;">
+          <div style="margin-bottom: 25px; padding-bottom: 15px; border-bottom: 2px solid #4facfe;">
             <h3 style="margin: 0; font-size: 20px; color: #333;">📈 {{ analysisResult.table_name }} - {{ getAnalysisTypeName(analysisResult.analysis_type) }}</h3>
             <p style="margin: 12px 0 0 0; color: #666; font-size: 14px; line-height: 1.6;">{{ analysisResult.data_summary }}</p>
           </div>
@@ -4899,7 +4954,7 @@ function getColumnIcon(index) {
           <div class="result-details">
             <!-- 图表展示 -->
             <div v-if="analysisResult.chart_data" class="charts-section" style="margin-bottom: 30px;">
-              <h4 style="margin: 0 0 20px 0; color: #667eea; font-size: 16px; font-weight: 600; display: flex; align-items: center; gap: 8px;">
+              <h4 style="margin: 0 0 20px 0; color: #4facfe; font-size: 16px; font-weight: 600; display: flex; align-items: center; gap: 8px;">
                 <span>📊</span>
                 <span>数据可视化</span>
               </h4>
@@ -4987,8 +5042,8 @@ function getColumnIcon(index) {
             </div>
             
             <!-- 智能分析结果 -->
-            <div v-if="analysisResult.analysis" style="margin-top: 30px; padding: 20px; background: linear-gradient(135deg, #f5f7ff 0%, #f8f6ff 100%); border-radius: 8px; border-left: 4px solid #667eea;">
-              <h4 style="margin: 0 0 15px 0; color: #667eea; font-size: 16px; font-weight: 600; display: flex; align-items: center; gap: 8px;">
+            <div v-if="analysisResult.analysis" style="margin-top: 30px; padding: 20px; background: linear-gradient(135deg, #e8f8ff 0%, #e0f7ff 100%); border-radius: 8px; border-left: 4px solid #4facfe;">
+              <h4 style="margin: 0 0 15px 0; color: #4facfe; font-size: 16px; font-weight: 600; display: flex; align-items: center; gap: 8px;">
                 <span>🤖</span>
                 <span>AI智能分析</span>
               </h4>
@@ -5039,8 +5094,8 @@ function getColumnIcon(index) {
             <button 
               @click="startAnalysisV2" 
               :disabled="analysisV2Loading || !selectedTableV2 || !analysisPrompt"
-              style="width: 100%; padding: 12px 24px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: 600; transition: all 0.3s ease;"
-              @mouseenter="$event.target.style.transform='translateY(-2px)'; $event.target.style.boxShadow='0 4px 12px rgba(102, 126, 234, 0.4)'"
+              style="width: 100%; padding: 12px 24px; background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: 600; transition: all 0.3s ease;"
+              @mouseenter="$event.target.style.transform='translateY(-2px)'; $event.target.style.boxShadow='0 4px 12px rgba(79, 172, 254, 0.4)'"
               @mouseleave="$event.target.style.transform='translateY(0)'; $event.target.style.boxShadow='none'"
             >
               <span v-if="analysisV2Loading">⏳ 分析中...</span>
@@ -5060,14 +5115,14 @@ function getColumnIcon(index) {
         <!-- 分析结果 -->
         <div v-if="analysisV2Result" style="background: white; border-radius: 8px; padding: 25px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);">
           <!-- 结果标题 -->
-          <div style="margin-bottom: 25px; padding-bottom: 15px; border-bottom: 2px solid #667eea;">
+          <div style="margin-bottom: 25px; padding-bottom: 15px; border-bottom: 2px solid #4facfe;">
             <h3 style="margin: 0; font-size: 20px; color: #333;">📈 {{ analysisV2Result.table_name }} - 智能分析报告</h3>
           </div>
           
           <div class="result-details">
             <!-- 图表展示 -->
             <div v-if="analysisV2Result.charts" class="charts-section" style="margin-bottom: 30px;">
-              <h4 style="margin: 0 0 20px 0; color: #667eea; font-size: 16px; font-weight: 600; display: flex; align-items: center; gap: 8px;">
+              <h4 style="margin: 0 0 20px 0; color: #4facfe; font-size: 16px; font-weight: 600; display: flex; align-items: center; gap: 8px;">
                 <span>📊</span>
                 <span>数据可视化</span>
               </h4>
@@ -5087,7 +5142,7 @@ function getColumnIcon(index) {
               <div style="padding: 25px; background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); border-radius: 12px; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
                 <div style="margin-bottom: 20px; padding-bottom: 15px; border-bottom: 2px solid #e2e8f0;">
                   <div style="display: flex; align-items: center; gap: 12px;">
-                    <div style="width: 48px; height: 48px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                    <div style="width: 48px; height: 48px; background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); border-radius: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
                       <span style="font-size: 24px;">🤖</span>
                     </div>
                     <div>
@@ -5103,7 +5158,7 @@ function getColumnIcon(index) {
                 
                 <div style="margin-top: 20px; padding-top: 15px; border-top: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center;">
                   <div style="display: flex; align-items: center; gap: 8px;">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#667eea" stroke-width="2">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4facfe" stroke-width="2">
                       <circle cx="12" cy="12" r="10"></circle>
                       <polyline points="12 6 12 12 16 14"></polyline>
                     </svg>
@@ -5111,8 +5166,8 @@ function getColumnIcon(index) {
                   </div>
                   <button 
                     @click="copyReport"
-                    style="padding: 8px 16px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 600; transition: all 0.3s ease;"
-                    @mouseenter="$event.target.style.transform='translateY(-1px)'; $event.target.style.boxShadow='0 4px 12px rgba(102, 126, 234, 0.4)'"
+                    style="padding: 8px 16px; background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 600; transition: all 0.3s ease;"
+                    @mouseenter="$event.target.style.transform='translateY(-1px)'; $event.target.style.boxShadow='0 4px 12px rgba(79, 172, 254, 0.4)'"
                     @mouseleave="$event.target.style.transform='translateY(0)'; $event.target.style.boxShadow='none'"
                   >
                     📋 复制报告
@@ -5129,18 +5184,18 @@ function getColumnIcon(index) {
           <h2 class="section-title">案件抽查</h2>
         <div class="spotcheck-section" style="max-width: 900px; margin: 0 auto;">
           <!-- 提示信息 -->
-          <div style="margin-bottom: 25px; padding: 16px; background: linear-gradient(135deg, #e3f2fd 0%, #f3e5f5 100%); border-left: 4px solid #667eea; border-radius: 6px; color: #555;">
+          <div style="margin-bottom: 25px; padding: 16px; background: linear-gradient(135deg, #e3f2fd 0%, #e0f7ff 100%); border-left: 4px solid #4facfe; border-radius: 6px; color: #555;">
             <div style="display: flex; align-items: flex-start; gap: 12px;">
               <span style="font-size: 20px; flex-shrink: 0;">ℹ️</span>
               <div>
-                <div style="font-weight: 600; color: #667eea; margin-bottom: 6px;">文件上传说明</div>
+                <div style="font-weight: 600; color: #4facfe; margin-bottom: 6px;">文件上传说明</div>
                 <p style="margin: 0; line-height: 1.5;">支持上传 DOCX 或 XLSX 格式的文件，系统将使用大模型进行智能分析，并返回详细的案件质量评估结果。</p>
               </div>
             </div>
           </div>
           
           <!-- 文件上传区域 -->
-          <div style="padding: 25px; background: white; border: 2px dashed #667eea; border-radius: 8px; margin-bottom: 25px;">
+          <div style="padding: 25px; background: white; border: 2px dashed #4facfe; border-radius: 8px; margin-bottom: 25px;">
             <div class="form-group" style="margin-bottom: 20px;">
               <label for="spotcheck-file-input" style="display: block; font-weight: 600; margin-bottom: 12px; color: #333;">选择要分析的文件：</label>
               <input 
@@ -5160,8 +5215,8 @@ function getColumnIcon(index) {
               <button 
                 @click="uploadAndAnalyzeSpotcheck"
                 :disabled="!spotcheckFile || spotcheckLoading"
-                style="flex: 1; padding: 12px 24px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 16px; transition: all 0.3s ease; disabled: { opacity: 0.6, cursor: 'not-allowed' };"
-                @mouseenter="$event.target.style.transform='translateY(-2px)'; $event.target.style.boxShadow='0 4px 12px rgba(102, 126, 234, 0.4)'"
+                style="flex: 1; padding: 12px 24px; background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 16px; transition: all 0.3s ease; disabled: { opacity: 0.6, cursor: 'not-allowed' };"
+                @mouseenter="$event.target.style.transform='translateY(-2px)'; $event.target.style.boxShadow='0 4px 12px rgba(79, 172, 254, 0.4)'"
                 @mouseleave="$event.target.style.transform='translateY(0)'; $event.target.style.boxShadow='none'"
               >
                 <span v-if="spotcheckLoading">⏳ 分析中...</span>
@@ -5189,15 +5244,15 @@ function getColumnIcon(index) {
           
           <!-- 分析结果 -->
           <div v-if="spotcheckResult" style="background: white; border-radius: 8px; padding: 25px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);">
-            <h3 style="margin-top: 0; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 2px solid #667eea; font-size: 20px; color: #333;">分析结果</h3>
+            <h3 style="margin-top: 0; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 2px solid #4facfe; font-size: 20px; color: #333;">分析结果</h3>
             
             <!-- 文件内容 -->
             <div v-if="spotcheckResult.file_content" style="margin-bottom: 25px;">
               <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 15px;">
                 <span style="font-size: 18px;">📄</span>
-                <h4 style="margin: 0; color: #667eea; font-size: 16px;">读取的文件内容</h4>
+                <h4 style="margin: 0; color: #4facfe; font-size: 16px;">读取的文件内容</h4>
               </div>
-              <div style="background-color: #f8f9fa; padding: 15px; border-radius: 6px; border-left: 3px solid #667eea; max-height: 300px; overflow-y: auto;">
+              <div style="background-color: #f8f9fa; padding: 15px; border-radius: 6px; border-left: 3px solid #4facfe; max-height: 300px; overflow-y: auto;">
                 <p v-for="(line, index) in spotcheckResult.file_content.split('\n')" :key="index" v-if="line && line.trim()" style="margin: 8px 0; line-height: 1.5; color: #555; font-size: 14px;">
                   {{ line }}
                 </p>
@@ -5208,9 +5263,9 @@ function getColumnIcon(index) {
             <div v-if="spotcheckResult.analysis">
               <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 15px;">
                 <span style="font-size: 18px;">🔍</span>
-                <h4 style="margin: 0; color: #667eea; font-size: 16px;">AI智能分析</h4>
+                <h4 style="margin: 0; color: #4facfe; font-size: 16px;">AI智能分析</h4>
               </div>
-              <div style="background-color: #f8f9fa; padding: 20px; border-radius: 6px; border-left: 3px solid #764ba2; line-height: 1.8; color: #333;">
+              <div style="background-color: #f8f9fa; padding: 20px; border-radius: 6px; border-left: 3px solid #00f2fe; line-height: 1.8; color: #333;">
                 <div v-html="spotcheckResult.analysis"></div>
               </div>
             </div>
@@ -5548,7 +5603,7 @@ function getColumnIcon(index) {
             :class="{ active: assessmentActiveTab === 'old' }"
             @click="assessmentActiveTab = 'old'"
             style="padding: 10px 20px; cursor: pointer; border-bottom: 3px solid transparent; margin-right: 10px; font-weight: bold;"
-            :style="assessmentActiveTab === 'old' ? { borderBottomColor: '#667eea', color: '#667eea' } : {}"
+            :style="assessmentActiveTab === 'old' ? { borderBottomColor: '#4facfe', color: '#4facfe' } : {}"
           >
             考核计分（原版）
           </div>
@@ -5557,7 +5612,7 @@ function getColumnIcon(index) {
             :class="{ active: assessmentActiveTab === 'new' }"
             @click="assessmentActiveTab = 'new'"
             style="padding: 10px 20px; cursor: pointer; border-bottom: 3px solid transparent; margin-right: 10px; font-weight: bold;"
-            :style="assessmentActiveTab === 'new' ? { borderBottomColor: '#667eea', color: '#667eea' } : {}"
+            :style="assessmentActiveTab === 'new' ? { borderBottomColor: '#4facfe', color: '#4facfe' } : {}"
           >
             考核计分（新版）
           </div>
@@ -5606,8 +5661,8 @@ function getColumnIcon(index) {
                 class="start-btn" 
                 @click="startAssessment" 
                 :disabled="loading || !selectedDepartment || !selectedAssessmentTable"
-                style="width: 100%; padding: 12px 24px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: 600; transition: all 0.3s ease; disabled: { opacity: 0.6, cursor: 'not-allowed' };"
-                @mouseenter="$event.target.style.transform='translateY(-2px)'; $event.target.style.boxShadow='0 4px 12px rgba(102, 126, 234, 0.4)'"
+                style="width: 100%; padding: 12px 24px; background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: 600; transition: all 0.3s ease; disabled: { opacity: 0.6, cursor: 'not-allowed' };"
+                @mouseenter="$event.target.style.transform='translateY(-2px)'; $event.target.style.boxShadow='0 4px 12px rgba(79, 172, 254, 0.4)'"
                 @mouseleave="$event.target.style.transform='translateY(0)'; $event.target.style.boxShadow='none'"
               >
                 <span v-if="loading">⏳ 计算中...</span>
@@ -5622,15 +5677,15 @@ function getColumnIcon(index) {
             
             <!-- 考核结果显示 -->
             <div v-if="assessmentResult" style="background: white; border-radius: 8px; padding: 25px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);">
-              <h3 style="margin: 0 0 20px 0; padding-bottom: 15px; border-bottom: 2px solid #667eea; font-size: 20px; color: #333;">📋 考核结果</h3>
+              <h3 style="margin: 0 0 20px 0; padding-bottom: 15px; border-bottom: 2px solid #4facfe; font-size: 20px; color: #333;">📋 考核结果</h3>
               
               <!-- 结果摘要 -->
               <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; margin-bottom: 30px;">
-                <div style="padding: 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 8px; color: white;">
+                <div style="padding: 20px; background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); border-radius: 8px; color: white;">
                   <div style="font-size: 14px; opacity: 0.9; margin-bottom: 8px;">总案件数</div>
                   <div style="font-size: 32px; font-weight: bold;">{{ assessmentResult.total_cases }}</div>
                 </div>
-                <div style="padding: 20px; background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); border-radius: 8px; color: white;">
+                <div style="padding: 20px; background: linear-gradient(135deg, #00c6fb 0%, #005bea 100%); border-radius: 8px; color: white;">
                   <div style="font-size: 14px; opacity: 0.9; margin-bottom: 8px;">平均得分</div>
                   <div style="font-size: 32px; font-weight: bold;">{{ assessmentResult.score }} 分</div>
                 </div>
@@ -5642,7 +5697,7 @@ function getColumnIcon(index) {
                 <div style="overflow-x: auto;">
                   <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
                     <thead>
-                      <tr style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
+                      <tr style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white;">
                         <th style="padding: 12px; text-align: center; font-weight: 600;">排名</th>
                         <th style="padding: 12px; text-align: left; font-weight: 600;">片区名称</th>
                         <th style="padding: 12px; text-align: center; font-weight: 600;">案件总数</th>
@@ -5655,8 +5710,8 @@ function getColumnIcon(index) {
                     </thead>
                     <tbody>
                       <tr v-for="(team, index) in assessmentResult.team_results" :key="team.department" :style="{ backgroundColor: index % 2 === 0 ? '#f8f9fa' : '#ffffff', transition: 'all 0.3s ease' }" @mouseenter="$event.currentTarget.style.backgroundColor='#e8eef9'" @mouseleave="$event.currentTarget.style.backgroundColor=(index % 2 === 0 ? '#f8f9fa' : '#ffffff')">
-                        <td style="padding: 12px; text-align: center; font-weight: 600; color: #667eea;">
-                          <span style="display: inline-block; width: 32px; height: 32px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 50%; line-height: 32px; font-size: 14px;">{{ team.rank }}</span>
+                        <td style="padding: 12px; text-align: center; font-weight: 600; color: #4facfe;">
+                          <span style="display: inline-block; width: 32px; height: 32px; background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; border-radius: 50%; line-height: 32px; font-size: 14px;">{{ team.rank }}</span>
                         </td>
                         <td style="padding: 12px; text-align: left; color: #333;">{{ team.department }}</td>
                         <td style="padding: 12px; text-align: center; color: #555;">{{ team.total_cases }}</td>
@@ -5665,7 +5720,7 @@ function getColumnIcon(index) {
                         <td style="padding: 12px; text-align: center; color: #f39c12;">{{ team.delay_count }}</td>
                         <td style="padding: 12px; text-align: center; color: #9b59b6;">{{ team.rework_count }}</td>
                         <td style="padding: 12px; text-align: center; font-weight: bold; font-size: 16px;">
-                          <span style="display: inline-block; padding: 4px 12px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 20px;">{{ team.score }}</span>
+                          <span style="display: inline-block; padding: 4px 12px; background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; border-radius: 20px;">{{ team.score }}</span>
                         </td>
                       </tr>
                     </tbody>
@@ -5717,8 +5772,8 @@ function getColumnIcon(index) {
                 class="start-btn" 
                 @click="startAssessmentV2" 
                 :disabled="loading || !selectedDepartmentV2 || !selectedAssessmentTableV2"
-                style="width: 100%; padding: 12px 24px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: 600; transition: all 0.3s ease; disabled: { opacity: 0.6, cursor: 'not-allowed' };"
-                @mouseenter="$event.target.style.transform='translateY(-2px)'; $event.target.style.boxShadow='0 4px 12px rgba(102, 126, 234, 0.4)'"
+                style="width: 100%; padding: 12px 24px; background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: 600; transition: all 0.3s ease; disabled: { opacity: 0.6, cursor: 'not-allowed' };"
+                @mouseenter="$event.target.style.transform='translateY(-2px)'; $event.target.style.boxShadow='0 4px 12px rgba(79, 172, 254, 0.4)'"
                 @mouseleave="$event.target.style.transform='translateY(0)'; $event.target.style.boxShadow='none'"
               >
                 <span v-if="loading">⏳ 计算中...</span>
@@ -5733,15 +5788,15 @@ function getColumnIcon(index) {
             
             <!-- 考核结果显示 -->
             <div v-if="assessmentResultV2" style="background: white; border-radius: 8px; padding: 25px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);">
-              <h3 style="margin: 0 0 20px 0; padding-bottom: 15px; border-bottom: 2px solid #667eea; font-size: 20px; color: #333;">📋 考核结果</h3>
+              <h3 style="margin: 0 0 20px 0; padding-bottom: 15px; border-bottom: 2px solid #4facfe; font-size: 20px; color: #333;">📋 考核结果</h3>
               
               <!-- 结果摘要 -->
               <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; margin-bottom: 30px;">
-                <div style="padding: 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 8px; color: white;">
+                <div style="padding: 20px; background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); border-radius: 8px; color: white;">
                   <div style="font-size: 14px; opacity: 0.9; margin-bottom: 8px;">总案件数</div>
                   <div style="font-size: 32px; font-weight: bold;">{{ assessmentResultV2.total_cases }}</div>
                 </div>
-                <div style="padding: 20px; background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); border-radius: 8px; color: white;">
+                <div style="padding: 20px; background: linear-gradient(135deg, #00c6fb 0%, #005bea 100%); border-radius: 8px; color: white;">
                   <div style="font-size: 14px; opacity: 0.9; margin-bottom: 8px;">平均得分</div>
                   <div style="font-size: 32px; font-weight: bold;">{{ assessmentResultV2.score }} 分</div>
                 </div>
@@ -5753,7 +5808,7 @@ function getColumnIcon(index) {
                 <div style="overflow-x: auto;">
                   <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
                     <thead>
-                      <tr style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
+                      <tr style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white;">
                         <th style="padding: 12px; text-align: center; font-weight: 600;">排名</th>
                         <th style="padding: 12px; text-align: left; font-weight: 600;">片区名称</th>
                         <th style="padding: 12px; text-align: center; font-weight: 600;">案件总数</th>
@@ -5766,8 +5821,8 @@ function getColumnIcon(index) {
                     </thead>
                     <tbody>
                       <tr v-for="(team, index) in assessmentResultV2.team_results" :key="team.department" :style="{ backgroundColor: index % 2 === 0 ? '#f8f9fa' : '#ffffff', transition: 'all 0.3s ease' }" @mouseenter="$event.currentTarget.style.backgroundColor='#e8eef9'" @mouseleave="$event.currentTarget.style.backgroundColor=(index % 2 === 0 ? '#f8f9fa' : '#ffffff')">
-                        <td style="padding: 12px; text-align: center; font-weight: 600; color: #667eea;">
-                          <span style="display: inline-block; width: 32px; height: 32px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 50%; line-height: 32px; font-size: 14px;">{{ team.rank }}</span>
+                        <td style="padding: 12px; text-align: center; font-weight: 600; color: #4facfe;">
+                          <span style="display: inline-block; width: 32px; height: 32px; background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; border-radius: 50%; line-height: 32px; font-size: 14px;">{{ team.rank }}</span>
                         </td>
                         <td style="padding: 12px; text-align: left; color: #333;">{{ team.department }}</td>
                         <td style="padding: 12px; text-align: center; color: #555;">{{ team.total_cases }}</td>
@@ -5776,7 +5831,7 @@ function getColumnIcon(index) {
                         <td style="padding: 12px; text-align: center; color: #f39c12;">{{ team.delay_count }}</td>
                         <td style="padding: 12px; text-align: center; color: #9b59b6;">{{ team.rework_count }}</td>
                         <td style="padding: 12px; text-align: center; font-weight: bold; font-size: 16px;">
-                          <span style="display: inline-block; padding: 4px 12px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 20px;">{{ team.score }}</span>
+                          <span style="display: inline-block; padding: 4px 12px; background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; border-radius: 20px;">{{ team.score }}</span>
                         </td>
                       </tr>
                     </tbody>
@@ -6623,7 +6678,7 @@ function getColumnIcon(index) {
                       class="save-btn" 
                       @click="saveAssessmentCoefficients" 
                       :disabled="assessmentCoefficientsLoading"
-                      style="padding: 12px 30px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: 600; transition: all 0.3s ease;"
+                      style="padding: 12px 30px; background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: 600; transition: all 0.3s ease;"
                     >
                       <span v-if="assessmentCoefficientsLoading">保存中...</span>
                       <span v-else>保存系数</span>
@@ -6952,7 +7007,7 @@ function getColumnIcon(index) {
     <div v-if="showArticleDetail" class="article-detail-modal" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: linear-gradient(135deg, rgba(0, 0, 0, 0.4) 0%, rgba(0, 0, 0, 0.6) 100%); display: flex; justify-content: center; align-items: center; z-index: 1000; animation: fadeIn 0.3s ease;">
       <div class="article-detail-content" style="background: white; border-radius: 12px; padding: 0; width: 90%; max-width: 900px; max-height: 85vh; overflow-y: auto; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25); animation: slideUp 0.3s ease;">
         <!-- 文章头部 -->
-        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px 30px 20px 30px; position: relative; border-radius: 12px 12px 0 0;">
+        <div style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); padding: 30px 30px 20px 30px; position: relative; border-radius: 12px 12px 0 0;">
           <h2 style="margin: 0 0 15px 0; font-size: 28px; color: white; text-align: left; line-height: 1.4;">{{ currentArticle?.title }}</h2>
           
           <!-- 文章元信息 -->
@@ -6985,8 +7040,8 @@ function getColumnIcon(index) {
           
           <div v-else-if="currentArticle" style="color: #333;">
             <!-- 摘要部分 -->
-            <div v-if="currentArticle.summary" style="margin-bottom: 25px; padding: 18px; background: linear-gradient(135deg, #f5f7ff 0%, #fffbf5 100%); border-left: 4px solid #667eea; border-radius: 6px;">
-              <div style="font-weight: 600; color: #667eea; margin-bottom: 8px; font-size: 14px;">摘要</div>
+            <div v-if="currentArticle.summary" style="margin-bottom: 25px; padding: 18px; background: linear-gradient(135deg, #e8f8ff 0%, #e0f7ff 100%); border-left: 4px solid #4facfe; border-radius: 6px;">
+              <div style="font-weight: 600; color: #4facfe; margin-bottom: 8px; font-size: 14px;">摘要</div>
               <div style="line-height: 1.6; color: #555; font-size: 15px;">{{ currentArticle.summary }}</div>
             </div>
             
@@ -7001,7 +7056,7 @@ function getColumnIcon(index) {
                 <span style="font-size: 24px;">📎</span>
                 <h4 style="margin: 0; font-size: 16px; color: #333;">相关附件</h4>
               </div>
-              <a :href="currentArticleFileUrl" :download="currentArticle.file_path.split('/').pop()" style="display: inline-flex; align-items: center; gap: 8px; padding: 10px 18px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; text-decoration: none; border-radius: 6px; font-size: 14px; font-weight: 500; transition: all 0.3s ease; cursor: pointer;" @mouseenter="$event.currentTarget.style.transform='translateY(-2px)'; $event.currentTarget.style.boxShadow='0 4px 12px rgba(102, 126, 234, 0.4)'" @mouseleave="$event.currentTarget.style.transform='translateY(0)'; $event.currentTarget.style.boxShadow='none'">
+              <a :href="currentArticleFileUrl" :download="currentArticle.file_path.split('/').pop()" style="display: inline-flex; align-items: center; gap: 8px; padding: 10px 18px; background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; text-decoration: none; border-radius: 6px; font-size: 14px; font-weight: 500; transition: all 0.3s ease; cursor: pointer;" @mouseenter="$event.currentTarget.style.transform='translateY(-2px)'; $event.currentTarget.style.boxShadow='0 4px 12px rgba(79, 172, 254, 0.4)'" @mouseleave="$event.currentTarget.style.transform='translateY(0)'; $event.currentTarget.style.boxShadow='none'">
                 <span>⬇️</span>
                 <span>下载文件</span>
               </a>
@@ -7074,6 +7129,41 @@ function getColumnIcon(index) {
   outline: 0;
 }
 
+/* 分析步骤动画 */
+@keyframes pulse {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(79, 172, 254, 0.4);
+  }
+  50% {
+    transform: scale(1.02);
+    box-shadow: 0 0 15px 5px rgba(79, 172, 254, 0.2);
+  }
+}
+
+@keyframes fadeInSlide {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes checkmark {
+  0% {
+    transform: scale(0);
+  }
+  50% {
+    transform: scale(1.2);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
 /* 彻底兜底：清除html、body所有默认样式，优先级拉满 */
 html, body {
   font-family: Arial, sans-serif;
@@ -7099,7 +7189,7 @@ body > *:first-child,
 
 /* ===================== 顶部标题栏样式 ===================== */
 .header {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
   width: 1020px;
   height: 120px;
   margin: 0 auto;
@@ -7109,7 +7199,7 @@ body > *:first-child,
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 4px 20px rgba(102, 126, 234, 0.3);
+  box-shadow: 0 4px 20px rgba(79, 172, 254, 0.3);
 }
 
 .header::before {
@@ -7245,12 +7335,12 @@ body {
 
 .nav-tabs {
   display: flex;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
   color: #fff;
   margin-top: 0;
   width: 1020px;
   margin: 0 auto;
-  box-shadow: 0 2px 10px rgba(102, 126, 234, 0.2);
+  box-shadow: 0 2px 10px rgba(79, 172, 254, 0.2);
 }
 
 .tab {
@@ -7684,7 +7774,7 @@ body {
 }
 
 .footer {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
   color: #fff;
   padding: 25px 30px;
   text-align: center;
@@ -7692,7 +7782,7 @@ body {
   margin-bottom: 0 !important;
   position: relative;
   overflow: hidden;
-  box-shadow: 0 -4px 20px rgba(102, 126, 234, 0.2);
+  box-shadow: 0 -4px 20px rgba(79, 172, 254, 0.2);
 }
 
 .footer::before {
@@ -8401,11 +8491,11 @@ body {
 
 /* 欢迎横幅区域 */
 .welcome-banner {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
   border-radius: 16px;
   padding: 30px;
   margin-bottom: 30px;
-  box-shadow: 0 10px 40px rgba(102, 126, 234, 0.3);
+  box-shadow: 0 10px 40px rgba(79, 172, 254, 0.3);
   position: relative;
   overflow: hidden;
 }
@@ -8465,7 +8555,7 @@ body {
 .user-avatar {
   width: 50px;
   height: 50px;
-  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+  background: linear-gradient(135deg, #00c6fb 0%, #005bea 100%);
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -8625,8 +8715,8 @@ body {
 }
 
 .cms-column:hover {
-  border-color: #667eea;
-  box-shadow: 0 8px 30px rgba(102, 126, 234, 0.15);
+  border-color: #4facfe;
+  box-shadow: 0 8px 30px rgba(79, 172, 254, 0.15);
   transform: translateY(-3px);
 }
 
@@ -8661,7 +8751,7 @@ body {
   align-items: center;
   gap: 5px;
   font-size: 14px;
-  color: #667eea;
+  color: #4facfe;
   text-decoration: none;
   padding: 8px 16px;
   border-radius: 20px;
@@ -8670,7 +8760,7 @@ body {
 }
 
 .more-link:hover {
-  background: #667eea;
+  background: #4facfe;
   color: white;
 }
 
@@ -8702,7 +8792,7 @@ body {
   width: 40px;
   height: 40px;
   border: 3px solid #f0f0f0;
-  border-top-color: #667eea;
+  border-top-color: #4facfe;
   border-radius: 50%;
   animation: spin 1s linear infinite;
   margin-bottom: 15px;
@@ -8743,7 +8833,7 @@ body {
 .article-index {
   font-size: 14px;
   font-weight: 700;
-  color: #667eea;
+  color: #4facfe;
   background: linear-gradient(135deg, #f0f2ff 0%, #e8ecff 100%);
   padding: 5px 10px;
   border-radius: 8px;
@@ -8758,6 +8848,7 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  text-align: left;
 }
 
 .article-date {
@@ -8769,23 +8860,23 @@ body {
 /* CMS首页栏目标题样式 */
 .column-title {
   display: inline-block;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
   color: white !important;
   padding: 8px 16px !important;
   border-radius: 4px;
-  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+  box-shadow: 0 2px 8px rgba(79, 172, 254, 0.3);
   transition: all 0.3s ease;
 }
 
 .column-title:hover {
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+  box-shadow: 0 4px 12px rgba(79, 172, 254, 0.4);
 }
 
 /* 栏目卡片样式优化 */
 .cms-column {
   background: linear-gradient(to bottom, #ffffff 0%, #f8f9fa 100%) !important;
-  border-left: 4px solid #667eea !important;
+  border-left: 4px solid #4facfe !important;
   transition: all 0.3s ease;
 }
 
