@@ -190,7 +190,41 @@ try:
         created_at = Column(DateTime(timezone=True), server_default=func.now())
         updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     
+    # 案件管理模型
+    class Case(Base):
+        __tablename__ = 'cases'
+        
+        id = Column(Integer, primary_key=True, autoincrement=True)
+        task_number = Column(String(50), unique=True, nullable=False)  # 任务号
+        stage_light = Column(String(20))  # 阶段红绿灯
+        auth_status = Column(String(50))  # 阶段授权状态图标
+        supervise_status = Column(String(50))  # 阶段督办状态图标
+        report_time = Column(DateTime)  # 上报时间
+        source = Column(String(100))  # 问题来源
+        major_category = Column(String(100))  # 大类名称
+        minor_category = Column(String(100))  # 小类名称
+        problem_type = Column(String(50))  # 问题类型
+        problem_desc = Column(Text)  # 问题描述
+        address_desc = Column(String(500))  # 地址描述
+        responsible_grid = Column(String(100))  # 责任网格
+        area = Column(String(100))  # 所属区域
+        street = Column(String(100))  # 所属街道
+        community = Column(String(100))  # 所属社区
+        transfer_time = Column(DateTime)  # 批转时间
+        current_stage_time_info = Column(String(100))  # 当前阶段时限信息
+        current_stage_deadline = Column(DateTime)  # 当前阶段截止时间
+        current_stage_remaining_time = Column(String(100))  # 当前阶段剩余时间
+        area_level = Column(Integer)  # 区域级别
+        area_level_name = Column(String(50))  # 区域级别名称
+        responsible_area_name = Column(String(100))  # 责属区域名称
+        bundle_deadline = Column(DateTime)  # 捆绑截止时间
+        bundle_time_limit = Column(String(50))  # 捆绑截止时限
+        photo_path = Column(String(500))  # 图片路径
+        created_at = Column(DateTime(timezone=True), server_default=func.now())
+        updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    
     # 创建数据库表
+    # 只创建不存在的表，保留现有数据
     Base.metadata.create_all(engine)
     
     # 创建会话工厂
@@ -4601,6 +4635,219 @@ def process_cleaning():
     except Exception as e:
         session.rollback()
         print(f"Error in process_cleaning: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        session.close()
+
+# 案件管理API端点
+@app.route('/api/cases/import', methods=['POST'])
+@admin_required
+def import_cases():
+    session = Session()
+    try:
+        if 'file' not in request.files:
+            return jsonify({'error': 'No file part'}), 400
+        
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({'error': 'No selected file'}), 400
+        
+        if not file.filename.endswith('.xlsx'):
+            return jsonify({'error': 'Only xlsx files are allowed'}), 400
+        
+        df = pd.read_excel(file)
+        
+        required_columns = ['任务号', '上报时间', '问题描述']
+        for col in required_columns:
+            if col not in df.columns:
+                return jsonify({'error': f'Missing required column: {col}'}), 400
+        
+        imported_count = 0
+        skipped_count = 0
+        
+        for index, row in df.iterrows():
+            try:
+                task_number = str(row.get('任务号', ''))
+                if not task_number:
+                    skipped_count += 1
+                    continue
+                
+                existing_case = session.query(Case).filter_by(task_number=task_number).first()
+                if existing_case:
+                    skipped_count += 1
+                    continue
+                
+                new_case = Case(
+                    task_number=task_number,
+                    stage_light=str(row.get('阶段红绿灯', '')) if pd.notna(row.get('阶段红绿灯')) else None,
+                    auth_status=str(row.get('阶段授权状态图标', '')) if pd.notna(row.get('阶段授权状态图标')) else None,
+                    supervise_status=str(row.get('阶段督办状态图标', '')) if pd.notna(row.get('阶段督办状态图标')) else None,
+                    report_time=pd.to_datetime(row.get('上报时间')) if pd.notna(row.get('上报时间')) else None,
+                    source=str(row.get('问题来源', '')) if pd.notna(row.get('问题来源')) else None,
+                    major_category=str(row.get('大类名称', '')) if pd.notna(row.get('大类名称')) else None,
+                    minor_category=str(row.get('小类名称', '')) if pd.notna(row.get('小类名称')) else None,
+                    problem_type=str(row.get('问题类型', '')) if pd.notna(row.get('问题类型')) else None,
+                    problem_desc=str(row.get('问题描述', '')) if pd.notna(row.get('问题描述')) else None,
+                    address_desc=str(row.get('地址描述', '')) if pd.notna(row.get('地址描述')) else None,
+                    responsible_grid=str(row.get('责任网格', '')) if pd.notna(row.get('责任网格')) else None,
+                    area=str(row.get('所属区域', '')) if pd.notna(row.get('所属区域')) else None,
+                    street=str(row.get('所属街道', '')) if pd.notna(row.get('所属街道')) else None,
+                    community=str(row.get('所属社区', '')) if pd.notna(row.get('所属社区')) else None,
+                    transfer_time=pd.to_datetime(row.get('批转时间')) if pd.notna(row.get('批转时间')) else None,
+                    current_stage_time_info=str(row.get('当前阶段时限信息', '')) if pd.notna(row.get('当前阶段时限信息')) else None,
+                    current_stage_deadline=pd.to_datetime(row.get('当前阶段截止时间')) if pd.notna(row.get('当前阶段截止时间')) else None,
+                    current_stage_remaining_time=str(row.get('当前阶段剩余时间', '')) if pd.notna(row.get('当前阶段剩余时间')) else None,
+                    area_level=int(row.get('区域级别')) if pd.notna(row.get('区域级别')) else None,
+                    area_level_name=str(row.get('区域级别名称', '')) if pd.notna(row.get('区域级别名称')) else None,
+                    responsible_area_name=str(row.get('责属区域名称', '')) if pd.notna(row.get('责属区域名称')) else None,
+                    bundle_deadline=pd.to_datetime(row.get('捆绑截止时间')) if pd.notna(row.get('捆绑截止时间')) else None,
+                    bundle_time_limit=str(row.get('捆绑截止时限', '')) if pd.notna(row.get('捆绑截止时限')) else None,
+                    photo_path=str(row.get('图片', '')) if pd.notna(row.get('图片')) else None
+                )
+                
+                session.add(new_case)
+                imported_count += 1
+            except Exception as e:
+                print(f"Error importing row {index}: {str(e)}")
+                skipped_count += 1
+                continue
+        
+        session.commit()
+        return jsonify({
+            'message': 'Import completed',
+            'imported_count': imported_count,
+            'skipped_count': skipped_count
+        }), 200
+    except Exception as e:
+        session.rollback()
+        print(f"Error in import_cases: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        session.close()
+
+@app.route('/api/cases', methods=['GET'])
+@protected
+def get_cases():
+    session = Session()
+    try:
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 20, type=int)
+        search = request.args.get('search', '')
+        
+        query = session.query(Case)
+        
+        if search:
+            search_filter = f"%{search}%"
+            query = query.filter(
+                (Case.task_number.like(search_filter)) |
+                (Case.problem_desc.like(search_filter)) |
+                (Case.address_desc.like(search_filter)) |
+                (Case.major_category.like(search_filter)) |
+                (Case.minor_category.like(search_filter))
+            )
+        
+        total = query.count()
+        cases = query.order_by(Case.created_at.desc()).offset((page - 1) * per_page).limit(per_page).all()
+        
+        cases_list = []
+        for case in cases:
+            cases_list.append({
+                'id': case.id,
+                'task_number': case.task_number,
+                'stage_light': case.stage_light,
+                'auth_status': case.auth_status,
+                'supervise_status': case.supervise_status,
+                'report_time': case.report_time.strftime('%Y-%m-%d %H:%M:%S') if case.report_time else None,
+                'source': case.source,
+                'major_category': case.major_category,
+                'minor_category': case.minor_category,
+                'problem_type': case.problem_type,
+                'problem_desc': case.problem_desc,
+                'address_desc': case.address_desc,
+                'responsible_grid': case.responsible_grid,
+                'area': case.area,
+                'street': case.street,
+                'community': case.community,
+                'transfer_time': case.transfer_time.strftime('%Y-%m-%d %H:%M:%S') if case.transfer_time else None,
+                'current_stage_time_info': case.current_stage_time_info,
+                'current_stage_deadline': case.current_stage_deadline.strftime('%Y-%m-%d %H:%M:%S') if case.current_stage_deadline else None,
+                'current_stage_remaining_time': case.current_stage_remaining_time,
+                'area_level': case.area_level,
+                'area_level_name': case.area_level_name,
+                'responsible_area_name': case.responsible_area_name,
+                'bundle_deadline': case.bundle_deadline.strftime('%Y-%m-%d %H:%M:%S') if case.bundle_deadline else None,
+                'bundle_time_limit': case.bundle_time_limit,
+                'photo_path': case.photo_path,
+                'created_at': case.created_at.strftime('%Y-%m-%d %H:%M:%S') if case.created_at else None
+            })
+        
+        session.commit()
+        return jsonify({
+            'cases': cases_list,
+            'total': total,
+            'page': page,
+            'per_page': per_page,
+            'total_pages': (total + per_page - 1) // per_page
+        }), 200
+    except Exception as e:
+        session.rollback()
+        print(f"Error in get_cases: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        session.close()
+
+@app.route('/api/cases/<int:case_id>', methods=['GET'])
+@protected
+def get_case_detail(case_id):
+    session = Session()
+    try:
+        case = session.query(Case).filter_by(id=case_id).first()
+        
+        if not case:
+            return jsonify({'error': 'Case not found'}), 404
+        
+        case_detail = {
+            'id': case.id,
+            'task_number': case.task_number,
+            'stage_light': case.stage_light,
+            'auth_status': case.auth_status,
+            'supervise_status': case.supervise_status,
+            'report_time': case.report_time.strftime('%Y-%m-%d %H:%M:%S') if case.report_time else None,
+            'source': case.source,
+            'major_category': case.major_category,
+            'minor_category': case.minor_category,
+            'problem_type': case.problem_type,
+            'problem_desc': case.problem_desc,
+            'address_desc': case.address_desc,
+            'responsible_grid': case.responsible_grid,
+            'area': case.area,
+            'street': case.street,
+            'community': case.community,
+            'transfer_time': case.transfer_time.strftime('%Y-%m-%d %H:%M:%S') if case.transfer_time else None,
+            'current_stage_time_info': case.current_stage_time_info,
+            'current_stage_deadline': case.current_stage_deadline.strftime('%Y-%m-%d %H:%M:%S') if case.current_stage_deadline else None,
+            'current_stage_remaining_time': case.current_stage_remaining_time,
+            'area_level': case.area_level,
+            'area_level_name': case.area_level_name,
+            'responsible_area_name': case.responsible_area_name,
+            'bundle_deadline': case.bundle_deadline.strftime('%Y-%m-%d %H:%M:%S') if case.bundle_deadline else None,
+            'bundle_time_limit': case.bundle_time_limit,
+            'photo_path': case.photo_path,
+            'created_at': case.created_at.strftime('%Y-%m-%d %H:%M:%S') if case.created_at else None,
+            'updated_at': case.updated_at.strftime('%Y-%m-%d %H:%M:%S') if case.updated_at else None
+        }
+        
+        session.commit()
+        return jsonify(case_detail), 200
+    except Exception as e:
+        session.rollback()
+        print(f"Error in get_case_detail: {str(e)}")
         import traceback
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500

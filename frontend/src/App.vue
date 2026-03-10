@@ -179,6 +179,20 @@ const tasksPageSize = ref(10); // 问题列表每页数量
 const reportsCurrentPage = ref(1); // 日报数据当前页
 const reportsPageSize = ref(20); // 日报数据每页数量
 
+// 案件管理状态管理
+const casesList = ref([]);
+const casesLoading = ref(false);
+const casesError = ref('');
+const casesCurrentPage = ref(1);
+const casesPageSize = ref(20);
+const casesTotal = ref(0);
+const casesSearch = ref('');
+const currentCase = ref(null);
+const showCaseDetail = ref(false);
+const caseImportFile = ref(null);
+const caseImportLoading = ref(false);
+const caseImportMessage = ref('');
+
 // 业务平台展示状态管理
 const displayBusinessPlatforms = ref([]);
 const businessPlatformsLoading = ref(false);
@@ -2402,21 +2416,20 @@ async function checkTokenValidity() {
       showLogin.value = false;
     } else {
       // token无效，清除本地存储
-      // 暂时不清除本地存储，避免刷新页面后回到登录页
-      // localStorage.removeItem('token');
-      // localStorage.removeItem('userInfo');
-      // userInfo.value = null;
-      // isLoggedIn.value = false;
-      // showLogin.value = true;
+      localStorage.removeItem('token');
+      localStorage.removeItem('userInfo');
+      userInfo.value = null;
+      isLoggedIn.value = false;
+      showLogin.value = true;
     }
   } catch (error) {
     console.error('Token check error:', error);
-    // 暂时不清除本地存储，避免刷新页面后回到登录页
-    // localStorage.removeItem('token');
-    // localStorage.removeItem('userInfo');
-    // userInfo.value = null;
-    // isLoggedIn.value = false;
-    // showLogin.value = true;
+    // 网络错误，清除本地存储
+    localStorage.removeItem('token');
+    localStorage.removeItem('userInfo');
+    userInfo.value = null;
+    isLoggedIn.value = false;
+    showLogin.value = true;
   }
 }
 
@@ -2424,9 +2437,11 @@ async function checkTokenValidity() {
 function getAuthHeaders() {
   const token = localStorage.getItem('token');
   console.log('Token from localStorage:', token ? 'Found' : 'Not found');
-  return {
-    'Authorization': token ? `Bearer ${token}` : ''
-  };
+  const headers = {};
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  return headers;
 }
 
 // 获取用户列表
@@ -4163,6 +4178,144 @@ function resetChengguantong() {
   showHistory.value = false;
 }
 
+// 案件管理相关方法
+
+// 导入案件数据
+async function importCases() {
+  if (!caseImportFile.value) {
+    casesError.value = '请选择要导入的Excel文件';
+    return;
+  }
+  
+  // 检查登录状态
+  if (!isLoggedIn.value) {
+    showLogin.value = true;
+    casesError.value = '请先登录';
+    return;
+  }
+  
+  caseImportLoading.value = true;
+  casesError.value = '';
+  caseImportMessage.value = '';
+  
+  try {
+    const formData = new FormData();
+    formData.append('file', caseImportFile.value);
+    
+    const response = await fetch('/api/cases/import', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: formData
+    });
+    
+    if (!response.ok) {
+      if (response.status === 401) {
+        showLogin.value = true;
+        casesError.value = '登录已过期，请重新登录';
+        return;
+      }
+      throw new Error('网络请求失败');
+    }
+    
+    const data = await response.json();
+    
+    if (data.error) {
+      casesError.value = '导入失败: ' + data.error;
+    } else {
+      caseImportMessage.value = `导入成功！共导入 ${data.imported_count} 条数据，跳过 ${data.skipped_count} 条重复数据`;
+      await fetchCasesList();
+    }
+  } catch (error) {
+    casesError.value = '导入失败: ' + error.message;
+    console.error('Error importing cases:', error);
+  } finally {
+    caseImportLoading.value = false;
+  }
+}
+
+// 获取案件列表
+async function fetchCasesList() {
+  casesLoading.value = true;
+  casesError.value = '';
+  
+  try {
+    const params = new URLSearchParams({
+      page: casesCurrentPage.value,
+      per_page: casesPageSize.value,
+      search: casesSearch.value
+    });
+    
+    const response = await fetch(`/api/cases?${params}`, {
+      headers: getAuthHeaders()
+    });
+    
+    const data = await response.json();
+    
+    if (data.error) {
+      casesError.value = '获取案件列表失败: ' + data.error;
+  } else {
+    casesList.value = data.cases;
+    casesTotal.value = data.total;
+  }
+  } catch (error) {
+    casesError.value = '获取案件列表失败: ' + error.message;
+    console.error('Error fetching cases:', error);
+  } finally {
+    casesLoading.value = false;
+  }
+}
+
+// 查看案件详情
+async function viewCaseDetail(caseId) {
+  casesLoading.value = true;
+  casesError.value = '';
+  
+  try {
+    const response = await fetch(`/api/cases/${caseId}`, {
+      headers: getAuthHeaders()
+    });
+    
+    const data = await response.json();
+    
+    if (data.error) {
+      casesError.value = '获取案件详情失败: ' + data.error;
+  } else {
+    currentCase.value = data;
+    showCaseDetail.value = true;
+  }
+  } catch (error) {
+    casesError.value = '获取案件详情失败: ' + error.message;
+    console.error('Error fetching case detail:', error);
+  } finally {
+    casesLoading.value = false;
+  }
+}
+
+// 处理文件选择
+function handleCaseFileSelect(event) {
+  const file = event.target.files[0];
+  if (file && file.name.endsWith('.xlsx')) {
+    caseImportFile.value = file;
+    casesError.value = '';
+    caseImportMessage.value = '';
+  } else {
+    casesError.value = '请选择Excel文件（.xlsx格式）';
+    caseImportFile.value = null;
+  }
+}
+
+// 搜索案件
+function searchCases() {
+  casesCurrentPage.value = 1;
+  fetchCasesList();
+}
+
+// 翻页
+function handleCasesPageChange(page) {
+  casesCurrentPage.value = page;
+  fetchCasesList();
+}
+
 // 汇问台相关方法
 
 // 测试CloudBase连接
@@ -4586,7 +4739,7 @@ function getColumnIcon(index) {
 <template>
   <div class="system-container">
     <!-- 顶部标题栏 -->
-    <div class="header" :style="{ backgroundImage: `url(${headerBg})` }">
+    <div class="header">
       <h1>运城市智慧城市管理平台-一站通</h1>
       <div v-if="isLoggedIn" class="user-info">
         <span class="username">{{ userInfo?.username }} ({{ userInfo?.role }})</span>
@@ -4632,6 +4785,9 @@ function getColumnIcon(index) {
       </div>
       <div v-if="!userInfo || userInfo?.role === 'admin' || (userInfo?.permissions && userInfo?.permissions.huiwentai)" class="tab" :class="{ active: activeModule === 'huiwentai' }" @click="switchModule('huiwentai')">
         汇问台
+      </div>
+      <div v-if="!userInfo || userInfo?.role === 'admin' || (userInfo?.permissions && userInfo?.permissions.cases)" class="tab" :class="{ active: activeModule === 'cases' }" @click="switchModule('cases')">
+        案件管理
       </div>
       <div v-if="!userInfo || userInfo?.role === 'admin' || (userInfo?.permissions && userInfo?.permissions.tools)" class="tab" :class="{ active: activeModule === 'tools' }" @click="switchModule('tools')">
         小工具
@@ -4774,17 +4930,17 @@ function getColumnIcon(index) {
       <div v-if="activeModule === 'business'" class="tab-content">
         <h2 class="section-title">业务平台</h2>
         <div class="business-platforms-section" style="max-width: 1200px; margin: 0 auto; padding: 20px;">
-          <div v-if="businessPlatformsLoading" class="loading" style="font-size: 16px; padding: 60px; text-align: center; color: #666;">加载中...</div>
-          <div v-else-if="displayBusinessPlatforms.length === 0" class="empty" style="font-size: 16px; padding: 60px; text-align: center; color: #999;">暂无业务平台</div>
+          <div v-if="businessPlatformsLoading" class="loading" style="font-size: 16px; padding: 60px; text-align: center; color: rgba(255, 255, 255, 0.8);">加载中...</div>
+          <div v-else-if="displayBusinessPlatforms.length === 0" class="empty" style="font-size: 16px; padding: 60px; text-align: center; color: rgba(255, 255, 255, 0.6);">暂无业务平台</div>
           <div v-else class="platform-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 40px;">
-            <div v-for="platform in displayBusinessPlatforms" :key="platform.id" class="platform-item" style="padding: 25px; border: 1px solid #e0e0e0; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); background-color: #ffffff; transition: all 0.3s ease;" @mouseenter="$event.currentTarget.style.transform='translateY(-5px)'; $event.currentTarget.style.boxShadow='0 5px 15px rgba(0,0,0,0.15)'" @mouseleave="$event.currentTarget.style.transform='translateY(0)'; $event.currentTarget.style.boxShadow='0 2px 8px rgba(0,0,0,0.1)'">
-              <a :href="platform.url" target="_blank" style="text-decoration: none; color: #333; display: block;">
+            <div v-for="platform in displayBusinessPlatforms" :key="platform.id" class="platform-item" style="padding: 25px; border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); background-color: rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px); transition: all 0.3s ease;" @mouseenter="$event.currentTarget.style.transform='translateY(-5px)'; $event.currentTarget.style.boxShadow='0 5px 15px rgba(0,0,0,0.15)'; $event.currentTarget.style.backgroundColor='rgba(255, 255, 255, 0.15)'" @mouseleave="$event.currentTarget.style.transform='translateY(0)'; $event.currentTarget.style.boxShadow='0 2px 8px rgba(0,0,0,0.1)'; $event.currentTarget.style.backgroundColor='rgba(255, 255, 255, 0.1)'">
+              <a :href="platform.url" target="_blank" style="text-decoration: none; color: white; display: block;">
                 <div class="platform-image-container" style="display: flex; justify-content: center; margin-bottom: 15px;">
                   <img v-if="platform.image_path" :src="platform.image_path" :alt="platform.name" style="width: 250px; height: 180px; object-fit: cover; transition: transform 0.3s ease;" @mouseenter="$event.currentTarget.style.transform='scale(1.05)'" @mouseleave="$event.currentTarget.style.transform='scale(1)'">
-                  <div v-else class="platform-image-placeholder" style="width: 250px; height: 180px; background-color: #f5f5f5; display: flex; align-items: center; justify-content: center; font-size: 48px;">🏢</div>
+                  <div v-else class="platform-image-placeholder" style="width: 250px; height: 180px; background-color: rgba(255, 255, 255, 0.2); display: flex; align-items: center; justify-content: center; font-size: 48px; border-radius: 8px;">🏢</div>
                 </div>
                 <div class="platform-info" style="text-align: center;">
-                  <h4 style="margin: 0; font-size: 18px; color: #333;">{{ platform.name }}</h4>
+                  <h4 style="margin: 0; font-size: 18px; color: white;">{{ platform.name }}</h4>
                 </div>
               </a>
             </div>
@@ -4797,17 +4953,17 @@ function getColumnIcon(index) {
         <h2 class="section-title">AI应用</h2>
         
         <!-- AI应用标签页导航 -->
-        <div class="ai-apps-tabs" style="display: flex; margin-bottom: 24px; border-bottom: 2px solid #e8e8e8; background: #fafafa; border-radius: 8px 8px 0 0; overflow: hidden;">
+        <div class="ai-apps-tabs" style="display: flex; margin-bottom: 24px; border-bottom: 2px solid rgba(255, 255, 255, 0.2); background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px); border-radius: 8px 8px 0 0; overflow: hidden;">
           <div 
             v-if="!userInfo || userInfo?.role === 'admin' || (userInfo?.permissions && userInfo?.permissions.data_analysis)"
             class="ai-apps-tab" 
             :class="{ active: aiAppsActiveTab === 'analysis' }"
             @click="aiAppsActiveTab = 'analysis'"
-            style="padding: 14px 28px; cursor: pointer; font-size: 16px; font-weight: 500; color: #666; border-bottom: 3px solid transparent; transition: all 0.3s; position: relative; background: transparent;"
+            style="padding: 14px 28px; cursor: pointer; font-size: 16px; font-weight: 500; color: rgba(255, 255, 255, 0.8); border-bottom: 3px solid transparent; transition: all 0.3s; position: relative; background: transparent;"
             :style="{ 
-              color: aiAppsActiveTab === 'analysis' ? '#1890ff' : '#666',
-              background: aiAppsActiveTab === 'analysis' ? '#e6f7ff' : 'transparent',
-              borderBottomColor: aiAppsActiveTab === 'analysis' ? '#1890ff' : 'transparent',
+              color: aiAppsActiveTab === 'analysis' ? '#4facfe' : 'rgba(255, 255, 255, 0.8)',
+              background: aiAppsActiveTab === 'analysis' ? 'rgba(255, 255, 255, 0.15)' : 'transparent',
+              borderBottomColor: aiAppsActiveTab === 'analysis' ? '#4facfe' : 'transparent',
               fontWeight: aiAppsActiveTab === 'analysis' ? '600' : '500'
             }"
           >
@@ -4818,11 +4974,11 @@ function getColumnIcon(index) {
             class="ai-apps-tab" 
             :class="{ active: aiAppsActiveTab === 'analysis-v2' }"
             @click="aiAppsActiveTab = 'analysis-v2'"
-            style="padding: 14px 28px; cursor: pointer; font-size: 16px; font-weight: 500; color: #666; border-bottom: 3px solid transparent; transition: all 0.3s; position: relative; background: transparent;"
+            style="padding: 14px 28px; cursor: pointer; font-size: 16px; font-weight: 500; color: rgba(255, 255, 255, 0.8); border-bottom: 3px solid transparent; transition: all 0.3s; position: relative; background: transparent;"
             :style="{ 
-              color: aiAppsActiveTab === 'analysis-v2' ? '#1890ff' : '#666',
-              background: aiAppsActiveTab === 'analysis-v2' ? '#e6f7ff' : 'transparent',
-              borderBottomColor: aiAppsActiveTab === 'analysis-v2' ? '#1890ff' : 'transparent',
+              color: aiAppsActiveTab === 'analysis-v2' ? '#4facfe' : 'rgba(255, 255, 255, 0.8)',
+              background: aiAppsActiveTab === 'analysis-v2' ? 'rgba(255, 255, 255, 0.15)' : 'transparent',
+              borderBottomColor: aiAppsActiveTab === 'analysis-v2' ? '#4facfe' : 'transparent',
               fontWeight: aiAppsActiveTab === 'analysis-v2' ? '600' : '500'
             }"
           >
@@ -4833,11 +4989,11 @@ function getColumnIcon(index) {
             class="ai-apps-tab" 
             :class="{ active: aiAppsActiveTab === 'spotcheck' }"
             @click="aiAppsActiveTab = 'spotcheck'"
-            style="padding: 14px 28px; cursor: pointer; font-size: 16px; font-weight: 500; color: #666; border-bottom: 3px solid transparent; transition: all 0.3s; position: relative; background: transparent;"
+            style="padding: 14px 28px; cursor: pointer; font-size: 16px; font-weight: 500; color: rgba(255, 255, 255, 0.8); border-bottom: 3px solid transparent; transition: all 0.3s; position: relative; background: transparent;"
             :style="{ 
-              color: aiAppsActiveTab === 'spotcheck' ? '#1890ff' : '#666',
-              background: aiAppsActiveTab === 'spotcheck' ? '#e6f7ff' : 'transparent',
-              borderBottomColor: aiAppsActiveTab === 'spotcheck' ? '#1890ff' : 'transparent',
+              color: aiAppsActiveTab === 'spotcheck' ? '#4facfe' : 'rgba(255, 255, 255, 0.8)',
+              background: aiAppsActiveTab === 'spotcheck' ? 'rgba(255, 255, 255, 0.15)' : 'transparent',
+              borderBottomColor: aiAppsActiveTab === 'spotcheck' ? '#4facfe' : 'transparent',
               fontWeight: aiAppsActiveTab === 'spotcheck' ? '600' : '500'
             }"
           >
@@ -4848,11 +5004,11 @@ function getColumnIcon(index) {
             class="ai-apps-tab" 
             :class="{ active: aiAppsActiveTab === 'chengguantong' }"
             @click="aiAppsActiveTab = 'chengguantong'"
-            style="padding: 14px 28px; cursor: pointer; font-size: 16px; font-weight: 500; color: #666; border-bottom: 3px solid transparent; transition: all 0.3s; position: relative; background: transparent;"
+            style="padding: 14px 28px; cursor: pointer; font-size: 16px; font-weight: 500; color: rgba(255, 255, 255, 0.8); border-bottom: 3px solid transparent; transition: all 0.3s; position: relative; background: transparent;"
             :style="{ 
-              color: aiAppsActiveTab === 'chengguantong' ? '#1890ff' : '#666',
-              background: aiAppsActiveTab === 'chengguantong' ? '#e6f7ff' : 'transparent',
-              borderBottomColor: aiAppsActiveTab === 'chengguantong' ? '#1890ff' : 'transparent',
+              color: aiAppsActiveTab === 'chengguantong' ? '#4facfe' : 'rgba(255, 255, 255, 0.8)',
+              background: aiAppsActiveTab === 'chengguantong' ? 'rgba(255, 255, 255, 0.15)' : 'transparent',
+              borderBottomColor: aiAppsActiveTab === 'chengguantong' ? '#4facfe' : 'transparent',
               fontWeight: aiAppsActiveTab === 'chengguantong' ? '600' : '500'
             }"
           >
@@ -4865,11 +5021,11 @@ function getColumnIcon(index) {
           <h2 class="section-title">📊 数据分析</h2>
         <div class="config-section" style="max-width: 900px; margin: 0 auto;">
           <!-- 分析配置区域 -->
-          <div style="padding: 25px; background: white; border-radius: 8px; margin-bottom: 25px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);">
+          <div style="padding: 25px; background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 8px; margin-bottom: 25px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);">
             <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; margin-bottom: 20px;">
               <div>
-                <label for="table-select" style="display: block; font-weight: 600; margin-bottom: 10px; color: #333;">选择数据表：</label>
-                <select id="table-select" v-model="selectedTable" :disabled="loading" style="width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; box-sizing: border-box; transition: all 0.3s ease; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);">
+                <label for="table-select" style="display: block; font-weight: 600; margin-bottom: 10px; color: rgba(255, 255, 255, 0.9);">选择数据表：</label>
+                <select id="table-select" v-model="selectedTable" :disabled="loading" style="width: 100%; padding: 10px 12px; border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 6px; font-size: 14px; box-sizing: border-box; transition: all 0.3s ease; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15); background: rgba(255, 255, 255, 0.15); color: white; appearance: none; -webkit-appearance: none; -moz-appearance: none; background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMiIgaGVpZ2h0PSIxMiIgdmlld0JveD0iMCAwIDEyIDEyIj48cGF0aCBmaWxsPSJyZ2JhKDI1NSwyNTUsMjU1LDAuOCkiIGQ9Ik02IDlMMiA1aDhsNC41IDMuNSIvPjwvc3ZnPg=='); background-repeat: no-repeat; background-position: right 10px center; padding-right: 30px;">
                   <option value="">-- 请选择 --</option>
                   <option v-for="table in tables" :key="table" :value="table">
                     {{ table }}
@@ -4877,8 +5033,8 @@ function getColumnIcon(index) {
                 </select>
               </div>
               <div>
-                <label for="analysis-select" style="display: block; font-weight: 600; margin-bottom: 10px; color: #333;">分析类型：</label>
-                <select id="analysis-select" v-model="selectedAnalysisType" :disabled="loading" style="width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; box-sizing: border-box; transition: all 0.3s ease; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);">
+                <label for="analysis-select" style="display: block; font-weight: 600; margin-bottom: 10px; color: rgba(255, 255, 255, 0.9);">分析类型：</label>
+                <select id="analysis-select" v-model="selectedAnalysisType" :disabled="loading" style="width: 100%; padding: 10px 12px; border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 6px; font-size: 14px; box-sizing: border-box; transition: all 0.3s ease; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15); background: rgba(255, 255, 255, 0.15); color: white; appearance: none; -webkit-appearance: none; -moz-appearance: none; background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMiIgaGVpZ2h0PSIxMiIgdmlld0JveD0iMCAwIDEyIDEyIj48cGF0aCBmaWxsPSJyZ2JhKDI1NSwyNTUsMjU1LDAuOCkiIGQ9Ik02IDlMMiA1aDhsNC41IDMuNSIvPjwvc3ZnPg=='); background-repeat: no-repeat; background-position: right 10px center; padding-right: 30px;">
                   <option value="">-- 请选择 --</option>
                   <option v-for="type in analysisTypes" :key="type.value" :value="type.value">
                     {{ type.label }}
@@ -4901,19 +5057,19 @@ function getColumnIcon(index) {
             </button>
             
             <!-- 消息提示 -->
-            <div v-if="analysisMessage" style="margin-top: 15px; padding: 12px; background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; border-radius: 4px;">
+            <div v-if="analysisMessage" style="margin-top: 15px; padding: 12px; background-color: rgba(76, 175, 80, 0.2); color: rgba(255, 255, 255, 0.9); border: 1px solid rgba(76, 175, 80, 0.4); border-radius: 4px; backdrop-filter: blur(5px);">
               ✓ {{ analysisMessage }}
             </div>
             
             <!-- 分析进度显示 -->
-            <div v-if="loading" style="margin-top: 25px; padding: 20px; background: linear-gradient(135deg, #e8f8ff 0%, #e0f7ff 100%); border-radius: 6px; border-left: 4px solid #4facfe;">
+            <div v-if="loading" style="margin-top: 25px; padding: 20px; background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 6px; border-left: 4px solid #4facfe;">
               <div style="font-weight: 600; color: #4facfe; margin-bottom: 15px; font-size: 14px;">⏳ 分析进度</div>
               <div v-for="(step, index) in analysisSteps" :key="index"
                    style="display: flex; align-items: center; margin-bottom: 10px; padding: 8px; border-radius: 4px; transition: all 0.4s ease;"
                    :style="{
-                     background: step.status === 'completed' ? 'rgba(76, 175, 80, 0.15)' :
+                     background: step.status === 'completed' ? 'rgba(76, 175, 80, 0.2)' :
                               step.status === 'active' ? 'rgba(79, 172, 254, 0.2)' :
-                              'rgba(255, 255, 255, 0.5)',
+                              'rgba(255, 255, 255, 0.1)',
                      opacity: step.status === 'pending' ? '0.5' : '1',
                      transform: step.status !== 'pending' ? 'translateX(0)' : 'translateX(-10px)',
                      animation: step.status === 'active' ? 'pulse 1.5s ease-in-out infinite' : 'none'
@@ -4922,20 +5078,20 @@ function getColumnIcon(index) {
                      :style="{
                        background: step.status === 'completed' ? 'linear-gradient(135deg, #4caf50 0%, #8bc34a 100%)' :
                                   step.status === 'active' ? 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)' :
-                                  '#ccc',
+                                  'rgba(255, 255, 255, 0.2)',
                        color: 'white',
                        boxShadow: step.status === 'active' ? '0 0 10px rgba(79, 172, 254, 0.5)' : 'none'
                      }">
                   <span v-if="step.status === 'completed' && index < 4">✓</span>
                   <span v-else>{{ step.icon }}</span>
                 </div>
-                <div style="color: #333; font-size: 14px; font-weight: 500;"
-                     :style="{ color: step.status === 'active' ? '#4facfe' : '#333' }">
+                <div style="color: rgba(255, 255, 255, 0.8); font-size: 14px; font-weight: 500;"
+                     :style="{ color: step.status === 'active' ? '#4facfe' : 'rgba(255, 255, 255, 0.8)' }">
                   {{ step.text }}
                 </div>
               </div>
               <!-- 进度条 -->
-              <div style="margin-top: 15px; height: 4px; background: rgba(255,255,255,0.5); border-radius: 2px; overflow: hidden;">
+              <div style="margin-top: 15px; height: 4px; background: rgba(255,255,255,0.2); border-radius: 2px; overflow: hidden;">
                 <div style="height: 100%; background: linear-gradient(90deg, #4facfe 0%, #00f2fe 100%); transition: width 0.5s ease;"
                      :style="{ width: ((currentStep + 1) / analysisSteps.length * 100) + '%' }"></div>
               </div>
@@ -4944,11 +5100,11 @@ function getColumnIcon(index) {
         </div>
         
         <!-- 分析结果 -->
-        <div v-if="analysisResult" style="background: white; border-radius: 8px; padding: 25px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);">
+        <div v-if="analysisResult" style="background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 8px; padding: 25px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);">
           <!-- 结果标题 -->
           <div style="margin-bottom: 25px; padding-bottom: 15px; border-bottom: 2px solid #4facfe;">
-            <h3 style="margin: 0; font-size: 20px; color: #333;">📈 {{ analysisResult.table_name }} - {{ getAnalysisTypeName(analysisResult.analysis_type) }}</h3>
-            <p style="margin: 12px 0 0 0; color: #666; font-size: 14px; line-height: 1.6;">{{ analysisResult.data_summary }}</p>
+            <h3 style="margin: 0; font-size: 20px; color: white;">📈 {{ analysisResult.table_name }} - {{ getAnalysisTypeName(analysisResult.analysis_type) }}</h3>
+            <p style="margin: 12px 0 0 0; color: rgba(255, 255, 255, 0.8); font-size: 14px; line-height: 1.6;">{{ analysisResult.data_summary }}</p>
           </div>
           
           <div class="result-details">
@@ -5058,11 +5214,11 @@ function getColumnIcon(index) {
           <h2 class="section-title">📊 数据分析（新版）</h2>
         <div class="config-section" style="max-width: 900px; margin: 0 auto;">
           <!-- 分析配置区域 -->
-          <div style="padding: 25px; background: white; border-radius: 8px; margin-bottom: 25px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);">
+          <div style="padding: 25px; background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 8px; margin-bottom: 25px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);">
             <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; margin-bottom: 20px;">
               <div>
-                <label for="table-select-v2" style="display: block; font-weight: 600; margin-bottom: 10px; color: #333;">选择数据表：</label>
-                <select id="table-select-v2" v-model="selectedTableV2" :disabled="analysisV2Loading" style="width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; box-sizing: border-box; transition: all 0.3s ease; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);">
+                <label for="table-select-v2" style="display: block; font-weight: 600; margin-bottom: 10px; color: rgba(255, 255, 255, 0.9);">选择数据表：</label>
+                <select id="table-select-v2" v-model="selectedTableV2" :disabled="analysisV2Loading" style="width: 100%; padding: 10px 12px; border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 6px; font-size: 14px; box-sizing: border-box; transition: all 0.3s ease; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15); background: rgba(255, 255, 255, 0.15); color: white; appearance: none; -webkit-appearance: none; -moz-appearance: none; background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMiIgaGVpZ2h0PSIxMiIgdmlld0JveD0iMCAwIDEyIDEyIj48cGF0aCBmaWxsPSJyZ2JhKDI1NSwyNTUsMjU1LDAuOCkiIGQ9Ik02IDlMMiA1aDhsNC41IDMuNSIvPjwvc3ZnPg=='); background-repeat: no-repeat; background-position: right 10px center; padding-right: 30px;">
                   <option value="">-- 请选择 --</option>
                   <option v-for="table in tables" :key="table" :value="table">
                     {{ table }}
@@ -5070,8 +5226,8 @@ function getColumnIcon(index) {
                 </select>
               </div>
               <div>
-                <label for="model-select" style="display: block; font-weight: 600; margin-bottom: 10px; color: #333;">选择大模型：</label>
-                <select id="model-select" v-model="selectedModel" :disabled="analysisV2Loading" style="width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; box-sizing: border-box; transition: all 0.3s ease; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);">
+                <label for="model-select" style="display: block; font-weight: 600; margin-bottom: 10px; color: rgba(255, 255, 255, 0.9);">选择大模型：</label>
+                <select id="model-select" v-model="selectedModel" :disabled="analysisV2Loading" style="width: 100%; padding: 10px 12px; border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 6px; font-size: 14px; box-sizing: border-box; transition: all 0.3s ease; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15); background: rgba(255, 255, 255, 0.15); color: white; appearance: none; -webkit-appearance: none; -moz-appearance: none; background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMiIgaGVpZ2h0PSIxMiIgdmlld0JveD0iMCAwIDEyIDEyIj48cGF0aCBmaWxsPSJyZ2JhKDI1NSwyNTUsMjU1LDAuOCkiIGQ9Ik02IDlMMiA1aDhsNC41IDMuNSIvPjwvc3ZnPg=='); background-repeat: no-repeat; background-position: right 10px center; padding-right: 30px;">
                   <option value="volcengine">火山引擎（豆包）</option>
                   <option value="bailian">阿里云百炼（通义千问）</option>
                 </select>
@@ -5079,14 +5235,14 @@ function getColumnIcon(index) {
             </div>
             
             <div style="margin-bottom: 20px;">
-              <label for="analysis-prompt" style="display: block; font-weight: 600; margin-bottom: 10px; color: #333;">分析提示词：</label>
+              <label for="analysis-prompt" style="display: block; font-weight: 600; margin-bottom: 10px; color: rgba(255, 255, 255, 0.9);">分析提示词：</label>
               <textarea 
                 id="analysis-prompt" 
                 v-model="analysisPrompt" 
                 :disabled="analysisV2Loading"
                 rows="5"
                 placeholder="请输入您的分析需求，例如：请分析这个数据表中的案件来源分布情况，并生成图表展示"
-                style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; box-sizing: border-box; resize: vertical; min-height: 120px; transition: all 0.3s ease; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);"
+                style="width: 100%; padding: 12px; border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 6px; font-size: 14px; box-sizing: border-box; resize: vertical; min-height: 120px; transition: all 0.3s ease; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15); background: rgba(255, 255, 255, 0.15); color: white;"
               ></textarea>
             </div>
             
@@ -5103,20 +5259,20 @@ function getColumnIcon(index) {
             </button>
             
             <!-- 消息提示 -->
-            <div v-if="analysisV2Message" style="margin-top: 15px; padding: 12px; background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; border-radius: 4px;">
+            <div v-if="analysisV2Message" style="margin-top: 15px; padding: 12px; background-color: rgba(76, 175, 80, 0.2); color: rgba(255, 255, 255, 0.9); border: 1px solid rgba(76, 175, 80, 0.4); border-radius: 4px; backdrop-filter: blur(5px);">
               ✓ {{ analysisV2Message }}
             </div>
-            <div v-if="analysisV2Error" style="margin-top: 15px; padding: 12px; background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; border-radius: 4px;">
+            <div v-if="analysisV2Error" style="margin-top: 15px; padding: 12px; background-color: rgba(248, 215, 218, 0.2); color: rgba(255, 255, 255, 0.9); border: 1px solid rgba(245, 198, 203, 0.4); border-radius: 4px; backdrop-filter: blur(5px);">
               ✗ {{ analysisV2Error }}
             </div>
           </div>
         </div>
         
         <!-- 分析结果 -->
-        <div v-if="analysisV2Result" style="background: white; border-radius: 8px; padding: 25px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);">
+        <div v-if="analysisV2Result" style="background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 8px; padding: 25px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);">
           <!-- 结果标题 -->
           <div style="margin-bottom: 25px; padding-bottom: 15px; border-bottom: 2px solid #4facfe;">
-            <h3 style="margin: 0; font-size: 20px; color: #333;">📈 {{ analysisV2Result.table_name }} - 智能分析报告</h3>
+            <h3 style="margin: 0; font-size: 20px; color: white;">📈 {{ analysisV2Result.table_name }} - 智能分析报告</h3>
           </div>
           
           <div class="result-details">
@@ -5139,30 +5295,30 @@ function getColumnIcon(index) {
             
             <!-- 分析报告 -->
             <div v-if="analysisV2Result.report" style="margin-top: 30px;">
-              <div style="padding: 25px; background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); border-radius: 12px; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
-                <div style="margin-bottom: 20px; padding-bottom: 15px; border-bottom: 2px solid #e2e8f0;">
+              <div style="padding: 25px; background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.15);">
+                <div style="margin-bottom: 20px; padding-bottom: 15px; border-bottom: 2px solid rgba(255, 255, 255, 0.2);">
                   <div style="display: flex; align-items: center; gap: 12px;">
                     <div style="width: 48px; height: 48px; background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); border-radius: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
                       <span style="font-size: 24px;">🤖</span>
                     </div>
                     <div>
-                      <h4 style="margin: 0; color: #1e293b; font-size: 20px; font-weight: 700;">AI智能分析报告</h4>
-                      <p style="margin: 4px 0 0 0; color: #64748b; font-size: 14px;">基于大数据和AI智能生成的深度分析</p>
+                      <h4 style="margin: 0; color: white; font-size: 20px; font-weight: 700;">AI智能分析报告</h4>
+                      <p style="margin: 4px 0 0 0; color: rgba(255, 255, 255, 0.8); font-size: 14px;">基于大数据和AI智能生成的深度分析</p>
                     </div>
                   </div>
                 </div>
                 
-                <div class="report-content" style="line-height: 1.6; color: #334155; font-size: 14px; padding: 10px 0; text-align: left;">
+                <div class="report-content" style="line-height: 1.6; color: rgba(255, 255, 255, 0.8); font-size: 14px; padding: 10px 0; text-align: left;">
                   <div v-html="formatAnalysisReport(analysisV2Result.report)" style="word-wrap: break-word; overflow-wrap: break-word;"></div>
                 </div>
                 
-                <div style="margin-top: 20px; padding-top: 15px; border-top: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center;">
+                <div style="margin-top: 20px; padding-top: 15px; border-top: 1px solid rgba(255, 255, 255, 0.2); display: flex; justify-content: space-between; align-items: center;">
                   <div style="display: flex; align-items: center; gap: 8px;">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4facfe" stroke-width="2">
                       <circle cx="12" cy="12" r="10"></circle>
                       <polyline points="12 6 12 12 16 14"></polyline>
                     </svg>
-                    <span style="color: #64748b; font-size: 13px;">{{ new Date().toLocaleString('zh-CN') }}</span>
+                    <span style="color: rgba(255, 255, 255, 0.8); font-size: 13px;">{{ new Date().toLocaleString('zh-CN') }}</span>
                   </div>
                   <button 
                     @click="copyReport"
@@ -5184,28 +5340,28 @@ function getColumnIcon(index) {
           <h2 class="section-title">案件抽查</h2>
         <div class="spotcheck-section" style="max-width: 900px; margin: 0 auto;">
           <!-- 提示信息 -->
-          <div style="margin-bottom: 25px; padding: 16px; background: linear-gradient(135deg, #e3f2fd 0%, #e0f7ff 100%); border-left: 4px solid #4facfe; border-radius: 6px; color: #555;">
+          <div style="margin-bottom: 25px; padding: 16px; background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.2); border-left: 4px solid #4facfe; border-radius: 6px; color: rgba(255, 255, 255, 0.8);">
             <div style="display: flex; align-items: flex-start; gap: 12px;">
               <span style="font-size: 20px; flex-shrink: 0;">ℹ️</span>
               <div>
                 <div style="font-weight: 600; color: #4facfe; margin-bottom: 6px;">文件上传说明</div>
-                <p style="margin: 0; line-height: 1.5;">支持上传 DOCX 或 XLSX 格式的文件，系统将使用大模型进行智能分析，并返回详细的案件质量评估结果。</p>
+                <p style="margin: 0; line-height: 1.5; color: rgba(255, 255, 255, 0.8);">支持上传 DOCX 或 XLSX 格式的文件，系统将使用大模型进行智能分析，并返回详细的案件质量评估结果。</p>
               </div>
             </div>
           </div>
           
           <!-- 文件上传区域 -->
-          <div style="padding: 25px; background: white; border: 2px dashed #4facfe; border-radius: 8px; margin-bottom: 25px;">
+          <div style="padding: 25px; background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px); border: 2px dashed #4facfe; border-radius: 8px; margin-bottom: 25px;">
             <div class="form-group" style="margin-bottom: 20px;">
-              <label for="spotcheck-file-input" style="display: block; font-weight: 600; margin-bottom: 12px; color: #333;">选择要分析的文件：</label>
+              <label for="spotcheck-file-input" style="display: block; font-weight: 600; margin-bottom: 12px; color: rgba(255, 255, 255, 0.9);">选择要分析的文件：</label>
               <input 
                 type="file" 
                 id="spotcheck-file-input"
                 accept=".docx,.xlsx"
                 @change="handleSpotcheckFileSelect"
-                style="padding: 10px; border: 1px solid #ddd; border-radius: 6px; width: 100%; box-sizing: border-box; cursor: pointer;"
+                style="padding: 10px; border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 6px; width: 100%; box-sizing: border-box; cursor: pointer; background: rgba(255, 255, 255, 0.15); color: white;"
               >
-              <div v-if="spotcheckFile" style="margin-top: 12px; padding: 10px 12px; background-color: #e8f5e9; color: #2e7d32; border-radius: 4px; border-left: 3px solid #4caf50;">
+              <div v-if="spotcheckFile" style="margin-top: 12px; padding: 10px 12px; background-color: rgba(76, 175, 80, 0.2); color: rgba(255, 255, 255, 0.9); border-radius: 4px; border-left: 3px solid #4caf50; backdrop-filter: blur(5px);">
                 ✓ 已选择：{{ spotcheckFile.name }}
               </div>
             </div>
@@ -5225,26 +5381,26 @@ function getColumnIcon(index) {
               <button 
                 @click="clearSpotcheck"
                 :disabled="spotcheckLoading"
-                style="padding: 12px 24px; background-color: #95a5a6; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; transition: all 0.3s ease;"
-                @mouseenter="$event.target.style.backgroundColor='#7f8c8d'"
-                @mouseleave="$event.target.style.backgroundColor='#95a5a6'"
+                style="padding: 12px 24px; background-color: rgba(149, 165, 166, 0.8); color: white; border: 1px solid rgba(149, 165, 166, 0.5); border-radius: 6px; cursor: pointer; font-weight: 600; transition: all 0.3s ease; backdrop-filter: blur(5px);"
+                @mouseenter="$event.target.style.backgroundColor='rgba(127, 140, 141, 0.9)'"
+                @mouseleave="$event.target.style.backgroundColor='rgba(149, 165, 166, 0.8)'"
               >
                 🔄 清除
               </button>
             </div>
             
             <!-- 消息提示 -->
-            <div v-if="spotcheckMessage" style="margin-top: 15px; padding: 12px; background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; border-radius: 4px;">
+            <div v-if="spotcheckMessage" style="margin-top: 15px; padding: 12px; background-color: rgba(76, 175, 80, 0.2); color: rgba(255, 255, 255, 0.9); border: 1px solid rgba(76, 175, 80, 0.4); border-radius: 4px; backdrop-filter: blur(5px);">
               ✓ {{ spotcheckMessage }}
             </div>
-            <div v-if="spotcheckError" style="margin-top: 15px; padding: 12px; background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; border-radius: 4px;">
+            <div v-if="spotcheckError" style="margin-top: 15px; padding: 12px; background-color: rgba(248, 215, 218, 0.2); color: rgba(255, 255, 255, 0.9); border: 1px solid rgba(245, 198, 203, 0.4); border-radius: 4px; backdrop-filter: blur(5px);">
               ✗ {{ spotcheckError }}
             </div>
           </div>
           
           <!-- 分析结果 -->
-          <div v-if="spotcheckResult" style="background: white; border-radius: 8px; padding: 25px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);">
-            <h3 style="margin-top: 0; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 2px solid #4facfe; font-size: 20px; color: #333;">分析结果</h3>
+          <div v-if="spotcheckResult" style="background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 8px; padding: 25px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);">
+            <h3 style="margin-top: 0; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 2px solid #4facfe; font-size: 20px; color: white;">分析结果</h3>
             
             <!-- 文件内容 -->
             <div v-if="spotcheckResult.file_content" style="margin-bottom: 25px;">
@@ -5252,8 +5408,8 @@ function getColumnIcon(index) {
                 <span style="font-size: 18px;">📄</span>
                 <h4 style="margin: 0; color: #4facfe; font-size: 16px;">读取的文件内容</h4>
               </div>
-              <div style="background-color: #f8f9fa; padding: 15px; border-radius: 6px; border-left: 3px solid #4facfe; max-height: 300px; overflow-y: auto;">
-                <p v-for="(line, index) in spotcheckResult.file_content.split('\n')" :key="index" v-if="line && line.trim()" style="margin: 8px 0; line-height: 1.5; color: #555; font-size: 14px;">
+              <div style="background-color: rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px); padding: 15px; border-radius: 6px; border-left: 3px solid #4facfe; max-height: 300px; overflow-y: auto; border: 1px solid rgba(255, 255, 255, 0.2);">
+                <p v-for="(line, index) in spotcheckResult.file_content.split('\n')" :key="index" v-if="line && line.trim()" style="margin: 8px 0; line-height: 1.5; color: rgba(255, 255, 255, 0.8); font-size: 14px;">
                   {{ line }}
                 </p>
               </div>
@@ -5265,7 +5421,7 @@ function getColumnIcon(index) {
                 <span style="font-size: 18px;">🔍</span>
                 <h4 style="margin: 0; color: #4facfe; font-size: 16px;">AI智能分析</h4>
               </div>
-              <div style="background-color: #f8f9fa; padding: 20px; border-radius: 6px; border-left: 3px solid #00f2fe; line-height: 1.8; color: #333;">
+              <div style="background-color: rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px); padding: 20px; border-radius: 6px; border-left: 3px solid #00f2fe; line-height: 1.8; color: rgba(255, 255, 255, 0.8); border: 1px solid rgba(255, 255, 255, 0.2);">
                 <div v-html="spotcheckResult.analysis"></div>
               </div>
             </div>
@@ -5278,7 +5434,7 @@ function getColumnIcon(index) {
           <h2 class="section-title">城管通</h2>
         <div class="chengguantong-section" style="max-width: 1200px; margin: 0 auto;">
           <!-- 第一行：提示文字 -->
-          <div class="tip-section" style="margin-bottom: 20px; padding: 15px; background-color: #e3f2fd; border: 1px solid #bbdefb; border-radius: 4px; color: #1565c0;">
+          <div class="tip-section" style="margin-bottom: 20px; padding: 15px; background-color: rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 4px; color: rgba(255, 255, 255, 0.8);">
             <p style="margin: 0;"><strong>功能说明：</strong>运城城管通智能问答系统，基于阿里云百炼大模型，提供城市管理相关问题的专业解答。</p>
           </div>
           
@@ -5294,7 +5450,7 @@ function getColumnIcon(index) {
           :disabled="chengguantongLoading"
           style="width: 100%; 
                  padding: 20px; 
-                 border: 1px solid #ddd; 
+                 border: 1px solid rgba(255, 255, 255, 0.3); 
                  border-radius: 16px; 
                  resize: vertical; 
                  font-size: 18px; 
@@ -5302,7 +5458,10 @@ function getColumnIcon(index) {
                  min-height: 90px; 
                  /* 移除max-width限制，让文本框占满容器 */
                  line-height: 1.6;
-                 box-sizing: border-box;"
+                 box-sizing: border-box;
+                 background: rgba(255, 255, 255, 0.15);
+                 color: white;
+                 placeholder-color: rgba(255, 255, 255, 0.5);"
         ></textarea>
               <!-- 确保padding不超出宽度 -->
               
@@ -5311,7 +5470,7 @@ function getColumnIcon(index) {
                   @click="resetChengguantong"
                   :disabled="chengguantongLoading"
                   class="btn-secondary"
-                  style="padding: 12px 20px; background-color: #95a5a6; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px;"
+                  style="padding: 12px 20px; background-color: rgba(149, 165, 166, 0.8); color: white; border: 1px solid rgba(149, 165, 166, 0.5); border-radius: 6px; cursor: pointer; font-size: 14px; backdrop-filter: blur(5px);"
                 >
                   清空
                 </button>
@@ -5319,21 +5478,21 @@ function getColumnIcon(index) {
                   @click="callBaiLianAPI(chengguantongQuery)"
                   :disabled="chengguantongLoading || !chengguantongQuery"
                   class="btn-primary"
-                  style="padding: 12px 30px; background-color: #2196f3; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: bold;"
+                  style="padding: 12px 30px; background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: bold;"
                 >
                   <span v-if="chengguantongLoading">处理中...</span>
                   <span v-else>发送</span>
                 </button>
               </div>
               
-              <div v-if="chengguantongError" class="error-message" style="padding: 10px; background-color: #ffebee; color: #c62828; border: 1px solid #ffcdd2; border-radius: 6px; margin-top: 10px;">
+              <div v-if="chengguantongError" class="error-message" style="padding: 10px; background-color: rgba(255, 235, 238, 0.2); color: rgba(255, 255, 255, 0.9); border: 1px solid rgba(255, 205, 210, 0.4); border-radius: 6px; margin-top: 10px; backdrop-filter: blur(5px);">
                 {{ chengguantongError }}
               </div>
             </div>
             
             <!-- 响应结果 -->
-            <div v-if="showResponse && chengguantongResponse" class="response-container" style="width: 100%; padding: 24px; border: 1px solid #e0e0e0; border-radius: 12px; background-color: #f9f9f9; box-shadow: 0 2px 8px rgba(0,0,0,0.05); box-sizing: border-box;">
-              <div class="response-content" style="line-height: 1.7; color: #333; white-space: pre-wrap; word-wrap: break-word; overflow-wrap: break-word; font-size: 16px;">
+            <div v-if="showResponse && chengguantongResponse" class="response-container" style="width: 100%; padding: 24px; border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 12px; background-color: rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px); box-shadow: 0 2px 8px rgba(0,0,0,0.15); box-sizing: border-box;">
+              <div class="response-content" style="line-height: 1.7; color: rgba(255, 255, 255, 0.8); white-space: pre-wrap; word-wrap: break-word; overflow-wrap: break-word; font-size: 16px;">
                 {{ chengguantongResponse }}
               </div>
             </div>
@@ -5384,13 +5543,13 @@ function getColumnIcon(index) {
             <!-- 月份选择下拉框 -->
             <div>
               <label v-if="huiwentaiActiveTab === 'tasks'" style="margin-right: 10px; font-size: 14px; color: #666;">选择月份：</label>
-              <select v-if="huiwentaiActiveTab === 'tasks'" v-model="selectedMonthTasks" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">
+              <select v-if="huiwentaiActiveTab === 'tasks'" v-model="selectedMonthTasks" style="padding: 8px 12px; border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 4px; font-size: 14px; background: rgba(255, 255, 255, 0.15); color: white; appearance: none; -webkit-appearance: none; -moz-appearance: none; background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMiIgaGVpZ2h0PSIxMiIgdmlld0JveD0iMCAwIDEyIDEyIj48cGF0aCBmaWxsPSJyZ2JhKDI1NSwyNTUsMjU1LDAuOCkiIGQ9Ik02IDlMMiA1aDhsNC41IDMuNSIvPjwvc3ZnPg=='); background-repeat: no-repeat; background-position: right 10px center; padding-right: 30px;">
                 <option value="">全部</option>
                 <option v-for="month in availableMonthsTasks" :key="month" :value="month">{{ month }}</option>
               </select>
               
-              <label v-if="huiwentaiActiveTab === 'daily-reports'" style="margin-right: 10px; font-size: 14px; color: #666;">选择月份：</label>
-              <select v-if="huiwentaiActiveTab === 'daily-reports'" v-model="selectedMonthReports" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">
+              <label v-if="huiwentaiActiveTab === 'daily-reports'" style="margin-right: 10px; font-size: 14px; color: rgba(255, 255, 255, 0.8);">选择月份：</label>
+              <select v-if="huiwentaiActiveTab === 'daily-reports'" v-model="selectedMonthReports" style="padding: 8px 12px; border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 4px; font-size: 14px; background: rgba(255, 255, 255, 0.15); color: white; appearance: none; -webkit-appearance: none; -moz-appearance: none; background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMiIgaGVpZ2h0PSIxMiIgdmlld0JveD0iMCAwIDEyIDEyIj48cGF0aCBmaWxsPSJyZ2JhKDI1NSwyNTUsMjU1LDAuOCkiIGQ9Ik02IDlMMiA1aDhsNC41IDMuNSIvPjwvc3ZnPg=='); background-repeat: no-repeat; background-position: right 10px center; padding-right: 30px;">
                 <option value="">全部</option>
                 <option v-for="month in availableMonthsReports" :key="month" :value="month">{{ month }}</option>
               </select>
@@ -5622,22 +5781,22 @@ function getColumnIcon(index) {
           <!-- 原版考核计分内容 -->
           <div v-if="assessmentActiveTab === 'old'">
             <!-- 说明信息 -->
-            <div style="margin-bottom: 25px; padding: 16px; background: linear-gradient(135deg, #fff3cd 0%, #ffe082 5%); border-left: 4px solid #ffc107; border-radius: 6px; color: #856404;">
+            <div style="margin-bottom: 25px; padding: 16px; background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.2); border-left: 4px solid #4facfe; border-radius: 6px; color: rgba(255, 255, 255, 0.8);">
               <div style="display: flex; align-items: flex-start; gap: 12px;">
                 <span style="font-size: 20px; flex-shrink: 0;">⚠️</span>
                 <div>
-                  <div style="font-weight: 600; margin-bottom: 6px;">计算说明</div>
+                  <div style="font-weight: 600; margin-bottom: 6px; color: #4facfe;">计算说明</div>
                   <p style="margin: 0; line-height: 1.5; font-size: 14px;">超时案件计算：结案时间 > 捆绑处置截止时间判定的，与实际超时计算有出入</p>
                 </div>
               </div>
             </div>
             
             <!-- 配置区域 -->
-            <div style="padding: 25px; background: white; border-radius: 8px; margin-bottom: 25px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);">
+            <div style="padding: 25px; background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 8px; margin-bottom: 25px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);">
               <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; margin-bottom: 20px;">
                 <div>
-                  <label for="department-select" style="display: block; font-weight: 600; margin-bottom: 10px; color: #333;">选择部门：</label>
-                  <select id="department-select" v-model="selectedDepartment" :disabled="loading" style="width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; box-sizing: border-box; transition: all 0.3s ease; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);">
+                  <label for="department-select" style="display: block; font-weight: 600; margin-bottom: 10px; color: rgba(255, 255, 255, 0.9);">选择部门：</label>
+                  <select id="department-select" v-model="selectedDepartment" :disabled="loading" style="width: 100%; padding: 10px 12px; border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 6px; font-size: 14px; box-sizing: border-box; transition: all 0.3s ease; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15); background: rgba(255, 255, 255, 0.15); color: white; appearance: none; -webkit-appearance: none; -moz-appearance: none; background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMiIgaGVpZ2h0PSIxMiIgdmlld0JveD0iMCAwIDEyIDEyIj48cGF0aCBmaWxsPSJyZ2JhKDI1NSwyNTUsMjU1LDAuOCkiIGQ9Ik02IDlMMiA1aDhsNC41IDMuNSIvPjwvc3ZnPg=='); background-repeat: no-repeat; background-position: right 10px center; padding-right: 30px;">
                     <option value="">-- 请选择部门 --</option>
                     <option value="城市综合行政执法队">城市综合行政执法队</option>
                     <option value="市容环卫中心">市容环卫中心</option>
@@ -5646,8 +5805,8 @@ function getColumnIcon(index) {
                   </select>
                 </div>
                 <div>
-                  <label for="table-select-assessment" style="display: block; font-weight: 600; margin-bottom: 10px; color: #333;">选择数据表：</label>
-                  <select id="table-select-assessment" v-model="selectedAssessmentTable" :disabled="loading" style="width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; box-sizing: border-box; transition: all 0.3s ease; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);">
+                  <label for="table-select-assessment" style="display: block; font-weight: 600; margin-bottom: 10px; color: rgba(255, 255, 255, 0.9);">选择数据表：</label>
+                  <select id="table-select-assessment" v-model="selectedAssessmentTable" :disabled="loading" style="width: 100%; padding: 10px 12px; border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 6px; font-size: 14px; box-sizing: border-box; transition: all 0.3s ease; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15); background: rgba(255, 255, 255, 0.15); color: white; appearance: none; -webkit-appearance: none; -moz-appearance: none; background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMiIgaGVpZ2h0PSIxMiIgdmlld0JveD0iMCAwIDEyIDEyIj48cGF0aCBmaWxsPSJyZ2JhKDI1NSwyNTUsMjU1LDAuOCkiIGQ9Ik02IDlMMiA1aDhsNC41IDMuNSIvPjwvc3ZnPg=='); background-repeat: no-repeat; background-position: right 10px center; padding-right: 30px;">
                     <option value="">-- 请选择 --</option>
                     <option v-for="table in tables" :key="table" :value="table">
                       {{ table }}
@@ -5670,14 +5829,14 @@ function getColumnIcon(index) {
               </button>
               
               <!-- 消息提示 -->
-              <div v-if="assessmentMessage" style="margin-top: 15px; padding: 12px; background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; border-radius: 4px;">
+              <div v-if="assessmentMessage" style="margin-top: 15px; padding: 12px; background-color: rgba(76, 175, 80, 0.2); color: rgba(255, 255, 255, 0.9); border: 1px solid rgba(76, 175, 80, 0.4); border-radius: 4px; backdrop-filter: blur(5px);">
                 ✓ {{ assessmentMessage }}
               </div>
             </div>
             
             <!-- 考核结果显示 -->
-            <div v-if="assessmentResult" style="background: white; border-radius: 8px; padding: 25px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);">
-              <h3 style="margin: 0 0 20px 0; padding-bottom: 15px; border-bottom: 2px solid #4facfe; font-size: 20px; color: #333;">📋 考核结果</h3>
+            <div v-if="assessmentResult" style="background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 8px; padding: 25px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);">
+              <h3 style="margin: 0 0 20px 0; padding-bottom: 15px; border-bottom: 2px solid #4facfe; font-size: 20px; color: white;">📋 考核结果</h3>
               
               <!-- 结果摘要 -->
               <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; margin-bottom: 30px;">
@@ -5733,22 +5892,22 @@ function getColumnIcon(index) {
           <!-- 新版考核计分内容 -->
           <div v-if="assessmentActiveTab === 'new'">
             <!-- 说明信息 -->
-            <div style="margin-bottom: 25px; padding: 16px; background: linear-gradient(135deg, #d1ecf1 0%, #bee5eb 5%); border-left: 4px solid #17a2b8; border-radius: 6px; color: #0c5460;">
+            <div style="margin-bottom: 25px; padding: 16px; background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.2); border-left: 4px solid #4facfe; border-radius: 6px; color: rgba(255, 255, 255, 0.8);">
               <div style="display: flex; align-items: flex-start; gap: 12px;">
                 <span style="font-size: 20px; flex-shrink: 0;">ℹ️</span>
                 <div>
-                  <div style="font-weight: 600; margin-bottom: 6px;">计算说明</div>
+                  <div style="font-weight: 600; margin-bottom: 6px; color: #4facfe;">计算说明</div>
                   <p style="margin: 0; line-height: 1.5; font-size: 14px;">超时案件计算：根据表中"是否超时"字段判定，为空表示不超时，不为空表示超时</p>
                 </div>
               </div>
             </div>
             
             <!-- 配置区域 -->
-            <div style="padding: 25px; background: white; border-radius: 8px; margin-bottom: 25px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);">
+            <div style="padding: 25px; background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 8px; margin-bottom: 25px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);">
               <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; margin-bottom: 20px;">
                 <div>
-                  <label for="department-select-v2" style="display: block; font-weight: 600; margin-bottom: 10px; color: #333;">选择部门：</label>
-                  <select id="department-select-v2" v-model="selectedDepartmentV2" :disabled="loading" style="width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; box-sizing: border-box; transition: all 0.3s ease; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);">
+                  <label for="department-select-v2" style="display: block; font-weight: 600; margin-bottom: 10px; color: rgba(255, 255, 255, 0.9);">选择部门：</label>
+                  <select id="department-select-v2" v-model="selectedDepartmentV2" :disabled="loading" style="width: 100%; padding: 10px 12px; border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 6px; font-size: 14px; box-sizing: border-box; transition: all 0.3s ease; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15); background: rgba(255, 255, 255, 0.15); color: white; appearance: none; -webkit-appearance: none; -moz-appearance: none; background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMiIgaGVpZ2h0PSIxMiIgdmlld0JveD0iMCAwIDEyIDEyIj48cGF0aCBmaWxsPSJyZ2JhKDI1NSwyNTUsMjU1LDAuOCkiIGQ9Ik02IDlMMiA1aDhsNC41IDMuNSIvPjwvc3ZnPg=='); background-repeat: no-repeat; background-position: right 10px center; padding-right: 30px;">
                     <option value="">-- 请选择部门 --</option>
                     <option value="城市综合行政执法队">城市综合行政执法队</option>
                     <option value="市容环卫中心">市容环卫中心</option>
@@ -5757,8 +5916,8 @@ function getColumnIcon(index) {
                   </select>
                 </div>
                 <div>
-                  <label for="table-select-assessment-v2" style="display: block; font-weight: 600; margin-bottom: 10px; color: #333;">选择数据表：</label>
-                  <select id="table-select-assessment-v2" v-model="selectedAssessmentTableV2" :disabled="loading" style="width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; box-sizing: border-box; transition: all 0.3s ease; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);">
+                  <label for="table-select-assessment-v2" style="display: block; font-weight: 600; margin-bottom: 10px; color: rgba(255, 255, 255, 0.9);">选择数据表：</label>
+                  <select id="table-select-assessment-v2" v-model="selectedAssessmentTableV2" :disabled="loading" style="width: 100%; padding: 10px 12px; border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 6px; font-size: 14px; box-sizing: border-box; transition: all 0.3s ease; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15); background: rgba(255, 255, 255, 0.15); color: white; appearance: none; -webkit-appearance: none; -moz-appearance: none; background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMiIgaGVpZ2h0PSIxMiIgdmlld0JveD0iMCAwIDEyIDEyIj48cGF0aCBmaWxsPSJyZ2JhKDI1NSwyNTUsMjU1LDAuOCkiIGQ9Ik02IDlMMiA1aDhsNC41IDMuNSIvPjwvc3ZnPg=='); background-repeat: no-repeat; background-position: right 10px center; padding-right: 30px;">
                     <option value="">-- 请选择 --</option>
                     <option v-for="table in tables" :key="table" :value="table">
                       {{ table }}
@@ -5843,6 +6002,227 @@ function getColumnIcon(index) {
         </div>
       </div>
       
+      <!-- 案件管理模块 -->
+      <div v-if="activeModule === 'cases' && (!userInfo || userInfo.role === 'admin' || (userInfo.permissions && userInfo.permissions.cases))" class="tab-content">
+        <h2 class="section-title">案件管理</h2>
+        
+        <div class="cases-section" style="max-width: 1200px; margin: 0 auto;">
+          <!-- 导入区域 -->
+          <div style="background: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);">
+            <h3 style="margin: 0 0 15px 0; font-size: 16px; color: #333;">导入案件数据</h3>
+            
+            <div style="display: flex; gap: 15px; align-items: center; margin-top: 15px;">
+              <input 
+                type="file" 
+                @change="handleCaseFileSelect" 
+                accept=".xlsx"
+                style="flex: 1; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px;"
+              >
+              <button 
+                @click="importCases"
+                :disabled="caseImportLoading || !caseImportFile"
+                style="padding: 8px 20px; background: #1890ff; color: white; border: none; border-radius: 4px; cursor: pointer;"
+              >
+                {{ caseImportLoading ? '导入中...' : '开始导入' }}
+              </button>
+            </div>
+            
+            <div v-if="caseImportMessage" style="margin-top: 10px; padding: 10px; background: #f6ffed; border: 1px solid #b7ebff; border-radius: 4px; color: #1890ff;">
+              {{ caseImportMessage }}
+            </div>
+            
+            <div v-if="casesError" style="margin-top: 10px; padding: 10px; background: #fff2f2; border: 1px solid #ffccc; border-radius: 4px; color: #ff4d4f;">
+              {{ casesError }}
+            </div>
+          </div>
+          
+          <!-- 搜索区域 -->
+          <div style="background: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);">
+            <div style="display: flex; gap: 15px; align-items: center;">
+              <input 
+                v-model="casesSearch"
+                placeholder="搜索任务号、问题描述、地址..."
+                @keyup.enter="searchCases"
+                style="flex: 1; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px;"
+              >
+              <button 
+                @click="searchCases"
+                style="padding: 8px 20px; background: #52c41b; color: white; border: none; border-radius: 4px; cursor: pointer;"
+              >
+                搜索
+              </button>
+            </div>
+          </div>
+          
+          <!-- 案件列表 -->
+          <div v-if="!showCaseDetail" style="background: white; border-radius: 8px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);">
+            <div v-if="casesLoading" style="padding: 40px; text-align: center; color: #666;">
+              加载中...
+            </div>
+            
+            <div v-else-if="casesList.length === 0" style="padding: 40px; text-align: center; color: #999;">
+              暂无案件数据
+            </div>
+            
+            <div v-else>
+              <table style="width: 100%; border-collapse: collapse;">
+                <thead>
+                  <tr style="background: #f5f5f5;">
+                    <th style="padding: 12px; border: 1px solid #ddd; text-align: left;">任务号</th>
+                    <th style="padding: 12px; border: 1px solid #ddd; text-align: left;">上报时间</th>
+                    <th style="padding: 12px; border: 1px solid #ddd; text-align: left;">问题来源</th>
+                    <th style="padding: 12px; border: 1px solid #ddd; text-align: left;">大类</th>
+                    <th style="padding: 12px; border: 1px solid #ddd; text-align: left;">小类</th>
+                    <th style="padding: 12px; border: 1px solid #ddd; text-align: left;">问题描述</th>
+                    <th style="padding: 12px; border: 1px solid #ddd; text-align: left;">地址</th>
+                    <th style="padding: 12px; border: 1px solid #ddd; text-align: left;">状态</th>
+                    <th style="padding: 12px; border: 1px solid #ddd; text-align: left;">操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="caseItem in casesList" :key="caseItem.id" style="cursor: pointer;" @click="viewCaseDetail(caseItem.id)">
+                    <td style="padding: 12px; border: 1px solid #ddd;">{{ caseItem.task_number }}</td>
+                    <td style="padding: 12px; border: 1px solid #ddd;">{{ caseItem.report_time }}</td>
+                    <td style="padding: 12px; border: 1px solid #ddd;">{{ caseItem.source }}</td>
+                    <td style="padding: 12px; border: 1px solid #ddd;">{{ caseItem.major_category }}</td>
+                    <td style="padding: 12px; border: 1px solid #ddd;">{{ caseItem.minor_category }}</td>
+                    <td style="padding: 12px; border: 1px solid #ddd; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ caseItem.problem_desc }}</td>
+                    <td style="padding: 12px; border: 1px solid #ddd; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ caseItem.address_desc }}</td>
+                    <td style="padding: 12px; border: 1px solid #ddd;">
+                      <span :style="{ color: caseItem.stage_light === '绿' ? '#52c41b' : caseItem.stage_light === '黄' ? '#ff9800' : '#f44336' }">{{ caseItem.stage_light }}</span>
+                    </td>
+                    <td style="padding: 12px; border: 1px solid #ddd;">
+                      <button @click.stop="viewCaseDetail(caseItem.id)" style="padding: 4px 12px; background: #1890ff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">
+                        查看
+                      </button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+              
+              <!-- 分页 -->
+              <div style="margin-top: 20px; display: flex; justify-content: center; align-items: center; gap: 10px;">
+                <button 
+                  @click="handleCasesPageChange(casesCurrentPage - 1)"
+                  :disabled="casesCurrentPage === 1"
+                  style="padding: 8px 16px; border: 1px solid #ddd; background: white; border-radius: 4px; cursor: pointer;"
+                >
+                  上一页
+                </button>
+                <span style="color: #666;">第 {{ casesCurrentPage }} / {{ Math.ceil(casesTotal / casesPageSize) }} 页</span>
+                <button 
+                  @click="handleCasesPageChange(casesCurrentPage + 1)"
+                  :disabled="casesCurrentPage >= Math.ceil(casesTotal / casesPageSize)"
+                  style="padding: 8px 16px; border: 1px solid #ddd; background: white; border-radius: 4px; cursor: pointer;"
+                >
+                  下一页
+                </button>
+              </div>
+            </div>
+          </div>
+          
+          <!-- 案件详情 -->
+          <div v-if="showCaseDetail && currentCase" style="background: white; border-radius: 8px; padding: 20px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 2px solid #1890ff; padding-bottom: 10px;">
+              <h3 style="margin: 0; color: #1890ff;">案件详情</h3>
+              <button @click="showCaseDetail = false; currentCase = null;" style="padding: 8px 16px; background: #f5f5f5; border: 1px solid #ddd; border-radius: 4px; cursor: pointer;">
+                返回列表
+              </button>
+            </div>
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+              <div>
+                <p style="margin: 0 0 10px 0; color: #666; font-size: 14px;">任务号</p>
+                <p style="margin: 0; font-size: 16px; font-weight: bold;">{{ currentCase.task_number }}</p>
+              </div>
+              <div>
+                <p style="margin: 0 0 10px 0; color: #666; font-size: 14px;">上报时间</p>
+                <p style="margin: 0; font-size: 16px;">{{ currentCase.report_time }}</p>
+              </div>
+              <div>
+                <p style="margin: 0 0 10px 0; color: #666; font-size: 14px;">问题来源</p>
+                <p style="margin: 0; font-size: 16px;">{{ currentCase.source }}</p>
+              </div>
+              <div>
+                <p style="margin: 0 0 10px 0; color: #666; font-size: 14px;">问题类型</p>
+                <p style="margin: 0; font-size: 16px;">{{ currentCase.problem_type }}</p>
+              </div>
+              <div>
+                <p style="margin: 0 0 10px 0; color: #666; font-size: 14px;">大类名称</p>
+                <p style="margin: 0; font-size: 16px;">{{ currentCase.major_category }}</p>
+              </div>
+              <div>
+                <p style="margin: 0 0 10px 0; color: #666; font-size: 14px;">小类名称</p>
+                <p style="margin: 0; font-size: 16px;">{{ currentCase.minor_category }}</p>
+              </div>
+            </div>
+            
+            <div style="margin-top: 20px;">
+              <p style="margin: 0 0 10px 0; color: #666; font-size: 14px;">问题描述</p>
+              <p style="margin: 0; font-size: 16px; padding: 10px; background: #f5f5f5; border-radius: 4px;">{{ currentCase.problem_desc }}</p>
+            </div>
+            
+            <div style="margin-top: 20px;">
+              <p style="margin: 0 0 10px 0; color: #666; font-size: 14px;">地址描述</p>
+              <p style="margin: 0; font-size: 16px; padding: 10px; background: #f5f5f5; border-radius: 4px;">{{ currentCase.address_desc }}</p>
+            </div>
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; margin-top: 20px;">
+              <div>
+                <p style="margin: 0 0 10px 0; color: #666; font-size: 14px;">所属区域</p>
+                <p style="margin: 0; font-size: 16px;">{{ currentCase.area }}</p>
+              </div>
+              <div>
+                <p style="margin: 0 0 10px 0; color: #666; font-size: 14px;">所属街道</p>
+                <p style="margin: 0; font-size: 16px;">{{ currentCase.street }}</p>
+              </div>
+              <div>
+                <p style="margin: 0 0 10px 0; color: #666; font-size: 14px;">所属社区</p>
+                <p style="margin: 0; font-size: 16px;">{{ currentCase.community }}</p>
+              </div>
+            </div>
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; margin-top: 20px;">
+              <div>
+                <p style="margin: 0 0 10px 0; color: #666; font-size: 14px;">责任网格</p>
+                <p style="margin: 0; font-size: 16px;">{{ currentCase.responsible_grid }}</p>
+              </div>
+              <div>
+                <p style="margin: 0 0 10px 0; color: #666; font-size: 14px;">批转时间</p>
+                <p style="margin: 0; font-size: 16px;">{{ currentCase.transfer_time }}</p>
+              </div>
+              <div>
+                <p style="margin: 0 0 10px 0; color: #666; font-size: 14px;">当前阶段剩余时间</p>
+                <p style="margin: 0; font-size: 16px;">{{ currentCase.current_stage_remaining_time }}</p>
+              </div>
+            </div>
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 20px;">
+              <div>
+                <p style="margin: 0 0 10px 0; color: #666; font-size: 14px;">阶段红绿灯</p>
+                <p style="margin: 0; font-size: 16px;">
+                  <span style="font-weight: bold; color: #52c41b;" v-if="currentCase.stage_light == '绿'">{{ currentCase.stage_light }}</span>
+                  <span style="font-weight: bold; color: #ff9800;" v-else-if="currentCase.stage_light == '黄'">{{ currentCase.stage_light }}</span>
+                  <span style="font-weight: bold; color: #f44336;" v-else>{{ currentCase.stage_light }}</span>
+                </p>
+              </div>
+              <div>
+                <p style="margin: 0 0 10px 0; color: #666; font-size: 14px;">区域级别</p>
+                <p style="margin: 0; font-size: 16px;">{{ currentCase.area_level_name }}</p>
+              </div>
+            </div>
+            
+            <!-- 照片展示 -->
+            <div v-if="currentCase.photo_path" style="margin-top: 20px;">
+              <p style="margin: 0 0 10px 0; color: #666; font-size: 14px;">案件照片</p>
+              <div style="padding: 10px; background: #f5f5f5; border-radius: 4px; text-align: center;">
+                <img :src="currentCase.photo_path" :alt="'案件照片'" style="max-width: 100%; max-height: 400px; border-radius: 4px;" @error="handleImageError">
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
       <!-- 小工具模块 -->
       <div v-if="activeModule === 'tools' && (!userInfo || userInfo.role === 'admin' || (userInfo.permissions && userInfo.permissions.tools))" class="tab-content">
         <h2 class="section-title">小工具</h2>
@@ -5907,23 +6287,23 @@ function getColumnIcon(index) {
           <div class="input-section" style="margin-bottom: 20px;">
             <div style="display: flex; gap: 15px; margin-bottom: 15px;">
               <div style="flex: 2;">
-                <label for="natural-language-input" style="display: block; margin-bottom: 5px; font-weight: bold;">自然语言查询：</label>
+                <label for="natural-language-input" style="display: block; margin-bottom: 5px; font-weight: 600; color: rgba(255, 255, 255, 0.9);">自然语言查询：</label>
                 <textarea 
                   id="natural-language-input" 
                   v-model="naturalLanguageQuery" 
                   placeholder="例如：帮我查询12月份所有的市容环卫中心的案件" 
                   rows="1" 
                   :disabled="toolLoading"
-                  style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; resize: vertical; font-size: 14px;"
+                  style="width: 100%; padding: 10px 12px; border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 6px; font-size: 14px; box-sizing: border-box; resize: vertical; min-height: 40px; transition: all 0.3s ease; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15); background: rgba(255, 255, 255, 0.15); color: white;"
                 ></textarea>
               </div>
               <div style="flex: 1;">
-                <label for="tool-table-select" style="display: block; margin-bottom: 5px; font-weight: bold;">选择数据表：</label>
+                <label for="tool-table-select" style="display: block; margin-bottom: 5px; font-weight: 600; color: rgba(255, 255, 255, 0.9);">选择数据表：</label>
                 <select 
                   id="tool-table-select" 
                   v-model="selectedToolTable" 
                   :disabled="toolLoading"
-                  style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;"
+                  style="width: 100%; padding: 10px 12px; border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 4px; font-size: 14px; background: rgba(255, 255, 255, 0.15); color: white; appearance: none; -webkit-appearance: none; -moz-appearance: none; background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMiIgaGVpZ2h0PSIxMiIgdmlld0JveD0iMCAwIDEyIDEyIj48cGF0aCBmaWxsPSJyZ2JhKDI1NSwyNTUsMjU1LDAuOCkiIGQ9Ik02IDlMMiA1aDhsNC41IDMuNSIvPjwvc3ZnPg=='); background-repeat: no-repeat; background-position: right 10px center; padding-right: 30px;"
                 >
                   <option value="">-- 请选择 --</option>
                   <option v-for="table in tables" :key="table" :value="table">
@@ -5953,10 +6333,10 @@ function getColumnIcon(index) {
               </button>
             </div>
             
-            <div v-if="toolMessage" class="message success" style="padding: 10px; background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; border-radius: 4px; margin-bottom: 15px;">
-              {{ toolMessage }}
+            <div v-if="toolMessage" class="message success" style="margin-top: 15px; padding: 12px; background-color: rgba(76, 175, 80, 0.2); color: rgba(255, 255, 255, 0.9); border: 1px solid rgba(76, 175, 80, 0.4); border-radius: 4px; backdrop-filter: blur(5px);">
+              ✓ {{ toolMessage }}
             </div>
-            <div v-if="toolError" class="message error" style="padding: 10px; background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; border-radius: 4px; margin-bottom: 15px;">
+            <div v-if="toolError" class="message error" style="margin-top: 15px; padding: 12px; background-color: rgba(248, 215, 218, 0.2); color: rgba(255, 255, 255, 0.9); border: 1px solid rgba(245, 198, 203, 0.4); border-radius: 4px; backdrop-filter: blur(5px);">
               {{ toolError }}
             </div>
           </div>
@@ -6171,7 +6551,7 @@ function getColumnIcon(index) {
                 <label style="margin-bottom: 5px; font-weight: bold;">选择字段：</label>
                 <select 
                   v-model="selectedCleaningField"
-                  style="padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; width: 300px;"
+                  style="padding: 10px 12px; border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 4px; font-size: 14px; width: 300px; background: rgba(255, 255, 255, 0.15); color: white; appearance: none; -webkit-appearance: none; -moz-appearance: none; background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMiIgaGVpZ2h0PSIxMiIgdmlld0JveD0iMCAwIDEyIDEyIj48cGF0aCBmaWxsPSJyZ2JhKDI1NSwyNTUsMjU1LDAuOCkiIGQ9Ik02IDlMMiA1aDhsNC41IDMuNSIvPjwvc3ZnPg=='); background-repeat: no-repeat; background-position: right 10px center; padding-right: 30px;"
                 >
                   <option value="">-- 请选择字段 --</option>
                   <option v-for="field in cleaningFields" :key="field" :value="field">
@@ -6425,7 +6805,7 @@ function getColumnIcon(index) {
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
                       <div style="display: flex; align-items: center; gap: 10px;">
                         <label style="font-size: 14px;">选择栏目：</label>
-                        <select v-model="selectedCategory" @change="switchCMSCategory(selectedCategory)" style="padding: 6px 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">
+                        <select v-model="selectedCategory" @change="switchCMSCategory(selectedCategory)" style="padding: 6px 10px; border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 4px; font-size: 14px; background: rgba(255, 255, 255, 0.15); color: white; appearance: none; -webkit-appearance: none; -moz-appearance: none; background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMiIgaGVpZ2h0PSIxMiIgdmlld0JveD0iMCAwIDEyIDEyIj48cGF0aCBmaWxsPSJyZ2JhKDI1NSwyNTUsMjU1LDAuOCkiIGQ9Ik02IDlMMiA1aDhsNC41IDMuNSIvPjwvc3ZnPg=='); background-repeat: no-repeat; background-position: right 10px center; padding-right: 30px;">
                           <option value="all">全部</option>
                           <option v-for="category in cmsCategories" :key="category.id" :value="category">
                             {{ category.name }}
@@ -6596,10 +6976,10 @@ function getColumnIcon(index) {
                   <div v-else>
                     <!-- 部门选择器 -->
                     <div class="form-group" style="margin-bottom: 25px;">
-                      <label style="display: block; font-weight: 600; margin-bottom: 8px; color: #333;">选择考核部门</label>
+                      <label style="display: block; font-weight: 600; margin-bottom: 8px; color: rgba(255, 255, 255, 0.9);">选择考核部门</label>
                       <select 
                         v-model="selectedAssessmentDepartment" 
-                        style="width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; box-sizing: border-box;"
+                        style="width: 100%; padding: 10px 12px; border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 6px; font-size: 14px; box-sizing: border-box; background: rgba(255, 255, 255, 0.15); color: white; appearance: none; -webkit-appearance: none; -moz-appearance: none; background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMiIgaGVpZ2h0PSIxMiIgdmlld0JveD0iMCAwIDEyIDEyIj48cGF0aCBmaWxsPSJyZ2JhKDI1NSwyNTUsMjU1LDAuOCkiIGQ9Ik02IDlMMiA1aDhsNC41IDMuNSIvPjwvc3ZnPg=='); background-repeat: no-repeat; background-position: right 10px center; padding-right: 30px;"
                       >
                         <option v-for="dept in assessmentDepartments" :key="dept" :value="dept">
                           {{ dept }}
@@ -6785,16 +7165,16 @@ function getColumnIcon(index) {
           <div class="modal-content">
             <h3>{{ editingUser ? '编辑用户' : '添加用户' }}</h3>
             <div class="form-group">
-              <label for="new-username">用户名：</label>
-              <input type="text" id="new-username" v-model="newUser.username" placeholder="请输入用户名" autocomplete="username" />
+              <label for="new-username" style="display: block; font-weight: 600; margin-bottom: 10px; color: rgba(255, 255, 255, 0.9);">用户名：</label>
+              <input type="text" id="new-username" v-model="newUser.username" placeholder="请输入用户名" autocomplete="username" style="width: 100%; padding: 10px 12px; border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 6px; font-size: 14px; box-sizing: border-box; background: rgba(255, 255, 255, 0.15); color: white;" />
             </div>
             <div class="form-group">
-              <label for="new-password">密码：</label>
-              <input type="password" id="new-password" v-model="newUser.password" placeholder="请输入密码" autocomplete="new-password" />
+              <label for="new-password" style="display: block; font-weight: 600; margin-bottom: 10px; color: rgba(255, 255, 255, 0.9);">密码：</label>
+              <input type="password" id="new-password" v-model="newUser.password" placeholder="请输入密码" autocomplete="new-password" style="width: 100%; padding: 10px 12px; border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 6px; font-size: 14px; box-sizing: border-box; background: rgba(255, 255, 255, 0.15); color: white;" />
             </div>
             <div class="form-group">
-              <label for="new-role">角色：</label>
-              <select id="new-role" v-model="newUser.role">
+              <label for="new-role" style="display: block; font-weight: 600; margin-bottom: 10px; color: rgba(255, 255, 255, 0.9);">角色：</label>
+              <select id="new-role" v-model="newUser.role" style="width: 100%; padding: 10px 12px; border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 6px; font-size: 14px; box-sizing: border-box; background: rgba(255, 255, 255, 0.15); color: white; appearance: none; -webkit-appearance: none; -moz-appearance: none; background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMiIgaGVpZ2h0PSIxMiIgdmlld0JveD0iMCAwIDEyIDEyIj48cGF0aCBmaWxsPSJyZ2JhKDI1NSwyNTUsMjU1LDAuOCkiIGQ9Ik02IDlMMiA1aDhsNC41IDMuNSIvPjwvc3ZnPg=='); background-repeat: no-repeat; background-position: right 10px center; padding-right: 30px;">
                 <option value="user">普通用户</option>
                 <option value="admin">管理员</option>
               </select>
@@ -7189,7 +7569,7 @@ body > *:first-child,
 
 /* ===================== 顶部标题栏样式 ===================== */
 .header {
-  background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+  background: linear-gradient(135deg, #0a2463 0%, #1e3a8a 100%);
   width: 1020px;
   height: 120px;
   margin: 0 auto;
@@ -7199,7 +7579,8 @@ body > *:first-child,
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 4px 20px rgba(79, 172, 254, 0.3);
+  box-shadow: 0 4px 20px rgba(10, 36, 99, 0.3);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
 }
 
 .header::before {
@@ -7307,11 +7688,12 @@ body {
 .main-content {
   flex: 1;
   padding: 30px 20px;
-  background-color: #ecf0f1;
   overflow-y: auto;
-  width: 100%;
-  margin-top: 0;
-  margin-bottom: 0;
+  width: 1020px;
+  margin: 0 auto;
+  background: linear-gradient(135deg, #0a2463 0%, #1e3a8a 100%);
+  min-height: 600px;
+  color: white;
 }
 
 .header {
@@ -7335,12 +7717,12 @@ body {
 
 .nav-tabs {
   display: flex;
-  background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+  background: linear-gradient(135deg, #0a2463 0%, #1e3a8a 100%);
   color: #fff;
   margin-top: 0;
   width: 1020px;
   margin: 0 auto;
-  box-shadow: 0 2px 10px rgba(79, 172, 254, 0.2);
+  box-shadow: 0 2px 10px rgba(10, 36, 99, 0.2);
 }
 
 .tab {
@@ -7366,32 +7748,45 @@ body {
 .main-content {
   flex: 1;
   padding: 30px 20px;
-  background-color: #ecf0f1;
   overflow-y: auto;
-  width: 100%;
-  margin-top: 0;
+  width: 1020px;
+  margin: 0 auto;
+  background: linear-gradient(135deg, #0a2463 0%, #1e3a8a 100%);
+  min-height: 600px;
+  color: white;
 }
 /* 覆盖原有的 #app 样式 */
 #app {
   padding: 0; /* 或者只保留左右 */
   /* padding: 0 2rem; */
+  min-height: 100vh;
+}
+
+.system-container {
+  background: #f5f5f5;
+  min-height: 100vh;
+  color: #333;
+  display: flex;
+  flex-direction: column;
 }
 
 .tab-content {
-  background-color: #fff;
+  background-color: rgba(255, 255, 255, 0.1);
   padding: 30px;
   border-radius: 8px;
-  box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
   width: 100%;
   margin: 0 auto;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
 .section-title {
   font-size: 1.4em;
-  color: #2c3e50;
+  color: white;
   margin-bottom: 25px;
   padding-bottom: 10px;
-  border-bottom: 2px solid #27ae60;
+  border-bottom: 2px solid rgba(255, 255, 255, 0.3);
 }
 
 .upload-section {
@@ -7402,10 +7797,10 @@ body {
 
 .file-selector {
   position: relative;
-  border: 1px solid #ddd;
+  border: 1px solid rgba(255, 255, 255, 0.3);
   border-radius: 4px;
   padding: 15px;
-  background-color: #f9f9f9;
+  background-color: rgba(255, 255, 255, 0.1);
 }
 
 .file-selector input[type="file"] {
@@ -7421,12 +7816,12 @@ body {
 .file-name {
   display: block;
   font-size: 1em;
-  color: #666;
+  color: rgba(255, 255, 255, 0.8);
 }
 
 .upload-btn {
   padding: 15px;
-  background-color: #27ae60;
+  background-color: rgba(39, 174, 96, 0.8);
   color: #fff;
   border: none;
   border-radius: 4px;
@@ -7437,28 +7832,28 @@ body {
 }
 
 .upload-btn:hover {
-  background-color: #219a52;
+  background-color: rgba(33, 154, 82, 0.9);
 }
 
 .upload-btn:disabled {
-  background-color: #bdc3c7;
+  background-color: rgba(189, 195, 199, 0.6);
   cursor: not-allowed;
 }
 
 .upload-status {
   padding: 15px;
-  border: 1px solid #ddd;
+  border: 1px solid rgba(255, 255, 255, 0.3);
   border-radius: 4px;
-  background-color: #f9f9f9;
+  background-color: rgba(255, 255, 255, 0.1);
 }
 
 .status-label {
   font-weight: bold;
-  color: #555;
+  color: rgba(255, 255, 255, 0.9);
 }
 
 .status-value {
-  color: #333;
+  color: rgba(255, 255, 255, 0.8);
 }
 
 .config-section {
@@ -7563,25 +7958,25 @@ body {
 
 .result-title {
   font-size: 1.3em;
-  color: #27ae60;
+  color: #4facfe;
   margin-bottom: 15px;
 }
 
 .data-summary {
   font-size: 1.1em;
   margin-bottom: 20px;
-  color: #34495e;
+  color: rgba(255, 255, 255, 0.8);
 }
 
 .result-details {
   margin-top: 20px;
   padding-top: 20px;
-  border-top: 1px solid #ddd;
+  border-top: 1px solid rgba(255, 255, 255, 0.2);
 }
 
 .details-subtitle {
   font-size: 1.1em;
-  color: #666;
+  color: rgba(255, 255, 255, 0.8);
   margin-bottom: 15px;
   margin-top: 25px;
 }
@@ -7595,11 +7990,12 @@ body {
   margin-bottom: 8px;
   padding-left: 20px;
   position: relative;
+  color: rgba(255, 255, 255, 0.8);
 }
 
 .column-list li::before {
   content: '•';
-  color: #27ae60;
+  color: #4facfe;
   position: absolute;
   left: 0;
   font-weight: bold;
@@ -7610,37 +8006,44 @@ body {
   border-collapse: collapse;
   margin-top: 15px;
   font-size: 0.9em;
-  background-color: #fff;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  background-color: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
 }
 
 .sample-table th, .sample-table td {
   padding: 10px;
   text-align: left;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.8);
 }
 
 .sample-table th {
-  background-color: #f2f2f2;
+  background-color: rgba(255, 255, 255, 0.15);
   font-weight: bold;
-  color: #34495e;
+  color: white;
 }
 
 .sample-table tr:hover {
-  background-color: #f5f5f5;
+  background-color: rgba(255, 255, 255, 0.15);
 }
 
 .analysis-content {
   margin: 30px 0;
   padding: 20px;
-  background-color: #f9f9f9;
+  background-color: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 8px;
-  border-left: 4px solid #3498db;
+  border-left: 4px solid #4facfe;
 }
 
 .analysis-text {
   line-height: 1.8;
-  color: #333;
+  color: rgba(255, 255, 255, 0.8);
   font-size: 1em;
   max-height: 600px;
   overflow-y: auto;
@@ -7754,16 +8157,18 @@ body {
 .chart-item {
   flex: 1;
   min-width: 400px;
-  background-color: #f9f9f9;
+  background-color: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
   padding: 20px;
   border-radius: 8px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
   margin: 10px 0;
 }
 
 .chart-item h5 {
   font-size: 1.1em;
-  color: #666;
+  color: rgba(255, 255, 255, 0.9);
   margin-bottom: 15px;
   text-align: center;
 }
@@ -7774,7 +8179,7 @@ body {
 }
 
 .footer {
-  background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+  background: linear-gradient(135deg, #0a2463 0%, #1e3a8a 100%);
   color: #fff;
   padding: 25px 30px;
   text-align: center;
@@ -7782,7 +8187,7 @@ body {
   margin-bottom: 0 !important;
   position: relative;
   overflow: hidden;
-  box-shadow: 0 -4px 20px rgba(79, 172, 254, 0.2);
+  box-shadow: 0 -4px 20px rgba(10, 36, 99, 0.3);
 }
 
 .footer::before {
@@ -8367,23 +8772,26 @@ body {
 
 .refresh-btn {
   padding: 8px 16px;
-  background: #007bff;
+  background: rgba(255, 255, 255, 0.2);
   color: white;
-  border: none;
+  border: 1px solid rgba(255, 255, 255, 0.3);
   border-radius: 4px;
   cursor: pointer;
   font-size: 14px;
   margin-bottom: 20px;
-  transition: background 0.3s ease;
+  transition: all 0.3s ease;
+  backdrop-filter: blur(5px);
 }
 
 .refresh-btn:hover {
-  background: #0069d9;
+  background: rgba(255, 255, 255, 0.3);
+  transform: translateY(-2px);
 }
 
 .refresh-btn:disabled {
-  background: #cccccc;
+  background: rgba(255, 255, 255, 0.1);
   cursor: not-allowed;
+  border-color: rgba(255, 255, 255, 0.2);
 }
 
 .table-list {
@@ -8393,63 +8801,74 @@ body {
 .table-table {
   width: 100%;
   border-collapse: collapse;
-  background: white;
+  background: rgba(255, 255, 255, 0.1);
   box-shadow: 0 0 10px rgba(0,0,0,0.1);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  overflow: hidden;
 }
 
 .table-table th,
 .table-table td {
   padding: 12px;
   text-align: left;
-  border-bottom: 1px solid #ddd;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+  color: white;
 }
 
 .table-table th {
-  background: #f2f2f2;
+  background: rgba(255, 255, 255, 0.15);
   font-weight: bold;
+  color: white;
 }
 
 .table-table tr:hover {
-  background: #f5f5f5;
+  background: rgba(255, 255, 255, 0.15);
 }
 
 .delete-table-btn {
   padding: 6px 12px;
-  background: #dc3545;
+  background: rgba(220, 53, 69, 0.8);
   color: white;
-  border: none;
+  border: 1px solid rgba(220, 53, 69, 0.5);
   border-radius: 4px;
   cursor: pointer;
   font-size: 14px;
-  transition: background 0.3s ease;
+  transition: all 0.3s ease;
+  backdrop-filter: blur(5px);
 }
 
 .delete-table-btn:hover {
-  background: #c82333;
+  background: rgba(200, 35, 51, 0.9);
+  transform: translateY(-2px);
 }
 
 .delete-table-btn:disabled {
-  background: #cccccc;
+  background: rgba(204, 204, 204, 0.3);
   cursor: not-allowed;
+  border-color: rgba(204, 204, 204, 0.2);
 }
 
 .empty-state {
   padding: 40px;
   text-align: center;
-  background: #f8f9fa;
-  border: 1px solid #dee2e6;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 4px;
-  color: #6c757d;
+  color: rgba(255, 255, 255, 0.6);
+  backdrop-filter: blur(10px);
 }
 
 /* 系统日志样式 */
 .logs-section {
   padding: 40px;
   text-align: center;
-  background: #f8f9fa;
-  border: 1px solid #dee2e6;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 4px;
-  color: #6c757d;
+  color: rgba(255, 255, 255, 0.6);
+  backdrop-filter: blur(10px);
 }
 
 /* 额外样式调整 */
@@ -8484,18 +8903,18 @@ body {
 
 /* 首页容器 */
 .home-page {
-  background: linear-gradient(135deg, #f5f7fa 0%, #e4e8ec 100%);
+  background: linear-gradient(135deg, #0a2463 0%, #1e3a8a 100%);
   padding: 30px;
   border-radius: 12px;
 }
 
 /* 欢迎横幅区域 */
 .welcome-banner {
-  background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+  background: linear-gradient(135deg, #0a2463 0%, #1e3a8a 100%);
   border-radius: 16px;
   padding: 30px;
   margin-bottom: 30px;
-  box-shadow: 0 10px 40px rgba(79, 172, 254, 0.3);
+  box-shadow: 0 10px 40px rgba(10, 36, 99, 0.3);
   position: relative;
   overflow: hidden;
 }
@@ -8625,17 +9044,20 @@ body {
   grid-template-columns: repeat(4, 1fr);
   gap: 20px;
   margin-bottom: 30px;
+  background: transparent;
 }
 
 .stats-card {
-  background: white;
+  background: rgba(255, 255, 255, 0.1);
   border-radius: 16px;
   padding: 25px;
   display: flex;
   align-items: center;
   gap: 20px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
   transition: all 0.3s ease;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
 .stats-card:hover {
@@ -8662,22 +9084,21 @@ body {
 .stats-number {
   font-size: 32px;
   font-weight: 700;
-  color: #1a1a2e;
+  color: white;
   line-height: 1;
 }
 
 .stats-label {
   font-size: 14px;
-  color: #666;
+  color: rgba(255, 255, 255, 0.8);
   margin-top: 5px;
 }
 
 /* CMS内容区域 */
 .cms-home-section {
-  background: white;
+  background: transparent;
   border-radius: 16px;
   padding: 15px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
 }
 
 .section-header {
@@ -8688,13 +9109,13 @@ body {
 .section-main-title {
   font-size: 22px;
   font-weight: 700;
-  color: #1a1a2e;
+  color: white;
   margin: 0 0 8px 0;
 }
 
 .section-desc {
   font-size: 14px;
-  color: #666;
+  color: rgba(255, 255, 255, 0.8);
   margin: 0;
 }
 
@@ -8706,12 +9127,13 @@ body {
 }
 
 .cms-column {
-  background: linear-gradient(to bottom, #ffffff 0%, #fafbfc 100%);
+  background: rgba(255, 255, 255, 0.1);
   border-radius: 6px;
   padding: 6px;
-  border: 1px solid #eee;
+  border: 1px solid rgba(255, 255, 255, 0.2);
   transition: all 0.3s ease;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
+  backdrop-filter: blur(10px);
 }
 
 .cms-column:hover {
@@ -8742,7 +9164,7 @@ body {
 .column-title {
   font-size: 18px;
   font-weight: 600;
-  color: #1a1a2e;
+  color: white;
   margin: 0;
 }
 
@@ -8822,29 +9244,30 @@ body {
   border-radius: 8px;
   cursor: pointer;
   transition: all 0.3s ease;
-  background: #fafbfc;
+  background: rgba(255, 255, 255, 0.1);
 }
 
 .article-item:hover {
-  background: linear-gradient(135deg, #f0f2ff 0%, #e8ecff 100%);
+  background: rgba(255, 255, 255, 0.2);
   transform: translateX(5px);
 }
 
 .article-index {
   font-size: 14px;
   font-weight: 700;
-  color: #4facfe;
-  background: linear-gradient(135deg, #f0f2ff 0%, #e8ecff 100%);
+  color: white;
+  background: rgba(255, 255, 255, 0.2);
   padding: 5px 10px;
   border-radius: 8px;
   min-width: 35px;
   text-align: center;
+  border: 1px solid rgba(255, 255, 255, 0.3);
 }
 
 .article-title {
   flex: 1;
   font-size: 15px;
-  color: #333;
+  color: white;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -8853,7 +9276,7 @@ body {
 
 .article-date {
   font-size: 13px;
-  color: #999;
+  color: rgba(255, 255, 255, 0.7);
   white-space: nowrap;
 }
 
@@ -8875,9 +9298,11 @@ body {
 
 /* 栏目卡片样式优化 */
 .cms-column {
-  background: linear-gradient(to bottom, #ffffff 0%, #f8f9fa 100%) !important;
+  background: rgba(255, 255, 255, 0.1) !important;
   border-left: 4px solid #4facfe !important;
   transition: all 0.3s ease;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
 }
 
 .cms-column:hover {
