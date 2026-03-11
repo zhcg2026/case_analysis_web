@@ -4953,19 +4953,14 @@ function getColumnIcon(index) {
         <h2 class="section-title">AI应用</h2>
         
         <!-- AI应用标签页导航 -->
-        <div class="ai-apps-tabs" style="display: flex; margin-bottom: 24px; border-bottom: 2px solid rgba(255, 255, 255, 0.2); background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px); border-radius: 8px 8px 0 0; overflow: hidden;">
+        <div class="ai-apps-tabs" style="display: flex; margin-bottom: 20px; border-bottom: 1px solid #dee2e6;">
           <div 
             v-if="!userInfo || userInfo?.role === 'admin' || (userInfo?.permissions && userInfo?.permissions.data_analysis)"
             class="ai-apps-tab" 
             :class="{ active: aiAppsActiveTab === 'analysis' }"
             @click="aiAppsActiveTab = 'analysis'"
-            style="padding: 14px 28px; cursor: pointer; font-size: 16px; font-weight: 500; color: rgba(255, 255, 255, 0.8); border-bottom: 3px solid transparent; transition: all 0.3s; position: relative; background: transparent;"
-            :style="{ 
-              color: aiAppsActiveTab === 'analysis' ? '#4facfe' : 'rgba(255, 255, 255, 0.8)',
-              background: aiAppsActiveTab === 'analysis' ? 'rgba(255, 255, 255, 0.15)' : 'transparent',
-              borderBottomColor: aiAppsActiveTab === 'analysis' ? '#4facfe' : 'transparent',
-              fontWeight: aiAppsActiveTab === 'analysis' ? '600' : '500'
-            }"
+            style="padding: 10px 20px; cursor: pointer; border-bottom: 3px solid transparent; margin-right: 10px; font-weight: bold;"
+            :style="aiAppsActiveTab === 'analysis' ? { borderBottomColor: '#4facfe', color: '#4facfe' } : { color: 'rgba(255, 255, 255, 0.8)' }"
           >
             数据分析
           </div>
@@ -4974,13 +4969,8 @@ function getColumnIcon(index) {
             class="ai-apps-tab" 
             :class="{ active: aiAppsActiveTab === 'analysis-v2' }"
             @click="aiAppsActiveTab = 'analysis-v2'"
-            style="padding: 14px 28px; cursor: pointer; font-size: 16px; font-weight: 500; color: rgba(255, 255, 255, 0.8); border-bottom: 3px solid transparent; transition: all 0.3s; position: relative; background: transparent;"
-            :style="{ 
-              color: aiAppsActiveTab === 'analysis-v2' ? '#4facfe' : 'rgba(255, 255, 255, 0.8)',
-              background: aiAppsActiveTab === 'analysis-v2' ? 'rgba(255, 255, 255, 0.15)' : 'transparent',
-              borderBottomColor: aiAppsActiveTab === 'analysis-v2' ? '#4facfe' : 'transparent',
-              fontWeight: aiAppsActiveTab === 'analysis-v2' ? '600' : '500'
-            }"
+            style="padding: 10px 20px; cursor: pointer; border-bottom: 3px solid transparent; margin-right: 10px; font-weight: bold;"
+            :style="aiAppsActiveTab === 'analysis-v2' ? { borderBottomColor: '#4facfe', color: '#4facfe' } : { color: 'rgba(255, 255, 255, 0.8)' }"
           >
             数据分析（新版）
           </div>
@@ -4989,13 +4979,8 @@ function getColumnIcon(index) {
             class="ai-apps-tab" 
             :class="{ active: aiAppsActiveTab === 'spotcheck' }"
             @click="aiAppsActiveTab = 'spotcheck'"
-            style="padding: 14px 28px; cursor: pointer; font-size: 16px; font-weight: 500; color: rgba(255, 255, 255, 0.8); border-bottom: 3px solid transparent; transition: all 0.3s; position: relative; background: transparent;"
-            :style="{ 
-              color: aiAppsActiveTab === 'spotcheck' ? '#4facfe' : 'rgba(255, 255, 255, 0.8)',
-              background: aiAppsActiveTab === 'spotcheck' ? 'rgba(255, 255, 255, 0.15)' : 'transparent',
-              borderBottomColor: aiAppsActiveTab === 'spotcheck' ? '#4facfe' : 'transparent',
-              fontWeight: aiAppsActiveTab === 'spotcheck' ? '600' : '500'
-            }"
+            style="padding: 10px 20px; cursor: pointer; border-bottom: 3px solid transparent; margin-right: 10px; font-weight: bold;"
+            :style="aiAppsActiveTab === 'spotcheck' ? { borderBottomColor: '#4facfe', color: '#4facfe' } : { color: 'rgba(255, 255, 255, 0.8)' }"
           >
             案件抽查
           </div>
@@ -5004,13 +4989,8 @@ function getColumnIcon(index) {
             class="ai-apps-tab" 
             :class="{ active: aiAppsActiveTab === 'chengguantong' }"
             @click="aiAppsActiveTab = 'chengguantong'"
-            style="padding: 14px 28px; cursor: pointer; font-size: 16px; font-weight: 500; color: rgba(255, 255, 255, 0.8); border-bottom: 3px solid transparent; transition: all 0.3s; position: relative; background: transparent;"
-            :style="{ 
-              color: aiAppsActiveTab === 'chengguantong' ? '#4facfe' : 'rgba(255, 255, 255, 0.8)',
-              background: aiAppsActiveTab === 'chengguantong' ? 'rgba(255, 255, 255, 0.15)' : 'transparent',
-              borderBottomColor: aiAppsActiveTab === 'chengguantong' ? '#4facfe' : 'transparent',
-              fontWeight: aiAppsActiveTab === 'chengguantong' ? '600' : '500'
-            }"
+            style="padding: 10px 20px; cursor: pointer; border-bottom: 3px solid transparent; margin-right: 10px; font-weight: bold;"
+            :style="aiAppsActiveTab === 'chengguantong' ? { borderBottomColor: '#4facfe', color: '#4facfe' } : { color: 'rgba(255, 255, 255, 0.8)' }"
           >
             城管通
           </div>
@@ -5507,18 +5487,13 @@ function getColumnIcon(index) {
         <h2 class="section-title">汇问台</h2>
         <div class="huiwentai-section" style="max-width: 1000px; margin: 0 auto;">
           <!-- 标签页导航 -->
-          <div class="huiwentai-tabs" style="display: flex; margin-bottom: 24px; border-bottom: 2px solid #e8e8e8; background: #fafafa; border-radius: 8px 8px 0 0; overflow: hidden;">
+          <div class="huiwentai-tabs" style="display: flex; margin-bottom: 20px; border-bottom: 1px solid #dee2e6;">
             <div 
               class="huiwentai-tab" 
               :class="{ active: huiwentaiActiveTab === 'tasks' }"
               @click="switchHuiwentaiTab('tasks')"
-              style="padding: 14px 28px; cursor: pointer; font-size: 16px; font-weight: 500; color: #666; border-bottom: 3px solid transparent; transition: all 0.3s; position: relative; background: transparent;"
-              :style="{ 
-                color: huiwentaiActiveTab === 'tasks' ? '#1890ff' : '#666',
-                background: huiwentaiActiveTab === 'tasks' ? '#e6f7ff' : 'transparent',
-                borderBottomColor: huiwentaiActiveTab === 'tasks' ? '#1890ff' : 'transparent',
-                fontWeight: huiwentaiActiveTab === 'tasks' ? '600' : '500'
-              }"
+              style="padding: 10px 20px; cursor: pointer; border-bottom: 3px solid transparent; margin-right: 10px; font-weight: bold;"
+              :style="huiwentaiActiveTab === 'tasks' ? { borderBottomColor: '#4facfe', color: '#4facfe' } : { color: 'rgba(255, 255, 255, 0.8)' }"
             >
               问题列表
             </div>
@@ -5526,13 +5501,8 @@ function getColumnIcon(index) {
               class="huiwentai-tab" 
               :class="{ active: huiwentaiActiveTab === 'daily-reports' }"
               @click="switchHuiwentaiTab('daily-reports')"
-              style="padding: 14px 28px; cursor: pointer; font-size: 16px; font-weight: 500; color: #666; border-bottom: 3px solid transparent; transition: all 0.3s; position: relative; background: transparent;"
-              :style="{ 
-                color: huiwentaiActiveTab === 'daily-reports' ? '#1890ff' : '#666',
-                background: huiwentaiActiveTab === 'daily-reports' ? '#e6f7ff' : 'transparent',
-                borderBottomColor: huiwentaiActiveTab === 'daily-reports' ? '#1890ff' : 'transparent',
-                fontWeight: huiwentaiActiveTab === 'daily-reports' ? '600' : '500'
-              }"
+              style="padding: 10px 20px; cursor: pointer; border-bottom: 3px solid transparent; margin-right: 10px; font-weight: bold;"
+              :style="huiwentaiActiveTab === 'daily-reports' ? { borderBottomColor: '#4facfe', color: '#4facfe' } : { color: 'rgba(255, 255, 255, 0.8)' }"
             >
               日报数据
             </div>
@@ -5542,14 +5512,14 @@ function getColumnIcon(index) {
           <div style="margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center;">
             <!-- 月份选择下拉框 -->
             <div>
-              <label v-if="huiwentaiActiveTab === 'tasks'" style="margin-right: 10px; font-size: 14px; color: #666;">选择月份：</label>
-              <select v-if="huiwentaiActiveTab === 'tasks'" v-model="selectedMonthTasks" style="padding: 8px 12px; border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 4px; font-size: 14px; background: rgba(255, 255, 255, 0.15); color: white; appearance: none; -webkit-appearance: none; -moz-appearance: none; background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMiIgaGVpZ2h0PSIxMiIgdmlld0JveD0iMCAwIDEyIDEyIj48cGF0aCBmaWxsPSJyZ2JhKDI1NSwyNTUsMjU1LDAuOCkiIGQ9Ik02IDlMMiA1aDhsNC41IDMuNSIvPjwvc3ZnPg=='); background-repeat: no-repeat; background-position: right 10px center; padding-right: 30px;">
+              <label v-if="huiwentaiActiveTab === 'tasks'" style="margin-right: 10px; font-size: 14px; color: rgba(255, 255, 255, 0.9);">选择月份：</label>
+              <select v-if="huiwentaiActiveTab === 'tasks'" v-model="selectedMonthTasks" style="padding: 8px 12px; border: 1px solid rgba(100, 149, 237, 0.5); border-radius: 6px; font-size: 14px; background: rgba(30, 58, 138, 0.6); color: white; appearance: none; -webkit-appearance: none; -moz-appearance: none; background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMiIgaGVpZ2h0PSIxMiIgdmlld0JveD0iMCAwIDEyIDEyIj48cGF0aCBmaWxsPSJyZ2JhKDI1NSwyNTUsMjU1LDAuOCkiIGQ9Ik02IDlMMiA1aDhsNC41IDMuNSIvPjwvc3ZnPg=='); background-repeat: no-repeat; background-position: right 10px center; padding-right: 30px; transition: all 0.3s ease;" @mouseenter="$event.target.style.borderColor='rgba(100, 149, 237, 0.8)'; $event.target.style.background='rgba(30, 58, 138, 0.8)'" @mouseleave="$event.target.style.borderColor='rgba(100, 149, 237, 0.5)'; $event.target.style.background='rgba(30, 58, 138, 0.6)'">
                 <option value="">全部</option>
                 <option v-for="month in availableMonthsTasks" :key="month" :value="month">{{ month }}</option>
               </select>
               
-              <label v-if="huiwentaiActiveTab === 'daily-reports'" style="margin-right: 10px; font-size: 14px; color: rgba(255, 255, 255, 0.8);">选择月份：</label>
-              <select v-if="huiwentaiActiveTab === 'daily-reports'" v-model="selectedMonthReports" style="padding: 8px 12px; border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 4px; font-size: 14px; background: rgba(255, 255, 255, 0.15); color: white; appearance: none; -webkit-appearance: none; -moz-appearance: none; background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMiIgaGVpZ2h0PSIxMiIgdmlld0JveD0iMCAwIDEyIDEyIj48cGF0aCBmaWxsPSJyZ2JhKDI1NSwyNTUsMjU1LDAuOCkiIGQ9Ik02IDlMMiA1aDhsNC41IDMuNSIvPjwvc3ZnPg=='); background-repeat: no-repeat; background-position: right 10px center; padding-right: 30px;">
+              <label v-if="huiwentaiActiveTab === 'daily-reports'" style="margin-right: 10px; font-size: 14px; color: rgba(255, 255, 255, 0.9);">选择月份：</label>
+              <select v-if="huiwentaiActiveTab === 'daily-reports'" v-model="selectedMonthReports" style="padding: 8px 12px; border: 1px solid rgba(100, 149, 237, 0.5); border-radius: 6px; font-size: 14px; background: rgba(30, 58, 138, 0.6); color: white; appearance: none; -webkit-appearance: none; -moz-appearance: none; background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMiIgaGVpZ2h0PSIxMiIgdmlld0JveD0iMCAwIDEyIDEyIj48cGF0aCBmaWxsPSJyZ2JhKDI1NSwyNTUsMjU1LDAuOCkiIGQ9Ik02IDlMMiA1aDhsNC41IDMuNSIvPjwvc3ZnPg=='); background-repeat: no-repeat; background-position: right 10px center; padding-right: 30px; transition: all 0.3s ease;" @mouseenter="$event.target.style.borderColor='rgba(100, 149, 237, 0.8)'; $event.target.style.background='rgba(30, 58, 138, 0.8)'" @mouseleave="$event.target.style.borderColor='rgba(100, 149, 237, 0.5)'; $event.target.style.background='rgba(30, 58, 138, 0.6)'">
                 <option value="">全部</option>
                 <option v-for="month in availableMonthsReports" :key="month" :value="month">{{ month }}</option>
               </select>
@@ -5586,28 +5556,28 @@ function getColumnIcon(index) {
           
           <!-- 任务数据标签页内容 -->
           <div v-else-if="huiwentaiActiveTab === 'tasks'" class="tasks-table">
-            <table style="width: 100%; border-collapse: collapse; margin-top: 20px; text-align: left;">
+            <table style="width: 100%; border-collapse: collapse; margin-top: 20px; text-align: left; background: rgba(30, 58, 138, 0.3); backdrop-filter: blur(10px); border-radius: 12px; overflow: hidden; border: 1px solid rgba(100, 149, 237, 0.3);">
               <thead>
-                <tr style="background-color: #f5f5f5;">
-                  <th style="padding: 12px; border: 1px solid #ddd;">任务号</th>
-                  <th style="padding: 12px; border: 1px solid #ddd;">问题描述</th>
-                  <th style="padding: 12px; border: 1px solid #ddd;">诉求</th>
-                  <th style="padding: 12px; border: 1px solid #ddd; min-width: 150px;">联系方式</th>
-                  <th style="padding: 12px; border: 1px solid #ddd;">创建时间</th>
-                  <th style="padding: 12px; border: 1px solid #ddd;">处理结果</th>
+                <tr style="background: rgba(30, 58, 138, 0.6);">
+                  <th style="padding: 14px 12px; border: 1px solid rgba(100, 149, 237, 0.3); color: white; font-weight: 600;">任务号</th>
+                  <th style="padding: 14px 12px; border: 1px solid rgba(100, 149, 237, 0.3); color: white; font-weight: 600;">问题描述</th>
+                  <th style="padding: 14px 12px; border: 1px solid rgba(100, 149, 237, 0.3); color: white; font-weight: 600;">诉求</th>
+                  <th style="padding: 14px 12px; border: 1px solid rgba(100, 149, 237, 0.3); color: white; font-weight: 600; min-width: 150px;">联系方式</th>
+                  <th style="padding: 14px 12px; border: 1px solid rgba(100, 149, 237, 0.3); color: white; font-weight: 600;">创建时间</th>
+                  <th style="padding: 14px 12px; border: 1px solid rgba(100, 149, 237, 0.3); color: white; font-weight: 600;">处理结果</th>
                 </tr>
               </thead>
               <tbody>
                 <tr v-if="filteredHuiwentaiTasks.length === 0">
-                  <td colspan="6" style="padding: 40px; border: 1px solid #ddd; text-align: center;">暂无任务数据</td>
+                  <td colspan="6" style="padding: 40px; border: 1px solid rgba(100, 149, 237, 0.3); text-align: center; color: rgba(255, 255, 255, 0.9); background: rgba(30, 58, 138, 0.2);">暂无任务数据</td>
                 </tr>
-                <tr v-for="task in paginatedHuiwentaiTasks" :key="task.taskId || task._id" style="background-color: white;">
-                  <td style="padding: 12px; border: 1px solid #ddd;">{{ task.taskId || task._id || '无' }}</td>
-                  <td style="padding: 12px; border: 1px solid #ddd;">{{ task.description || '无' }}</td>
-                  <td style="padding: 12px; border: 1px solid #ddd;">{{ task.request || '无' }}</td>
-                  <td style="padding: 12px; border: 1px solid #ddd;">{{ task.contact || '无' }}</td>
-                  <td style="padding: 12px; border: 1px solid #ddd;">{{ task.createdAt ? new Date(task.createdAt).toLocaleString() : '无' }}</td>
-                  <td style="padding: 12px; border: 1px solid #ddd;">{{ task.processResult || '' }}</td>
+                <tr v-for="task in paginatedHuiwentaiTasks" :key="task.taskId || task._id" style="background: rgba(30, 58, 138, 0.2);">
+                  <td style="padding: 12px; border: 1px solid rgba(100, 149, 237, 0.2); color: rgba(255, 255, 255, 0.9);">{{ task.taskId || task._id || '无' }}</td>
+                  <td style="padding: 12px; border: 1px solid rgba(100, 149, 237, 0.2); color: rgba(255, 255, 255, 0.9);">{{ task.description || '无' }}</td>
+                  <td style="padding: 12px; border: 1px solid rgba(100, 149, 237, 0.2); color: rgba(255, 255, 255, 0.9);">{{ task.request || '无' }}</td>
+                  <td style="padding: 12px; border: 1px solid rgba(100, 149, 237, 0.2); color: rgba(255, 255, 255, 0.9);">{{ task.contact || '无' }}</td>
+                  <td style="padding: 12px; border: 1px solid rgba(100, 149, 237, 0.2); color: rgba(255, 255, 255, 0.9);">{{ task.createdAt ? new Date(task.createdAt).toLocaleString() : '无' }}</td>
+                  <td style="padding: 12px; border: 1px solid rgba(100, 149, 237, 0.2); color: rgba(255, 255, 255, 0.9);">{{ task.processResult || '' }}</td>
                 </tr>
               </tbody>
             </table>
@@ -5617,24 +5587,28 @@ function getColumnIcon(index) {
               <button 
                 @click="goToTasksPage(tasksCurrentPage - 1)" 
                 :disabled="tasksCurrentPage === 1"
-                style="padding: 6px 12px; border: 1px solid #ddd; background: white; cursor: pointer; border-radius: 4px;"
+                style="padding: 8px 16px; border: 1px solid rgba(100, 149, 237, 0.3); background: rgba(30, 58, 138, 0.6); color: white; cursor: pointer; border-radius: 6px; transition: all 0.3s ease;"
                 :style="{ opacity: tasksCurrentPage === 1 ? 0.5 : 1, cursor: tasksCurrentPage === 1 ? 'not-allowed' : 'pointer' }"
+                @mouseenter="if(tasksCurrentPage !== 1) { $event.target.style.background='rgba(30, 58, 138, 0.8)'; $event.target.style.borderColor='rgba(100, 149, 237, 0.5)'; $event.target.style.transform='translateY(-2px)'; $event.target.style.boxShadow='0 4px 12px rgba(0, 0, 0, 0.2)'; }"
+                @mouseleave="if(tasksCurrentPage !== 1) { $event.target.style.background='rgba(30, 58, 138, 0.6)'; $event.target.style.borderColor='rgba(100, 149, 237, 0.3)'; $event.target.style.transform='translateY(0)'; $event.target.style.boxShadow='none'; }"
               >上一页</button>
               
-              <span style="padding: 0 10px;">第 {{ tasksCurrentPage }} 页 / 共 {{ tasksTotalPages }} 页</span>
+              <span style="padding: 0 10px; color: rgba(255, 255, 255, 0.9);">第 {{ tasksCurrentPage }} 页 / 共 {{ tasksTotalPages }} 页</span>
               
               <button 
                 @click="goToTasksPage(tasksCurrentPage + 1)" 
                 :disabled="tasksCurrentPage === tasksTotalPages"
-                style="padding: 6px 12px; border: 1px solid #ddd; background: white; cursor: pointer; border-radius: 4px;"
+                style="padding: 8px 16px; border: 1px solid rgba(100, 149, 237, 0.3); background: rgba(30, 58, 138, 0.6); color: white; cursor: pointer; border-radius: 6px; transition: all 0.3s ease;"
                 :style="{ opacity: tasksCurrentPage === tasksTotalPages ? 0.5 : 1, cursor: tasksCurrentPage === tasksTotalPages ? 'not-allowed' : 'pointer' }"
+                @mouseenter="if(tasksCurrentPage !== tasksTotalPages) { $event.target.style.background='rgba(30, 58, 138, 0.8)'; $event.target.style.borderColor='rgba(100, 149, 237, 0.5)'; $event.target.style.transform='translateY(-2px)'; $event.target.style.boxShadow='0 4px 12px rgba(0, 0, 0, 0.2)'; }"
+                @mouseleave="if(tasksCurrentPage !== tasksTotalPages) { $event.target.style.background='rgba(30, 58, 138, 0.6)'; $event.target.style.borderColor='rgba(100, 149, 237, 0.3)'; $event.target.style.transform='translateY(0)'; $event.target.style.boxShadow='none'; }"
               >下一页</button>
             </div>
           </div>
           
           <!-- 日报数据标签页内容 -->
           <div v-else-if="huiwentaiActiveTab === 'daily-reports'" class="daily-reports-section">
-            <div v-if="filteredHuiwentaiDailyReports.length === 0" style="padding: 40px; text-align: center; color: #999;">
+            <div v-if="filteredHuiwentaiDailyReports.length === 0" style="padding: 40px; text-align: center; color: rgba(255, 255, 255, 0.9); background: rgba(30, 58, 138, 0.2); border-radius: 8px; border: 1px solid rgba(100, 149, 237, 0.3);">
               暂无日报数据
             </div>
             <div v-else class="reports-list" style="display: flex; flex-direction: column; gap: 16px; margin-top: 20px;">
@@ -5643,48 +5617,36 @@ function getColumnIcon(index) {
                 :key="report._id"
                 class="report-card"
                 @click="toggleReportExpand(report)"
-                style="border-radius: 10px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.06); cursor: pointer; transition: all 0.3s ease;"
+                style="border-radius: 10px; overflow: hidden; cursor: pointer; transition: all 0.3s ease; background: rgba(30, 58, 138, 0.3); backdrop-filter: blur(10px); border: 1px solid rgba(100, 149, 237, 0.3);"
                 :style="{ 
-                  backgroundColor: expandedReportId === (report._id || report.id) 
-                    ? (parseReportSummary(report).shift.includes('夜') ? '#f9f0ff' : '#e6f7ff') 
-                    : (parseReportSummary(report).shift.includes('夜') ? '#fdfbf7' : '#f0f9ff'),
                   transform: expandedReportId === (report._id || report.id) ? 'scale(1.01)' : 'scale(1)',
-                  boxShadow: expandedReportId === (report._id || report.id) 
-                    ? (parseReportSummary(report).shift.includes('夜') ? '0 4px 16px rgba(114, 46, 209, 0.15)' : '0 4px 16px rgba(24, 144, 255, 0.15)') 
-                    : '0 2px 8px rgba(0,0,0,0.06)'
+                  borderColor: expandedReportId === (report._id || report.id) ? 'rgba(100, 149, 237, 0.6)' : 'rgba(100, 149, 237, 0.3)',
+                  boxShadow: expandedReportId === (report._id || report.id) ? '0 4px 16px rgba(0, 0, 0, 0.2)' : '0 2px 8px rgba(0, 0, 0, 0.1)'
                 }"
               >
                 <!-- 卡片头部 - 关键信息 -->
                 <div 
                   class="report-summary" 
-                  style="padding: 16px 20px; display: flex; justify-content: space-between; align-items: center; background-color: #fafafa; transition: background-color 0.3s;"
-                  :style="{
-                    backgroundColor: parseReportSummary(report).shift.includes('夜') ? '#faf5ff' : '#f0f9ff'
-                  }"
+                  style="padding: 16px 20px; display: flex; justify-content: space-between; align-items: center; transition: background-color 0.3s; background: rgba(30, 58, 138, 0.4);"
                 >
                   <div style="display: flex; gap: 32px; align-items: center;">
                     <div style="min-width: 120px;">
-                      <span style="font-size: 12px; color: #999;">日期</span>
-                      <div style="font-size: 16px; font-weight: 600; color: #333; margin-top: 4px;">
+                      <span style="font-size: 12px; color: rgba(255, 255, 255, 0.7);">日期</span>
+                      <div style="font-size: 16px; font-weight: 600; color: white; margin-top: 4px;">
                         {{ parseReportSummary(report).date }}
                       </div>
                     </div>
                     <div style="min-width: 100px;">
-                      <span style="font-size: 12px; color: #999;">值班人员</span>
-                      <div style="font-size: 16px; color: #333; margin-top: 4px;">
+                      <span style="font-size: 12px; color: rgba(255, 255, 255, 0.7);">值班人员</span>
+                      <div style="font-size: 16px; color: white; margin-top: 4px;">
                         {{ parseReportSummary(report).person }}
                       </div>
                     </div>
                     <div style="min-width: 90px;">
-                      <span style="font-size: 12px; color: #999;">班次</span>
+                      <span style="font-size: 12px; color: rgba(255, 255, 255, 0.7);">班次</span>
                       <div style="margin-top: 4px;">
                         <span 
-                          style="display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 14px; font-weight: 500;"
-                          :style="{
-                            backgroundColor: parseReportSummary(report).shift.includes('夜') ? '#f9f0ff' : '#e6f7ff',
-                            color: parseReportSummary(report).shift.includes('夜') ? '#722ed1' : '#1890ff',
-                            border: parseReportSummary(report).shift.includes('夜') ? '1px solid #d3adf7' : '1px solid #91d5ff'
-                          }"
+                          style="display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 14px; font-weight: 500; background: rgba(100, 149, 237, 0.3); color: white; border: 1px solid rgba(100, 149, 237, 0.5);"
                         >
                           {{ parseReportSummary(report).shift }}
                         </span>
@@ -5693,24 +5655,24 @@ function getColumnIcon(index) {
                   </div>
                   <div style="display: flex; gap: 24px; align-items: center;">
                     <div style="text-align: center;">
-                      <span style="font-size: 12px; color: #999;">上报</span>
-                      <div style="font-size: 20px; font-weight: 600; color: #1890ff; margin-top: 4px;">
+                      <span style="font-size: 12px; color: rgba(255, 255, 255, 0.7);">上报</span>
+                      <div style="font-size: 20px; font-weight: 600; color: #87ceeb; margin-top: 4px;">
                         {{ parseReportSummary(report).reported }}
                       </div>
                     </div>
                     <div style="text-align: center;">
-                      <span style="font-size: 12px; color: #999;">受理</span>
-                      <div style="font-size: 20px; font-weight: 600; color: #52c41a; margin-top: 4px;">
+                      <span style="font-size: 12px; color: rgba(255, 255, 255, 0.7);">受理</span>
+                      <div style="font-size: 20px; font-weight: 600; color: #90ee90; margin-top: 4px;">
                         {{ parseReportSummary(report).accepted }}
                       </div>
                     </div>
                     <div style="text-align: center;">
-                      <span style="font-size: 12px; color: #999;">办结</span>
-                      <div style="font-size: 20px; font-weight: 600; color: #fa8c16; margin-top: 4px;">
+                      <span style="font-size: 12px; color: rgba(255, 255, 255, 0.7);">办结</span>
+                      <div style="font-size: 20px; font-weight: 600; color: #ffb6c1; margin-top: 4px;">
                         {{ parseReportSummary(report).completed }}
                       </div>
                     </div>
-                    <div style="margin-left: 16px; color: #999; font-size: 20px;">
+                    <div style="margin-left: 16px; color: rgba(255, 255, 255, 0.7); font-size: 20px;">
                       {{ expandedReportId === (report._id || report.id) ? '▼' : '▶' }}
                     </div>
                   </div>
@@ -5720,9 +5682,9 @@ function getColumnIcon(index) {
                 <div 
                   v-if="expandedReportId === (report._id || report.id)"
                   class="report-detail"
-                  style="padding: 24px 20px; border-top: 1px solid #f0f0f0; background-color: white;"
+                  style="padding: 24px 20px; border-top: 1px solid rgba(100, 149, 237, 0.3); background: rgba(30, 58, 138, 0.2);"
                 >
-                  <div style="white-space: pre-wrap; line-height: 2.2; color: #333; font-size: 15px; font-family: 'Microsoft YaHei', sans-serif;">
+                  <div style="white-space: pre-wrap; line-height: 2.2; color: rgba(255, 255, 255, 0.9); font-size: 15px; font-family: 'Microsoft YaHei', sans-serif;">
                     {{ formatReportContent(report) }}
                   </div>
                 </div>
@@ -5734,17 +5696,21 @@ function getColumnIcon(index) {
               <button 
                 @click="goToReportsPage(reportsCurrentPage - 1)" 
                 :disabled="reportsCurrentPage === 1"
-                style="padding: 6px 12px; border: 1px solid #ddd; background: white; cursor: pointer; border-radius: 4px;"
+                style="padding: 8px 16px; border: 1px solid rgba(100, 149, 237, 0.3); background: rgba(30, 58, 138, 0.6); color: white; cursor: pointer; border-radius: 6px; transition: all 0.3s ease;"
                 :style="{ opacity: reportsCurrentPage === 1 ? 0.5 : 1, cursor: reportsCurrentPage === 1 ? 'not-allowed' : 'pointer' }"
+                @mouseenter="if(reportsCurrentPage !== 1) { $event.target.style.background='rgba(30, 58, 138, 0.8)'; $event.target.style.borderColor='rgba(100, 149, 237, 0.5)'; $event.target.style.transform='translateY(-2px)'; $event.target.style.boxShadow='0 4px 12px rgba(0, 0, 0, 0.2)'; }"
+                @mouseleave="if(reportsCurrentPage !== 1) { $event.target.style.background='rgba(30, 58, 138, 0.6)'; $event.target.style.borderColor='rgba(100, 149, 237, 0.3)'; $event.target.style.transform='translateY(0)'; $event.target.style.boxShadow='none'; }"
               >上一页</button>
               
-              <span style="padding: 0 10px;">第 {{ reportsCurrentPage }} 页 / 共 {{ reportsTotalPages }} 页</span>
+              <span style="padding: 0 10px; color: rgba(255, 255, 255, 0.9);">第 {{ reportsCurrentPage }} 页 / 共 {{ reportsTotalPages }} 页</span>
               
               <button 
                 @click="goToReportsPage(reportsCurrentPage + 1)" 
                 :disabled="reportsCurrentPage === reportsTotalPages"
-                style="padding: 6px 12px; border: 1px solid #ddd; background: white; cursor: pointer; border-radius: 4px;"
+                style="padding: 8px 16px; border: 1px solid rgba(100, 149, 237, 0.3); background: rgba(30, 58, 138, 0.6); color: white; cursor: pointer; border-radius: 6px; transition: all 0.3s ease;"
                 :style="{ opacity: reportsCurrentPage === reportsTotalPages ? 0.5 : 1, cursor: reportsCurrentPage === reportsTotalPages ? 'not-allowed' : 'pointer' }"
+                @mouseenter="if(reportsCurrentPage !== reportsTotalPages) { $event.target.style.background='rgba(30, 58, 138, 0.8)'; $event.target.style.borderColor='rgba(100, 149, 237, 0.5)'; $event.target.style.transform='translateY(-2px)'; $event.target.style.boxShadow='0 4px 12px rgba(0, 0, 0, 0.2)'; }"
+                @mouseleave="if(reportsCurrentPage !== reportsTotalPages) { $event.target.style.background='rgba(30, 58, 138, 0.6)'; $event.target.style.borderColor='rgba(100, 149, 237, 0.3)'; $event.target.style.transform='translateY(0)'; $event.target.style.boxShadow='none'; }"
               >下一页</button>
             </div>
           </div>
@@ -5777,7 +5743,7 @@ function getColumnIcon(index) {
           </div>
         </div>
         
-        <div class="assessment-section" style="max-width: 900px; margin: 0 auto;">
+        <div class="assessment-section" style="max-width: 900px; margin: 0 auto; min-height: 600px; background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px); border-radius: 8px; padding: 20px;">
           <!-- 原版考核计分内容 -->
           <div v-if="assessmentActiveTab === 'old'">
             <!-- 说明信息 -->
@@ -5835,8 +5801,8 @@ function getColumnIcon(index) {
             </div>
             
             <!-- 考核结果显示 -->
-            <div v-if="assessmentResult" style="background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 8px; padding: 25px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);">
-              <h3 style="margin: 0 0 20px 0; padding-bottom: 15px; border-bottom: 2px solid #4facfe; font-size: 20px; color: white;">📋 考核结果</h3>
+            <div v-if="assessmentResult" style="background: white; border-radius: 8px; padding: 25px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08); margin-top: 20px;">
+              <h3 style="margin: 0 0 20px 0; padding-bottom: 15px; border-bottom: 2px solid #4facfe; font-size: 20px; color: #333;">📋 考核结果</h3>
               
               <!-- 结果摘要 -->
               <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; margin-bottom: 30px;">
@@ -6008,46 +5974,46 @@ function getColumnIcon(index) {
         
         <div class="cases-section" style="max-width: 1200px; margin: 0 auto;">
           <!-- 导入区域 -->
-          <div style="background: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);">
-            <h3 style="margin: 0 0 15px 0; font-size: 16px; color: #333;">导入案件数据</h3>
+          <div style="background: rgba(30, 58, 138, 0.4); backdrop-filter: blur(10px); padding: 20px; border-radius: 12px; margin-bottom: 20px; border: 1px solid rgba(100, 149, 237, 0.3); box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);">
+            <h3 style="margin: 0 0 15px 0; font-size: 18px; color: white; border-bottom: 1px solid rgba(100, 149, 237, 0.3); padding-bottom: 10px;">导入案件数据</h3>
             
             <div style="display: flex; gap: 15px; align-items: center; margin-top: 15px;">
               <input 
                 type="file" 
                 @change="handleCaseFileSelect" 
                 accept=".xlsx"
-                style="flex: 1; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px;"
+                style="flex: 1; padding: 10px 12px; border: 1px solid rgba(100, 149, 237, 0.5); border-radius: 6px; background: rgba(30, 58, 138, 0.6); color: white;"
               >
               <button 
                 @click="importCases"
                 :disabled="caseImportLoading || !caseImportFile"
-                style="padding: 8px 20px; background: #1890ff; color: white; border: none; border-radius: 4px; cursor: pointer;"
+                style="padding: 10px 20px; background: linear-gradient(135deg, rgba(30, 58, 138, 0.8) 0%, rgba(45, 74, 154, 0.8) 100%); color: white; border: 1px solid rgba(100, 149, 237, 0.5); border-radius: 6px; cursor: pointer; font-weight: 600; transition: all 0.3s ease;"
               >
                 {{ caseImportLoading ? '导入中...' : '开始导入' }}
               </button>
             </div>
             
-            <div v-if="caseImportMessage" style="margin-top: 10px; padding: 10px; background: #f6ffed; border: 1px solid #b7ebff; border-radius: 4px; color: #1890ff;">
+            <div v-if="caseImportMessage" style="margin-top: 10px; padding: 12px; background: rgba(76, 175, 80, 0.2); border: 1px solid rgba(76, 175, 80, 0.4); border-radius: 6px; color: rgba(255, 255, 255, 0.9); backdrop-filter: blur(5px);">
               {{ caseImportMessage }}
             </div>
             
-            <div v-if="casesError" style="margin-top: 10px; padding: 10px; background: #fff2f2; border: 1px solid #ffccc; border-radius: 4px; color: #ff4d4f;">
+            <div v-if="casesError" style="margin-top: 10px; padding: 12px; background: rgba(244, 67, 54, 0.2); border: 1px solid rgba(244, 67, 54, 0.4); border-radius: 6px; color: rgba(255, 255, 255, 0.9); backdrop-filter: blur(5px);">
               {{ casesError }}
             </div>
           </div>
           
           <!-- 搜索区域 -->
-          <div style="background: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);">
+          <div style="background: rgba(30, 58, 138, 0.4); backdrop-filter: blur(10px); padding: 20px; border-radius: 12px; margin-bottom: 20px; border: 1px solid rgba(100, 149, 237, 0.3); box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);">
             <div style="display: flex; gap: 15px; align-items: center;">
               <input 
                 v-model="casesSearch"
                 placeholder="搜索任务号、问题描述、地址..."
                 @keyup.enter="searchCases"
-                style="flex: 1; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px;"
+                style="flex: 1; padding: 10px 12px; border: 1px solid rgba(100, 149, 237, 0.5); border-radius: 6px; background: rgba(30, 58, 138, 0.6); color: white;"
               >
               <button 
                 @click="searchCases"
-                style="padding: 8px 20px; background: #52c41b; color: white; border: none; border-radius: 4px; cursor: pointer;"
+                style="padding: 10px 20px; background: linear-gradient(135deg, rgba(30, 58, 138, 0.8) 0%, rgba(45, 74, 154, 0.8) 100%); color: white; border: 1px solid rgba(100, 149, 237, 0.5); border-radius: 6px; cursor: pointer; font-weight: 600; transition: all 0.3s ease;"
               >
                 搜索
               </button>
@@ -6055,44 +6021,44 @@ function getColumnIcon(index) {
           </div>
           
           <!-- 案件列表 -->
-          <div v-if="!showCaseDetail" style="background: white; border-radius: 8px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);">
-            <div v-if="casesLoading" style="padding: 40px; text-align: center; color: #666;">
+          <div v-if="!showCaseDetail" style="background: rgba(30, 58, 138, 0.3); backdrop-filter: blur(10px); border-radius: 12px; border: 1px solid rgba(100, 149, 237, 0.3); box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15); overflow: hidden;">
+            <div v-if="casesLoading" style="padding: 40px; text-align: center; color: rgba(255, 255, 255, 0.9);">
               加载中...
             </div>
             
-            <div v-else-if="casesList.length === 0" style="padding: 40px; text-align: center; color: #999;">
+            <div v-else-if="casesList.length === 0" style="padding: 40px; text-align: center; color: rgba(255, 255, 255, 0.9);">
               暂无案件数据
             </div>
             
-            <div v-else>
+            <div v-else style="overflow-x: auto;">
               <table style="width: 100%; border-collapse: collapse;">
                 <thead>
-                  <tr style="background: #f5f5f5;">
-                    <th style="padding: 12px; border: 1px solid #ddd; text-align: left;">任务号</th>
-                    <th style="padding: 12px; border: 1px solid #ddd; text-align: left;">上报时间</th>
-                    <th style="padding: 12px; border: 1px solid #ddd; text-align: left;">问题来源</th>
-                    <th style="padding: 12px; border: 1px solid #ddd; text-align: left;">大类</th>
-                    <th style="padding: 12px; border: 1px solid #ddd; text-align: left;">小类</th>
-                    <th style="padding: 12px; border: 1px solid #ddd; text-align: left;">问题描述</th>
-                    <th style="padding: 12px; border: 1px solid #ddd; text-align: left;">地址</th>
-                    <th style="padding: 12px; border: 1px solid #ddd; text-align: left;">状态</th>
-                    <th style="padding: 12px; border: 1px solid #ddd; text-align: left;">操作</th>
+                  <tr style="background: rgba(30, 58, 138, 0.6);">
+                    <th style="padding: 14px 12px; border: 1px solid rgba(100, 149, 237, 0.3); text-align: left; color: white; font-weight: 600;">任务号</th>
+                    <th style="padding: 14px 12px; border: 1px solid rgba(100, 149, 237, 0.3); text-align: left; color: white; font-weight: 600;">上报时间</th>
+                    <th style="padding: 14px 12px; border: 1px solid rgba(100, 149, 237, 0.3); text-align: left; color: white; font-weight: 600;">问题来源</th>
+                    <th style="padding: 14px 12px; border: 1px solid rgba(100, 149, 237, 0.3); text-align: left; color: white; font-weight: 600;">大类</th>
+                    <th style="padding: 14px 12px; border: 1px solid rgba(100, 149, 237, 0.3); text-align: left; color: white; font-weight: 600;">小类</th>
+                    <th style="padding: 14px 12px; border: 1px solid rgba(100, 149, 237, 0.3); text-align: left; color: white; font-weight: 600;">问题描述</th>
+                    <th style="padding: 14px 12px; border: 1px solid rgba(100, 149, 237, 0.3); text-align: left; color: white; font-weight: 600;">地址</th>
+                    <th style="padding: 14px 12px; border: 1px solid rgba(100, 149, 237, 0.3); text-align: left; color: white; font-weight: 600;">状态</th>
+                    <th style="padding: 14px 12px; border: 1px solid rgba(100, 149, 237, 0.3); text-align: left; color: white; font-weight: 600;">操作</th>
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-for="caseItem in casesList" :key="caseItem.id" style="cursor: pointer;" @click="viewCaseDetail(caseItem.id)">
-                    <td style="padding: 12px; border: 1px solid #ddd;">{{ caseItem.task_number }}</td>
-                    <td style="padding: 12px; border: 1px solid #ddd;">{{ caseItem.report_time }}</td>
-                    <td style="padding: 12px; border: 1px solid #ddd;">{{ caseItem.source }}</td>
-                    <td style="padding: 12px; border: 1px solid #ddd;">{{ caseItem.major_category }}</td>
-                    <td style="padding: 12px; border: 1px solid #ddd;">{{ caseItem.minor_category }}</td>
-                    <td style="padding: 12px; border: 1px solid #ddd; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ caseItem.problem_desc }}</td>
-                    <td style="padding: 12px; border: 1px solid #ddd; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ caseItem.address_desc }}</td>
-                    <td style="padding: 12px; border: 1px solid #ddd;">
-                      <span :style="{ color: caseItem.stage_light === '绿' ? '#52c41b' : caseItem.stage_light === '黄' ? '#ff9800' : '#f44336' }">{{ caseItem.stage_light }}</span>
+                  <tr v-for="caseItem in casesList" :key="caseItem.id" style="cursor: pointer; background: rgba(30, 58, 138, 0.2);" @click="viewCaseDetail(caseItem.id)" @mouseenter="$event.currentTarget.style.background='rgba(100, 149, 237, 0.2)'" @mouseleave="$event.currentTarget.style.background='rgba(30, 58, 138, 0.2)'">
+                    <td style="padding: 12px; border: 1px solid rgba(100, 149, 237, 0.2); color: rgba(255, 255, 255, 0.9);">{{ caseItem.task_number }}</td>
+                    <td style="padding: 12px; border: 1px solid rgba(100, 149, 237, 0.2); color: rgba(255, 255, 255, 0.9);">{{ caseItem.report_time }}</td>
+                    <td style="padding: 12px; border: 1px solid rgba(100, 149, 237, 0.2); color: rgba(255, 255, 255, 0.9);">{{ caseItem.source }}</td>
+                    <td style="padding: 12px; border: 1px solid rgba(100, 149, 237, 0.2); color: rgba(255, 255, 255, 0.9);">{{ caseItem.major_category }}</td>
+                    <td style="padding: 12px; border: 1px solid rgba(100, 149, 237, 0.2); color: rgba(255, 255, 255, 0.9);">{{ caseItem.minor_category }}</td>
+                    <td style="padding: 12px; border: 1px solid rgba(100, 149, 237, 0.2); color: rgba(255, 255, 255, 0.9); max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ caseItem.problem_desc }}</td>
+                    <td style="padding: 12px; border: 1px solid rgba(100, 149, 237, 0.2); color: rgba(255, 255, 255, 0.9); max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ caseItem.address_desc }}</td>
+                    <td style="padding: 12px; border: 1px solid rgba(100, 149, 237, 0.2); color: rgba(255, 255, 255, 0.9);">
+                      <span :style="{ color: caseItem.stage_light === '绿' ? '#90ee90' : caseItem.stage_light === '黄' ? '#ffd700' : '#ffb6c1', fontWeight: '600' }">{{ caseItem.stage_light }}</span>
                     </td>
-                    <td style="padding: 12px; border: 1px solid #ddd;">
-                      <button @click.stop="viewCaseDetail(caseItem.id)" style="padding: 4px 12px; background: #1890ff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">
+                    <td style="padding: 12px; border: 1px solid rgba(100, 149, 237, 0.2);">
+                      <button @click.stop="viewCaseDetail(caseItem.id)" style="padding: 6px 14px; background: rgba(30, 58, 138, 0.6); color: white; border: 1px solid rgba(100, 149, 237, 0.5); border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 500; transition: all 0.3s ease;" @mouseenter="$event.target.style.background='rgba(30, 58, 138, 0.8)'; $event.target.style.borderColor='rgba(100, 149, 237, 0.8)'; $event.target.style.transform='translateY(-2px)'; $event.target.style.boxShadow='0 4px 12px rgba(0, 0, 0, 0.2)'" @mouseleave="$event.target.style.background='rgba(30, 58, 138, 0.6)'; $event.target.style.borderColor='rgba(100, 149, 237, 0.5)'; $event.target.style.transform='translateY(0)'; $event.target.style.boxShadow='none'">
                         查看
                       </button>
                     </td>
@@ -6101,19 +6067,25 @@ function getColumnIcon(index) {
               </table>
               
               <!-- 分页 -->
-              <div style="margin-top: 20px; display: flex; justify-content: center; align-items: center; gap: 10px;">
+              <div style="margin-top: 20px; display: flex; justify-content: center; align-items: center; gap: 8px;">
                 <button 
                   @click="handleCasesPageChange(casesCurrentPage - 1)"
                   :disabled="casesCurrentPage === 1"
-                  style="padding: 8px 16px; border: 1px solid #ddd; background: white; border-radius: 4px; cursor: pointer;"
+                  style="padding: 8px 16px; border: 1px solid rgba(100, 149, 237, 0.3); background: rgba(30, 58, 138, 0.6); color: white; border-radius: 6px; cursor: pointer; transition: all 0.3s ease;"
+                  :style="{ opacity: casesCurrentPage === 1 ? 0.5 : 1, cursor: casesCurrentPage === 1 ? 'not-allowed' : 'pointer' }"
+                  @mouseenter="if(casesCurrentPage !== 1) { $event.target.style.background='rgba(30, 58, 138, 0.8)'; $event.target.style.borderColor='rgba(100, 149, 237, 0.5)'; $event.target.style.transform='translateY(-2px)'; $event.target.style.boxShadow='0 4px 12px rgba(0, 0, 0, 0.2)'; }"
+                  @mouseleave="if(casesCurrentPage !== 1) { $event.target.style.background='rgba(30, 58, 138, 0.6)'; $event.target.style.borderColor='rgba(100, 149, 237, 0.3)'; $event.target.style.transform='translateY(0)'; $event.target.style.boxShadow='none'; }"
                 >
                   上一页
                 </button>
-                <span style="color: #666;">第 {{ casesCurrentPage }} / {{ Math.ceil(casesTotal / casesPageSize) }} 页</span>
+                <span style="color: rgba(255, 255, 255, 0.9);">第 {{ casesCurrentPage }} / {{ Math.ceil(casesTotal / casesPageSize) }} 页</span>
                 <button 
                   @click="handleCasesPageChange(casesCurrentPage + 1)"
                   :disabled="casesCurrentPage >= Math.ceil(casesTotal / casesPageSize)"
-                  style="padding: 8px 16px; border: 1px solid #ddd; background: white; border-radius: 4px; cursor: pointer;"
+                  style="padding: 8px 16px; border: 1px solid rgba(100, 149, 237, 0.3); background: rgba(30, 58, 138, 0.6); color: white; border-radius: 6px; cursor: pointer; transition: all 0.3s ease;"
+                  :style="{ opacity: casesCurrentPage >= Math.ceil(casesTotal / casesPageSize) ? 0.5 : 1, cursor: casesCurrentPage >= Math.ceil(casesTotal / casesPageSize) ? 'not-allowed' : 'pointer' }"
+                  @mouseenter="if(casesCurrentPage < Math.ceil(casesTotal / casesPageSize)) { $event.target.style.background='rgba(30, 58, 138, 0.8)'; $event.target.style.borderColor='rgba(100, 149, 237, 0.5)'; $event.target.style.transform='translateY(-2px)'; $event.target.style.boxShadow='0 4px 12px rgba(0, 0, 0, 0.2)'; }"
+                  @mouseleave="if(casesCurrentPage < Math.ceil(casesTotal / casesPageSize)) { $event.target.style.background='rgba(30, 58, 138, 0.6)'; $event.target.style.borderColor='rgba(100, 149, 237, 0.3)'; $event.target.style.transform='translateY(0)'; $event.target.style.boxShadow='none'; }"
                 >
                   下一页
                 </button>
@@ -8087,8 +8059,11 @@ body {
 .tools-section,
 .chengguantong-section {
   padding: 20px;
-  background-color: #f9f9f9;
-  border-radius: 8px;
+  background: linear-gradient(135deg, rgba(30, 58, 138, 0.4) 0%, rgba(45, 74, 154, 0.4) 100%);
+  backdrop-filter: blur(10px);
+  border-radius: 12px;
+  border: 1px solid rgba(100, 149, 237, 0.3);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
   text-align: left;
   min-height: 300px;
   display: flex;
@@ -9119,27 +9094,28 @@ body {
   margin: 0;
 }
 
-/* 栏目卡片 */
+/* 栏目卡片 - 使用蓝色系渐变背景 */
 .cms-columns {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 8px;
+  gap: 20px;
 }
 
 .cms-column {
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 6px;
-  padding: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: linear-gradient(135deg, rgba(30, 58, 138, 0.4) 0%, rgba(45, 74, 154, 0.4) 100%);
+  border-radius: 12px;
+  padding: 20px;
+  border: 1px solid rgba(100, 149, 237, 0.3);
   transition: all 0.3s ease;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
   backdrop-filter: blur(10px);
 }
 
 .cms-column:hover {
-  border-color: #4facfe;
-  box-shadow: 0 8px 30px rgba(79, 172, 254, 0.15);
+  border-color: rgba(100, 149, 237, 0.5);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.25);
   transform: translateY(-3px);
+  background: linear-gradient(135deg, rgba(30, 58, 138, 0.5) 0%, rgba(45, 74, 154, 0.5) 100%);
 }
 
 .column-header {
@@ -9147,8 +9123,8 @@ body {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 20px;
-  padding-bottom: 15px;
-  border-bottom: 1px solid #f0f0f0;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(100, 149, 237, 0.3);
 }
 
 .column-title-wrapper {
@@ -9158,7 +9134,8 @@ body {
 }
 
 .column-icon {
-  font-size: 24px;
+  font-size: 20px;
+  color: #6495ed;
 }
 
 .column-title {
@@ -9173,17 +9150,18 @@ body {
   align-items: center;
   gap: 5px;
   font-size: 14px;
-  color: #4facfe;
+  color: #87ceeb;
   text-decoration: none;
-  padding: 8px 16px;
-  border-radius: 20px;
-  background: #f0f2ff;
+  padding: 4px 10px;
+  border-radius: 4px;
+  background: rgba(100, 149, 237, 0.2);
   transition: all 0.3s ease;
 }
 
 .more-link:hover {
-  background: #4facfe;
-  color: white;
+  background: rgba(100, 149, 237, 0.3);
+  color: #b0e0e6;
+  transform: translateX(3px);
 }
 
 .more-arrow {
@@ -9207,14 +9185,14 @@ body {
   align-items: center;
   justify-content: center;
   padding: 25px;
-  color: #666;
+  color: rgba(255, 255, 255, 0.8);
 }
 
 .loading-spinner {
   width: 40px;
   height: 40px;
-  border: 3px solid #f0f0f0;
-  border-top-color: #4facfe;
+  border: 3px solid rgba(100, 149, 237, 0.3);
+  border-top-color: #6495ed;
   border-radius: 50%;
   animation: spin 1s linear infinite;
   margin-bottom: 15px;
@@ -9233,41 +9211,46 @@ body {
 .articles-list {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
 
 .article-item {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 10px;
+  padding: 10px 12px;
   border-radius: 8px;
   cursor: pointer;
   transition: all 0.3s ease;
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid transparent;
 }
 
 .article-item:hover {
-  background: rgba(255, 255, 255, 0.2);
+  background: rgba(100, 149, 237, 0.15);
+  border-color: rgba(100, 149, 237, 0.3);
   transform: translateX(5px);
 }
 
 .article-index {
-  font-size: 14px;
-  font-weight: 700;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #6495ed 0%, #4169e1 100%);
   color: white;
-  background: rgba(255, 255, 255, 0.2);
-  padding: 5px 10px;
-  border-radius: 8px;
-  min-width: 35px;
-  text-align: center;
-  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: 600;
+  margin-right: 10px;
+  flex-shrink: 0;
 }
 
 .article-title {
   flex: 1;
-  font-size: 15px;
-  color: white;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.9);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -9275,39 +9258,26 @@ body {
 }
 
 .article-date {
-  font-size: 13px;
-  color: rgba(255, 255, 255, 0.7);
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.5);
   white-space: nowrap;
+  flex-shrink: 0;
 }
 
-/* CMS首页栏目标题样式 */
+/* CMS 首页栏目标题样式 */
 .column-title {
   display: inline-block;
-  background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
   color: white !important;
-  padding: 8px 16px !important;
-  border-radius: 4px;
-  box-shadow: 0 2px 8px rgba(79, 172, 254, 0.3);
-  transition: all 0.3s ease;
+  padding: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  font-size: 16px !important;
+  font-weight: 600 !important;
 }
 
 .column-title:hover {
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(79, 172, 254, 0.4);
-}
-
-/* 栏目卡片样式优化 */
-.cms-column {
-  background: rgba(255, 255, 255, 0.1) !important;
-  border-left: 4px solid #4facfe !important;
-  transition: all 0.3s ease;
-  backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.2) !important;
-}
-
-.cms-column:hover {
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15) !important;
-  transform: translateY(-4px);
+  box-shadow: 0 4px 12px rgba(100, 149, 237, 0.4);
 }
 
 /* 文章详情页面动画 */
