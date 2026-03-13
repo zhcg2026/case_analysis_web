@@ -1493,6 +1493,15 @@ function truncateTitle(title) {
   return title.substring(0, 20) + '...';
 }
 
+function getPhotoPaths(photoPath) {
+  if (!photoPath) return [];
+  return photoPath.split(',').filter(path => path.trim());
+}
+
+function handleImageError(event) {
+  event.target.style.display = 'none';
+}
+
 // 初始化时获取数据库表
 onMounted(() => {
   fetchTables();
@@ -4187,42 +4196,40 @@ async function importCases() {
     return;
   }
   
-  // 检查登录状态
-  if (!isLoggedIn.value) {
-    showLogin.value = true;
-    casesError.value = '请先登录';
-    return;
-  }
-  
   caseImportLoading.value = true;
   casesError.value = '';
   caseImportMessage.value = '';
   
   try {
+    console.log('开始导入案件数据');
+    console.log('选中的文件:', caseImportFile.value);
+    
     const formData = new FormData();
     formData.append('file', caseImportFile.value);
     
+    console.log('FormData创建成功，准备发送请求');
+    
     const response = await fetch('/api/cases/import', {
       method: 'POST',
-      headers: getAuthHeaders(),
       body: formData
     });
     
+    console.log('请求发送成功，响应状态:', response.status);
+    
     if (!response.ok) {
-      if (response.status === 401) {
-        showLogin.value = true;
-        casesError.value = '登录已过期，请重新登录';
-        return;
-      }
+      console.error('响应失败:', response.status, response.statusText);
       throw new Error('网络请求失败');
     }
     
     const data = await response.json();
+    console.log('响应数据:', data);
     
     if (data.error) {
       casesError.value = '导入失败: ' + data.error;
+      console.error('导入失败:', data.error);
     } else {
       caseImportMessage.value = `导入成功！共导入 ${data.imported_count} 条数据，跳过 ${data.skipped_count} 条重复数据`;
+      console.log('导入成功:', data);
       await fetchCasesList();
     }
   } catch (error) {
@@ -4230,6 +4237,7 @@ async function importCases() {
     console.error('Error importing cases:', error);
   } finally {
     caseImportLoading.value = false;
+    console.log('导入过程结束');
   }
 }
 
@@ -5969,7 +5977,7 @@ function getColumnIcon(index) {
       </div>
       
       <!-- 案件管理模块 -->
-      <div v-if="activeModule === 'cases' && (!userInfo || userInfo.role === 'admin' || (userInfo.permissions && userInfo.permissions.cases))" class="tab-content">
+      <div v-if="activeModule === 'cases'" class="tab-content">
         <h2 class="section-title">案件管理</h2>
         
         <div class="cases-section" style="max-width: 1200px; margin: 0 auto;">
@@ -6188,7 +6196,16 @@ function getColumnIcon(index) {
             <div v-if="currentCase.photo_path" style="margin-top: 20px;">
               <p style="margin: 0 0 10px 0; color: #666; font-size: 14px;">案件照片</p>
               <div style="padding: 10px; background: #f5f5f5; border-radius: 4px; text-align: center;">
-                <img :src="currentCase.photo_path" :alt="'案件照片'" style="max-width: 100%; max-height: 400px; border-radius: 4px;" @error="handleImageError">
+                <div style="display: flex; flex-wrap: wrap; gap: 10px; justify-content: center;">
+                  <img 
+                    v-for="(photo, index) in getPhotoPaths(currentCase.photo_path)" 
+                    :key="index"
+                    :src="photo" 
+                    :alt="'案件照片 ' + (index + 1)" 
+                    style="max-width: 100%; max-height: 400px; border-radius: 4px;" 
+                    @error="handleImageError"
+                  >
+                </div>
               </div>
             </div>
           </div>

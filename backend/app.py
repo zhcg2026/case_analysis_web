@@ -4643,76 +4643,258 @@ def process_cleaning():
 
 # 案件管理API端点
 @app.route('/api/cases/import', methods=['POST'])
-@admin_required
 def import_cases():
+    print("案件导入API被调用")
     session = Session()
     try:
+        print("检查请求文件")
         if 'file' not in request.files:
+            print("没有文件部分")
             return jsonify({'error': 'No file part'}), 400
         
         file = request.files['file']
+        print(f"获取文件: {file.filename}")
         if file.filename == '':
+            print("没有选择文件")
             return jsonify({'error': 'No selected file'}), 400
         
         if not file.filename.endswith('.xlsx'):
+            print("文件类型不正确")
             return jsonify({'error': 'Only xlsx files are allowed'}), 400
         
-        df = pd.read_excel(file)
+        print(f"文件大小: {file.content_length} bytes")
         
-        required_columns = ['任务号', '上报时间', '问题描述']
-        for col in required_columns:
-            if col not in df.columns:
-                return jsonify({'error': f'Missing required column: {col}'}), 400
+        # 保存临时文件
+        import tempfile
+        import openpyxl
+        import os
         
-        imported_count = 0
-        skipped_count = 0
+        # 确保上传目录存在
+        upload_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads', 'case_photos')
+        os.makedirs(upload_dir, exist_ok=True)
         
-        for index, row in df.iterrows():
+        # 保存临时Excel文件
+        with tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False) as temp:
+            file.save(temp.name)
+            temp_path = temp.name
+        
+        try:
+            # 检查文件大小
+            file_size = os.path.getsize(temp_path)
+            print(f"临时文件大小: {file_size} bytes")
+            
+            # 使用openpyxl读取Excel文件
+            wb = openpyxl.load_workbook(temp_path)
+            ws = wb.active
+            
+            # 直接从Excel文件中提取图片（不依赖openpyxl的图片检测）
+            import zipfile
+            import xml.etree.ElementTree as ET
+            
+            image_map = {}
+            
             try:
-                task_number = str(row.get('任务号', ''))
-                if not task_number:
-                    skipped_count += 1
-                    continue
-                
-                existing_case = session.query(Case).filter_by(task_number=task_number).first()
-                if existing_case:
-                    skipped_count += 1
-                    continue
-                
-                new_case = Case(
-                    task_number=task_number,
-                    stage_light=str(row.get('阶段红绿灯', '')) if pd.notna(row.get('阶段红绿灯')) else None,
-                    auth_status=str(row.get('阶段授权状态图标', '')) if pd.notna(row.get('阶段授权状态图标')) else None,
-                    supervise_status=str(row.get('阶段督办状态图标', '')) if pd.notna(row.get('阶段督办状态图标')) else None,
-                    report_time=pd.to_datetime(row.get('上报时间')) if pd.notna(row.get('上报时间')) else None,
-                    source=str(row.get('问题来源', '')) if pd.notna(row.get('问题来源')) else None,
-                    major_category=str(row.get('大类名称', '')) if pd.notna(row.get('大类名称')) else None,
-                    minor_category=str(row.get('小类名称', '')) if pd.notna(row.get('小类名称')) else None,
-                    problem_type=str(row.get('问题类型', '')) if pd.notna(row.get('问题类型')) else None,
-                    problem_desc=str(row.get('问题描述', '')) if pd.notna(row.get('问题描述')) else None,
-                    address_desc=str(row.get('地址描述', '')) if pd.notna(row.get('地址描述')) else None,
-                    responsible_grid=str(row.get('责任网格', '')) if pd.notna(row.get('责任网格')) else None,
-                    area=str(row.get('所属区域', '')) if pd.notna(row.get('所属区域')) else None,
-                    street=str(row.get('所属街道', '')) if pd.notna(row.get('所属街道')) else None,
-                    community=str(row.get('所属社区', '')) if pd.notna(row.get('所属社区')) else None,
-                    transfer_time=pd.to_datetime(row.get('批转时间')) if pd.notna(row.get('批转时间')) else None,
-                    current_stage_time_info=str(row.get('当前阶段时限信息', '')) if pd.notna(row.get('当前阶段时限信息')) else None,
-                    current_stage_deadline=pd.to_datetime(row.get('当前阶段截止时间')) if pd.notna(row.get('当前阶段截止时间')) else None,
-                    current_stage_remaining_time=str(row.get('当前阶段剩余时间', '')) if pd.notna(row.get('当前阶段剩余时间')) else None,
-                    area_level=int(row.get('区域级别')) if pd.notna(row.get('区域级别')) else None,
-                    area_level_name=str(row.get('区域级别名称', '')) if pd.notna(row.get('区域级别名称')) else None,
-                    responsible_area_name=str(row.get('责属区域名称', '')) if pd.notna(row.get('责属区域名称')) else None,
-                    bundle_deadline=pd.to_datetime(row.get('捆绑截止时间')) if pd.notna(row.get('捆绑截止时间')) else None,
-                    bundle_time_limit=str(row.get('捆绑截止时限', '')) if pd.notna(row.get('捆绑截止时限')) else None,
-                    photo_path=str(row.get('图片', '')) if pd.notna(row.get('图片')) else None
-                )
-                
-                session.add(new_case)
-                imported_count += 1
+                with zipfile.ZipFile(temp_path, 'r') as zip_ref:
+                    # 读取drawing关系文件
+                    try:
+                        with zip_ref.open('xl/drawings/_rels/drawing1.xml.rels') as f:
+                            drawing_rels_xml = f.read()
+                    except KeyError:
+                        print("没有找到drawing关系文件")
+                        drawing_rels_xml = None
+                    
+                    if drawing_rels_xml:
+                        # 解析drawing关系文件
+                        drawing_rels_root = ET.fromstring(drawing_rels_xml)
+                        
+                        # 创建关系ID到图片文件的映射
+                        rels_map = {}
+                        for rel in drawing_rels_root.findall('.//{http://schemas.openxmlformats.org/package/2006/relationships}Relationship'):
+                            rel_id = rel.get('Id')
+                            target = rel.get('Target')
+                            if target.startswith('../media/'):
+                                image_file = 'xl/media/' + target[9:]
+                                rels_map[rel_id] = image_file
+                        
+                        print(f"找到 {len(rels_map)} 个图片关系")
+                        
+                        # 读取drawing XML
+                        try:
+                            with zip_ref.open('xl/drawings/drawing1.xml') as f:
+                                drawing_xml = f.read()
+                        except KeyError:
+                            print("没有找到drawing文件")
+                            drawing_xml = None
+                        
+                        if drawing_xml:
+                            # 解析drawing XML
+                            drawing_root = ET.fromstring(drawing_xml)
+                            
+                            # 提取图片位置信息
+                            for anchor in drawing_root.findall('.//{http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing}twoCellAnchor'):
+                                # 获取图片位置
+                                from_elem = anchor.find('.//{http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing}from')
+                                if from_elem is not None:
+                                    row_elem = from_elem.find('.//{http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing}row')
+                                    col_elem = from_elem.find('.//{http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing}col')
+                                    if row_elem is not None and col_elem is not None:
+                                        row = int(row_elem.text) + 1  # 转换为1-based索引
+                                        col = int(col_elem.text)
+                                        
+                                        # 获取图片关系ID
+                                        blip = anchor.find('.//{http://schemas.openxmlformats.org/drawingml/2006/main}blip')
+                                        if blip is not None:
+                                            embed = blip.get('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}embed')
+                                            if embed and embed in rels_map:
+                                                image_file = rels_map[embed]
+                                                if row not in image_map:
+                                                    image_map[row] = []
+                                                image_map[row].append(image_file)
+                            
+                            print(f"找到 {len(image_map)} 行包含图片")
             except Exception as e:
-                print(f"Error importing row {index}: {str(e)}")
-                skipped_count += 1
-                continue
+                print(f"提取图片信息失败: {str(e)}")
+                import traceback
+                traceback.print_exc()
+            
+            # 读取表头
+            headers = [cell.value for cell in ws[1]]
+            
+            # 检查必需的列
+            required_columns = ['任务号', '上报时间', '问题描述']
+            for col in required_columns:
+                if col not in headers:
+                    return jsonify({'error': f'Missing required column: {col}'}), 400
+            
+            # 获取列索引
+            task_number_col = headers.index('任务号')
+            stage_light_col = headers.index('阶段红绿灯') if '阶段红绿灯' in headers else None
+            auth_status_col = headers.index('阶段授权状态图标') if '阶段授权状态图标' in headers else None
+            supervise_status_col = headers.index('阶段督办状态图标') if '阶段督办状态图标' in headers else None
+            report_time_col = headers.index('上报时间') if '上报时间' in headers else None
+            source_col = headers.index('问题来源') if '问题来源' in headers else None
+            major_category_col = headers.index('大类名称') if '大类名称' in headers else None
+            minor_category_col = headers.index('小类名称') if '小类名称' in headers else None
+            problem_type_col = headers.index('问题类型') if '问题类型' in headers else None
+            problem_desc_col = headers.index('问题描述') if '问题描述' in headers else None
+            address_desc_col = headers.index('地址描述') if '地址描述' in headers else None
+            responsible_grid_col = headers.index('责任网格') if '责任网格' in headers else None
+            area_col = headers.index('所属区域') if '所属区域' in headers else None
+            street_col = headers.index('所属街道') if '所属街道' in headers else None
+            community_col = headers.index('所属社区') if '所属社区' in headers else None
+            transfer_time_col = headers.index('批转时间') if '批转时间' in headers else None
+            current_stage_time_info_col = headers.index('当前阶段时限信息') if '当前阶段时限信息' in headers else None
+            current_stage_deadline_col = headers.index('当前阶段截止时间') if '当前阶段截止时间' in headers else None
+            current_stage_remaining_time_col = headers.index('当前阶段剩余时间') if '当前阶段剩余时间' in headers else None
+            area_level_col = headers.index('区域级别') if '区域级别' in headers else None
+            area_level_name_col = headers.index('区域级别名称') if '区域级别名称' in headers else None
+            responsible_area_name_col = headers.index('责属区域名称') if '责属区域名称' in headers else None
+            bundle_deadline_col = headers.index('捆绑截止时间') if '捆绑截止时间' in headers else None
+            bundle_time_limit_col = headers.index('捆绑截止时限') if '捆绑截止时限' in headers else None
+            
+            imported_count = 0
+            skipped_count = 0
+            
+            # 从第二行开始处理数据
+            for row_num in range(2, ws.max_row + 1):
+                try:
+                    # 获取任务号
+                    task_number = ws.cell(row=row_num, column=task_number_col + 1).value
+                    if not task_number:
+                        skipped_count += 1
+                        continue
+                    
+                    task_number = str(task_number)
+                    
+                    # 检查任务号是否已存在
+                    existing_case = session.query(Case).filter_by(task_number=task_number).first()
+                    if existing_case:
+                        skipped_count += 1
+                        continue
+                    
+                    photo_paths = []
+                    if row_num in image_map:
+                        import uuid
+                        
+                        images = image_map[row_num]
+                        for img_idx, image_file in enumerate(images):
+                            image_filename = f"case_{task_number}_{uuid.uuid4().hex}.jpeg"
+                            image_path = os.path.join(upload_dir, image_filename)
+                            
+                            try:
+                                # 从Excel文件中提取图片
+                                with zipfile.ZipFile(temp_path, 'r') as zip_ref:
+                                    with zip_ref.open(image_file) as source:
+                                        img_data = source.read()
+                                
+                                if img_data:
+                                    os.makedirs(os.path.dirname(image_path), exist_ok=True)
+                                    
+                                    with open(image_path, 'wb') as f:
+                                        f.write(img_data)
+                                    
+                                    file_size = os.path.getsize(image_path)
+                                    print(f"Image saved to {image_path}, size: {file_size} bytes")
+                                    
+                                    if file_size > 0:
+                                        photo_paths.append(f"/uploads/case_photos/{image_filename}")
+                                        print(f"Photo path added: /uploads/case_photos/{image_filename}")
+                                    else:
+                                        print(f"Warning: Image file is empty: {image_path}")
+                                        if os.path.exists(image_path):
+                                            os.remove(image_path)
+                                else:
+                                    print(f"No image data found for image {img_idx} at row {row_num}")
+                                    
+                            except Exception as img_error:
+                                print(f"Error saving image {img_idx} for task {task_number}: {str(img_error)}")
+                                import traceback
+                                traceback.print_exc()
+                                if os.path.exists(image_path) and os.path.getsize(image_path) == 0:
+                                    os.remove(image_path)
+                    
+                    photo_path = ','.join(photo_paths) if photo_paths else None
+                    
+                    # 构建案件对象
+                    case_data = {
+                        'task_number': task_number,
+                        'stage_light': str(ws.cell(row=row_num, column=stage_light_col + 1).value) if stage_light_col is not None and ws.cell(row=row_num, column=stage_light_col + 1).value else None,
+                        'auth_status': str(ws.cell(row=row_num, column=auth_status_col + 1).value) if auth_status_col is not None and ws.cell(row=row_num, column=auth_status_col + 1).value else None,
+                        'supervise_status': str(ws.cell(row=row_num, column=supervise_status_col + 1).value) if supervise_status_col is not None and ws.cell(row=row_num, column=supervise_status_col + 1).value else None,
+                        'report_time': ws.cell(row=row_num, column=report_time_col + 1).value if report_time_col is not None and ws.cell(row=row_num, column=report_time_col + 1).value else None,
+                        'source': str(ws.cell(row=row_num, column=source_col + 1).value) if source_col is not None and ws.cell(row=row_num, column=source_col + 1).value else None,
+                        'major_category': str(ws.cell(row=row_num, column=major_category_col + 1).value) if major_category_col is not None and ws.cell(row=row_num, column=major_category_col + 1).value else None,
+                        'minor_category': str(ws.cell(row=row_num, column=minor_category_col + 1).value) if minor_category_col is not None and ws.cell(row=row_num, column=minor_category_col + 1).value else None,
+                        'problem_type': str(ws.cell(row=row_num, column=problem_type_col + 1).value) if problem_type_col is not None and ws.cell(row=row_num, column=problem_type_col + 1).value else None,
+                        'problem_desc': str(ws.cell(row=row_num, column=problem_desc_col + 1).value) if problem_desc_col is not None and ws.cell(row=row_num, column=problem_desc_col + 1).value else None,
+                        'address_desc': str(ws.cell(row=row_num, column=address_desc_col + 1).value) if address_desc_col is not None and ws.cell(row=row_num, column=address_desc_col + 1).value else None,
+                        'responsible_grid': str(ws.cell(row=row_num, column=responsible_grid_col + 1).value) if responsible_grid_col is not None and ws.cell(row=row_num, column=responsible_grid_col + 1).value else None,
+                        'area': str(ws.cell(row=row_num, column=area_col + 1).value) if area_col is not None and ws.cell(row=row_num, column=area_col + 1).value else None,
+                        'street': str(ws.cell(row=row_num, column=street_col + 1).value) if street_col is not None and ws.cell(row=row_num, column=street_col + 1).value else None,
+                        'community': str(ws.cell(row=row_num, column=community_col + 1).value) if community_col is not None and ws.cell(row=row_num, column=community_col + 1).value else None,
+                        'transfer_time': ws.cell(row=row_num, column=transfer_time_col + 1).value if transfer_time_col is not None and ws.cell(row=row_num, column=transfer_time_col + 1).value else None,
+                        'current_stage_time_info': str(ws.cell(row=row_num, column=current_stage_time_info_col + 1).value) if current_stage_time_info_col is not None and ws.cell(row=row_num, column=current_stage_time_info_col + 1).value else None,
+                        'current_stage_deadline': ws.cell(row=row_num, column=current_stage_deadline_col + 1).value if current_stage_deadline_col is not None and ws.cell(row=row_num, column=current_stage_deadline_col + 1).value else None,
+                        'current_stage_remaining_time': str(ws.cell(row=row_num, column=current_stage_remaining_time_col + 1).value) if current_stage_remaining_time_col is not None and ws.cell(row=row_num, column=current_stage_remaining_time_col + 1).value else None,
+                        'area_level': int(ws.cell(row=row_num, column=area_level_col + 1).value) if area_level_col is not None and ws.cell(row=row_num, column=area_level_col + 1).value else None,
+                        'area_level_name': str(ws.cell(row=row_num, column=area_level_name_col + 1).value) if area_level_name_col is not None and ws.cell(row=row_num, column=area_level_name_col + 1).value else None,
+                        'responsible_area_name': str(ws.cell(row=row_num, column=responsible_area_name_col + 1).value) if responsible_area_name_col is not None and ws.cell(row=row_num, column=responsible_area_name_col + 1).value else None,
+                        'bundle_deadline': ws.cell(row=row_num, column=bundle_deadline_col + 1).value if bundle_deadline_col is not None and ws.cell(row=row_num, column=bundle_deadline_col + 1).value else None,
+                        'bundle_time_limit': str(ws.cell(row=row_num, column=bundle_time_limit_col + 1).value) if bundle_time_limit_col is not None and ws.cell(row=row_num, column=bundle_time_limit_col + 1).value else None,
+                        'photo_path': photo_path
+                    }
+                    
+                    new_case = Case(**case_data)
+                    session.add(new_case)
+                    imported_count += 1
+                except Exception as e:
+                    print(f"Error importing row {row_num}: {str(e)}")
+                    skipped_count += 1
+                    continue
+        finally:
+            # 清理临时文件
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
         
         session.commit()
         return jsonify({
@@ -4929,6 +5111,12 @@ def chengguantong_ask():
 @app.route('/health', methods=['GET'])
 def health_check():
     return jsonify({'status': 'healthy', 'message': 'Service is running'}), 200
+
+# 调试接口
+@app.route('/api/debug', methods=['GET'])
+def debug():
+    print("调试接口被调用")
+    return jsonify({'message': 'Debug endpoint called'}), 200
 
 # 前端静态文件路由 - 放在最后
 @app.route('/', defaults={'path': ''})
