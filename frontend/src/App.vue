@@ -5292,10 +5292,38 @@ function getColumnIcon(index) {
         <!-- 分析结果 -->
         <div v-if="analysisV2Result" style="background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 8px; padding: 25px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);">
           <!-- 结果标题 -->
-          <div style="margin-bottom: 25px; padding-bottom: 15px; border-bottom: 2px solid #4facfe;">
+          <div style="margin-bottom: 15px; padding-bottom: 15px; border-bottom: 2px solid #4facfe;">
             <h3 style="margin: 0; font-size: 20px; color: white;">📈 {{ analysisV2Result.table_name }} - 智能分析报告</h3>
           </div>
-          
+
+          <!-- 筛选信息 -->
+          <div v-if="analysisV2Result.filter_applied" style="margin-bottom: 20px; padding: 15px; background: rgba(79, 172, 254, 0.15); border-radius: 8px; border-left: 4px solid #4facfe;">
+            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+              <span style="font-size: 16px;">🔍</span>
+              <span style="color: white; font-weight: 600; font-size: 14px;">数据筛选结果</span>
+            </div>
+            <div style="color: rgba(255, 255, 255, 0.9); font-size: 13px; line-height: 1.6;">
+              <div style="margin-bottom: 4px;">
+                <span style="color: rgba(255, 255, 255, 0.7);">筛选条件：</span>
+                <span style="color: #4facfe; font-weight: 500;">{{ analysisV2Result.filter_summary }}</span>
+              </div>
+              <div>
+                <span style="color: rgba(255, 255, 255, 0.7);">数据量：</span>
+                <span style="color: white; font-weight: 600;">{{ analysisV2Result.original_count }}</span>
+                <span style="color: rgba(255, 255, 255, 0.6);"> 条 → 筛选后 </span>
+                <span style="color: #4facfe; font-weight: 600;">{{ analysisV2Result.filtered_count }}</span>
+                <span style="color: rgba(255, 255, 255, 0.6);"> 条</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 未筛选时的数据量显示 -->
+          <div v-else style="margin-bottom: 20px; padding: 12px 15px; background: rgba(255, 255, 255, 0.05); border-radius: 8px;">
+            <span style="color: rgba(255, 255, 255, 0.7); font-size: 13px;">
+              📊 共分析 <span style="color: white; font-weight: 600;">{{ analysisV2Result.filtered_count || analysisV2Result.original_count }}</span> 条数据
+            </span>
+          </div>
+
           <div class="result-details">
             <!-- 图表展示 -->
             <div v-if="analysisV2Result.charts" class="charts-section" style="margin-bottom: 30px;">

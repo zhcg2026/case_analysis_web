@@ -381,7 +381,7 @@ BAILIAN_CHENGGUANTONG_API_URL = 'https://dashscope.aliyuncs.com/api/v1/apps/b608
 
 # 统一的超时配置
 API_CONNECT_TIMEOUT = 10  # 连接超时（秒）
-API_READ_TIMEOUT = 180    # 读取超时（秒）
+API_READ_TIMEOUT = 300    # 读取超时（秒）- 增加到5分钟
 API_MAX_RETRIES = 3       # 最大重试次数
 API_RETRY_DELAY = 5       # 重试延迟（秒）
 
@@ -3616,31 +3616,195 @@ def natural_language_query():
 @protected
 def analyze_v2():
     try:
+        import json
+        import re
+
         data = request.json
         table_name = data.get('table_name')
         user_prompt = data.get('prompt')
         model_choice = data.get('model', 'volcengine')  # 默认使用火山引擎
-        
+
         if not table_name or not user_prompt:
             return jsonify({'error': 'Missing table_name or prompt'}), 400
-        
+
         # 从数据库读取数据
         df = pd.read_sql_table(table_name, engine)
-        
-        # 准备数据样本（限制数据量避免token超限）
-        sample_size = min(100, len(df))
-        df_sample = df.head(sample_size)
-        
-        # 数据信息
+        original_count = len(df)
+
+        print(f"[数据分析] 原始数据表: {table_name}, 总记录数: {original_count}")
+        print(f"[数据分析] 用户提示词: {user_prompt}")
+
+        # ===== 第一步：让大模型解析筛选条件 =====
+        # 准备列信息和样本数据供大模型参考
+        columns_info = []
+        for col in df.columns:
+            unique_vals = df[col].dropna().unique()
+            sample_vals = list(unique_vals[:10]) if len(unique_vals) > 0 else []
+            columns_info.append({
+                'name': col,
+                'type': str(df[col].dtype),
+                'unique_count': len(unique_vals),
+                'sample_values': [str(v) for v in sample_vals]
+            })
+
+        filter_parse_prompt = f"""请分析用户的分析需求，提取出数据筛选条件。
+
+数据表信息：
+- 表名：{table_name}
+- 总记录数：{original_count}
+- 列信息：
+"""
+        for col_info in columns_info:
+            filter_parse_prompt += f"\n  - {col_info['name']} (类型: {col_info['type']}, 唯一值数: {col_info['unique_count']})"
+            if col_info['sample_values']:
+                filter_parse_prompt += f"\n    示例值: {', '.join(col_info['sample_values'][:5])}"
+
+        filter_parse_prompt += f"""
+
+用户分析需求：
+{user_prompt}
+
+请提取用户需求中的筛选条件，以JSON格式返回：
+{{
+    "has_filter": true/false,
+    "filter_conditions": [
+        {{
+            "field": "字段名（必须与上面列信息中的字段名完全一致）",
+            "operator": "等于|包含|不等于|大于|小于|大于等于|小于等于",
+            "value": "筛选值或值列表",
+            "logic": "AND|OR（与其他条件的关系，最后一个条件可省略）"
+        }}
+    ],
+    "analysis_focus": "用户想要分析的重点（如：分布、趋势、对比等）"
+}}
+
+重要规则：
+1. 如果用户需求中包含筛选条件（如"筛选出"、"只看"、"符合条件的"等），必须提取为filter_conditions
+2. 字段名必须与数据表的列名完全一致，不要自己编造字段名
+3. 如果用户提到多个值（如"A和B"），使用OR逻辑，value设为数组
+4. 如果用户说"等于"、"是"、"为"，operator设为"等于"
+5. 如果用户说"包含"、"含有"，operator设为"包含"
+6. 如果用户没有明确筛选条件，has_filter设为false
+7. 只返回JSON，不要有其他文字"""
+
+        # 调用大模型解析筛选条件
+        messages = [
+            {"role": "system", "content": "你是一个数据分析专家，擅长理解用户意图并提取结构化的筛选条件。"},
+            {"role": "user", "content": filter_parse_prompt}
+        ]
+
+        if model_choice == 'bailian':
+            success, result = call_llm_api(
+                BAILIAN_GENERAL_API_URL,
+                BAILIAN_GENERAL_API_KEY,
+                BAILIAN_GENERAL_MODEL,
+                messages,
+                max_tokens=2000,
+                provider_name="百炼-筛选解析"
+            )
+        else:
+            success, result = call_llm_api(
+                API_URL,
+                API_KEY,
+                MODEL,
+                messages,
+                max_tokens=2000,
+                provider_name="火山引擎-筛选解析"
+            )
+
+        if not success:
+            raise Exception(f"解析筛选条件失败: {result}")
+
+        filter_parse_text = result
+        print(f"[数据分析] 筛选条件解析结果: {filter_parse_text[:500]}")
+
+        # 解析筛选条件并执行筛选
+        filtered_df = df.copy()
+        filter_applied = False
+        filter_summary = ""
+
+        try:
+            json_match = re.search(r'\{[\s\S]*\}', filter_parse_text)
+            if json_match:
+                filter_config = json.loads(json_match.group())
+
+                if filter_config.get('has_filter', False) and filter_config.get('filter_conditions'):
+                    filter_conditions = filter_config['filter_conditions']
+                    filter_parts = []
+
+                    for condition in filter_conditions:
+                        field = condition.get('field')
+                        operator = condition.get('operator', '等于')
+                        value = condition.get('value')
+
+                        if not field or field not in df.columns:
+                            print(f"[数据分析] 警告: 字段 '{field}' 不存在，跳过此条件")
+                            continue
+
+                        original_count_before = len(filtered_df)
+
+                        if operator == '等于':
+                            if isinstance(value, list):
+                                filtered_df = filtered_df[filtered_df[field].astype(str).isin([str(v) for v in value])]
+                                filter_parts.append(f"{field} 在 {value} 中")
+                            else:
+                                filtered_df = filtered_df[filtered_df[field].astype(str) == str(value)]
+                                filter_parts.append(f"{field} = {value}")
+                        elif operator == '包含':
+                            if isinstance(value, list):
+                                mask = filtered_df[field].astype(str).apply(lambda x: any(str(v) in x for v in value))
+                                filtered_df = filtered_df[mask]
+                                filter_parts.append(f"{field} 包含 {value}")
+                            else:
+                                filtered_df = filtered_df[filtered_df[field].astype(str).str.contains(str(value), na=False)]
+                                filter_parts.append(f"{field} 包含 {value}")
+                        elif operator == '不等于':
+                            if isinstance(value, list):
+                                filtered_df = filtered_df[~filtered_df[field].astype(str).isin([str(v) for v in value])]
+                            else:
+                                filtered_df = filtered_df[filtered_df[field].astype(str) != str(value)]
+                            filter_parts.append(f"{field} != {value}")
+                        elif operator == '大于':
+                            filtered_df = filtered_df[pd.to_numeric(filtered_df[field], errors='coerce') > float(value)]
+                            filter_parts.append(f"{field} > {value}")
+                        elif operator == '小于':
+                            filtered_df = filtered_df[pd.to_numeric(filtered_df[field], errors='coerce') < float(value)]
+                            filter_parts.append(f"{field} < {value}")
+                        elif operator == '大于等于':
+                            filtered_df = filtered_df[pd.to_numeric(filtered_df[field], errors='coerce') >= float(value)]
+                            filter_parts.append(f"{field} >= {value}")
+                        elif operator == '小于等于':
+                            filtered_df = filtered_df[pd.to_numeric(filtered_df[field], errors='coerce') <= float(value)]
+                            filter_parts.append(f"{field} <= {value}")
+
+                        print(f"[数据分析] 执行筛选条件: {field} {operator} {value}, 筛选前: {original_count_before}, 筛选后: {len(filtered_df)}")
+
+                    filter_applied = True
+                    filter_summary = " AND ".join(filter_parts)
+        except Exception as e:
+            print(f"[数据分析] 解析筛选条件时出错: {e}")
+            import traceback
+            traceback.print_exc()
+
+        filtered_count = len(filtered_df)
+        print(f"[数据分析] 筛选完成: 原始数据 {original_count} 条 -> 筛选后 {filtered_count} 条")
+
+        # 准备数据信息（使用筛选后的数据）
+        sample_size = min(100, len(filtered_df))
+        df_sample = filtered_df.head(sample_size)
+
         data_info = f"数据表名：{table_name}\n"
-        data_info += f"总记录数：{len(df)}\n"
-        data_info += f"列名：{', '.join(df.columns.tolist())}\n\n"
+        data_info += f"原始记录数：{original_count}\n"
+        if filter_applied:
+            data_info += f"筛选条件：{filter_summary}\n"
+        data_info += f"筛选后记录数：{filtered_count}\n"
+        data_info += f"列名：{', '.join(filtered_df.columns.tolist())}\n\n"
         data_info += f"数据样本（前{sample_size}条）：\n"
         data_info += df_sample.to_csv(index=False, sep='\t', na_rep='空')
-        
-        # 第一步：让大模型分析需要什么样的图表
+
+        # ===== 第二步：让大模型分析需要什么样的图表 =====
         chart_requirement_system_prompt = "你是一个专业的数据可视化专家。请根据用户的分析需求和提供的数据，分析应该生成什么类型的图表。"
-        
+
         chart_requirement_prompt = f"{data_info}\n\n用户分析需求：{user_prompt}\n\n"
         chart_requirement_prompt += "请根据以上数据和用户需求，分析应该生成什么类型的图表。\n"
         chart_requirement_prompt += "请以JSON格式返回，格式如下：\n"
@@ -3656,7 +3820,7 @@ def analyze_v2():
         chart_requirement_prompt += '  ]\n'
         chart_requirement_prompt += '}\n'
         chart_requirement_prompt += "注意：只返回JSON，不要有其他文字。图表类型只能是line（折线图）、bar（柱状图）、pie（饼图）、scatter（散点图）中的一种。"
-        
+
         charts = []
 
         # 根据选择调用不同的大模型获取图表需求
@@ -3690,14 +3854,12 @@ def analyze_v2():
 
         chart_requirement_text = result
 
-        # 尝试解析JSON
+        # 尝试解析JSON并生成图表（使用筛选后的数据 filtered_df）
         if chart_requirement_text:
-            import json
-            import re
             json_match = re.search(r'\{[\s\S]*\}', chart_requirement_text)
             if json_match:
                 chart_requirement = json.loads(json_match.group())
-                
+
                 # 根据需求生成图表
                 if 'charts' in chart_requirement:
                     for chart_req in chart_requirement['charts']:
@@ -3705,13 +3867,13 @@ def analyze_v2():
                             chart_title = chart_req.get('title', '图表')
                             chart_type = chart_req.get('chart_type', 'bar')
                             x_field = chart_req.get('x_field')
-                            
-                            if x_field and x_field in df.columns:
+
+                            if x_field and x_field in filtered_df.columns:
                                 if chart_type == 'pie':
                                     # 饼图
-                                    value_counts = df[x_field].value_counts().head(15).reset_index()
+                                    value_counts = filtered_df[x_field].value_counts().head(15).reset_index()
                                     value_counts.columns = [x_field, 'count']
-                                    
+
                                     charts.append({
                                         'title': chart_title,
                                         'type': 'echarts',
@@ -3729,13 +3891,13 @@ def analyze_v2():
                                     # 折线图 - 检查是否是时间字段
                                     is_time_field = any(keyword in x_field for keyword in ['时间', '日期', 'date', 'time'])
                                     if is_time_field:
-                                        df_temp = df.copy()
+                                        df_temp = filtered_df.copy()
                                         df_temp[x_field] = pd.to_datetime(df_temp[x_field], errors='coerce')
                                         df_valid = df_temp.dropna(subset=[x_field])
                                         if len(df_valid) > 0:
                                             df_valid['day'] = df_valid[x_field].dt.day
                                             counts = df_valid.groupby('day').size().reset_index(name='count')
-                                            
+
                                             charts.append({
                                                 'title': chart_title,
                                                 'type': 'echarts',
@@ -3749,9 +3911,9 @@ def analyze_v2():
                                             })
                                     else:
                                         # 普通字段的折线图
-                                        counts = df[x_field].value_counts().head(15).reset_index()
+                                        counts = filtered_df[x_field].value_counts().head(15).reset_index()
                                         counts.columns = [x_field, 'count']
-                                        
+
                                         charts.append({
                                             'title': chart_title,
                                             'type': 'echarts',
@@ -3765,9 +3927,9 @@ def analyze_v2():
                                         })
                                 else:
                                     # 默认柱状图
-                                    counts = df[x_field].value_counts().head(15).reset_index()
+                                    counts = filtered_df[x_field].value_counts().head(15).reset_index()
                                     counts.columns = [x_field, 'count']
-                                    
+
                                     charts.append({
                                         'title': chart_title,
                                         'type': 'echarts',
@@ -3782,25 +3944,26 @@ def analyze_v2():
                         except Exception as e:
                             print(f"生成图表失败: {e}")
                             continue
-        
-        # 如果没有生成图表，生成一些基础图表作为后备
+
+        # 如果没有生成图表，生成一些基础图表作为后备（使用筛选后的数据）
         if not charts:
             try:
                 # 检查是否有时间字段
                 time_col = None
-                for col in df.columns:
+                for col in filtered_df.columns:
                     if '时间' in col or '日期' in col or 'date' in col.lower():
                         time_col = col
                         break
-                
+
                 if time_col:
                     try:
-                        df[time_col] = pd.to_datetime(df[time_col], errors='coerce')
-                        df_valid = df.dropna(subset=[time_col])
+                        filtered_df_temp = filtered_df.copy()
+                        filtered_df_temp[time_col] = pd.to_datetime(filtered_df_temp[time_col], errors='coerce')
+                        df_valid = filtered_df_temp.dropna(subset=[time_col])
                         if len(df_valid) > 0:
                             df_valid['day'] = df_valid[time_col].dt.day
                             daily_counts = df_valid.groupby('day').size().reset_index(name='count')
-                            
+
                             charts.append({
                                 'title': '日案件量趋势',
                                 'type': 'echarts',
@@ -3814,19 +3977,19 @@ def analyze_v2():
                             })
                     except Exception as e:
                         print(f"生成时间图表失败: {e}")
-                
+
                 # 检查是否有类型字段
                 type_col = None
-                for col in df.columns:
+                for col in filtered_df.columns:
                     if '类型' in col or '小类' in col or '大类' in col:
                         type_col = col
                         break
-                
+
                 if type_col:
                     try:
-                        type_counts = df[type_col].value_counts().head(10).reset_index()
+                        type_counts = filtered_df[type_col].value_counts().head(10).reset_index()
                         type_counts.columns = [type_col, 'count']
-                        
+
                         charts.append({
                             'title': '案件类型分布TOP10',
                             'type': 'echarts',
@@ -3840,19 +4003,19 @@ def analyze_v2():
                         })
                     except Exception as e:
                         print(f"生成类型图表失败: {e}")
-                
+
                 # 检查是否有来源字段
                 source_col = None
-                for col in df.columns:
+                for col in filtered_df.columns:
                     if '来源' in col or 'source' in col.lower():
                         source_col = col
                         break
-                
+
                 if source_col:
                     try:
-                        source_counts = df[source_col].value_counts().reset_index()
+                        source_counts = filtered_df[source_col].value_counts().reset_index()
                         source_counts.columns = [source_col, 'count']
-                        
+
                         charts.append({
                             'title': '案件来源分布',
                             'type': 'echarts',
@@ -3870,13 +4033,13 @@ def analyze_v2():
                         print(f"生成来源图表失败: {e}")
             except Exception as e:
                 print(f"生成后备图表时出错: {e}")
-        
-        # 第二步：生成分析报告
+
+        # ===== 第三步：生成分析报告 =====
         analysis_report = None
-        
+
         # 构建报告提示词
         system_prompt = "你是一个专业的数据分析助手，擅长分析城市管理相关的案件数据。请根据用户的需求和提供的数据，生成详细的分析报告。"
-        
+
         final_prompt = f"{data_info}\n\n用户分析需求：{user_prompt}\n\n"
         final_prompt += "已生成的图表：\n"
         for i, chart in enumerate(charts):
@@ -3885,129 +4048,53 @@ def analyze_v2():
         final_prompt += "要求：\n"
         final_prompt += "1. 分析报告内容要详细、有深度\n"
         final_prompt += "2. 报告格式使用HTML，支持加粗、标题等格式\n"
-        final_prompt += "3. 请结合图表进行分析"
-        
+        final_prompt += "3. 请结合图表进行分析\n"
+        final_prompt += "4. 数据要准确，数量要精确，不要编造数据\n"
+
         # 根据选择调用不同的大模型
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": final_prompt}
+        ]
+
         if model_choice == 'bailian':
-            # 调用阿里云百炼通用模型
-            headers = {
-                'Content-Type': 'application/json',
-                'Authorization': f'Bearer {BAILIAN_GENERAL_API_KEY}'
-            }
-            
-            payload = {
-                "model": BAILIAN_GENERAL_MODEL,
-                "messages": [
-                    {
-                        "role": "system",
-                        "content": system_prompt
-                    },
-                    {
-                        "role": "user",
-                        "content": final_prompt
-                    }
-                ],
-                "temperature": 0.3,
-                "max_tokens": 4000
-            }
-            
-            max_retries = 3
-            retry_delay = 5
-            
-            for attempt in range(max_retries):
-                try:
-                    combined_headers = {
-                        **headers,
-                        'Accept': 'application/json',
-                        'Connection': 'keep-alive'
-                    }
-                    
-                    response = requests.post(
-                        BAILIAN_GENERAL_API_URL, 
-                        headers=combined_headers, 
-                        json=payload, 
-                        timeout=(10, 300)
-                    )
-                    response.raise_for_status()
-                    result = response.json()
-                    analysis_report = result['choices'][0]['message']['content']
-                    break
-                except requests.exceptions.Timeout as e:
-                    if attempt < max_retries - 1:
-                        print(f"API调用超时，{retry_delay}秒后重试... (尝试 {attempt+1}/{max_retries})")
-                        import time
-                        time.sleep(retry_delay)
-                        retry_delay *= 2
-                    else:
-                        analysis_report = f"API调用失败: 多次尝试后仍然超时 - {str(e)}"
-                        break
-                except Exception as e:
-                    analysis_report = f"API调用失败: {str(e)}"
-                    break
+            success, result = call_llm_api(
+                BAILIAN_GENERAL_API_URL,
+                BAILIAN_GENERAL_API_KEY,
+                BAILIAN_GENERAL_MODEL,
+                messages,
+                max_tokens=4000,
+                provider_name="百炼-分析报告"
+            )
+            if success:
+                analysis_report = result
+            else:
+                analysis_report = f"API调用失败: {result}"
         else:
-            # 调用火山引擎（默认）
-            headers = {
-                'Content-Type': 'application/json',
-                'Authorization': f'Bearer {API_KEY}'
-            }
-            
-            payload = {
-                "model": MODEL,
-                "messages": [
-                    {
-                        "role": "system",
-                        "content": system_prompt
-                    },
-                    {
-                        "role": "user",
-                        "content": final_prompt
-                    }
-                ],
-                "temperature": 0.3,
-                "max_tokens": 4000
-            }
-            
-            max_retries = 3
-            retry_delay = 5
-            
-            for attempt in range(max_retries):
-                try:
-                    combined_headers = {
-                        **headers,
-                        'Accept': 'application/json',
-                        'Connection': 'keep-alive'
-                    }
-                    
-                    response = requests.post(
-                        API_URL, 
-                        headers=combined_headers, 
-                        json=payload, 
-                        timeout=(10, 300)
-                    )
-                    response.raise_for_status()
-                    result = response.json()
-                    analysis_report = result['choices'][0]['message']['content']
-                    break
-                except requests.exceptions.Timeout as e:
-                    if attempt < max_retries - 1:
-                        print(f"API调用超时，{retry_delay}秒后重试... (尝试 {attempt+1}/{max_retries})")
-                        import time
-                        time.sleep(retry_delay)
-                        retry_delay *= 2
-                    else:
-                        analysis_report = f"API调用失败: 多次尝试后仍然超时 - {str(e)}"
-                        break
-                except Exception as e:
-                    analysis_report = f"API调用失败: {str(e)}"
-                    break
-        
+            success, result = call_llm_api(
+                API_URL,
+                API_KEY,
+                MODEL,
+                messages,
+                max_tokens=4000,
+                provider_name="火山引擎-分析报告"
+            )
+            if success:
+                analysis_report = result
+            else:
+                analysis_report = f"API调用失败: {result}"
+
         # 返回结果
         result = {
             'table_name': table_name,
+            'original_count': original_count,
+            'filtered_count': filtered_count,
+            'filter_applied': filter_applied,
+            'filter_summary': filter_summary if filter_applied else None,
             'report': analysis_report,
             'charts': charts
         }
-        
+
         return jsonify(result), 200
     except Exception as e:
         print(f"Error in analyze_v2: {str(e)}")

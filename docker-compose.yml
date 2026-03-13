@@ -23,6 +23,7 @@ services:
   case-analysis-app:
     build: .
     container_name: case-analysis-web
+    command: gunicorn --bind 0.0.0.0:5000 --workers 4 --timeout 300 --graceful-timeout 300 backend.app:app
     ports:
       - "5000:5000"
     environment:

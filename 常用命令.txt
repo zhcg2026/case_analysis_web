@@ -232,8 +232,7 @@ DB_PORT = '3306'
 
 # 常用部署
 # 本地构建前端
-cd C:\Users\Administrator\Documents\trae_projects\case_analysis_web\
-cd frontend
+cd C:\Users\Administrator\Documents\trae_projects\case_analysis_web\frontend
 npm run build
 # 上传文件到服务器，回到case_analysis_web目录
 cd ..
@@ -255,3 +254,4 @@ DELETE FROM cases;
 
 # 3. 退出MySQL
 EXIT;
+
