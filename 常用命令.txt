@@ -246,3 +246,12 @@ cd /root/case_analysis_web
 chmod +x quick_deploy.sh
 ./quick_deploy.sh
 # 程序没有问题，同步Git仓库
+
+
+# 连接数据库
+docker exec -it mysql-case-analysis mysql -u root -p'MySql@2024!Root' case_analysis
+# 2. 在MySQL中执行删除命令
+DELETE FROM cases;
+
+# 3. 退出MySQL
+EXIT;
