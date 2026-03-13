@@ -379,6 +379,116 @@ BAILIAN_GENERAL_MODEL = 'qwen-plus'
 BAILIAN_CHENGGUANTONG_API_KEY = 'sk-9ee20f6ad5dd459aa8952e5ae979bead'
 BAILIAN_CHENGGUANTONG_API_URL = 'https://dashscope.aliyuncs.com/api/v1/apps/b608e4ed05c44c19bf7e71679c859689/completion'
 
+# 统一的超时配置
+API_CONNECT_TIMEOUT = 10  # 连接超时（秒）
+API_READ_TIMEOUT = 180    # 读取超时（秒）
+API_MAX_RETRIES = 3       # 最大重试次数
+API_RETRY_DELAY = 5       # 重试延迟（秒）
+
+def call_llm_api(api_url, api_key, model, messages, max_tokens=3000, temperature=0.3, provider_name="LLM"):
+    """
+    统一的大模型 API 调用函数，带重试机制和完善的错误处理
+
+    Args:
+        api_url: API 地址
+        api_key: API 密钥
+        model: 模型名称
+        messages: 消息列表
+        max_tokens: 最大 token 数
+        temperature: 温度参数
+        provider_name: 提供商名称（用于日志）
+
+    Returns:
+        tuple: (success: bool, content: str or error_message: str)
+    """
+    headers = {
+        'Content-Type': 'application/json',
+        'Authorization': f'Bearer {api_key}',
+        'Accept': 'application/json',
+        'Connection': 'keep-alive'
+    }
+
+    payload = {
+        "model": model,
+        "messages": messages,
+        "temperature": temperature,
+        "max_tokens": max_tokens
+    }
+
+    retry_delay = API_RETRY_DELAY
+
+    for attempt in range(API_MAX_RETRIES):
+        try:
+            print(f"[{provider_name}] 尝试调用 API ({attempt + 1}/{API_MAX_RETRIES})...")
+
+            response = requests.post(
+                api_url,
+                headers=headers,
+                json=payload,
+                timeout=(API_CONNECT_TIMEOUT, API_READ_TIMEOUT)
+            )
+
+            print(f"[{provider_name}] 响应状态码: {response.status_code}")
+
+            # 检查 HTTP 状态码
+            if response.status_code != 200:
+                error_text = response.text[:500] if response.text else "无响应内容"
+                print(f"[{provider_name}] HTTP 错误: {response.status_code}, 响应: {error_text}")
+
+                # 4xx 错误不重试
+                if 400 <= response.status_code < 500:
+                    return False, f"API 请求错误 ({response.status_code}): {error_text}"
+
+                # 5xx 错误重试
+                response.raise_for_status()
+
+            result = response.json()
+
+            # 检查响应结构
+            if 'choices' not in result or len(result['choices']) == 0:
+                print(f"[{provider_name}] 响应结构异常: {result}")
+                return False, "API 响应格式异常: 缺少 choices 字段"
+
+            if 'message' not in result['choices'][0] or 'content' not in result['choices'][0]['message']:
+                print(f"[{provider_name}] 响应结构异常: {result['choices'][0]}")
+                return False, "API 响应格式异常: 缺少 message.content 字段"
+
+            content = result['choices'][0]['message']['content']
+            print(f"[{provider_name}] API 调用成功, 响应长度: {len(content)}")
+            return True, content
+
+        except requests.exceptions.Timeout as e:
+            print(f"[{provider_name}] 请求超时: {e}")
+            if attempt < API_MAX_RETRIES - 1:
+                print(f"[{provider_name}] {retry_delay}秒后重试...")
+                import time
+                time.sleep(retry_delay)
+                retry_delay *= 2
+            else:
+                return False, f"API 调用超时，已重试 {API_MAX_RETRIES} 次"
+
+        except requests.exceptions.ConnectionError as e:
+            print(f"[{provider_name}] 连接错误: {e}")
+            if attempt < API_MAX_RETRIES - 1:
+                print(f"[{provider_name}] {retry_delay}秒后重试...")
+                import time
+                time.sleep(retry_delay)
+                retry_delay *= 2
+            else:
+                return False, f"网络连接失败: {str(e)}"
+
+        except requests.exceptions.RequestException as e:
+            print(f"[{provider_name}] 请求异常: {e}")
+            return False, f"API 请求失败: {str(e)}"
+
+        except Exception as e:
+            print(f"[{provider_name}] 未知异常: {e}")
+            import traceback
+            traceback.print_exc()
+            return False, f"API 调用异常: {str(e)}"
+
+    return False, "API 调用失败: 超过最大重试次数"
+
 # 数据清洗脱敏相关函数
 import re
 
@@ -3548,80 +3658,38 @@ def analyze_v2():
         chart_requirement_prompt += "注意：只返回JSON，不要有其他文字。图表类型只能是line（折线图）、bar（柱状图）、pie（饼图）、scatter（散点图）中的一种。"
         
         charts = []
-        
+
         # 根据选择调用不同的大模型获取图表需求
         chart_requirement_text = None
+        messages = [
+            {"role": "system", "content": chart_requirement_system_prompt},
+            {"role": "user", "content": chart_requirement_prompt}
+        ]
+
         if model_choice == 'bailian':
-            # 调用阿里云百炼通用模型
-            try:
-                headers = {
-                    'Content-Type': 'application/json',
-                    'Authorization': f'Bearer {BAILIAN_GENERAL_API_KEY}'
-                }
-                
-                payload = {
-                    "model": BAILIAN_GENERAL_MODEL,
-                    "messages": [
-                        {
-                            "role": "system",
-                            "content": chart_requirement_system_prompt
-                        },
-                        {
-                            "role": "user",
-                            "content": chart_requirement_prompt
-                        }
-                    ],
-                    "temperature": 0.3,
-                    "max_tokens": 2000
-                }
-                
-                response = requests.post(
-                    BAILIAN_GENERAL_API_URL, 
-                    headers=headers, 
-                    json=payload, 
-                    timeout=(10, 120)
-                )
-                response.raise_for_status()
-                result = response.json()
-                chart_requirement_text = result['choices'][0]['message']['content']
-            except Exception as e:
-                print(f"获取图表需求失败: {e}")
+            success, result = call_llm_api(
+                BAILIAN_GENERAL_API_URL,
+                BAILIAN_GENERAL_API_KEY,
+                BAILIAN_GENERAL_MODEL,
+                messages,
+                max_tokens=2000,
+                provider_name="百炼-图表需求"
+            )
         else:
-            # 调用火山引擎（默认）
-            try:
-                headers = {
-                    'Content-Type': 'application/json',
-                    'Authorization': f'Bearer {API_KEY}'
-                }
-                
-                payload = {
-                    "model": MODEL,
-                    "messages": [
-                        {
-                            "role": "system",
-                            "content": chart_requirement_system_prompt
-                        },
-                        {
-                            "role": "user",
-                            "content": chart_requirement_prompt
-                        }
-                    ],
-                    "temperature": 0.3,
-                    "max_tokens": 2000
-                }
-                
-                response = requests.post(
-                    API_URL, 
-                    headers=headers, 
-                    json=payload, 
-                    timeout=(10, 120)
-                )
-                response.raise_for_status()
-                result = response.json()
-                chart_requirement_text = result['choices'][0]['message']['content']
-            except Exception as e:
-                print(f"获取图表需求失败: {e}")
-        
+            success, result = call_llm_api(
+                API_URL,
+                API_KEY,
+                MODEL,
+                messages,
+                max_tokens=2000,
+                provider_name="火山引擎-图表需求"
+            )
+
+        if not success:
+            raise Exception(result)
+
+        chart_requirement_text = result
+
         # 尝试解析JSON
         if chart_requirement_text:
             import json

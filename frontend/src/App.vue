@@ -1913,39 +1913,56 @@ async function startAnalysis() {
     // 步骤3: 调用大模型分析
     updateStepStatus(2, 'active');
 
-    const response = await fetch('/api/analyze', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...getAuthHeaders()
-      },
-      body: JSON.stringify({
-        table_name: selectedTable.value,
-        analysis_type: selectedAnalysisType.value
-      })
-    });
+    // 添加超时控制 (300秒)
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 300000);
 
-    console.log('分析请求响应状态:', response.status);
+    try {
+      const response = await fetch('/api/analyze', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAuthHeaders()
+        },
+        body: JSON.stringify({
+          table_name: selectedTable.value,
+          analysis_type: selectedAnalysisType.value
+        }),
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
 
-    // 步骤4: 生成分析报告
-    updateStepStatus(3, 'active');
+      console.log('分析请求响应状态:', response.status);
 
-    const data = await response.json();
-    console.log('分析请求响应数据:', data);
+      // 步骤4: 生成分析报告
+      updateStepStatus(3, 'active');
 
-    if (data.error) {
-      analysisMessage.value = 'Error: ' + data.error;
-      console.error('分析错误:', data.error);
+      const data = await response.json();
+      console.log('分析请求响应数据:', data);
+
+      if (data.error) {
+        analysisMessage.value = 'Error: ' + data.error;
+        console.error('分析错误:', data.error);
+        resetAnalysisSteps();
+      } else {
+        analysisResult.value = data;
+        console.log('分析结果已保存:', analysisResult.value);
+
+        // 步骤5: 分析完成
+        updateStepStatus(4, 'completed');
+        analysisMessage.value = '分析完成';
+        console.log('分析完成，结果已显示在当前页面');
+        console.log('当前模块:', activeModule.value);
+      }
+    } catch (fetchError) {
+      clearTimeout(timeoutId);
+      if (fetchError.name === 'AbortError') {
+        analysisMessage.value = '请求超时，请稍后重试';
+        console.error('请求超时');
+      } else {
+        throw fetchError;
+      }
       resetAnalysisSteps();
-    } else {
-      analysisResult.value = data;
-      console.log('分析结果已保存:', analysisResult.value);
-
-      // 步骤5: 分析完成
-      updateStepStatus(4, 'completed');
-      analysisMessage.value = '分析完成';
-      console.log('分析完成，结果已显示在当前页面');
-      console.log('当前模块:', activeModule.value);
     }
   } catch (error) {
     analysisMessage.value = 'Error analyzing data: ' + error.message;
@@ -1975,32 +1992,48 @@ async function startAnalysisV2() {
     analysisV2Error.value = '';
     analysisV2Message.value = '分析中...';
     analysisV2Result.value = null;
-    
-    const response = await fetch('/api/analyze-v2', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...getAuthHeaders()
-      },
-      body: JSON.stringify({
-        table_name: selectedTableV2.value,
-        prompt: analysisPrompt.value,
-        model: selectedModel.value
-      })
-    });
-    
-    const data = await response.json();
-    
-    if (data.error) {
-      analysisV2Error.value = 'Error: ' + data.error;
-    } else {
-      analysisV2Result.value = data;
-      analysisV2Message.value = '分析完成';
-      
-      // 等待DOM更新后渲染图表
-      setTimeout(() => {
-        renderAnalysisV2Charts();
-      }, 100);
+
+    // 添加超时控制 (300秒)
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 300000);
+
+    try {
+      const response = await fetch('/api/analyze-v2', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAuthHeaders()
+        },
+        body: JSON.stringify({
+          table_name: selectedTableV2.value,
+          prompt: analysisPrompt.value,
+          model: selectedModel.value
+        }),
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+
+      const data = await response.json();
+
+      if (data.error) {
+        analysisV2Error.value = 'Error: ' + data.error;
+      } else {
+        analysisV2Result.value = data;
+        analysisV2Message.value = '分析完成';
+
+        // 等待DOM更新后渲染图表
+        setTimeout(() => {
+          renderAnalysisV2Charts();
+        }, 100);
+      }
+    } catch (fetchError) {
+      clearTimeout(timeoutId);
+      if (fetchError.name === 'AbortError') {
+        analysisV2Error.value = '请求超时，请稍后重试';
+        console.error('请求超时');
+      } else {
+        throw fetchError;
+      }
     }
   } catch (error) {
     analysisV2Error.value = 'Error analyzing data: ' + error.message;
