@@ -2082,27 +2082,27 @@ function formatAnalysisReport(content) {
   formatted = formatted.replace(/\n/g, '<br>');
   
   // 处理标题（#开头）
-  formatted = formatted.replace(/^### (.*)$/gm, '<h3 style="color: #1e293b; font-size: 16px; font-weight: 700; margin-top: 16px; margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid #e2e8f0;">$1</h3>');
-  formatted = formatted.replace(/^## (.*)$/gm, '<h2 style="color: #1e293b; font-size: 17px; font-weight: 700; margin-top: 18px; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 2px solid #4facfe;">$1</h2>');
-  formatted = formatted.replace(/^# (.*)$/gm, '<h1 style="color: #1e293b; font-size: 18px; font-weight: 800; margin-top: 20px; margin-bottom: 12px; padding-bottom: 10px; border-bottom: 2px solid #4facfe;">$1</h1>');
+  formatted = formatted.replace(/^### (.*)$/gm, '<h3 style="color: white; font-size: 16px; font-weight: 700; margin-top: 16px; margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid rgba(255, 255, 255, 0.2);">$1</h3>');
+  formatted = formatted.replace(/^## (.*)$/gm, '<h2 style="color: white; font-size: 17px; font-weight: 700; margin-top: 18px; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 2px solid #4facfe;">$1</h2>');
+  formatted = formatted.replace(/^# (.*)$/gm, '<h1 style="color: white; font-size: 18px; font-weight: 800; margin-top: 20px; margin-bottom: 12px; padding-bottom: 10px; border-bottom: 2px solid #4facfe;">$1</h1>');
   
   // 处理粗体（**内容**）
-  formatted = formatted.replace(/\*\*(.*?)\*\*/g, '<strong style="color: #1e293b; font-weight: 700;">$1</strong>');
+  formatted = formatted.replace(/\*\*(.*?)\*\*/g, '<strong style="color: white; font-weight: 700;">$1</strong>');
   
   // 处理斜体（*内容*）
-  formatted = formatted.replace(/\*(.*?)\*/g, '<em style="color: #475569; font-style: italic;">$1</em>');
+  formatted = formatted.replace(/\*(.*?)\*/g, '<em style="color: rgba(255, 255, 255, 0.9); font-style: italic;">$1</em>');
   
   // 处理列表项（- 开头）
-  formatted = formatted.replace(/^- (.*)$/gm, '<li style="margin: 4px 0; padding-left: 8px; color: #334155; border-left: 2px solid #4facfe; padding-left: 10px;">$1</li>');
+  formatted = formatted.replace(/^- (.*)$/gm, '<li style="margin: 4px 0; padding-left: 8px; color: rgba(255, 255, 255, 0.9); border-left: 2px solid #4facfe; padding-left: 10px;">$1</li>');
   
   // 处理列表容器
   formatted = formatted.replace(/(<li.*<\/li>)/s, '<ul style="list-style: none; padding: 0; margin: 10px 0;">$1</ul>');
   
   // 处理分隔线（---）
-  formatted = formatted.replace(/^---$/gm, '<hr style="border: none; border-top: 1px solid #e2e8f0; margin: 16px 0;">');
+  formatted = formatted.replace(/^---$/gm, '<hr style="border: none; border-top: 1px solid rgba(255, 255, 255, 0.2); margin: 16px 0;">');
   
   // 处理代码块（```开头结尾）
-  formatted = formatted.replace(/```([\s\S]*?)```/g, '<pre style="background: #1e293b; color: #e2e8f0; padding: 12px; border-radius: 6px; overflow-x: auto; font-family: monospace; font-size: 13px; margin: 12px 0;"><code>$1</code></pre>');
+  formatted = formatted.replace(/```([\s\S]*?)```/g, '<pre style="background: rgba(0, 0, 0, 0.3); color: rgba(255, 255, 255, 0.9); padding: 12px; border-radius: 6px; overflow-x: auto; font-family: monospace; font-size: 13px; margin: 12px 0;"><code>$1</code></pre>');
   
   return formatted;
 }
@@ -5138,80 +5138,80 @@ function getColumnIcon(index) {
               <div class="chart-container" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 20px;">
                 <!-- 时间分析图表 -->
                 <template v-if="analysisResult.analysis_type === 'time_analysis'">
-                  <div class="chart-item" style="padding: 20px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e8e8e8;">
-                    <h5 style="margin: 0 0 15px 0; color: #333; font-size: 14px; font-weight: 600;">📅 日案件量趋势</h5>
+                  <div class="chart-item" style="padding: 20px; background: rgba(255, 255, 255, 0.1); border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.2); backdrop-filter: blur(10px);">
+                    <h5 style="margin: 0 0 15px 0; color: white; font-size: 14px; font-weight: 600;">📅 日案件量趋势</h5>
                     <div ref="dailyChart" class="chart" style="height: 300px;"></div>
                   </div>
-                  <div class="chart-item" style="padding: 20px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e8e8e8;">
-                    <h5 style="margin: 0 0 15px 0; color: #333; font-size: 14px; font-weight: 600;">⏰ 小时级高峰时段</h5>
+                  <div class="chart-item" style="padding: 20px; background: rgba(255, 255, 255, 0.1); border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.2); backdrop-filter: blur(10px);">
+                    <h5 style="margin: 0 0 15px 0; color: white; font-size: 14px; font-weight: 600;">⏰ 小时级高峰时段</h5>
                     <div ref="hourlyChart" class="chart" style="height: 300px;"></div>
                   </div>
                 </template>
                 <!-- 空间分析图表 -->
                 <template v-if="analysisResult.analysis_type === 'space_analysis'">
-                  <div class="chart-item" v-if="analysisResult.chart_data?.street" style="padding: 20px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e8e8e8;">
-                    <h5 style="margin: 0 0 15px 0; color: #333; font-size: 14px; font-weight: 600;">🏘️ 各街道案件密度</h5>
+                  <div class="chart-item" v-if="analysisResult.chart_data?.street" style="padding: 20px; background: rgba(255, 255, 255, 0.1); border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.2); backdrop-filter: blur(10px);">
+                    <h5 style="margin: 0 0 15px 0; color: white; font-size: 14px; font-weight: 600;">🏘️ 各街道案件密度</h5>
                     <div ref="spaceChart" class="chart" style="height: 300px;"></div>
                   </div>
-                  <div class="chart-item" v-if="analysisResult.chart_data?.community" style="padding: 20px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e8e8e8;">
-                    <h5 style="margin: 0 0 15px 0; color: #333; font-size: 14px; font-weight: 600;">🏢 各社区案件密度</h5>
+                  <div class="chart-item" v-if="analysisResult.chart_data?.community" style="padding: 20px; background: rgba(255, 255, 255, 0.1); border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.2); backdrop-filter: blur(10px);">
+                    <h5 style="margin: 0 0 15px 0; color: white; font-size: 14px; font-weight: 600;">🏢 各社区案件密度</h5>
                     <div ref="spaceChart2" class="chart" style="height: 300px;"></div>
                   </div>
-                  <div class="chart-item" v-if="analysisResult.chart_data?.area" style="padding: 20px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e8e8e8;">
-                    <h5 style="margin: 0 0 15px 0; color: #333; font-size: 14px; font-weight: 600;">📍 各片区案件密度</h5>
+                  <div class="chart-item" v-if="analysisResult.chart_data?.area" style="padding: 20px; background: rgba(255, 255, 255, 0.1); border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.2); backdrop-filter: blur(10px);">
+                    <h5 style="margin: 0 0 15px 0; color: white; font-size: 14px; font-weight: 600;">📍 各片区案件密度</h5>
                     <div ref="spaceChart3" class="chart" style="height: 300px;"></div>
                   </div>
                 </template>
                 <!-- 来源分析图表 -->
                 <template v-if="analysisResult.analysis_type === 'source_analysis'">
-                  <div class="chart-item" v-if="analysisResult.chart_data?.source" style="padding: 20px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e8e8e8; grid-column: 1 / -1;">
-                    <h5 style="margin: 0 0 15px 0; color: #333; font-size: 14px; font-weight: 600;">🔗 案件来源分布</h5>
+                  <div class="chart-item" v-if="analysisResult.chart_data?.source" style="padding: 20px; background: rgba(255, 255, 255, 0.1); border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.2); backdrop-filter: blur(10px); grid-column: 1 / -1;">
+                    <h5 style="margin: 0 0 15px 0; color: white; font-size: 14px; font-weight: 600;">🔗 案件来源分布</h5>
                     <div ref="sourceChart" class="chart" style="height: 300px;"></div>
                   </div>
                 </template>
                 <!-- 案件类型分析图表 -->
                 <template v-if="analysisResult.analysis_type === 'type_analysis'">
-                  <div class="chart-item" v-if="analysisResult.chart_data?.type" style="padding: 20px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e8e8e8; grid-column: 1 / -1;">
-                    <h5 style="margin: 0 0 15px 0; color: #333; font-size: 14px; font-weight: 600;">📋 案件类型分布</h5>
+                  <div class="chart-item" v-if="analysisResult.chart_data?.type" style="padding: 20px; background: rgba(255, 255, 255, 0.1); border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.2); backdrop-filter: blur(10px); grid-column: 1 / -1;">
+                    <h5 style="margin: 0 0 15px 0; color: white; font-size: 14px; font-weight: 600;">📋 案件类型分布</h5>
                     <div ref="sourceChart" class="chart" style="height: 300px;"></div>
                   </div>
                 </template>
                 <!-- 重复案件分析图表 -->
                 <template v-if="analysisResult.analysis_type === 'duplicate_analysis'">
-                  <div class="chart-item" v-if="analysisResult.chart_data?.problem_duplicates" style="padding: 20px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e8e8e8;">
-                    <h5 style="margin: 0 0 15px 0; color: #333; font-size: 14px; font-weight: 600;">❓ 问题描述重复TOP10</h5>
+                  <div class="chart-item" v-if="analysisResult.chart_data?.problem_duplicates" style="padding: 20px; background: rgba(255, 255, 255, 0.1); border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.2); backdrop-filter: blur(10px);">
+                    <h5 style="margin: 0 0 15px 0; color: white; font-size: 14px; font-weight: 600;">❓ 问题描述重复TOP10</h5>
                     <div ref="dailyChart" class="chart" style="height: 300px;"></div>
                   </div>
-                  <div class="chart-item" v-if="analysisResult.chart_data?.address_duplicates" style="padding: 20px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e8e8e8;">
-                    <h5 style="margin: 0 0 15px 0; color: #333; font-size: 14px; font-weight: 600;">📍 地址描述重复TOP10</h5>
+                  <div class="chart-item" v-if="analysisResult.chart_data?.address_duplicates" style="padding: 20px; background: rgba(255, 255, 255, 0.1); border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.2); backdrop-filter: blur(10px);">
+                    <h5 style="margin: 0 0 15px 0; color: white; font-size: 14px; font-weight: 600;">📍 地址描述重复TOP10</h5>
                     <div ref="sourceChart" class="chart" style="height: 300px;"></div>
                   </div>
-                  <div class="chart-item" v-if="analysisResult.chart_data?.address_type_distribution" style="padding: 20px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e8e8e8;">
-                    <h5 style="margin: 0 0 15px 0; color: #333; font-size: 14px; font-weight: 600;">🏷️ 地址描述类型占比</h5>
+                  <div class="chart-item" v-if="analysisResult.chart_data?.address_type_distribution" style="padding: 20px; background: rgba(255, 255, 255, 0.1); border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.2); backdrop-filter: blur(10px);">
+                    <h5 style="margin: 0 0 15px 0; color: white; font-size: 14px; font-weight: 600;">🏷️ 地址描述类型占比</h5>
                     <div ref="spaceChart" class="chart" style="height: 300px;"></div>
                   </div>
-                  <div class="chart-item" v-if="analysisResult.chart_data?.combined_duplicates" style="padding: 20px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e8e8e8;">
-                    <h5 style="margin: 0 0 15px 0; color: #333; font-size: 14px; font-weight: 600;">🔀 组合重复TOP10</h5>
+                  <div class="chart-item" v-if="analysisResult.chart_data?.combined_duplicates" style="padding: 20px; background: rgba(255, 255, 255, 0.1); border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.2); backdrop-filter: blur(10px);">
+                    <h5 style="margin: 0 0 15px 0; color: white; font-size: 14px; font-weight: 600;">🔀 组合重复TOP10</h5>
                     <div ref="spaceChart2" class="chart" style="height: 300px;"></div>
                   </div>
-                  <div class="chart-item" v-if="analysisResult.chart_data?.violation_type_distribution" style="padding: 20px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e8e8e8;">
-                    <h5 style="margin: 0 0 15px 0; color: #333; font-size: 14px; font-weight: 600;">⚠️ 重复案件违规类型占比</h5>
+                  <div class="chart-item" v-if="analysisResult.chart_data?.violation_type_distribution" style="padding: 20px; background: rgba(255, 255, 255, 0.1); border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.2); backdrop-filter: blur(10px);">
+                    <h5 style="margin: 0 0 15px 0; color: white; font-size: 14px; font-weight: 600;">⚠️ 重复案件违规类型占比</h5>
                     <div ref="spaceChart3" class="chart" style="height: 300px;"></div>
                   </div>
                 </template>
                 
                 <!-- 对比上月分析图表 -->
                 <template v-if="analysisResult.analysis_type === 'monthly_comparison'">
-                  <div class="chart-item" v-if="analysisResult.chart_data?.monthly_comparison" style="padding: 20px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e8e8e8; grid-column: 1 / -1;">
-                    <h5 style="margin: 0 0 15px 0; color: #333; font-size: 14px; font-weight: 600;">📊 上月vs本月案件量对比</h5>
+                  <div class="chart-item" v-if="analysisResult.chart_data?.monthly_comparison" style="padding: 20px; background: rgba(255, 255, 255, 0.1); border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.2); backdrop-filter: blur(10px); grid-column: 1 / -1;">
+                    <h5 style="margin: 0 0 15px 0; color: white; font-size: 14px; font-weight: 600;">📊 上月vs本月案件量对比</h5>
                     <div ref="dailyChart" class="chart" style="height: 300px;"></div>
                   </div>
-                  <div class="chart-item" v-if="analysisResult.chart_data?.case_size_comparison" style="padding: 20px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e8e8e8;">
-                    <h5 style="margin: 0 0 15px 0; color: #333; font-size: 14px; font-weight: 600;">📈 案件大小类别变化</h5>
+                  <div class="chart-item" v-if="analysisResult.chart_data?.case_size_comparison" style="padding: 20px; background: rgba(255, 255, 255, 0.1); border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.2); backdrop-filter: blur(10px);">
+                    <h5 style="margin: 0 0 15px 0; color: white; font-size: 14px; font-weight: 600;">📈 案件大小类别变化</h5>
                     <div ref="sourceChart" class="chart" style="height: 300px;"></div>
                   </div>
-                  <div class="chart-item" v-if="analysisResult.chart_data?.problem_trend" style="padding: 20px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e8e8e8;">
-                    <h5 style="margin: 0 0 15px 0; color: #333; font-size: 14px; font-weight: 600;">📉 问题趋势变化</h5>
+                  <div class="chart-item" v-if="analysisResult.chart_data?.problem_trend" style="padding: 20px; background: rgba(255, 255, 255, 0.1); border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.2); backdrop-filter: blur(10px);">
+                    <h5 style="margin: 0 0 15px 0; color: white; font-size: 14px; font-weight: 600;">📉 问题趋势变化</h5>
                     <div ref="spaceChart" class="chart" style="height: 300px;"></div>
                   </div>
                 </template>
@@ -5219,12 +5219,12 @@ function getColumnIcon(index) {
             </div>
             
             <!-- 智能分析结果 -->
-            <div v-if="analysisResult.analysis" style="margin-top: 30px; padding: 20px; background: linear-gradient(135deg, #e8f8ff 0%, #e0f7ff 100%); border-radius: 8px; border-left: 4px solid #4facfe;">
+            <div v-if="analysisResult.analysis" style="margin-top: 30px; padding: 20px; background: rgba(255, 255, 255, 0.1); border-radius: 8px; border-left: 4px solid #4facfe; backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.2);">
               <h4 style="margin: 0 0 15px 0; color: #4facfe; font-size: 16px; font-weight: 600; display: flex; align-items: center; gap: 8px;">
                 <span>🤖</span>
                 <span>AI智能分析</span>
               </h4>
-              <div style="line-height: 1.8; color: #333; font-size: 15px;" v-html="analysisResult.analysis.replace(/\n/g, '<br>')"></div>
+              <div style="line-height: 1.8; color: rgba(255, 255, 255, 0.9); font-size: 15px;" v-html="analysisResult.analysis.replace(/\n/g, '<br>')"></div>
             </div>
           </div>
         </div>
@@ -5606,21 +5606,21 @@ function getColumnIcon(index) {
           </div>
           
           <!-- 加载状态 -->
-          <div v-if="huiwentaiLoading" class="loading" style="font-size: 16px; padding: 40px; text-align: center; color: #666;">
+          <div v-if="huiwentaiLoading" class="loading" style="font-size: 16px; padding: 40px; text-align: center; color: rgba(255, 255, 255, 0.7);">
             加载数据中...
           </div>
           
           <!-- 错误信息 -->
-          <div v-else-if="huiwentaiError" class="error" style="font-size: 16px; padding: 40px; text-align: center; color: #ff4d4f;">
+          <div v-else-if="huiwentaiError" class="error" style="font-size: 16px; padding: 40px; text-align: center; color: #ff6b6b;">
             <p>{{ huiwentaiError }}</p>
-            <p style="font-size: 14px; color: #999; margin-top: 10px;">请检查：</p>
-            <ul style="font-size: 14px; color: #999; text-align: left; max-width: 400px; margin: 10px auto;">
+            <p style="font-size: 14px; color: rgba(255, 255, 255, 0.6); margin-top: 10px;">请检查：</p>
+            <ul style="font-size: 14px; color: rgba(255, 255, 255, 0.6); text-align: left; max-width: 400px; margin: 10px auto;">
               <li>1. 云环境ID是否正确</li>
               <li>2. 云数据库安全规则是否允许读取操作</li>
               <li>3. 网络连接是否正常</li>
               <li>4. {{ huiwentaiActiveTab === 'tasks' ? 'tasks' : 'daily-reports' }}集合是否存在</li>
             </ul>
-            <p style="font-size: 14px; color: #999; margin-top: 10px;">详细错误信息请查看浏览器控制台</p>
+            <p style="font-size: 14px; color: rgba(255, 255, 255, 0.6); margin-top: 10px;">详细错误信息请查看浏览器控制台</p>
           </div>
           
           <!-- 任务数据标签页内容 -->
@@ -5870,8 +5870,8 @@ function getColumnIcon(index) {
             </div>
             
             <!-- 考核结果显示 -->
-            <div v-if="assessmentResult" style="background: white; border-radius: 8px; padding: 25px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08); margin-top: 20px;">
-              <h3 style="margin: 0 0 20px 0; padding-bottom: 15px; border-bottom: 2px solid #4facfe; font-size: 20px; color: #333;">📋 考核结果</h3>
+            <div v-if="assessmentResult" style="background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px); border-radius: 12px; padding: 25px; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15); margin-top: 20px; border: 1px solid rgba(255, 255, 255, 0.2);">
+              <h3 style="margin: 0 0 20px 0; padding-bottom: 15px; border-bottom: 2px solid #4facfe; font-size: 20px; color: white;">📋 考核结果</h3>
               
               <!-- 结果摘要 -->
               <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; margin-bottom: 30px;">
@@ -5887,7 +5887,7 @@ function getColumnIcon(index) {
               
               <!-- 排名表格 -->
               <div v-if="assessmentResult.team_results">
-                <h4 style="margin: 0 0 15px 0; color: #333; font-size: 16px;">🏆 片区排名</h4>
+                <h4 style="margin: 0 0 15px 0; color: white; font-size: 16px;">🏆 片区排名</h4>
                 <div style="overflow-x: auto;">
                   <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
                     <thead>
@@ -5903,12 +5903,12 @@ function getColumnIcon(index) {
                       </tr>
                     </thead>
                     <tbody>
-                      <tr v-for="(team, index) in assessmentResult.team_results" :key="team.department" :style="{ backgroundColor: index % 2 === 0 ? '#f8f9fa' : '#ffffff', transition: 'all 0.3s ease' }" @mouseenter="$event.currentTarget.style.backgroundColor='#e8eef9'" @mouseleave="$event.currentTarget.style.backgroundColor=(index % 2 === 0 ? '#f8f9fa' : '#ffffff')">
+                      <tr v-for="(team, index) in assessmentResult.team_results" :key="team.department" :style="{ backgroundColor: index % 2 === 0 ? 'rgba(255, 255, 255, 0.05)' : 'rgba(255, 255, 255, 0.1)', transition: 'all 0.3s ease' }" @mouseenter="$event.currentTarget.style.backgroundColor='rgba(255, 255, 255, 0.15)'" @mouseleave="$event.currentTarget.style.backgroundColor=(index % 2 === 0 ? 'rgba(255, 255, 255, 0.05)' : 'rgba(255, 255, 255, 0.1)')">
                         <td style="padding: 12px; text-align: center; font-weight: 600; color: #4facfe;">
                           <span style="display: inline-block; width: 32px; height: 32px; background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; border-radius: 50%; line-height: 32px; font-size: 14px;">{{ team.rank }}</span>
                         </td>
-                        <td style="padding: 12px; text-align: left; color: #333;">{{ team.department }}</td>
-                        <td style="padding: 12px; text-align: center; color: #555;">{{ team.total_cases }}</td>
+                        <td style="padding: 12px; text-align: left; color: white;">{{ team.department }}</td>
+                        <td style="padding: 12px; text-align: center; color: rgba(255, 255, 255, 0.8);">{{ team.total_cases }}</td>
                         <td style="padding: 12px; text-align: center; color: #2ecc71; font-weight: 600;">{{ team.on_time_count }}</td>
                         <td style="padding: 12px; text-align: center; color: #e74c3c; font-weight: 600;">{{ team.overdue_count }}</td>
                         <td style="padding: 12px; text-align: center; color: #f39c12;">{{ team.delay_count }}</td>
@@ -5975,14 +5975,14 @@ function getColumnIcon(index) {
               </button>
               
               <!-- 消息提示 -->
-              <div v-if="assessmentMessageV2" style="margin-top: 15px; padding: 12px; background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; border-radius: 4px;">
+              <div v-if="assessmentMessageV2" style="margin-top: 15px; padding: 12px; background: rgba(46, 204, 113, 0.2); color: #2ecc71; border: 1px solid rgba(46, 204, 113, 0.4); border-radius: 4px; backdrop-filter: blur(10px);">
                 ✓ {{ assessmentMessageV2 }}
               </div>
             </div>
             
             <!-- 考核结果显示 -->
-            <div v-if="assessmentResultV2" style="background: white; border-radius: 8px; padding: 25px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);">
-              <h3 style="margin: 0 0 20px 0; padding-bottom: 15px; border-bottom: 2px solid #4facfe; font-size: 20px; color: #333;">📋 考核结果</h3>
+            <div v-if="assessmentResultV2" style="background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px); border-radius: 12px; padding: 25px; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15); border: 1px solid rgba(255, 255, 255, 0.2);">
+              <h3 style="margin: 0 0 20px 0; padding-bottom: 15px; border-bottom: 2px solid #4facfe; font-size: 20px; color: white;">📋 考核结果</h3>
               
               <!-- 结果摘要 -->
               <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; margin-bottom: 30px;">
@@ -5998,7 +5998,7 @@ function getColumnIcon(index) {
               
               <!-- 排名表格 -->
               <div v-if="assessmentResultV2.team_results">
-                <h4 style="margin: 0 0 15px 0; color: #333; font-size: 16px;">🏆 片区排名</h4>
+                <h4 style="margin: 0 0 15px 0; color: white; font-size: 16px;">🏆 片区排名</h4>
                 <div style="overflow-x: auto;">
                   <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
                     <thead>
@@ -6014,12 +6014,12 @@ function getColumnIcon(index) {
                       </tr>
                     </thead>
                     <tbody>
-                      <tr v-for="(team, index) in assessmentResultV2.team_results" :key="team.department" :style="{ backgroundColor: index % 2 === 0 ? '#f8f9fa' : '#ffffff', transition: 'all 0.3s ease' }" @mouseenter="$event.currentTarget.style.backgroundColor='#e8eef9'" @mouseleave="$event.currentTarget.style.backgroundColor=(index % 2 === 0 ? '#f8f9fa' : '#ffffff')">
+                      <tr v-for="(team, index) in assessmentResultV2.team_results" :key="team.department" :style="{ backgroundColor: index % 2 === 0 ? 'rgba(255, 255, 255, 0.05)' : 'rgba(255, 255, 255, 0.1)', transition: 'all 0.3s ease' }" @mouseenter="$event.currentTarget.style.backgroundColor='rgba(255, 255, 255, 0.15)'" @mouseleave="$event.currentTarget.style.backgroundColor=(index % 2 === 0 ? 'rgba(255, 255, 255, 0.05)' : 'rgba(255, 255, 255, 0.1)')">
                         <td style="padding: 12px; text-align: center; font-weight: 600; color: #4facfe;">
                           <span style="display: inline-block; width: 32px; height: 32px; background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; border-radius: 50%; line-height: 32px; font-size: 14px;">{{ team.rank }}</span>
                         </td>
-                        <td style="padding: 12px; text-align: left; color: #333;">{{ team.department }}</td>
-                        <td style="padding: 12px; text-align: center; color: #555;">{{ team.total_cases }}</td>
+                        <td style="padding: 12px; text-align: left; color: white;">{{ team.department }}</td>
+                        <td style="padding: 12px; text-align: center; color: rgba(255, 255, 255, 0.8);">{{ team.total_cases }}</td>
                         <td style="padding: 12px; text-align: center; color: #2ecc71; font-weight: 600;">{{ team.on_time_count }}</td>
                         <td style="padding: 12px; text-align: center; color: #e74c3c; font-weight: 600;">{{ team.overdue_count }}</td>
                         <td style="padding: 12px; text-align: center; color: #f39c12;">{{ team.delay_count }}</td>
@@ -6163,84 +6163,84 @@ function getColumnIcon(index) {
           </div>
           
           <!-- 案件详情 -->
-          <div v-if="showCaseDetail && currentCase" style="background: white; border-radius: 8px; padding: 20px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 2px solid #1890ff; padding-bottom: 10px;">
-              <h3 style="margin: 0; color: #1890ff;">案件详情</h3>
-              <button @click="showCaseDetail = false; currentCase = null;" style="padding: 8px 16px; background: #f5f5f5; border: 1px solid #ddd; border-radius: 4px; cursor: pointer;">
+          <div v-if="showCaseDetail && currentCase" style="background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px); border-radius: 12px; padding: 25px; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15); border: 1px solid rgba(255, 255, 255, 0.2);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; border-bottom: 2px solid #4facfe; padding-bottom: 15px;">
+              <h3 style="margin: 0; color: #4facfe; font-size: 20px;">案件详情</h3>
+              <button @click="showCaseDetail = false; currentCase = null;" style="padding: 10px 20px; background: rgba(255, 255, 255, 0.2); color: white; border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 6px; cursor: pointer; font-weight: 500; transition: all 0.3s ease;">
                 返回列表
               </button>
             </div>
             
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
               <div>
-                <p style="margin: 0 0 10px 0; color: #666; font-size: 14px;">任务号</p>
-                <p style="margin: 0; font-size: 16px; font-weight: bold;">{{ currentCase.task_number }}</p>
+                <p style="margin: 0 0 8px 0; color: rgba(255, 255, 255, 0.6); font-size: 13px;">任务号</p>
+                <p style="margin: 0; font-size: 16px; font-weight: 600; color: white;">{{ currentCase.task_number }}</p>
               </div>
               <div>
-                <p style="margin: 0 0 10px 0; color: #666; font-size: 14px;">上报时间</p>
-                <p style="margin: 0; font-size: 16px;">{{ currentCase.report_time }}</p>
+                <p style="margin: 0 0 8px 0; color: rgba(255, 255, 255, 0.6); font-size: 13px;">上报时间</p>
+                <p style="margin: 0; font-size: 16px; color: rgba(255, 255, 255, 0.9);">{{ currentCase.report_time }}</p>
               </div>
               <div>
-                <p style="margin: 0 0 10px 0; color: #666; font-size: 14px;">问题来源</p>
-                <p style="margin: 0; font-size: 16px;">{{ currentCase.source }}</p>
+                <p style="margin: 0 0 8px 0; color: rgba(255, 255, 255, 0.6); font-size: 13px;">问题来源</p>
+                <p style="margin: 0; font-size: 16px; color: rgba(255, 255, 255, 0.9);">{{ currentCase.source }}</p>
               </div>
               <div>
-                <p style="margin: 0 0 10px 0; color: #666; font-size: 14px;">问题类型</p>
-                <p style="margin: 0; font-size: 16px;">{{ currentCase.problem_type }}</p>
+                <p style="margin: 0 0 8px 0; color: rgba(255, 255, 255, 0.6); font-size: 13px;">问题类型</p>
+                <p style="margin: 0; font-size: 16px; color: rgba(255, 255, 255, 0.9);">{{ currentCase.problem_type }}</p>
               </div>
               <div>
-                <p style="margin: 0 0 10px 0; color: #666; font-size: 14px;">大类名称</p>
-                <p style="margin: 0; font-size: 16px;">{{ currentCase.major_category }}</p>
+                <p style="margin: 0 0 8px 0; color: rgba(255, 255, 255, 0.6); font-size: 13px;">大类名称</p>
+                <p style="margin: 0; font-size: 16px; color: rgba(255, 255, 255, 0.9);">{{ currentCase.major_category }}</p>
               </div>
               <div>
-                <p style="margin: 0 0 10px 0; color: #666; font-size: 14px;">小类名称</p>
-                <p style="margin: 0; font-size: 16px;">{{ currentCase.minor_category }}</p>
+                <p style="margin: 0 0 8px 0; color: rgba(255, 255, 255, 0.6); font-size: 13px;">小类名称</p>
+                <p style="margin: 0; font-size: 16px; color: rgba(255, 255, 255, 0.9);">{{ currentCase.minor_category }}</p>
               </div>
             </div>
             
             <div style="margin-top: 20px;">
-              <p style="margin: 0 0 10px 0; color: #666; font-size: 14px;">问题描述</p>
-              <p style="margin: 0; font-size: 16px; padding: 10px; background: #f5f5f5; border-radius: 4px;">{{ currentCase.problem_desc }}</p>
+              <p style="margin: 0 0 8px 0; color: rgba(255, 255, 255, 0.6); font-size: 13px;">问题描述</p>
+              <p style="margin: 0; font-size: 15px; padding: 12px 15px; background: rgba(255, 255, 255, 0.1); border-radius: 8px; color: rgba(255, 255, 255, 0.9); border: 1px solid rgba(255, 255, 255, 0.15);">{{ currentCase.problem_desc }}</p>
             </div>
             
             <div style="margin-top: 20px;">
-              <p style="margin: 0 0 10px 0; color: #666; font-size: 14px;">地址描述</p>
-              <p style="margin: 0; font-size: 16px; padding: 10px; background: #f5f5f5; border-radius: 4px;">{{ currentCase.address_desc }}</p>
+              <p style="margin: 0 0 8px 0; color: rgba(255, 255, 255, 0.6); font-size: 13px;">地址描述</p>
+              <p style="margin: 0; font-size: 15px; padding: 12px 15px; background: rgba(255, 255, 255, 0.1); border-radius: 8px; color: rgba(255, 255, 255, 0.9); border: 1px solid rgba(255, 255, 255, 0.15);">{{ currentCase.address_desc }}</p>
             </div>
             
             <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; margin-top: 20px;">
               <div>
-                <p style="margin: 0 0 10px 0; color: #666; font-size: 14px;">所属区域</p>
-                <p style="margin: 0; font-size: 16px;">{{ currentCase.area }}</p>
+                <p style="margin: 0 0 8px 0; color: rgba(255, 255, 255, 0.6); font-size: 13px;">所属区域</p>
+                <p style="margin: 0; font-size: 16px; color: rgba(255, 255, 255, 0.9);">{{ currentCase.area }}</p>
               </div>
               <div>
-                <p style="margin: 0 0 10px 0; color: #666; font-size: 14px;">所属街道</p>
-                <p style="margin: 0; font-size: 16px;">{{ currentCase.street }}</p>
+                <p style="margin: 0 0 8px 0; color: rgba(255, 255, 255, 0.6); font-size: 13px;">所属街道</p>
+                <p style="margin: 0; font-size: 16px; color: rgba(255, 255, 255, 0.9);">{{ currentCase.street }}</p>
               </div>
               <div>
-                <p style="margin: 0 0 10px 0; color: #666; font-size: 14px;">所属社区</p>
-                <p style="margin: 0; font-size: 16px;">{{ currentCase.community }}</p>
+                <p style="margin: 0 0 8px 0; color: rgba(255, 255, 255, 0.6); font-size: 13px;">所属社区</p>
+                <p style="margin: 0; font-size: 16px; color: rgba(255, 255, 255, 0.9);">{{ currentCase.community }}</p>
               </div>
             </div>
             
             <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; margin-top: 20px;">
               <div>
-                <p style="margin: 0 0 10px 0; color: #666; font-size: 14px;">责任网格</p>
-                <p style="margin: 0; font-size: 16px;">{{ currentCase.responsible_grid }}</p>
+                <p style="margin: 0 0 8px 0; color: rgba(255, 255, 255, 0.6); font-size: 13px;">责任网格</p>
+                <p style="margin: 0; font-size: 16px; color: rgba(255, 255, 255, 0.9);">{{ currentCase.responsible_grid }}</p>
               </div>
               <div>
-                <p style="margin: 0 0 10px 0; color: #666; font-size: 14px;">批转时间</p>
-                <p style="margin: 0; font-size: 16px;">{{ currentCase.transfer_time }}</p>
+                <p style="margin: 0 0 8px 0; color: rgba(255, 255, 255, 0.6); font-size: 13px;">批转时间</p>
+                <p style="margin: 0; font-size: 16px; color: rgba(255, 255, 255, 0.9);">{{ currentCase.transfer_time }}</p>
               </div>
               <div>
-                <p style="margin: 0 0 10px 0; color: #666; font-size: 14px;">当前阶段剩余时间</p>
-                <p style="margin: 0; font-size: 16px;">{{ currentCase.current_stage_remaining_time }}</p>
+                <p style="margin: 0 0 8px 0; color: rgba(255, 255, 255, 0.6); font-size: 13px;">当前阶段剩余时间</p>
+                <p style="margin: 0; font-size: 16px; color: rgba(255, 255, 255, 0.9);">{{ currentCase.current_stage_remaining_time }}</p>
               </div>
             </div>
             
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 20px;">
               <div>
-                <p style="margin: 0 0 10px 0; color: #666; font-size: 14px;">阶段红绿灯</p>
+                <p style="margin: 0 0 8px 0; color: rgba(255, 255, 255, 0.6); font-size: 13px;">阶段红绿灯</p>
                 <p style="margin: 0; font-size: 16px;">
                   <span style="font-weight: bold; color: #52c41b;" v-if="currentCase.stage_light == '绿'">{{ currentCase.stage_light }}</span>
                   <span style="font-weight: bold; color: #ff9800;" v-else-if="currentCase.stage_light == '黄'">{{ currentCase.stage_light }}</span>
@@ -6248,22 +6248,22 @@ function getColumnIcon(index) {
                 </p>
               </div>
               <div>
-                <p style="margin: 0 0 10px 0; color: #666; font-size: 14px;">区域级别</p>
-                <p style="margin: 0; font-size: 16px;">{{ currentCase.area_level_name }}</p>
+                <p style="margin: 0 0 8px 0; color: rgba(255, 255, 255, 0.6); font-size: 13px;">区域级别</p>
+                <p style="margin: 0; font-size: 16px; color: rgba(255, 255, 255, 0.9);">{{ currentCase.area_level_name }}</p>
               </div>
             </div>
             
             <!-- 照片展示 -->
             <div v-if="currentCase.photo_path" style="margin-top: 20px;">
-              <p style="margin: 0 0 10px 0; color: #666; font-size: 14px;">案件照片</p>
-              <div style="padding: 10px; background: #f5f5f5; border-radius: 4px; text-align: center;">
+              <p style="margin: 0 0 10px 0; color: rgba(255, 255, 255, 0.6); font-size: 13px;">案件照片</p>
+              <div style="padding: 15px; background: rgba(255, 255, 255, 0.1); border-radius: 8px; text-align: center; border: 1px solid rgba(255, 255, 255, 0.15);">
                 <div style="display: flex; flex-wrap: wrap; gap: 10px; justify-content: center;">
                   <img 
                     v-for="(photo, index) in getPhotoPaths(currentCase.photo_path)" 
                     :key="index"
                     :src="photo" 
                     :alt="'案件照片 ' + (index + 1)" 
-                    style="max-width: 100%; max-height: 400px; border-radius: 4px;" 
+                    style="max-width: 100%; max-height: 400px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);" 
                     @error="handleImageError"
                   >
                 </div>
@@ -6403,8 +6403,8 @@ function getColumnIcon(index) {
           <!-- 第一行：提示文字 -->
           <div class="tip-section" style="margin-bottom: 20px;">
             <p>该模块允许上传Excel文件，为市容环卫中心的案件分配到各环卫部门（添加"环卫"前缀）。</p>
-            <p style="color: #666; font-size: 14px; margin-top: 5px;"><strong>注意：</strong>请确保Excel文件中包含以下列：</p>
-            <ul style="color: #666; font-size: 14px; margin-top: 5px; margin-left: 20px;">
+            <p style="color: rgba(255, 255, 255, 0.7); font-size: 14px; margin-top: 5px;"><strong>注意：</strong>请确保Excel文件中包含以下列：</p>
+            <ul style="color: rgba(255, 255, 255, 0.7); font-size: 14px; margin-top: 5px; margin-left: 20px;">
               <li>处置部门：案件的处理部门</li>
               <li>所属片区：案件所属的片区</li>
             </ul>
@@ -6421,7 +6421,7 @@ function getColumnIcon(index) {
                 @change="handleHuanweiFileSelect"
                 :disabled="huanweiLoading"
               >
-              <div v-if="huanweiFile" class="file-info" style="margin-top: 5px; font-size: 14px; color: #666;">
+              <div v-if="huanweiFile" class="file-info" style="margin-top: 5px; font-size: 14px; color: rgba(255, 255, 255, 0.8);">
                 已选择：{{ huanweiFile.name }}
               </div>
             </div>
@@ -6446,10 +6446,10 @@ function getColumnIcon(index) {
               </button>
             </div>
             
-            <div v-if="huanweiMessage" class="message success" style="padding: 10px; background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; border-radius: 4px; margin-bottom: 15px;">
+            <div v-if="huanweiMessage" class="message success" style="padding: 10px; background: rgba(46, 204, 113, 0.2); color: #2ecc71; border: 1px solid rgba(46, 204, 113, 0.4); border-radius: 4px; margin-bottom: 15px; backdrop-filter: blur(10px);">
               {{ huanweiMessage }}
             </div>
-            <div v-if="huanweiError" class="message error" style="padding: 10px; background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; border-radius: 4px; margin-bottom: 15px;">
+            <div v-if="huanweiError" class="message error" style="padding: 10px; background: rgba(231, 76, 60, 0.2); color: #e74c3c; border: 1px solid rgba(231, 76, 60, 0.4); border-radius: 4px; margin-bottom: 15px; backdrop-filter: blur(10px);">
               {{ huanweiError }}
             </div>
           </div>
@@ -6471,8 +6471,8 @@ function getColumnIcon(index) {
           <!-- 第一行：提示文字 -->
           <div class="tip-section" style="margin-bottom: 20px;">
             <p>该模块允许上传Excel文件，从问题描述中提取地址信息并替换原文件中地址描述为“没有相关位置描述”“无位置描述”。</p>
-            <p style="color: #666; font-size: 14px; margin-top: 5px;"><strong>注意：</strong>请确保Excel文件中包含以下列：</p>
-            <ul style="color: #666; font-size: 14px; margin-top: 5px; margin-left: 20px;">
+            <p style="color: rgba(255, 255, 255, 0.7); font-size: 14px; margin-top: 5px;"><strong>注意：</strong>请确保Excel文件中包含以下列：</p>
+            <ul style="color: rgba(255, 255, 255, 0.7); font-size: 14px; margin-top: 5px; margin-left: 20px;">
               <li>问题描述：包含地址信息的文本</li>
               <li>地址描述：需要替换的地址字段</li>
             </ul>
@@ -6489,7 +6489,7 @@ function getColumnIcon(index) {
                 @change="handleLocationFileSelect"
                 :disabled="locationLoading"
               >
-              <div v-if="locationFile" class="file-info" style="margin-top: 5px; font-size: 14px; color: #666;">
+              <div v-if="locationFile" class="file-info" style="margin-top: 5px; font-size: 14px; color: rgba(255, 255, 255, 0.8);">
                 已选择：{{ locationFile.name }}
               </div>
             </div>
@@ -6514,10 +6514,10 @@ function getColumnIcon(index) {
               </button>
             </div>
             
-            <div v-if="locationMessage" class="message success" style="padding: 10px; background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; border-radius: 4px; margin-bottom: 15px;">
+            <div v-if="locationMessage" class="message success" style="padding: 10px; background: rgba(46, 204, 113, 0.2); color: #2ecc71; border: 1px solid rgba(46, 204, 113, 0.4); border-radius: 4px; margin-bottom: 15px; backdrop-filter: blur(10px);">
               {{ locationMessage }}
             </div>
-            <div v-if="locationError" class="message error" style="padding: 10px; background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; border-radius: 4px; margin-bottom: 15px;">
+            <div v-if="locationError" class="message error" style="padding: 10px; background: rgba(231, 76, 60, 0.2); color: #e74c3c; border: 1px solid rgba(231, 76, 60, 0.4); border-radius: 4px; margin-bottom: 15px; backdrop-filter: blur(10px);">
               {{ locationError }}
             </div>
           </div>
@@ -6560,7 +6560,7 @@ function getColumnIcon(index) {
                 @change="handleCleaningFileSelect"
                 :disabled="cleaningLoading"
               >
-              <div v-if="cleaningFile" class="file-info" style="margin-top: 5px; font-size: 14px; color: #666;">
+              <div v-if="cleaningFile" class="file-info" style="margin-top: 5px; font-size: 14px; color: rgba(255, 255, 255, 0.8);">
                 已选择：{{ cleaningFile.name }}
               </div>
             </div>
@@ -6585,17 +6585,17 @@ function getColumnIcon(index) {
               </button>
             </div>
             
-            <div v-if="cleaningMessage" class="message success" style="padding: 10px; background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; border-radius: 4px; margin-bottom: 15px;">
+            <div v-if="cleaningMessage" class="message success" style="padding: 10px; background: rgba(46, 204, 113, 0.2); color: #2ecc71; border: 1px solid rgba(46, 204, 113, 0.4); border-radius: 4px; margin-bottom: 15px; backdrop-filter: blur(10px);">
               {{ cleaningMessage }}
             </div>
-            <div v-if="cleaningError" class="message error" style="padding: 10px; background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; border-radius: 4px; margin-bottom: 15px;">
+            <div v-if="cleaningError" class="message error" style="padding: 10px; background: rgba(231, 76, 60, 0.2); color: #e74c3c; border: 1px solid rgba(231, 76, 60, 0.4); border-radius: 4px; margin-bottom: 15px; backdrop-filter: blur(10px);">
               {{ cleaningError }}
             </div>
           </div>
           
           <!-- 第三行：字段选择 -->
-          <div v-if="cleaningFields.length > 0" class="fields-section" style="margin-bottom: 20px; padding: 20px; border: 1px solid #dee2e6; border-radius: 4px; background-color: #f9f9f9;">
-            <h4 style="margin-top: 0; margin-bottom: 15px; color: #333;">字段选择</h4>
+          <div v-if="cleaningFields.length > 0" class="fields-section" style="margin-bottom: 20px; padding: 20px; border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 8px; background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px);">
+            <h4 style="margin-top: 0; margin-bottom: 15px; color: white;">字段选择</h4>
             <div class="field-selection" style="display: flex; flex-direction: column; gap: 15px;">
               <div style="display: flex; flex-direction: column;">
                 <label style="margin-bottom: 5px; font-weight: bold;">选择字段：</label>
@@ -6800,8 +6800,8 @@ function getColumnIcon(index) {
                   <!-- 数据表可见性配置 -->
                   <div class="table-visibility-config" style="margin-top: 30px;">
                     <h5 class="management-title" style="margin-bottom: 15px;">数据表可见性配置</h5>
-                    <p class="config-description" style="margin-bottom: 15px; color: #666;">配置哪些数据表对前端用户可见，用户只能选择可见的数据表进行分析和考核。</p>
-                    <button class="save-visibility-btn" @click="saveTableVisibility" :disabled="adminLoading" style="padding: 8px 16px; background-color: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                    <p class="config-description" style="margin-bottom: 15px; color: rgba(255, 255, 255, 0.7);">配置哪些数据表对前端用户可见，用户只能选择可见的数据表进行分析和考核。</p>
+                    <button class="save-visibility-btn" @click="saveTableVisibility" :disabled="adminLoading" style="padding: 8px 16px; background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; border: none; border-radius: 4px; cursor: pointer;">
                       {{ adminLoading ? '保存中...' : '保存配置' }}
                     </button>
                   </div>
@@ -7019,7 +7019,7 @@ function getColumnIcon(index) {
                 </div>
                 
                 <div class="panel-body">
-                  <div v-if="assessmentCoefficientsLoading" class="loading" style="text-align: center; padding: 40px; color: #666;">
+                  <div v-if="assessmentCoefficientsLoading" class="loading" style="text-align: center; padding: 40px; color: rgba(255, 255, 255, 0.7);">
                     加载中...
                   </div>
                   
@@ -7095,11 +7095,11 @@ function getColumnIcon(index) {
                     </div>
                   </div>
                   
-                  <div v-if="assessmentCoefficientsMessage" class="message success" style="margin-top: 20px; padding: 12px; background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; border-radius: 4px;">
+                  <div v-if="assessmentCoefficientsMessage" class="message success" style="margin-top: 20px; padding: 12px; background: rgba(46, 204, 113, 0.2); color: #2ecc71; border: 1px solid rgba(46, 204, 113, 0.4); border-radius: 4px; backdrop-filter: blur(10px);">
                     ✓ {{ assessmentCoefficientsMessage }}
                   </div>
                   
-                  <div v-if="assessmentCoefficientsError" class="message error" style="margin-top: 20px; padding: 12px; background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; border-radius: 4px;">
+                  <div v-if="assessmentCoefficientsError" class="message error" style="margin-top: 20px; padding: 12px; background: rgba(231, 76, 60, 0.2); color: #e74c3c; border: 1px solid rgba(231, 76, 60, 0.4); border-radius: 4px; backdrop-filter: blur(10px);">
                     ✗ {{ assessmentCoefficientsError }}
                   </div>
                   
@@ -7325,17 +7325,17 @@ function getColumnIcon(index) {
             <div class="form-group">
               <label for="article-file">文件上传（DOCX/PDF）：</label>
               <input type="file" id="article-file" accept=".docx,.pdf" @change="uploadCMSFile" :disabled="fileUploadLoading" />
-              <div v-if="fileUploadLoading" style="font-size: 12px; color: #666; margin-top: 5px;">上传中...</div>
-              <div v-if="fileUploadError" style="font-size: 12px; color: #e74c3c; margin-top: 5px;">{{ fileUploadError }}</div>
-              <div v-if="newArticle.file_path" style="font-size: 12px; color: #27ae60; margin-top: 5px;">已上传文件</div>
+              <div v-if="fileUploadLoading" style="font-size: 12px; color: rgba(255, 255, 255, 0.7); margin-top: 5px;">上传中...</div>
+              <div v-if="fileUploadError" style="font-size: 12px; color: #ff6b6b; margin-top: 5px;">{{ fileUploadError }}</div>
+              <div v-if="newArticle.file_path" style="font-size: 12px; color: #2ecc71; margin-top: 5px;">已上传文件</div>
             </div>
             
             <div class="form-group">
               <label for="article-image">图片上传（插入到内容）：</label>
               <input type="file" id="article-image" accept=".jpg,.jpeg,.png,.gif,.webp" @change="uploadImage" :disabled="imageUploadLoading" />
-              <div v-if="imageUploadLoading" style="font-size: 12px; color: #666; margin-top: 5px;">上传中...</div>
-              <div v-if="imageUploadError" style="font-size: 12px; color: #e74c3c; margin-top: 5px;">{{ imageUploadError }}</div>
-              <div style="font-size: 12px; color: #666; margin-top: 5px;">提示：上传后图片将自动插入到文章内容中</div>
+              <div v-if="imageUploadLoading" style="font-size: 12px; color: rgba(255, 255, 255, 0.7); margin-top: 5px;">上传中...</div>
+              <div v-if="imageUploadError" style="font-size: 12px; color: #ff6b6b; margin-top: 5px;">{{ imageUploadError }}</div>
+              <div style="font-size: 12px; color: rgba(255, 255, 255, 0.6); margin-top: 5px;">提示：上传后图片将自动插入到文章内容中</div>
             </div>
 
             <div class="form-group">
@@ -7354,7 +7354,7 @@ function getColumnIcon(index) {
             <div class="form-group">
               <label for="article-content">内容：</label>
               <textarea id="article-content" v-model="newArticle.content" placeholder="请输入文章内容" rows="15" style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 16px; line-height: 1.5; font-family: Arial, sans-serif; resize: vertical;"></textarea>
-              <div style="font-size: 12px; color: #666; margin-top: 5px;">提示：可以直接输入HTML标签来实现格式化效果，例如 &lt;b&gt;粗体&lt;/b&gt;、&lt;i&gt;斜体&lt;/i&gt; 等</div>
+              <div style="font-size: 12px; color: rgba(255, 255, 255, 0.6); margin-top: 5px;">提示：可以直接输入HTML标签来实现格式化效果，例如 &lt;b&gt;粗体&lt;/b&gt;、&lt;i&gt;斜体&lt;/i&gt; 等</div>
             </div>
             <div v-if="cmsFormError" class="admin-error">{{ cmsFormError }}</div>
             <div class="modal-actions">
@@ -7370,50 +7370,50 @@ function getColumnIcon(index) {
     
     <!-- 查询结果弹框 -->
     <div v-if="showResultModal" class="result-modal" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background-color: rgba(0, 0, 0, 0.5); display: flex; justify-content: center; align-items: center; z-index: 1000;">
-      <div class="modal-content" style="background-color: white; border-radius: 8px; padding: 30px; width: 90%; max-width: 1000px; max-height: 80vh; overflow-y: auto; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);">
+      <div class="modal-content" style="background: linear-gradient(135deg, #1e3a8a 0%, #0a2463 100%); border-radius: 12px; padding: 30px; width: 90%; max-width: 1000px; max-height: 80vh; overflow-y: auto; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15); border: 1px solid rgba(255, 255, 255, 0.2);">
         <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px;">
-          <h2 style="margin: 0; font-size: 20px; color: #333;">查询结果</h2>
-          <button @click="closeResultModal" style="background: none; border: none; font-size: 24px; cursor: pointer; color: #999; padding: 0; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center;">&times;</button>
+          <h2 style="margin: 0; font-size: 20px; color: white;">查询结果</h2>
+          <button @click="closeResultModal" style="background: rgba(255, 255, 255, 0.2); border: 1px solid rgba(255, 255, 255, 0.3); font-size: 18px; cursor: pointer; color: white; padding: 5px 12px; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; border-radius: 4px;">&times;</button>
         </div>
         
         <!-- 生成的SQL语句 -->
-        <div v-if="generatedSQL" class="sql-section" style="margin-bottom: 20px; padding: 15px; background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px;">
-          <h4 style="margin-top: 0; margin-bottom: 10px; color: #495057;">生成的SQL语句：</h4>
-          <pre style="background-color: #e9ecef; padding: 10px; border-radius: 4px; overflow-x: auto; margin: 0;">{{ generatedSQL }}</pre>
+        <div v-if="generatedSQL" class="sql-section" style="margin-bottom: 20px; padding: 15px; background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 8px; backdrop-filter: blur(10px);">
+          <h4 style="margin-top: 0; margin-bottom: 10px; color: rgba(255, 255, 255, 0.9);">生成的SQL语句：</h4>
+          <pre style="background: rgba(0, 0, 0, 0.3); padding: 10px; border-radius: 4px; overflow-x: auto; margin: 0; color: rgba(255, 255, 255, 0.9);">{{ generatedSQL }}</pre>
         </div>
         
         <!-- 查询结果 -->
         <div v-if="queryResult">
           <div v-if="Array.isArray(queryResult) && queryResult.length > 0" class="result-table-container" style="overflow-x: auto; margin-bottom: 20px;">
-            <table style="width: 100%; border-collapse: collapse; background-color: white; box-shadow: 0 2px 4px rgba(0,0,0,0.1); font-size: 11px; line-height: 1.3;">
-              <thead style="background-color: #f8f9fa;">
+            <table style="width: 100%; border-collapse: collapse; background: rgba(255, 255, 255, 0.1); box-shadow: 0 2px 4px rgba(0,0,0,0.1); font-size: 11px; line-height: 1.3; backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 8px; overflow: hidden;">
+              <thead style="background: rgba(255, 255, 255, 0.15);">
                 <tr>
-                  <th v-for="(key, index) in Object.keys(queryResult[0])" :key="index" style="padding: 4px 6px; text-align: left; border-bottom: 2px solid #dee2e6; font-weight: bold; white-space: nowrap;">
+                  <th v-for="(key, index) in Object.keys(queryResult[0])" :key="index" style="padding: 8px 10px; text-align: left; border-bottom: 1px solid rgba(255, 255, 255, 0.2); font-weight: bold; white-space: nowrap; color: white;">
                     {{ key }}
                   </th>
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="(row, rowIndex) in queryResult" :key="rowIndex" style="border-bottom: 1px solid #dee2e6;">
-                  <td v-for="(value, colIndex) in Object.values(row)" :key="colIndex" style="padding: 4px 6px; word-break: break-all;">
+                <tr v-for="(row, rowIndex) in queryResult" :key="rowIndex" style="border-bottom: 1px solid rgba(255, 255, 255, 0.1);">
+                  <td v-for="(value, colIndex) in Object.values(row)" :key="colIndex" style="padding: 8px 10px; word-break: break-all; color: rgba(255, 255, 255, 0.9);">
                     {{ value }}
                   </td>
                 </tr>
               </tbody>
             </table>
           </div>
-          <div v-else-if="Array.isArray(queryResult) && queryResult.length === 0" class="empty-result" style="padding: 40px; text-align: center; background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px;">
-            <p>查询结果为空</p>
+          <div v-else-if="Array.isArray(queryResult) && queryResult.length === 0" class="empty-result" style="padding: 40px; text-align: center; background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 8px; backdrop-filter: blur(10px);">
+            <p style="color: rgba(255, 255, 255, 0.7); margin: 0;">查询结果为空</p>
           </div>
-          <div v-else class="result-message" style="padding: 40px; background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px;">
-            <p>{{ queryResult }}</p>
+          <div v-else class="result-message" style="padding: 40px; background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 8px; backdrop-filter: blur(10px);">
+            <p style="color: rgba(255, 255, 255, 0.9); margin: 0;">{{ queryResult }}</p>
           </div>
         </div>
         
         <div style="margin-top: 20px; display: flex; justify-content: flex-end;">
           <button 
             @click="closeResultModal"
-            style="padding: 10px 20px; background-color: #95a5a6; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold;"
+            style="padding: 10px 20px; background: rgba(255, 255, 255, 0.2); color: white; border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold; transition: all 0.3s ease;"
           >
             关闭
           </button>
@@ -7435,7 +7435,7 @@ function getColumnIcon(index) {
     
     <!-- 文章详情弹窗 -->
     <div v-if="showArticleDetail" class="article-detail-modal" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: linear-gradient(135deg, rgba(0, 0, 0, 0.4) 0%, rgba(0, 0, 0, 0.6) 100%); display: flex; justify-content: center; align-items: center; z-index: 1000; animation: fadeIn 0.3s ease;">
-      <div class="article-detail-content" style="background: white; border-radius: 12px; padding: 0; width: 90%; max-width: 900px; max-height: 85vh; overflow-y: auto; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25); animation: slideUp 0.3s ease;">
+      <div class="article-detail-content" style="background: linear-gradient(135deg, #1e3a8a 0%, #0a2463 100%); border-radius: 12px; padding: 0; width: 90%; max-width: 900px; max-height: 85vh; overflow-y: auto; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25); animation: slideUp 0.3s ease; border: 1px solid rgba(255, 255, 255, 0.2);">
         <!-- 文章头部 -->
         <div style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); padding: 30px 30px 20px 30px; position: relative; border-radius: 12px 12px 0 0;">
           <h2 style="margin: 0 0 15px 0; font-size: 28px; color: white; text-align: left; line-height: 1.4;">{{ currentArticle?.title }}</h2>
@@ -7460,31 +7460,31 @@ function getColumnIcon(index) {
         <!-- 文章内容 -->
         <div style="padding: 30px;">
           <div v-if="articleDetailLoading" style="text-align: center; padding: 60px 20px;">
-            <div style="font-size: 18px; color: #666;">加载中...</div>
+            <div style="font-size: 18px; color: rgba(255, 255, 255, 0.7);">加载中...</div>
           </div>
           
-          <div v-else-if="articleDetailError" style="text-align: center; padding: 40px; background-color: #fff3cd; color: #856404; border-radius: 8px; border: 1px solid #ffc107;">
+          <div v-else-if="articleDetailError" style="text-align: center; padding: 40px; background-color: rgba(255, 107, 107, 0.1); color: #ff6b6b; border-radius: 8px; border: 1px solid rgba(255, 107, 107, 0.3);">
             <div style="font-size: 16px; margin-bottom: 15px;">{{ articleDetailError }}</div>
-            <button @click="closeArticleDetail" style="padding: 8px 20px; background-color: #ffc107; color: #333; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; transition: all 0.3s ease;" @mouseenter="$event.target.style.backgroundColor='#ffb300'" @mouseleave="$event.target.style.backgroundColor='#ffc107'">关闭</button>
+            <button @click="closeArticleDetail" style="padding: 8px 20px; background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; transition: all 0.3s ease;">关闭</button>
           </div>
           
-          <div v-else-if="currentArticle" style="color: #333;">
+          <div v-else-if="currentArticle" style="color: rgba(255, 255, 255, 0.9);">
             <!-- 摘要部分 -->
-            <div v-if="currentArticle.summary" style="margin-bottom: 25px; padding: 18px; background: linear-gradient(135deg, #e8f8ff 0%, #e0f7ff 100%); border-left: 4px solid #4facfe; border-radius: 6px;">
+            <div v-if="currentArticle.summary" style="margin-bottom: 25px; padding: 18px; background: rgba(255, 255, 255, 0.1); border-left: 4px solid #4facfe; border-radius: 6px; backdrop-filter: blur(10px);">
               <div style="font-weight: 600; color: #4facfe; margin-bottom: 8px; font-size: 14px;">摘要</div>
-              <div style="line-height: 1.6; color: #555; font-size: 15px;">{{ currentArticle.summary }}</div>
+              <div style="line-height: 1.6; color: rgba(255, 255, 255, 0.8); font-size: 15px;">{{ currentArticle.summary }}</div>
             </div>
             
             <!-- 正文内容 -->
             <div style="margin-bottom: 30px;">
-              <div style="line-height: 1.8; color: #333; font-size: 16px;" v-html="currentArticle.content"></div>
+              <div class="article-content-body" style="line-height: 1.8; color: rgba(255, 255, 255, 0.9); font-size: 16px;" v-html="currentArticle.content"></div>
             </div>
             
             <!-- 附件部分 -->
-            <div v-if="currentArticle.file_path" style="margin-top: 30px; padding: 20px; background-color: #f8f9fa; border-radius: 8px; border: 2px dashed #ddd;">
+            <div v-if="currentArticle.file_path" style="margin-top: 30px; padding: 20px; background-color: rgba(255, 255, 255, 0.1); border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.2); backdrop-filter: blur(10px);">
               <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
                 <span style="font-size: 24px;">📎</span>
-                <h4 style="margin: 0; font-size: 16px; color: #333;">相关附件</h4>
+                <h4 style="margin: 0; font-size: 16px; color: white;">相关附件</h4>
               </div>
               <a :href="currentArticleFileUrl" :download="currentArticle.file_path.split('/').pop()" style="display: inline-flex; align-items: center; gap: 8px; padding: 10px 18px; background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; text-decoration: none; border-radius: 6px; font-size: 14px; font-weight: 500; transition: all 0.3s ease; cursor: pointer;" @mouseenter="$event.currentTarget.style.transform='translateY(-2px)'; $event.currentTarget.style.boxShadow='0 4px 12px rgba(79, 172, 254, 0.4)'" @mouseleave="$event.currentTarget.style.transform='translateY(0)'; $event.currentTarget.style.boxShadow='none'">
                 <span>⬇️</span>
@@ -7495,52 +7495,52 @@ function getColumnIcon(index) {
         </div>
         
         <!-- 关闭按钮 (底部) -->
-        <div style="padding: 15px 30px; background-color: #f8f9fa; border-top: 1px solid #eee; border-radius: 0 0 12px 12px; text-align: right;">
-          <button @click="closeArticleDetail" style="padding: 8px 20px; background-color: #95a5a6; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; transition: all 0.3s ease;" @mouseenter="$event.target.style.backgroundColor='#7f8c8d'" @mouseleave="$event.target.style.backgroundColor='#95a5a6'">关闭</button>
+        <div style="padding: 15px 30px; background-color: rgba(255, 255, 255, 0.1); border-top: 1px solid rgba(255, 255, 255, 0.2); border-radius: 0 0 12px 12px; text-align: right;">
+          <button @click="closeArticleDetail" style="padding: 8px 20px; background: rgba(255, 255, 255, 0.2); color: white; border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 4px; cursor: pointer; font-weight: 500; transition: all 0.3s ease;">关闭</button>
         </div>
       </div>
     </div>
     
     <!-- 全部文章弹窗 -->
     <div v-if="showAllArticlesModal" class="all-articles-modal" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background-color: rgba(0, 0, 0, 0.5); display: flex; justify-content: center; align-items: center; z-index: 1000;">
-      <div class="all-articles-content" style="background-color: white; border-radius: 8px; padding: 30px; width: 90%; max-width: 800px; max-height: 80vh; overflow-y: auto; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);">
+      <div class="all-articles-content" style="background: linear-gradient(135deg, #1e3a8a 0%, #0a2463 100%); border-radius: 8px; padding: 30px; width: 90%; max-width: 800px; max-height: 80vh; overflow-y: auto; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15); border: 1px solid rgba(255, 255, 255, 0.2);">
         <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px;">
-          <h2 style="margin: 0; font-size: 24px; color: #333; text-align: left;">{{ getCategoryName(allArticlesCategoryId) }} - 全部文章</h2>
-          <button @click="closeAllArticlesModal" style="background: none; border: none; font-size: 24px; cursor: pointer; color: #999; padding: 0; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center;">&times;</button>
+          <h2 style="margin: 0; font-size: 24px; color: white; text-align: left;">{{ getCategoryName(allArticlesCategoryId) }} - 全部文章</h2>
+          <button @click="closeAllArticlesModal" style="background: rgba(255, 255, 255, 0.2); border: 1px solid rgba(255, 255, 255, 0.3); font-size: 18px; cursor: pointer; color: white; padding: 5px 12px; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; border-radius: 4px;">&times;</button>
         </div>
-        <div v-if="allArticlesLoading" style="text-align: center; padding: 40px; color: #666;">
+        <div v-if="allArticlesLoading" style="text-align: center; padding: 40px; color: rgba(255, 255, 255, 0.7);">
           <div>加载中...</div>
         </div>
-        <div v-else-if="allArticlesList.length === 0" style="text-align: center; padding: 40px; color: #999;">
+        <div v-else-if="allArticlesList.length === 0" style="text-align: center; padding: 40px; color: rgba(255, 255, 255, 0.6);">
           <div>该栏目下暂无文章</div>
         </div>
         <div v-else>
           <div class="articles-list" style="list-style: none; padding: 0; margin: 0;">
-            <div v-for="article in allArticlesList" :key="article.id" class="article-item" style="margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; padding: 8px; border-radius: 4px; transition: all 0.3s ease;" @click="() => { fetchArticleDetail(article.id); closeAllArticlesModal(); }" @mouseenter="$event.currentTarget.style.backgroundColor='#f5f5f5'" @mouseleave="$event.currentTarget.style.backgroundColor='transparent'">
-              <span style="flex: 1; font-size: 16px; color: #333; line-height: 1.4; text-align: left;">
-                <span style="margin-right: 12px; color: #1890ff;">•</span>
+            <div v-for="article in allArticlesList" :key="article.id" class="article-item" style="margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; padding: 12px; border-radius: 6px; transition: all 0.3s ease; background: rgba(255, 255, 255, 0.05); border: 1px solid transparent;" @click="() => { fetchArticleDetail(article.id); closeAllArticlesModal(); }" @mouseenter="$event.currentTarget.style.backgroundColor='rgba(255, 255, 255, 0.15)'; $event.currentTarget.style.borderColor='rgba(255, 255, 255, 0.2)'" @mouseleave="$event.currentTarget.style.backgroundColor='rgba(255, 255, 255, 0.05)'; $event.currentTarget.style.borderColor='transparent'">
+              <span style="flex: 1; font-size: 16px; color: rgba(255, 255, 255, 0.9); line-height: 1.4; text-align: left;">
+                <span style="margin-right: 12px; color: #4facfe;">•</span>
                 {{ article.title }}
               </span>
-              <span style="font-size: 14px; color: #999; white-space: nowrap; margin-left: 15px;">
+              <span style="font-size: 14px; color: rgba(255, 255, 255, 0.6); white-space: nowrap; margin-left: 15px;">
                 [{{ formatDate(article.published_at || article.created_at) }}]
               </span>
             </div>
           </div>
           
           <!-- 分页控件 -->
-          <div v-if="allArticlesTotal > 0" class="pagination" style="display: flex; justify-content: space-between; align-items: center; margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 4px; flex-wrap: wrap; gap: 10px;">
-            <span class="pagination-info" style="font-size: 14px; color: #666;">共 {{ allArticlesTotal }} 条，第 {{ allArticlesPage }}/{{ allArticlesPages }} 页</span>
+          <div v-if="allArticlesTotal > 0" class="pagination" style="display: flex; justify-content: space-between; align-items: center; margin-top: 20px; padding: 15px; background: rgba(255, 255, 255, 0.1); border-radius: 8px; flex-wrap: wrap; gap: 10px; border: 1px solid rgba(255, 255, 255, 0.2);">
+            <span class="pagination-info" style="font-size: 14px; color: rgba(255, 255, 255, 0.8);">共 {{ allArticlesTotal }} 条，第 {{ allArticlesPage }}/{{ allArticlesPages }} 页</span>
             <div class="pagination-buttons" style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
-              <button class="page-btn" @click="fetchAllArticles(allArticlesCategoryId, 1)" :disabled="allArticlesPage === 1" style="padding: 8px 14px; background: white; color: #333; border: 1px solid #ddd; border-radius: 4px; cursor: pointer; font-size: 14px; transition: all 0.2s ease;">首页</button>
-              <button class="page-btn" @click="fetchAllArticles(allArticlesCategoryId, allArticlesPage - 1)" :disabled="allArticlesPage === 1" style="padding: 8px 14px; background: white; color: #333; border: 1px solid #ddd; border-radius: 4px; cursor: pointer; font-size: 14px; transition: all 0.2s ease;">上一页</button>
+              <button class="page-btn" @click="fetchAllArticles(allArticlesCategoryId, 1)" :disabled="allArticlesPage === 1" style="padding: 8px 14px; background: rgba(255, 255, 255, 0.1); color: white; border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 4px; cursor: pointer; font-size: 14px; transition: all 0.2s ease;">首页</button>
+              <button class="page-btn" @click="fetchAllArticles(allArticlesCategoryId, allArticlesPage - 1)" :disabled="allArticlesPage === 1" style="padding: 8px 14px; background: rgba(255, 255, 255, 0.1); color: white; border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 4px; cursor: pointer; font-size: 14px; transition: all 0.2s ease;">上一页</button>
               <template v-for="page in getAllArticlesPageNumbers()" :key="page">
-                <button v-if="page !== '...'" class="page-btn" :class="{ active: page === allArticlesPage }" @click="fetchAllArticles(allArticlesCategoryId, page)" :style="page === allArticlesPage ? 'background: #007bff; color: white; border-color: #007bff;' : ''" style="padding: 8px 14px; background: white; color: #333; border: 1px solid #ddd; border-radius: 4px; cursor: pointer; font-size: 14px; transition: all 0.2s ease;">
+                <button v-if="page !== '...'" class="page-btn" :class="{ active: page === allArticlesPage }" :style="page === allArticlesPage ? 'background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; border-color: transparent;' : 'background: rgba(255, 255, 255, 0.1); color: white; border: 1px solid rgba(255, 255, 255, 0.3);'" style="padding: 8px 14px; border-radius: 4px; cursor: pointer; font-size: 14px; transition: all 0.2s ease;">
                   {{ page }}
                 </button>
-                <span v-else class="page-ellipsis" style="padding: 0 8px; color: #666; font-size: 16px;">...</span>
+                <span v-else class="page-ellipsis" style="padding: 0 8px; color: rgba(255, 255, 255, 0.6); font-size: 16px;">...</span>
               </template>
-              <button class="page-btn" @click="fetchAllArticles(allArticlesCategoryId, allArticlesPage + 1)" :disabled="allArticlesPage === allArticlesPages" style="padding: 8px 14px; background: white; color: #333; border: 1px solid #ddd; border-radius: 4px; cursor: pointer; font-size: 14px; transition: all 0.2s ease;">下一页</button>
-              <button class="page-btn" @click="fetchAllArticles(allArticlesCategoryId, allArticlesPages)" :disabled="allArticlesPage === allArticlesPages" style="padding: 8px 14px; background: white; color: #333; border: 1px solid #ddd; border-radius: 4px; cursor: pointer; font-size: 14px; transition: all 0.2s ease;">末页</button>
+              <button class="page-btn" @click="fetchAllArticles(allArticlesCategoryId, allArticlesPage + 1)" :disabled="allArticlesPage === allArticlesPages" style="padding: 8px 14px; background: rgba(255, 255, 255, 0.1); color: white; border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 4px; cursor: pointer; font-size: 14px; transition: all 0.2s ease;">下一页</button>
+              <button class="page-btn" @click="fetchAllArticles(allArticlesCategoryId, allArticlesPages)" :disabled="allArticlesPage === allArticlesPages" style="padding: 8px 14px; background: rgba(255, 255, 255, 0.1); color: white; border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 4px; cursor: pointer; font-size: 14px; transition: all 0.2s ease;">末页</button>
             </div>
           </div>
         </div>
@@ -7871,23 +7871,25 @@ body {
 
 .upload-btn {
   padding: 15px;
-  background-color: rgba(39, 174, 96, 0.8);
+  background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
   color: #fff;
   border: none;
   border-radius: 4px;
   cursor: pointer;
   font-size: 1.1em;
   font-weight: bold;
-  transition: background-color 0.3s ease;
+  transition: all 0.3s ease;
 }
 
 .upload-btn:hover {
-  background-color: rgba(33, 154, 82, 0.9);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(79, 172, 254, 0.4);
 }
 
 .upload-btn:disabled {
-  background-color: rgba(189, 195, 199, 0.6);
+  background: rgba(255, 255, 255, 0.2);
   cursor: not-allowed;
+  color: rgba(255, 255, 255, 0.5);
 }
 
 .upload-status {
@@ -7920,15 +7922,21 @@ body {
 
 .form-group label {
   font-weight: bold;
-  color: #555;
+  color: rgba(255, 255, 255, 0.9);
 }
 
 .form-group select {
   padding: 12px;
-  border: 1px solid #ddd;
+  border: 1px solid rgba(255, 255, 255, 0.3);
   border-radius: 4px;
-  background-color: #fff;
+  background: rgba(255, 255, 255, 0.1);
   font-size: 1em;
+  color: white;
+}
+
+.form-group select option {
+  background: #1e3a8a;
+  color: white;
 }
 
 .analyze-btn {
@@ -7997,7 +8005,7 @@ body {
   align-items: center;
   justify-content: center;
   height: 300px;
-  color: #999;
+  color: rgba(255, 255, 255, 0.6);
   text-align: center;
   font-size: 1.1em;
 }
@@ -8183,14 +8191,14 @@ body {
 }
 
 .map-info h3 {
-  color: #2c3e50;
+  color: white;
   margin-bottom: 15px;
   font-size: 1.1em;
 }
 
 .map-info p {
   margin: 8px 0;
-  color: #555;
+  color: rgba(255, 255, 255, 0.8);
   line-height: 1.4;
 }
 
@@ -8293,13 +8301,14 @@ body {
 
 /* 调试信息样式 */
 .debug-info {
-  background-color: #f0f0f0;
+  background: rgba(255, 255, 255, 0.1);
   padding: 10px;
-  border: 1px solid #ddd;
+  border: 1px solid rgba(255, 255, 255, 0.2);
   margin: 10px;
   border-radius: 4px;
   font-size: 0.8em;
-  color: #333;
+  color: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(10px);
 }
 
 /* 登录弹窗样式 */
@@ -8339,24 +8348,27 @@ body {
   display: block;
   margin-bottom: 8px;
   font-weight: bold;
-  color: #555;
+  color: rgba(255, 255, 255, 0.9);
 }
 
 .login-form input {
   width: 100%;
   padding: 12px;
-  border: 1px solid #ddd;
+  border: 1px solid rgba(255, 255, 255, 0.3);
   border-radius: 4px;
   font-size: 1em;
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
 }
 
 .login-error {
-  color: #e74c3c;
+  color: #ff6b6b;
   margin-bottom: 20px;
   padding: 10px;
-  background-color: #f9f9f9;
+  background: rgba(255, 107, 107, 0.1);
   border-radius: 4px;
   text-align: center;
+  border: 1px solid rgba(255, 107, 107, 0.3);
 }
 
 .login-btn {
@@ -8421,7 +8433,7 @@ body {
   display: flex;
   gap: 10px;
   margin-bottom: 20px;
-  border-bottom: 1px solid #ddd;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
 }
 
 .admin-tab {
@@ -8429,27 +8441,32 @@ body {
   cursor: pointer;
   border-bottom: 3px solid transparent;
   transition: all 0.3s ease;
+  color: rgba(255, 255, 255, 0.7);
 }
 
 .admin-tab:hover {
-  background-color: #f9f9f9;
+  background-color: rgba(255, 255, 255, 0.1);
+  color: white;
 }
 
 .admin-tab.active {
-  border-bottom-color: #27ae60;
-  background-color: #f0f8f0;
+  border-bottom-color: #4facfe;
+  background-color: rgba(255, 255, 255, 0.15);
   font-weight: bold;
+  color: white;
 }
 
 .admin-subsection {
-  background-color: #f9f9f9;
+  background-color: rgba(255, 255, 255, 0.1);
   padding: 20px;
   border-radius: 8px;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
 .subsection-title {
   font-size: 1.2em;
-  color: #2c3e50;
+  color: white;
   margin-bottom: 20px;
 }
 
@@ -8467,17 +8484,18 @@ body {
 
 .add-user-btn {
   padding: 10px 20px;
-  background-color: #27ae60;
+  background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
   color: #fff;
   border: none;
   border-radius: 4px;
   cursor: pointer;
   font-size: 1em;
-  transition: background-color 0.3s ease;
+  transition: all 0.3s ease;
 }
 
 .add-user-btn:hover {
-  background-color: #219a52;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(79, 172, 254, 0.4);
 }
 
 .user-list {
@@ -8487,25 +8505,30 @@ body {
 .user-table {
   width: 100%;
   border-collapse: collapse;
-  background-color: #fff;
-  box-shadow: 0 0 5px rgba(0, 0, 0, 0.1);
+  background-color: rgba(255, 255, 255, 0.1);
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  overflow: hidden;
 }
 
 .user-table th,
 .user-table td {
   padding: 12px;
   text-align: left;
-  border-bottom: 1px solid #ddd;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+  color: white;
 }
 
 .user-table th {
-  background-color: #f2f2f2;
+  background-color: rgba(255, 255, 255, 0.15);
   font-weight: bold;
-  color: #333;
+  color: white;
 }
 
 .user-table tr:hover {
-  background-color: #f5f5f5;
+  background-color: rgba(255, 255, 255, 0.1);
 }
 
 .edit-user-btn,
@@ -8515,31 +8538,51 @@ body {
   border-radius: 4px;
   cursor: pointer;
   font-size: 0.9em;
-  transition: background-color 0.3s ease;
+  transition: all 0.3s ease;
   margin-right: 5px;
 }
 
 .edit-user-btn {
-  background-color: #3498db;
+  background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
   color: #fff;
 }
 
 .edit-user-btn:hover {
-  background-color: #2980b9;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(79, 172, 254, 0.4);
 }
 
 .delete-user-btn {
-  background-color: #e74c3c;
+  background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
   color: #fff;
 }
 
 .delete-user-btn:hover {
-  background-color: #c0392b;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(231, 76, 60, 0.4);
 }
 
 .delete-user-btn:disabled {
-  background-color: #bdc3c7;
+  background: rgba(255, 255, 255, 0.2);
   cursor: not-allowed;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.edit-permissions-btn {
+  padding: 5px 10px;
+  background: linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%);
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.9em;
+  transition: all 0.3s ease;
+  margin-right: 5px;
+}
+
+.edit-permissions-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(155, 89, 182, 0.4);
 }
 
 /* 弹窗样式 */
@@ -8562,7 +8605,7 @@ body {
 
 
 .modal-content {
-  background-color: #fff;
+  background: linear-gradient(135deg, #1e3a8a 0%, #0a2463 100%);
   padding: 30px;
   border-radius: 8px;
   box-shadow: 0 0 20px rgba(0, 0, 0, 0.2);
@@ -8572,11 +8615,12 @@ body {
   overflow-y: auto;
   position: relative;
   z-index: 2001;
+  border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
 .modal-content h3 {
   text-align: center;
-  color: #27ae60;
+  color: #4facfe;
   margin-bottom: 20px;
 }
 
@@ -8588,25 +8632,32 @@ body {
   display: block;
   margin-bottom: 5px;
   font-weight: bold;
-  color: #555;
+  color: rgba(255, 255, 255, 0.9);
 }
 
 .modal-content input,
 .modal-content select {
   width: 100%;
   padding: 10px;
-  border: 1px solid #ddd;
+  border: 1px solid rgba(255, 255, 255, 0.3);
   border-radius: 4px;
   font-size: 1em;
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+}
+
+.modal-content input::placeholder {
+  color: rgba(255, 255, 255, 0.5);
 }
 
 .admin-error {
-  color: #e74c3c;
+  color: #ff6b6b;
   margin-bottom: 15px;
   padding: 10px;
-  background-color: #f9f9f9;
+  background-color: rgba(255, 107, 107, 0.1);
   border-radius: 4px;
   text-align: center;
+  border: 1px solid rgba(255, 107, 107, 0.3);
 }
 
 .modal-actions {
@@ -8658,30 +8709,34 @@ body {
   border-radius: 4px;
   cursor: pointer;
   font-size: 1em;
-  transition: background-color 0.3s ease;
+  transition: all 0.3s ease;
 }
 
 .cancel-btn {
-  background-color: #95a5a6;
+  background: rgba(255, 255, 255, 0.2);
   color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.3);
 }
 
 .cancel-btn:hover {
-  background-color: #7f8c8d;
+  background: rgba(255, 255, 255, 0.3);
+  transform: translateY(-2px);
 }
 
 .save-btn {
-  background-color: #27ae60;
+  background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
   color: #fff;
 }
 
 .save-btn:hover {
-  background-color: #219a52;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(79, 172, 254, 0.4);
 }
 
 .save-btn:disabled {
-  background-color: #bdc3c7;
+  background: rgba(255, 255, 255, 0.2);
   cursor: not-allowed;
+  color: rgba(255, 255, 255, 0.5);
 }
 
 /* 固定宽度下，小屏也不缩放，保持1020并出现横向滚动条 */
@@ -8711,53 +8766,57 @@ body {
 .config-tabs {
   display: flex;
   margin-bottom: 20px;
-  border-bottom: 1px solid #ddd;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
 }
 
 .config-tab {
   padding: 10px 20px;
-  background: #f5f5f5;
-  border: 1px solid #ddd;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
   border-bottom: none;
   cursor: pointer;
   margin-right: 5px;
   border-radius: 5px 5px 0 0;
   transition: all 0.3s ease;
+  color: rgba(255, 255, 255, 0.7);
 }
 
 .config-tab:hover {
-  background: #e8e8e8;
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
 }
 
 .config-tab.active {
-  background: #fff;
-  border-bottom: 1px solid #fff;
+  background: rgba(255, 255, 255, 0.15);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.15);
   font-weight: bold;
+  color: white;
 }
 
 .config-panel {
-  background: white;
-  border: 1px solid #ddd;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 5px;
   box-shadow: 0 0 10px rgba(0,0,0,0.1);
   overflow: hidden;
+  backdrop-filter: blur(10px);
 }
 
 .panel-header {
-  background: #f8f9fa;
+  background: rgba(255, 255, 255, 0.1);
   padding: 15px 20px;
-  border-bottom: 1px solid #ddd;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
 }
 
 .panel-title {
   margin: 0 0 5px 0;
-  color: #333;
+  color: white;
   font-size: 16px;
 }
 
 .panel-description {
   margin: 0;
-  color: #666;
+  color: rgba(255, 255, 255, 0.7);
   font-size: 14px;
 }
 
@@ -8777,16 +8836,18 @@ body {
   display: block;
   margin-bottom: 8px;
   font-weight: bold;
-  color: #333;
+  color: rgba(255, 255, 255, 0.9);
 }
 
 .config-form .form-group input,
 .config-form .form-group select {
   width: 100%;
   padding: 10px;
-  border: 1px solid #ddd;
+  border: 1px solid rgba(255, 255, 255, 0.3);
   border-radius: 4px;
   font-size: 14px;
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
 }
 
 .config-form .form-group input[type="checkbox"] {
@@ -8794,9 +8855,14 @@ body {
   margin-right: 10px;
 }
 
+.config-form .form-group select option {
+  background: #1e3a8a;
+  color: white;
+}
+
 .config-form .form-help {
   margin-left: 10px;
-  color: #666;
+  color: rgba(255, 255, 255, 0.6);
   font-size: 14px;
 }
 
@@ -8814,9 +8880,12 @@ body {
 .section-description {
   margin-bottom: 20px;
   padding: 15px;
-  background: #f8f9fa;
-  border-left: 4px solid #007bff;
+  background: rgba(255, 255, 255, 0.1);
+  border-left: 4px solid #4facfe;
   border-radius: 4px;
+  color: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
 .table-management {
@@ -8922,6 +8991,176 @@ body {
   border-radius: 4px;
   color: rgba(255, 255, 255, 0.6);
   backdrop-filter: blur(10px);
+}
+
+/* CMS管理样式 */
+.cms-management {
+  margin-top: 20px;
+}
+
+.management-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: white;
+  margin-bottom: 15px;
+}
+
+.add-btn {
+  padding: 8px 16px;
+  background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  margin-bottom: 15px;
+  transition: all 0.3s ease;
+}
+
+.add-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(79, 172, 254, 0.4);
+}
+
+.add-btn:disabled {
+  background: rgba(255, 255, 255, 0.2);
+  cursor: not-allowed;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.edit-btn {
+  padding: 5px 10px;
+  background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  margin-right: 5px;
+  transition: all 0.3s ease;
+}
+
+.edit-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(79, 172, 254, 0.4);
+}
+
+.delete-btn {
+  padding: 5px 10px;
+  background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.3s ease;
+}
+
+.delete-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(231, 76, 60, 0.4);
+}
+
+.category-table,
+.article-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: rgba(255, 255, 255, 0.1);
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.category-table th,
+.category-table td,
+.article-table th,
+.article-table td {
+  padding: 12px;
+  text-align: left;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+  color: white;
+}
+
+.category-table th,
+.article-table th {
+  background: rgba(255, 255, 255, 0.15);
+  font-weight: bold;
+  color: white;
+}
+
+.category-table tr:hover,
+.article-table tr:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.category-table a,
+.article-table a {
+  color: #4facfe;
+  text-decoration: none;
+}
+
+.category-table a:hover,
+.article-table a:hover {
+  text-decoration: underline;
+}
+
+.platform-image {
+  border-radius: 4px;
+}
+
+/* 分页样式 */
+.pagination {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 20px;
+  padding: 15px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.pagination-info {
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 14px;
+}
+
+.pagination-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.page-btn {
+  padding: 6px 12px;
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: all 0.3s ease;
+}
+
+.page-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.2);
+  transform: translateY(-1px);
+}
+
+.page-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.page-btn.active {
+  background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+  border-color: transparent;
+}
+
+.page-ellipsis {
+  color: rgba(255, 255, 255, 0.6);
+  padding: 0 8px;
 }
 
 /* 额外样式调整 */
@@ -9388,63 +9627,101 @@ body {
   animation: slideUp 0.3s ease;
 }
 
-/* 分页控件样式 */
-.pagination {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-top: 20px;
+/* 文章内容体样式 */
+.article-content-body {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.article-content-body p {
+  margin-bottom: 1em;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.article-content-body h1,
+.article-content-body h2,
+.article-content-body h3,
+.article-content-body h4,
+.article-content-body h5,
+.article-content-body h6 {
+  color: white;
+  margin-top: 1.5em;
+  margin-bottom: 0.8em;
+}
+
+.article-content-body ul,
+.article-content-body ol {
+  margin-left: 1.5em;
+  margin-bottom: 1em;
+}
+
+.article-content-body li {
+  margin-bottom: 0.5em;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.article-content-body a {
+  color: #4facfe;
+  text-decoration: none;
+}
+
+.article-content-body a:hover {
+  text-decoration: underline;
+}
+
+.article-content-body img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 1em 0;
+}
+
+.article-content-body table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1em 0;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.article-content-body th,
+.article-content-body td {
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.article-content-body th {
+  background: rgba(255, 255, 255, 0.15);
+  font-weight: bold;
+}
+
+.article-content-body blockquote {
+  margin: 1em 0;
+  padding: 15px 20px;
+  background: rgba(255, 255, 255, 0.1);
+  border-left: 4px solid #4facfe;
+  border-radius: 0 8px 8px 0;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.article-content-body pre {
+  background: rgba(0, 0, 0, 0.3);
   padding: 15px;
-  background: #f8f9fa;
+  border-radius: 8px;
+  overflow-x: auto;
+  margin: 1em 0;
+}
+
+.article-content-body code {
+  background: rgba(255, 255, 255, 0.1);
+  padding: 2px 6px;
   border-radius: 4px;
-  flex-wrap: wrap;
-  gap: 10px;
+  font-family: monospace;
+  color: #4facfe;
 }
 
-.pagination-info {
-  font-size: 14px;
-  color: #666;
-}
-
-.pagination-buttons {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  align-items: center;
-}
-
-.page-btn {
-  padding: 8px 14px;
-  background: white;
-  color: #333;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 14px;
-  transition: all 0.2s ease;
-}
-
-.page-btn:hover:not(:disabled) {
-  background: #007bff;
-  color: white;
-  border-color: #007bff;
-}
-
-.page-btn:disabled {
-  background: #e9ecef;
-  color: #adb5bd;
-  cursor: not-allowed;
-}
-
-.page-btn.active {
-  background: #007bff;
-  color: white;
-  border-color: #007bff;
-}
-
-.page-ellipsis {
-  padding: 0 8px;
-  color: #666;
-  font-size: 16px;
+.article-content-body pre code {
+  background: transparent;
+  padding: 0;
 }
 </style>
