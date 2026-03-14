@@ -86,6 +86,40 @@ const availableMonthsReports = computed(() => {
   return Array.from(months).sort().reverse();
 });
 
+// 计算属性：本月数据统计（基于北京时间）
+const currentMonthStats = computed(() => {
+  // 获取北京时间当前年月
+  const now = new Date();
+  const beijingOffset = 8 * 60; // 北京时间UTC+8
+  const localOffset = now.getTimezoneOffset();
+  const beijingTime = new Date(now.getTime() + (beijingOffset + localOffset) * 60 * 1000);
+  const currentYear = beijingTime.getFullYear();
+  const currentMonth = beijingTime.getMonth() + 1;
+  const currentMonthStr = `${currentYear}-${String(currentMonth).padStart(2, '0')}`;
+
+  let totalReported = 0;
+  let totalAccepted = 0;
+  let totalCompleted = 0;
+
+  huiwentaiDailyReports.value.forEach(report => {
+    if (report.reportDate) {
+      const reportDate = new Date(report.reportDate);
+      const reportMonth = `${reportDate.getFullYear()}-${String(reportDate.getMonth() + 1).padStart(2, '0')}`;
+      if (reportMonth === currentMonthStr) {
+        totalReported += report.reported || 0;
+        totalAccepted += report.accepted || 0;
+        totalCompleted += report.completed || 0;
+      }
+    }
+  });
+
+  return {
+    reported: totalReported,
+    accepted: totalAccepted,
+    completed: totalCompleted
+  };
+});
+
 // 计算属性：问题列表分页后的数据
 const paginatedHuiwentaiTasks = computed(() => {
   const start = (tasksCurrentPage.value - 1) * tasksPageSize.value;
@@ -152,7 +186,8 @@ const assessmentMessageV2 = ref('');
 const cmsCategories = ref([]);
 const cmsArticles = ref([]);
 const allHomeArticles = ref([]);
-const selectedCategory = ref(null);
+const allCategoryOption = { id: 'all', name: '全部' }; // "全部"选项常量
+const selectedCategory = ref(allCategoryOption);
 const cmsLoading = ref(false);
 const cmsError = ref('');
 const showArticleDetail = ref(false);
@@ -339,7 +374,7 @@ const platformFileUploadError = ref('');
 const tableVisibility = ref({});
 
 // 小工具模块状态管理
-const activeToolTab = ref('natural-language'); // natural-language, huanwei-assignment, other
+const activeToolTab = ref('huanwei-assignment'); // huanwei-assignment, location-extraction, data-cleaning, sql-generator
 const naturalLanguageQuery = ref('');
 const selectedToolTable = ref('');
 const toolLoading = ref(false);
@@ -400,10 +435,10 @@ const editingPermissions = ref({
   assessment: false,
   data_analysis: false,
   spotcheck: false,
-  tools: false,
-  chengguantong: false,
   map: false,
-  huiwentai: false
+  huiwentai: false,
+  cases: false,
+  business: false
 });
 
 // 从本地存储获取token和用户信息
@@ -1513,6 +1548,8 @@ onMounted(() => {
   fetchDisplayBusinessPlatforms();
   // 获取考核计分系数
   fetchAssessmentCoefficients();
+  // 获取汇问台日报数据用于首页统计
+  fetchHuiwentaiDailyReports();
 });
 
 // 监听业务管理标签页变化，当切换到cms标签时获取CMS数据
@@ -1536,13 +1573,9 @@ watch(
   () => adminActiveTab.value,
   (newTab) => {
     if (newTab === 'business') {
-      if (businessTab.value === 'cms') {
-        fetchCMSCategories();
-      } else if (businessTab.value === 'business-platforms') {
-        fetchBusinessPlatforms();
-      } else if (businessTab.value === 'data') {
-        fetchTablesForManagement();
-      }
+      // 切换到业务管理时，重置为第一个标签（数据管理）
+      businessTab.value = 'data';
+      fetchTablesForManagement();
     }
   }
 );
@@ -2732,10 +2765,10 @@ function editUserPermissions(user) {
     assessment: Boolean(user.permissions?.assessment) || false,
     data_analysis: Boolean(user.permissions?.data_analysis) || false,
     spotcheck: Boolean(user.permissions?.spotcheck) || false,
-    tools: Boolean(user.permissions?.tools) || false,
-    chengguantong: Boolean(user.permissions?.chengguantong) || false,
     map: Boolean(user.permissions?.map) || false,
-    huiwentai: Boolean(user.permissions?.huiwentai) || false
+    huiwentai: Boolean(user.permissions?.huiwentai) || false,
+    cases: Boolean(user.permissions?.cases) || false,
+    business: Boolean(user.permissions?.business) || false
   };
   
   // 打印设置后的权限值
@@ -2909,10 +2942,10 @@ function closeEditPermissionsForm() {
     assessment: false,
     data_analysis: false,
     spotcheck: false,
-    tools: false,
-    chengguantong: false,
     map: false,
-    huiwentai: false
+    huiwentai: false,
+    cases: false,
+    business: false
   };
   adminError.value = '';
 }
@@ -2931,7 +2964,7 @@ async function fetchCMSCategories() {
     if (data.categories) {
       cmsCategories.value = data.categories;
       // 默认选择"全部"文章
-      selectedCategory.value = { id: 'all', name: '全部' };
+      selectedCategory.value = allCategoryOption;
       await fetchCMSArticles('all', 1);
       // 获取所有栏目的文章，确保首页能显示所有栏目
       await fetchAllCMSArticles();
@@ -3006,7 +3039,7 @@ async function fetchAllCMSArticles() {
 // 切换CMS栏目
 async function switchCMSCategory(category) {
   if (category === 'all' || (category && category.id === 'all')) {
-    selectedCategory.value = { id: 'all', name: '全部' };
+    selectedCategory.value = allCategoryOption;
     cmsArticlesPage.value = 1;
     await fetchCMSArticles('all', 1);
   } else {
@@ -4818,7 +4851,7 @@ function getColumnIcon(index) {
       <div v-if="!userInfo || userInfo?.role === 'admin' || (userInfo?.permissions && userInfo?.permissions.assessment)" class="tab" :class="{ active: activeModule === 'assessment' }" @click="switchModule('assessment')">
         考核计分
       </div>
-      <div v-if="(!userInfo || userInfo?.role === 'admin' || (userInfo?.permissions && (userInfo?.permissions.data_analysis || userInfo?.permissions.spotcheck || userInfo?.permissions.chengguantong)))" class="tab" :class="{ active: activeModule === 'ai-apps' }" @click="switchModule('ai-apps')">
+      <div v-if="(!userInfo || userInfo?.role === 'admin' || (userInfo?.permissions && userInfo?.permissions.data_analysis))" class="tab" :class="{ active: activeModule === 'ai-apps' }" @click="switchModule('ai-apps')">
         AI应用
       </div>
       <div v-if="!userInfo || userInfo?.role === 'admin' || (userInfo?.permissions && userInfo?.permissions.map)" class="tab" :class="{ active: activeModule === 'map' }" @click="switchModule('map')">
@@ -4830,10 +4863,7 @@ function getColumnIcon(index) {
       <div v-if="!userInfo || userInfo?.role === 'admin' || (userInfo?.permissions && userInfo?.permissions.cases)" class="tab" :class="{ active: activeModule === 'cases' }" @click="switchModule('cases')">
         案件管理
       </div>
-      <div v-if="!userInfo || userInfo?.role === 'admin' || (userInfo?.permissions && userInfo?.permissions.tools)" class="tab" :class="{ active: activeModule === 'tools' }" @click="switchModule('tools')">
-        小工具
-      </div>
-      <div class="tab" :class="{ active: activeModule === 'business' }" @click="switchModule('business')">
+      <div v-if="!userInfo || userInfo?.role === 'admin' || (userInfo?.permissions && userInfo?.permissions.business)" class="tab" :class="{ active: activeModule === 'business' }" @click="switchModule('business')">
         业务平台
       </div>
       <div v-if="!userInfo || userInfo?.role === 'admin'" class="tab" :class="{ active: activeModule === 'admin' }" @click="switchModule('admin')">
@@ -4878,6 +4908,28 @@ function getColumnIcon(index) {
             <div class="quick-action-item" @click="switchModule('huiwentai')">
               <div class="action-icon">💬</div>
               <span class="action-text">汇问台</span>
+            </div>
+            <!-- 本月数据展示 -->
+            <div class="quick-action-item monthly-stats">
+              <div class="monthly-stats-content">
+                <div class="stats-title">本月数据</div>
+                <div class="stats-row">
+                  <span class="stat-item">
+                    <span class="stat-value">{{ currentMonthStats.reported }}</span>
+                    <span class="stat-label">上报</span>
+                  </span>
+                  <span class="stat-divider">|</span>
+                  <span class="stat-item">
+                    <span class="stat-value">{{ currentMonthStats.accepted }}</span>
+                    <span class="stat-label">受理</span>
+                  </span>
+                  <span class="stat-divider">|</span>
+                  <span class="stat-item">
+                    <span class="stat-value">{{ currentMonthStats.completed }}</span>
+                    <span class="stat-label">办结</span>
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -4968,8 +5020,7 @@ function getColumnIcon(index) {
       </div>
       
       <!-- 业务平台模块 -->
-      <div v-if="activeModule === 'business'" class="tab-content">
-        <h2 class="section-title">业务平台</h2>
+      <div v-if="activeModule === 'business' && (!userInfo || userInfo?.role === 'admin' || (userInfo?.permissions && userInfo?.permissions.business))" class="tab-content">
         <div class="business-platforms-section" style="max-width: 1200px; margin: 0 auto; padding: 20px;">
           <div v-if="businessPlatformsLoading" class="loading" style="font-size: 16px; padding: 60px; text-align: center; color: rgba(255, 255, 255, 0.8);">加载中...</div>
           <div v-else-if="displayBusinessPlatforms.length === 0" class="empty" style="font-size: 16px; padding: 60px; text-align: center; color: rgba(255, 255, 255, 0.6);">暂无业务平台</div>
@@ -4991,8 +5042,6 @@ function getColumnIcon(index) {
       
       <!-- AI应用模块 -->
       <div v-if="activeModule === 'ai-apps'" class="tab-content">
-        <h2 class="section-title">AI应用</h2>
-        
         <!-- AI应用标签页导航 -->
         <div class="ai-apps-tabs" style="display: flex; margin-bottom: 20px; border-bottom: 1px solid #dee2e6;">
           <div 
@@ -5016,7 +5065,7 @@ function getColumnIcon(index) {
             数据分析（新版）
           </div>
           <div 
-            v-if="!userInfo || userInfo?.role === 'admin' || (userInfo?.permissions && userInfo?.permissions.spotcheck)"
+            v-if="!userInfo || userInfo?.role === 'admin' || (userInfo?.permissions && userInfo?.permissions.data_analysis)"
             class="ai-apps-tab" 
             :class="{ active: aiAppsActiveTab === 'spotcheck' }"
             @click="aiAppsActiveTab = 'spotcheck'"
@@ -5025,9 +5074,9 @@ function getColumnIcon(index) {
           >
             案件抽查
           </div>
-          <div 
-            v-if="!userInfo || userInfo?.role === 'admin' || (userInfo?.permissions && userInfo?.permissions.chengguantong)"
-            class="ai-apps-tab" 
+          <div
+            v-if="!userInfo || userInfo?.role === 'admin' || (userInfo?.permissions && userInfo?.permissions.data_analysis)"
+            class="ai-apps-tab"
             :class="{ active: aiAppsActiveTab === 'chengguantong' }"
             @click="aiAppsActiveTab = 'chengguantong'"
             style="padding: 10px 20px; cursor: pointer; border-bottom: 3px solid transparent; margin-right: 10px; font-weight: bold;"
@@ -5385,7 +5434,7 @@ function getColumnIcon(index) {
         </div>
         
         <!-- 案件抽查标签页内容 -->
-        <div v-if="aiAppsActiveTab === 'spotcheck' && (!userInfo || userInfo?.role === 'admin' || (userInfo?.permissions && userInfo?.permissions.spotcheck))">
+        <div v-if="aiAppsActiveTab === 'spotcheck' && (!userInfo || userInfo?.role === 'admin' || (userInfo?.permissions && userInfo?.permissions.data_analysis))">
           <h2 class="section-title">案件抽查</h2>
         <div class="spotcheck-section" style="max-width: 900px; margin: 0 auto;">
           <!-- 提示信息 -->
@@ -5479,7 +5528,7 @@ function getColumnIcon(index) {
         </div>
         
         <!-- 城管通标签页内容 -->
-        <div v-if="aiAppsActiveTab === 'chengguantong' && (!userInfo || userInfo?.role === 'admin' || (userInfo?.permissions && userInfo?.permissions.chengguantong))">
+        <div v-if="aiAppsActiveTab === 'chengguantong' && (!userInfo || userInfo?.role === 'admin' || (userInfo?.permissions && userInfo?.permissions.data_analysis))">
           <h2 class="section-title">城管通</h2>
         <div class="chengguantong-section" style="max-width: 1200px; margin: 0 auto;">
           <!-- 第一行：提示文字 -->
@@ -5553,7 +5602,6 @@ function getColumnIcon(index) {
       
       <!-- 汇问台模块 -->
       <div v-if="activeModule === 'huiwentai' && (!userInfo || userInfo.role === 'admin' || (userInfo.permissions && userInfo.permissions.huiwentai))" class="tab-content">
-        <h2 class="section-title">汇问台</h2>
         <div class="huiwentai-section" style="max-width: 1000px; margin: 0 auto;">
           <!-- 标签页导航 -->
           <div class="huiwentai-tabs" style="display: flex; margin-bottom: 20px; border-bottom: 1px solid #dee2e6;">
@@ -5788,8 +5836,6 @@ function getColumnIcon(index) {
 
       <!-- 考核计分模块 -->
       <div v-if="activeModule === 'assessment' && (!userInfo || userInfo.role === 'admin' || (userInfo.permissions && userInfo.permissions.assessment))" class="tab-content">
-        <h2 class="section-title">考核计分</h2>
-        
         <!-- 标签页导航 -->
         <div class="assessment-tabs" style="display: flex; margin-bottom: 20px; border-bottom: 1px solid #dee2e6;">
           <div 
@@ -6039,8 +6085,6 @@ function getColumnIcon(index) {
       
       <!-- 案件管理模块 -->
       <div v-if="activeModule === 'cases'" class="tab-content">
-        <h2 class="section-title">案件管理</h2>
-        
         <div class="cases-section" style="max-width: 1200px; margin: 0 auto;">
           <!-- 导入区域 -->
           <div style="background: rgba(30, 58, 138, 0.4); backdrop-filter: blur(10px); padding: 20px; border-radius: 12px; margin-bottom: 20px; border: 1px solid rgba(100, 149, 237, 0.3); box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);">
@@ -6273,383 +6317,8 @@ function getColumnIcon(index) {
         </div>
       </div>
       
-      <!-- 小工具模块 -->
-      <div v-if="activeModule === 'tools' && (!userInfo || userInfo.role === 'admin' || (userInfo.permissions && userInfo.permissions.tools))" class="tab-content">
-        <h2 class="section-title">小工具</h2>
-        
-        <!-- 小工具标签页导航 -->
-        <div class="tool-tabs" style="display: flex; margin-bottom: 20px; border-bottom: 1px solid #dee2e6;">
-          <div 
-            class="tool-tab" 
-            :class="{ active: activeToolTab === 'natural-language' }"
-            @click="activeToolTab = 'natural-language'"
-            style="padding: 10px 20px; cursor: pointer; border-bottom: 3px solid transparent; margin-right: 10px; font-weight: bold;"
-            :style="activeToolTab === 'natural-language' ? { borderBottomColor: '#27ae60', color: '#27ae60' } : {}"
-          >
-            自然语言查询
-          </div>
-          <div 
-            class="tool-tab" 
-            :class="{ active: activeToolTab === 'huanwei-assignment' }"
-            @click="activeToolTab = 'huanwei-assignment'"
-            style="padding: 10px 20px; cursor: pointer; border-bottom: 3px solid transparent; margin-right: 10px; font-weight: bold;"
-            :style="activeToolTab === 'huanwei-assignment' ? { borderBottomColor: '#27ae60', color: '#27ae60' } : {}"
-          >
-            市容环卫案件分配
-          </div>
-          <div 
-            class="tool-tab" 
-            :class="{ active: activeToolTab === 'location-extraction' }"
-            @click="activeToolTab = 'location-extraction'"
-            style="padding: 10px 20px; cursor: pointer; border-bottom: 3px solid transparent; margin-right: 10px; font-weight: bold;"
-            :style="activeToolTab === 'location-extraction' ? { borderBottomColor: '#27ae60', color: '#27ae60' } : {}"
-          >
-            地址信息提取
-          </div>
-          <div 
-            class="tool-tab" 
-            :class="{ active: activeToolTab === 'data-cleaning' }"
-            @click="activeToolTab = 'data-cleaning'"
-            style="padding: 10px 20px; cursor: pointer; border-bottom: 3px solid transparent; margin-right: 10px; font-weight: bold;"
-            :style="activeToolTab === 'data-cleaning' ? { borderBottomColor: '#27ae60', color: '#27ae60' } : {}"
-          >
-            数据清洗脱敏
-          </div>
-          <div 
-            class="tool-tab" 
-            :class="{ active: activeToolTab === 'other' }"
-            @click="activeToolTab = 'other'"
-            style="padding: 10px 20px; cursor: pointer; border-bottom: 3px solid transparent; margin-right: 10px; font-weight: bold;"
-            :style="activeToolTab === 'other' ? { borderBottomColor: '#27ae60', color: '#27ae60' } : {}"
-          >
-            其他功能
-          </div>
-        </div>
-        
-        <!-- 自然语言查询标签页内容 -->
-        <div v-if="activeToolTab === 'natural-language'" class="tools-section" style="max-width: 800px; margin: 0 auto;">
-          <!-- 第一行：提示文字 -->
-          <div class="tip-section" style="margin-bottom: 20px;">
-            <p>该模块允许输入自然语句，系统会自动将其转换为SQL语句并执行查询。</p>
-          </div>
-          
-          <!-- 第二行：输入框和下拉菜单 -->
-          <div class="input-section" style="margin-bottom: 20px;">
-            <div style="display: flex; gap: 15px; margin-bottom: 15px;">
-              <div style="flex: 2;">
-                <label for="natural-language-input" style="display: block; margin-bottom: 5px; font-weight: 600; color: rgba(255, 255, 255, 0.9);">自然语言查询：</label>
-                <textarea 
-                  id="natural-language-input" 
-                  v-model="naturalLanguageQuery" 
-                  placeholder="例如：帮我查询12月份所有的市容环卫中心的案件" 
-                  rows="1" 
-                  :disabled="toolLoading"
-                  style="width: 100%; padding: 10px 12px; border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 6px; font-size: 14px; box-sizing: border-box; resize: vertical; min-height: 40px; transition: all 0.3s ease; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15); background: rgba(255, 255, 255, 0.15); color: white;"
-                ></textarea>
-              </div>
-              <div style="flex: 1;">
-                <label for="tool-table-select" style="display: block; margin-bottom: 5px; font-weight: 600; color: rgba(255, 255, 255, 0.9);">选择数据表：</label>
-                <select 
-                  id="tool-table-select" 
-                  v-model="selectedToolTable" 
-                  :disabled="toolLoading"
-                  style="width: 100%; padding: 10px 12px; border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 4px; font-size: 14px; background: rgba(255, 255, 255, 0.15); color: white; appearance: none; -webkit-appearance: none; -moz-appearance: none; background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMiIgaGVpZ2h0PSIxMiIgdmlld0JveD0iMCAwIDEyIDEyIj48cGF0aCBmaWxsPSJyZ2JhKDI1NSwyNTUsMjU1LDAuOCkiIGQ9Ik02IDlMMiA1aDhsNC41IDMuNSIvPjwvc3ZnPg=='); background-repeat: no-repeat; background-position: right 10px center; padding-right: 30px;"
-                >
-                  <option value="">-- 请选择 --</option>
-                  <option v-for="table in tables" :key="table" :value="table">
-                    {{ table }}
-                  </option>
-                </select>
-              </div>
-            </div>
-            
-            <div class="button-group" style="display: flex; gap: 10px; margin-bottom: 15px;">
-              <button 
-                @click="executeNaturalLanguageQuery"
-                :disabled="toolLoading || !naturalLanguageQuery || !selectedToolTable"
-                class="btn-primary"
-                style="flex: 1; padding: 12px; background-color: #27ae60; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; font-weight: bold;"
-              >
-                <span v-if="toolLoading">处理中...</span>
-                <span v-else>执行查询</span>
-              </button>
-              <button 
-                @click="resetToolState"
-                :disabled="toolLoading"
-                class="btn-secondary"
-                style="padding: 12px 20px; background-color: #95a5a6; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px;"
-              >
-                重置
-              </button>
-            </div>
-            
-            <div v-if="toolMessage" class="message success" style="margin-top: 15px; padding: 12px; background-color: rgba(76, 175, 80, 0.2); color: rgba(255, 255, 255, 0.9); border: 1px solid rgba(76, 175, 80, 0.4); border-radius: 4px; backdrop-filter: blur(5px);">
-              ✓ {{ toolMessage }}
-            </div>
-            <div v-if="toolError" class="message error" style="margin-top: 15px; padding: 12px; background-color: rgba(248, 215, 218, 0.2); color: rgba(255, 255, 255, 0.9); border: 1px solid rgba(245, 198, 203, 0.4); border-radius: 4px; backdrop-filter: blur(5px);">
-              {{ toolError }}
-            </div>
-          </div>
-          
-          <!-- 第三行：生成的SQL语句 -->
-          <!-- SQL语句现在只在弹框中显示，不再在原页面显示 -->
-          
-          <!-- 第四行：查询结果 -->
-          <!-- 结果现在只通过弹框显示，不再在原页面显示 -->
-        </div>
-        
-        <!-- 市容环卫案件分配标签页内容 -->
-        <div v-if="activeToolTab === 'huanwei-assignment'" class="tools-section" style="max-width: 800px; margin: 0 auto;">
-          <!-- 第一行：提示文字 -->
-          <div class="tip-section" style="margin-bottom: 20px;">
-            <p>该模块允许上传Excel文件，为市容环卫中心的案件分配到各环卫部门（添加"环卫"前缀）。</p>
-            <p style="color: rgba(255, 255, 255, 0.7); font-size: 14px; margin-top: 5px;"><strong>注意：</strong>请确保Excel文件中包含以下列：</p>
-            <ul style="color: rgba(255, 255, 255, 0.7); font-size: 14px; margin-top: 5px; margin-left: 20px;">
-              <li>处置部门：案件的处理部门</li>
-              <li>所属片区：案件所属的片区</li>
-            </ul>
-          </div>
-          
-          <!-- 第二行：文件上传 -->
-          <div class="upload-section" style="margin-bottom: 20px;">
-            <div class="form-group" style="margin-bottom: 15px;">
-              <label for="huanwei-file-input" style="display: block; margin-bottom: 5px; font-weight: bold;">选择Excel文件：</label>
-              <input 
-                type="file" 
-                id="huanwei-file-input"
-                accept=".xlsx"
-                @change="handleHuanweiFileSelect"
-                :disabled="huanweiLoading"
-              >
-              <div v-if="huanweiFile" class="file-info" style="margin-top: 5px; font-size: 14px; color: rgba(255, 255, 255, 0.8);">
-                已选择：{{ huanweiFile.name }}
-              </div>
-            </div>
-            
-            <div class="button-group" style="display: flex; gap: 10px; margin-bottom: 15px;">
-              <button 
-                @click="processHuanweiFile"
-                :disabled="!huanweiFile || huanweiLoading"
-                class="btn-primary"
-                style="flex: 1; padding: 12px; background-color: #27ae60; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; font-weight: bold;"
-              >
-                <span v-if="huanweiLoading">处理中...</span>
-                <span v-else>处理文件</span>
-              </button>
-              <button 
-                @click="resetHuanweiFile"
-                :disabled="huanweiLoading"
-                class="btn-secondary"
-                style="padding: 12px 20px; background-color: #95a5a6; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px;"
-              >
-                重置
-              </button>
-            </div>
-            
-            <div v-if="huanweiMessage" class="message success" style="padding: 10px; background: rgba(46, 204, 113, 0.2); color: #2ecc71; border: 1px solid rgba(46, 204, 113, 0.4); border-radius: 4px; margin-bottom: 15px; backdrop-filter: blur(10px);">
-              {{ huanweiMessage }}
-            </div>
-            <div v-if="huanweiError" class="message error" style="padding: 10px; background: rgba(231, 76, 60, 0.2); color: #e74c3c; border: 1px solid rgba(231, 76, 60, 0.4); border-radius: 4px; margin-bottom: 15px; backdrop-filter: blur(10px);">
-              {{ huanweiError }}
-            </div>
-          </div>
-          
-          <!-- 第三行：下载按钮 -->
-          <div v-if="huanweiDownloadUrl" class="download-section" style="margin-top: 20px;">
-            <a 
-              :href="huanweiDownloadUrl"
-              download
-              style="display: inline-block; padding: 12px 24px; background-color: #3498db; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; font-weight: bold; text-decoration: none;"
-            >
-              下载处理后的文件
-            </a>
-          </div>
-        </div>
-        
-        <!-- 地址信息提取标签页内容 -->
-        <div v-if="activeToolTab === 'location-extraction'" class="tools-section" style="max-width: 800px; margin: 0 auto;">
-          <!-- 第一行：提示文字 -->
-          <div class="tip-section" style="margin-bottom: 20px;">
-            <p>该模块允许上传Excel文件，从问题描述中提取地址信息并替换原文件中地址描述为“没有相关位置描述”“无位置描述”。</p>
-            <p style="color: rgba(255, 255, 255, 0.7); font-size: 14px; margin-top: 5px;"><strong>注意：</strong>请确保Excel文件中包含以下列：</p>
-            <ul style="color: rgba(255, 255, 255, 0.7); font-size: 14px; margin-top: 5px; margin-left: 20px;">
-              <li>问题描述：包含地址信息的文本</li>
-              <li>地址描述：需要替换的地址字段</li>
-            </ul>
-          </div>
-          
-          <!-- 第二行：文件上传 -->
-          <div class="upload-section" style="margin-bottom: 20px;">
-            <div class="form-group" style="margin-bottom: 15px;">
-              <label for="location-file-input" style="display: block; margin-bottom: 5px; font-weight: bold;">选择Excel文件：</label>
-              <input 
-                type="file" 
-                id="location-file-input"
-                accept=".xlsx"
-                @change="handleLocationFileSelect"
-                :disabled="locationLoading"
-              >
-              <div v-if="locationFile" class="file-info" style="margin-top: 5px; font-size: 14px; color: rgba(255, 255, 255, 0.8);">
-                已选择：{{ locationFile.name }}
-              </div>
-            </div>
-            
-            <div class="button-group" style="display: flex; gap: 10px; margin-bottom: 15px;">
-              <button 
-                @click="processLocationFile"
-                :disabled="!locationFile || locationLoading"
-                class="btn-primary"
-                style="flex: 1; padding: 12px; background-color: #27ae60; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; font-weight: bold;"
-              >
-                <span v-if="locationLoading">处理中...</span>
-                <span v-else>提取地址信息</span>
-              </button>
-              <button 
-                @click="resetLocationFile"
-                :disabled="locationLoading"
-                class="btn-secondary"
-                style="padding: 12px 20px; background-color: #95a5a6; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px;"
-              >
-                重置
-              </button>
-            </div>
-            
-            <div v-if="locationMessage" class="message success" style="padding: 10px; background: rgba(46, 204, 113, 0.2); color: #2ecc71; border: 1px solid rgba(46, 204, 113, 0.4); border-radius: 4px; margin-bottom: 15px; backdrop-filter: blur(10px);">
-              {{ locationMessage }}
-            </div>
-            <div v-if="locationError" class="message error" style="padding: 10px; background: rgba(231, 76, 60, 0.2); color: #e74c3c; border: 1px solid rgba(231, 76, 60, 0.4); border-radius: 4px; margin-bottom: 15px; backdrop-filter: blur(10px);">
-              {{ locationError }}
-            </div>
-          </div>
-          
-          <!-- 第三行：下载按钮 -->
-          <div v-if="locationDownloadUrl" class="download-section" style="margin-top: 20px;">
-            <a 
-              :href="locationDownloadUrl"
-              download
-              style="display: inline-block; padding: 12px 24px; background-color: #3498db; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; font-weight: bold; text-decoration: none;"
-            >
-              下载处理后的文件
-            </a>
-          </div>
-        </div>
-        
-        <!-- 数据清洗脱敏标签页内容 -->
-        <div v-if="activeToolTab === 'data-cleaning'" class="tools-section" style="max-width: 800px; margin: 0 auto;">
-          <!-- 第一行：提示文字 -->
-          <div class="tip-section" style="margin-bottom: 20px;">
-            <p>该模块允许上传Excel文件，对数据进行清洗和脱敏处理，包括删除任务编号、车牌号、电话号码、姓名和精细地址等信息。</p>
-            <p style="color: #666; font-size: 14px; margin-top: 5px;"><strong>处理说明：</strong></p>
-            <ul style="color: #666; font-size: 14px; margin-top: 5px; margin-left: 20px;">
-              <li>删除各种任务编号（数字串或字母+数字串）</li>
-              <li>删除车牌号（如"晋M·E5191"）</li>
-              <li>删除电话号码（手机和座机）</li>
-              <li>删除姓名（如"张先生"、"李女士"等）</li>
-              <li>删除精细地址（如几单元几室）</li>
-            </ul>
-          </div>
-          
-          <!-- 第二行：文件上传 -->
-          <div class="upload-section" style="margin-bottom: 20px;">
-            <div class="form-group" style="margin-bottom: 15px;">
-              <label for="cleaning-file-input" style="display: block; margin-bottom: 5px; font-weight: bold;">选择Excel文件：</label>
-              <input 
-                type="file" 
-                id="cleaning-file-input"
-                accept=".xlsx"
-                @change="handleCleaningFileSelect"
-                :disabled="cleaningLoading"
-              >
-              <div v-if="cleaningFile" class="file-info" style="margin-top: 5px; font-size: 14px; color: rgba(255, 255, 255, 0.8);">
-                已选择：{{ cleaningFile.name }}
-              </div>
-            </div>
-            
-            <div class="button-group" style="display: flex; gap: 10px; margin-bottom: 15px;">
-              <button 
-                @click="fetchCleaningFields"
-                :disabled="!cleaningFile || cleaningLoading"
-                class="btn-primary"
-                style="flex: 1; padding: 12px; background-color: #3498db; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; font-weight: bold;"
-              >
-                <span v-if="cleaningLoading">读取中...</span>
-                <span v-else>读取文件字段</span>
-              </button>
-              <button 
-                @click="resetCleaningFile"
-                :disabled="cleaningLoading"
-                class="btn-secondary"
-                style="padding: 12px 20px; background-color: #95a5a6; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px;"
-              >
-                重置
-              </button>
-            </div>
-            
-            <div v-if="cleaningMessage" class="message success" style="padding: 10px; background: rgba(46, 204, 113, 0.2); color: #2ecc71; border: 1px solid rgba(46, 204, 113, 0.4); border-radius: 4px; margin-bottom: 15px; backdrop-filter: blur(10px);">
-              {{ cleaningMessage }}
-            </div>
-            <div v-if="cleaningError" class="message error" style="padding: 10px; background: rgba(231, 76, 60, 0.2); color: #e74c3c; border: 1px solid rgba(231, 76, 60, 0.4); border-radius: 4px; margin-bottom: 15px; backdrop-filter: blur(10px);">
-              {{ cleaningError }}
-            </div>
-          </div>
-          
-          <!-- 第三行：字段选择 -->
-          <div v-if="cleaningFields.length > 0" class="fields-section" style="margin-bottom: 20px; padding: 20px; border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 8px; background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px);">
-            <h4 style="margin-top: 0; margin-bottom: 15px; color: white;">字段选择</h4>
-            <div class="field-selection" style="display: flex; flex-direction: column; gap: 15px;">
-              <div style="display: flex; flex-direction: column;">
-                <label style="margin-bottom: 5px; font-weight: bold;">选择字段：</label>
-                <select 
-                  v-model="selectedCleaningField"
-                  style="padding: 10px 12px; border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 4px; font-size: 14px; width: 300px; background: rgba(255, 255, 255, 0.15); color: white; appearance: none; -webkit-appearance: none; -moz-appearance: none; background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMiIgaGVpZ2h0PSIxMiIgdmlld0JveD0iMCAwIDEyIDEyIj48cGF0aCBmaWxsPSJyZ2JhKDI1NSwyNTUsMjU1LDAuOCkiIGQ9Ik02IDlMMiA1aDhsNC41IDMuNSIvPjwvc3ZnPg=='); background-repeat: no-repeat; background-position: right 10px center; padding-right: 30px;"
-                >
-                  <option value="">-- 请选择字段 --</option>
-                  <option v-for="field in cleaningFields" :key="field" :value="field">
-                    {{ field }}
-                  </option>
-                </select>
-              </div>
-            </div>
-            
-            <div class="button-group" style="display: flex; gap: 10px; margin-top: 20px;">
-              <button 
-                @click="processCleaningFile"
-                :disabled="cleaningLoading || !selectedCleaningField"
-                class="btn-primary"
-                style="flex: 1; padding: 12px; background-color: #27ae60; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; font-weight: bold;"
-              >
-                <span v-if="cleaningLoading">处理中...</span>
-                <span v-else>清洗处理</span>
-              </button>
-            </div>
-          </div>
-          
-          <!-- 第四行：下载按钮 -->
-          <div v-if="cleaningDownloadUrl" class="download-section" style="margin-top: 20px;">
-            <a 
-              :href="cleaningDownloadUrl"
-              download
-              style="display: inline-block; padding: 12px 24px; background-color: #3498db; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; font-weight: bold; text-decoration: none;"
-            >
-              下载处理后的文件
-            </a>
-          </div>
-        </div>
-        
-
-        
-        <!-- 其他功能标签页内容 -->
-        <div v-if="activeToolTab === 'other'" class="tools-section" style="max-width: 800px; margin: 0 auto;">
-          <div style="padding: 40px; text-align: center; background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px;">
-            <h3 style="margin-bottom: 20px;">其他功能</h3>
-            <p>该功能正在开发中，敬请期待...</p>
-          </div>
-        </div>
-      </div>
-      
       <!-- 地图服务模块 -->
       <div v-if="activeModule === 'map' && (!userInfo || userInfo.role === 'admin' || (userInfo.permissions && userInfo.permissions.map))" class="tab-content">
-        <h2 class="section-title">地图服务</h2>
         <div class="map-section">
           <div v-if="mapLoading" class="loading">
             地图加载中...
@@ -6658,7 +6327,7 @@ function getColumnIcon(index) {
             {{ mapError }}
           </div>
           <div v-else id="map-container" style="width: 100%; height: 600px; border-radius: 8px;"></div>
-          <div class="map-info" style="margin-top: 20px; padding: 20px; background-color: #f9f9f9; border-radius: 8px;">
+          <div class="map-info" style="margin-top: 20px; padding: 20px; border-radius: 8px;">
             <h3>地图服务说明</h3>
             <p>• 显示运城市地图</p>
             <p>• 标记案件位置</p>
@@ -6667,12 +6336,9 @@ function getColumnIcon(index) {
           </div>
         </div>
       </div>
-      
 
-      
       <!-- 管理员管理模块 -->
       <div v-if="activeModule === 'admin' && (!userInfo || userInfo.role === 'admin')" class="tab-content">
-        <h2 class="section-title">管理员管理</h2>
         <div class="admin-section">
           <div class="admin-tabs">
             <div class="admin-tab" :class="{ active: adminActiveTab === 'users' }" @click="adminActiveTab = 'users'">
@@ -6732,6 +6398,7 @@ function getColumnIcon(index) {
               <button class="config-tab" :class="{ active: businessTab === 'cms' }" @click="businessTab = 'cms'">内容管理</button>
               <button class="config-tab" :class="{ active: businessTab === 'business-platforms' }" @click="businessTab = 'business-platforms'">业务平台</button>
               <button class="config-tab" :class="{ active: businessTab === 'assessment' }" @click="businessTab = 'assessment'">考核计分</button>
+              <button class="config-tab" :class="{ active: businessTab === 'tools' }" @click="businessTab = 'tools'">小工具</button>
             </div>
             
             <!-- 配置内容 -->
@@ -6855,8 +6522,8 @@ function getColumnIcon(index) {
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
                       <div style="display: flex; align-items: center; gap: 10px;">
                         <label style="font-size: 14px;">选择栏目：</label>
-                        <select v-model="selectedCategory" @change="switchCMSCategory(selectedCategory)" style="padding: 6px 10px; border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 4px; font-size: 14px; background: rgba(255, 255, 255, 0.15); color: white; appearance: none; -webkit-appearance: none; -moz-appearance: none; background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMiIgaGVpZ2h0PSIxMiIgdmlld0JveD0iMCAwIDEyIDEyIj48cGF0aCBmaWxsPSJyZ2JhKDI1NSwyNTUsMjU1LDAuOCkiIGQ9Ik02IDlMMiA1aDhsNC41IDMuNSIvPjwvc3ZnPg=='); background-repeat: no-repeat; background-position: right 10px center; padding-right: 30px;">
-                          <option value="all">全部</option>
+                        <select v-model="selectedCategory" @change="switchCMSCategory(selectedCategory)" style="padding: 8px 12px; border: 1px solid rgba(100, 149, 237, 0.5); border-radius: 6px; font-size: 14px; background: rgba(30, 58, 138, 0.6); color: white; appearance: none; -webkit-appearance: none; -moz-appearance: none; background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMiIgaGVpZ2h0PSIxMiIgdmlld0JveD0iMCAwIDEyIDEyIj48cGF0aCBmaWxsPSJyZ2JhKDI1NSwyNTUsMjU1LDAuOCkiIGQ9Ik02IDlMMiA1aDhsNC41IDMuNSIvPjwvc3ZnPg=='); background-repeat: no-repeat; background-position: right 10px center; padding-right: 30px;">
+                          <option :value="allCategoryOption">全部</option>
                           <option v-for="category in cmsCategories" :key="category.id" :value="category">
                             {{ category.name }}
                           </option>
@@ -7123,9 +6790,186 @@ function getColumnIcon(index) {
                   </div>
                 </div>
               </div>
+
+              <!-- 小工具配置 -->
+              <div v-if="businessTab === 'tools'" class="config-panel">
+                <div class="panel-header">
+                  <h4 class="panel-title">小工具</h4>
+                  <p class="panel-description">数据工具集：地址信息提取、数据清洗等</p>
+                </div>
+
+                <div class="panel-body">
+                  <!-- 工具标签页 -->
+                  <div class="config-tabs">
+                    <button class="config-tab" :class="{ active: activeToolTab === 'huanwei-assignment' }" @click="activeToolTab = 'huanwei-assignment'">市容环卫案件分配</button>
+                    <button class="config-tab" :class="{ active: activeToolTab === 'location-extraction' }" @click="activeToolTab = 'location-extraction'">地址信息提取</button>
+                    <button class="config-tab" :class="{ active: activeToolTab === 'data-cleaning' }" @click="activeToolTab = 'data-cleaning'">数据清洗</button>
+                  </div>
+
+                  <!-- 工具内容 -->
+                  <div class="tools-content" style="padding: 20px 0;">
+                    <!-- 市容环卫案件分配标签页内容 -->
+                    <div v-if="activeToolTab === 'huanwei-assignment'" class="tools-section" style="max-width: 800px; margin: 0 auto;">
+                      <!-- 第一行：提示文字 -->
+                      <div class="tip-section" style="margin-bottom: 20px;">
+                        <p>该模块允许上传Excel文件，为市容环卫中心的案件分配到各环卫部门（添加"环卫"前缀）。</p>
+                        <p style="color: rgba(255, 255, 255, 0.7); font-size: 14px; margin-top: 5px;"><strong>注意：</strong>请确保Excel文件中包含以下列：</p>
+                        <ul style="color: rgba(255, 255, 255, 0.7); font-size: 14px; margin-top: 5px; margin-left: 20px;">
+                          <li>处置部门：案件的处理部门</li>
+                          <li>所属片区：案件所属的片区</li>
+                        </ul>
+                      </div>
+
+                      <!-- 第二行：文件上传 -->
+                      <div class="upload-section" style="margin-bottom: 20px;">
+                        <div class="form-group" style="margin-bottom: 15px;">
+                          <label for="huanwei-file-input" style="display: block; margin-bottom: 5px; font-weight: bold;">选择Excel文件：</label>
+                          <input
+                            type="file"
+                            id="huanwei-file-input"
+                            accept=".xlsx"
+                            @change="handleHuanweiFileSelect"
+                            :disabled="huanweiLoading"
+                          >
+                          <div v-if="huanweiFile" class="file-info" style="margin-top: 5px; font-size: 14px; color: rgba(255, 255, 255, 0.8);">
+                            已选择：{{ huanweiFile.name }}
+                          </div>
+                        </div>
+
+                        <div class="form-group">
+                          <button
+                            @click="processHuanweiFile"
+                            :disabled="!huanweiFile || huanweiLoading"
+                            class="upload-btn"
+                          >
+                            {{ huanweiLoading ? '处理中...' : '开始处理' }}
+                          </button>
+                        </div>
+
+                        <div v-if="huanweiMessage" class="message success" style="padding: 10px; background: rgba(46, 204, 113, 0.2); color: #2ecc71; border: 1px solid rgba(46, 204, 113, 0.4); border-radius: 4px; margin-bottom: 15px; backdrop-filter: blur(10px);">
+                          ✓ {{ huanweiMessage }}
+                        </div>
+                        <div v-if="huanweiError" class="message error" style="padding: 10px; background: rgba(231, 76, 60, 0.2); color: #e74c3c; border: 1px solid rgba(231, 76, 60, 0.4); border-radius: 4px; margin-bottom: 15px; backdrop-filter: blur(10px);">
+                          ✗ {{ huanweiError }}
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- 地址信息提取标签页内容 -->
+                    <div v-if="activeToolTab === 'location-extraction'" class="tools-section" style="max-width: 800px; margin: 0 auto;">
+                      <!-- 第一行：提示文字 -->
+                      <div class="tip-section" style="margin-bottom: 20px;">
+                        <p>该模块允许上传Excel文件，从问题描述中提取地址信息并替换原文件中地址描述为"没有相关位置描述""无位置描述"。</p>
+                        <p style="color: rgba(255, 255, 255, 0.7); font-size: 14px; margin-top: 5px;"><strong>注意：</strong>请确保Excel文件中包含以下列：</p>
+                        <ul style="color: rgba(255, 255, 255, 0.7); font-size: 14px; margin-top: 5px; margin-left: 20px;">
+                          <li>问题描述：包含地址信息的文本</li>
+                          <li>地址描述：需要替换的地址字段</li>
+                        </ul>
+                      </div>
+
+                      <!-- 第二行：文件上传 -->
+                      <div class="upload-section" style="margin-bottom: 20px;">
+                        <div class="form-group" style="margin-bottom: 15px;">
+                          <label for="location-file-input" style="display: block; margin-bottom: 5px; font-weight: bold;">选择Excel文件：</label>
+                          <input
+                            type="file"
+                            id="location-file-input"
+                            accept=".xlsx"
+                            @change="handleLocationFileSelect"
+                            :disabled="locationLoading"
+                          >
+                          <div v-if="locationFile" class="file-info" style="margin-top: 5px; font-size: 14px; color: rgba(255, 255, 255, 0.8);">
+                            已选择：{{ locationFile.name }}
+                          </div>
+                        </div>
+
+                        <div class="form-group">
+                          <button
+                            @click="processLocationFile"
+                            :disabled="!locationFile || locationLoading"
+                            class="upload-btn"
+                          >
+                            {{ locationLoading ? '处理中...' : '开始处理' }}
+                          </button>
+                        </div>
+
+                        <div v-if="locationMessage" class="message success" style="padding: 10px; background: rgba(46, 204, 113, 0.2); color: #2ecc71; border: 1px solid rgba(46, 204, 113, 0.4); border-radius: 4px; margin-bottom: 15px; backdrop-filter: blur(10px);">
+                          {{ locationMessage }}
+                        </div>
+                        <div v-if="locationError" class="message error" style="padding: 10px; background: rgba(231, 76, 60, 0.2); color: #e74c3c; border: 1px solid rgba(231, 76, 60, 0.4); border-radius: 4px; margin-bottom: 15px; backdrop-filter: blur(10px);">
+                          {{ locationError }}
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- 数据清洗标签页内容 -->
+                    <div v-if="activeToolTab === 'data-cleaning'" class="tools-section" style="max-width: 800px; margin: 0 auto;">
+                      <!-- 第一行：提示文字 -->
+                      <div class="tip-section" style="margin-bottom: 20px;">
+                        <p>该模块允许上传Excel文件，进行数据清洗操作，包括去除重复数据、填充缺失值等。</p>
+                        <p style="color: rgba(255, 255, 255, 0.7); font-size: 14px; margin-top: 5px;"><strong>注意：</strong>请确保Excel文件中包含以下列：</p>
+                        <ul style="color: rgba(255, 255, 255, 0.7); font-size: 14px; margin-top: 5px; margin-left: 20px;">
+                          <li>问题描述：包含地址信息的文本</li>
+                          <li>地址描述：需要替换的地址字段</li>
+                        </ul>
+                      </div>
+
+                      <!-- 第二行：文件上传 -->
+                      <div class="upload-section" style="margin-bottom: 20px;">
+                        <div class="form-group" style="margin-bottom: 15px;">
+                          <label for="cleaning-file-input" style="display: block; margin-bottom: 5px; font-weight: bold;">选择Excel文件：</label>
+                          <input
+                            type="file"
+                            id="cleaning-file-input"
+                            accept=".xlsx"
+                            @change="handleCleaningFileSelect"
+                            :disabled="cleaningLoading"
+                          >
+                          <div v-if="cleaningFile" class="file-info" style="margin-top: 5px; font-size: 14px; color: rgba(255, 255, 255, 0.8);">
+                            已选择：{{ cleaningFile.name }}
+                          </div>
+                        </div>
+
+                        <div class="form-group">
+                          <button
+                            @click="processCleaningFile"
+                            :disabled="!cleaningFile || cleaningLoading"
+                            class="upload-btn"
+                          >
+                            {{ cleaningLoading ? '处理中...' : '开始处理' }}
+                          </button>
+                        </div>
+
+                        <div v-if="cleaningMessage" class="message success" style="padding: 10px; background: rgba(46, 204, 113, 0.2); color: #2ecc71; border: 1px solid rgba(46, 204, 113, 0.4); border-radius: 4px; margin-bottom: 15px; backdrop-filter: blur(10px);">
+                          {{ cleaningMessage }}
+                        </div>
+                        <div v-if="cleaningError" class="message error" style="padding: 10px; background: rgba(231, 76, 60, 0.2); color: #e74c3c; border: 1px solid rgba(231, 76, 60, 0.4); border-radius: 4px; margin-bottom: 15px; backdrop-filter: blur(10px);">
+                          {{ cleaningError }}
+                        </div>
+                      </div>
+
+                      <!-- 第三行：字段选择 -->
+                      <div v-if="cleaningFields.length > 0" class="fields-section" style="margin-bottom: 20px; padding: 20px; border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 8px; background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px);">
+                        <h4 style="margin-top: 0; margin-bottom: 15px; color: white;">字段选择</h4>
+                        <p style="margin-bottom: 15px; color: rgba(255, 255, 255, 0.8);">请选择需要保留的字段：</p>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px;">
+                          <label v-for="field in cleaningFields" :key="field" style="display: flex; align-items: center; gap: 8px; cursor: pointer; color: rgba(255, 255, 255, 0.9);">
+                            <input type="checkbox" v-model="cleaningSelectedFields" :value="field" style="width: 18px; height: 18px;">
+                            {{ field }}
+                          </label>
+                        </div>
+                        <div style="margin-top: 15px; display: flex; gap: 10px;">
+                          <button @click="selectAllCleaningFields" style="padding: 8px 16px; background: rgba(255, 255, 255, 0.2); color: white; border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 4px; cursor: pointer;">全选</button>
+                          <button @click="deselectAllCleaningFields" style="padding: 8px 16px; background: rgba(255, 255, 255, 0.2); color: white; border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 4px; cursor: pointer;">取消全选</button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
-          
+
           <!-- 系统配置子模块 -->
           <div v-if="adminActiveTab === 'system'" class="admin-subsection">
             <h3 class="subsection-title">系统配置</h3>
@@ -7253,19 +7097,7 @@ function getColumnIcon(index) {
               </div>
               <div class="permission-item">
                 <input type="checkbox" id="perm-data-analysis" v-model="editingPermissions.data_analysis" />
-                <label for="perm-data-analysis">数据分析</label>
-              </div>
-              <div class="permission-item">
-                <input type="checkbox" id="perm-spotcheck" v-model="editingPermissions.spotcheck" />
-                <label for="perm-spotcheck">案件抽查</label>
-              </div>
-              <div class="permission-item">
-                <input type="checkbox" id="perm-tools" v-model="editingPermissions.tools" />
-                <label for="perm-tools">小工具</label>
-              </div>
-              <div class="permission-item">
-                <input type="checkbox" id="perm-chengguantong" v-model="editingPermissions.chengguantong" />
-                <label for="perm-chengguantong">城管通</label>
+                <label for="perm-data-analysis">AI应用</label>
               </div>
               <div class="permission-item">
                 <input type="checkbox" id="perm-map" v-model="editingPermissions.map" />
@@ -7274,6 +7106,14 @@ function getColumnIcon(index) {
               <div class="permission-item">
                 <input type="checkbox" id="perm-huiwentai" v-model="editingPermissions.huiwentai" />
                 <label for="perm-huiwentai">汇问台</label>
+              </div>
+              <div class="permission-item">
+                <input type="checkbox" id="perm-cases" v-model="editingPermissions.cases" />
+                <label for="perm-cases">案件管理</label>
+              </div>
+              <div class="permission-item">
+                <input type="checkbox" id="perm-business" v-model="editingPermissions.business" />
+                <label for="perm-business">业务平台</label>
               </div>
             </div>
             <div v-if="adminError" class="admin-error">{{ adminError }}</div>
@@ -8162,8 +8002,11 @@ body {
 /* 地图服务样式 */
 .map-section {
   padding: 20px;
-  background-color: #f9f9f9;
-  border-radius: 8px;
+  background: linear-gradient(135deg, rgba(30, 58, 138, 0.4) 0%, rgba(45, 74, 154, 0.4) 100%);
+  backdrop-filter: blur(10px);
+  border-radius: 12px;
+  border: 1px solid rgba(100, 149, 237, 0.3);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
   text-align: left;
   min-height: 650px;
   display: flex;
@@ -8184,9 +8027,10 @@ body {
 .map-info {
   margin-top: 20px;
   padding: 20px;
-  background-color: #ffffff;
+  background-color: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
   border-radius: 8px;
-  border: 1px solid #ddd;
+  border: 1px solid rgba(255, 255, 255, 0.2);
   width: 100%;
 }
 
@@ -9328,6 +9172,68 @@ body {
   font-size: 14px;
   color: white;
   font-weight: 500;
+}
+
+/* 本月数据展示样式 */
+.quick-action-item.monthly-stats {
+  flex: 1;
+  flex-direction: row;
+  padding: 12px 20px;
+  cursor: default;
+  background: rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.quick-action-item.monthly-stats:hover {
+  transform: none;
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.monthly-stats-content {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  width: 100%;
+}
+
+.monthly-stats-content .stats-title {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.9);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.monthly-stats-content .stats-row {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.monthly-stats-content .stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.monthly-stats-content .stat-value {
+  font-size: 20px;
+  font-weight: 700;
+  color: #fff;
+  line-height: 1;
+}
+
+.monthly-stats-content .stat-label {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.monthly-stats-content .stat-divider {
+  color: rgba(255, 255, 255, 0.3);
+  font-size: 20px;
+  margin: 0 5px;
 }
 
 /* 数据统计区域 */

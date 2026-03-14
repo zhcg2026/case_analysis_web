@@ -12,10 +12,10 @@ npm run dev
 #备份到GitHub仓库
 git add .
 git commit -m "update"
-# 设置 HTTP 代理
+# 设置代理
 git config --global http.proxy http://127.0.0.1:7890
-# 设置 HTTPS 代理
 git config --global https.proxy http://127.0.0.1:7890
+# 同步
 git push origin HEAD:main
 # 取消全局代理
 git config --global --unset http.proxy
@@ -251,6 +251,7 @@ chmod +x quick_deploy.sh
 docker exec -it mysql-case-analysis mysql -u root -p'MySql@2024!Root' case_analysis
 # 2. 在MySQL中执行删除命令
 DELETE FROM cases;
+
 
 # 3. 退出MySQL
 EXIT;
