@@ -144,6 +144,44 @@ const reportsTotalPages = computed(() => {
   return Math.ceil(filteredHuiwentaiDailyReports.value.length / reportsPageSize.value) || 1;
 });
 
+// 计算属性：最近15天的日报数据趋势（用于柱状图）
+const last15DaysTrendData = computed(() => {
+  // 获取所有日报数据并按日期合并
+  const allReports = [...huiwentaiDailyReports.value];
+
+  // 按日期分组合并数据（同一天的类型一和类型二数据合并）
+  const dateMap = new Map();
+  allReports.forEach(report => {
+    const date = report.reportDate || '未知日期';
+    if (!dateMap.has(date)) {
+      dateMap.set(date, {
+        date: date,
+        accepted: 0,
+        completed: 0
+      });
+    }
+    const dayData = dateMap.get(date);
+    dayData.accepted += report.accepted || 0;
+    dayData.completed += report.completed || 0;
+  });
+
+  // 转换为数组并按日期降序排序
+  const mergedData = Array.from(dateMap.values());
+  mergedData.sort((a, b) => {
+    const dateA = new Date(a.date);
+    const dateB = new Date(b.date);
+    return dateB - dateA;
+  });
+
+  // 取最近15天的数据
+  const recentReports = mergedData.slice(0, 15);
+
+  // 按日期升序排列（用于图表显示）
+  recentReports.reverse();
+
+  return recentReports;
+});
+
 const activeModule = ref('home'); // home, data, assessment, analysis, spotcheck, tools, chengguantong, cms, map, huiwentai, ai-apps
 const aiAppsActiveTab = ref('analysis'); // analysis, analysis-v2, spotcheck, chengguantong
 
@@ -469,6 +507,7 @@ const spaceChart = ref(null);
 const spaceChart2 = ref(null);
 const spaceChart3 = ref(null);
 const sourceChart = ref(null);
+const trendChart = ref(null); // 日报趋势图引用
 
 // 分析进度管理
 const analysisSteps = ref([
@@ -506,6 +545,100 @@ function updateStepStatus(stepIndex, status) {
       }
     }
   }
+}
+
+// 渲染日报趋势图（最近15天受理和办结数量）
+function renderTrendChart() {
+  if (!trendChart.value) return;
+
+  const chartInstance = echarts.init(trendChart.value);
+  const trendData = last15DaysTrendData.value;
+
+  const option = {
+    title: {
+      text: '最近15天受理与办结趋势',
+      left: 'center',
+      textStyle: {
+        color: 'rgba(255, 255, 255, 0.9)',
+        fontSize: 16
+      }
+    },
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: {
+        type: 'shadow'
+      }
+    },
+    legend: {
+      data: ['受理', '办结'],
+      top: 30,
+      textStyle: {
+        color: 'rgba(255, 255, 255, 0.8)'
+      }
+    },
+    grid: {
+      left: '3%',
+      right: '4%',
+      bottom: '3%',
+      top: 70,
+      containLabel: true
+    },
+    xAxis: {
+      type: 'category',
+      data: trendData.map(item => item.date.substring(5)), // 只显示月-日
+      axisLabel: {
+        color: 'rgba(255, 255, 255, 0.7)',
+        rotate: 45
+      },
+      axisLine: {
+        lineStyle: {
+          color: 'rgba(100, 149, 237, 0.5)'
+        }
+      }
+    },
+    yAxis: {
+      type: 'value',
+      name: '数量',
+      nameTextStyle: {
+        color: 'rgba(255, 255, 255, 0.8)'
+      },
+      axisLabel: {
+        color: 'rgba(255, 255, 255, 0.7)'
+      },
+      axisLine: {
+        lineStyle: {
+          color: 'rgba(100, 149, 237, 0.5)'
+        }
+      },
+      splitLine: {
+        lineStyle: {
+          color: 'rgba(100, 149, 237, 0.2)'
+        }
+      }
+    },
+    series: [
+      {
+        name: '受理',
+        type: 'bar',
+        data: trendData.map(item => item.accepted),
+        itemStyle: {
+          color: '#90ee90',
+          borderRadius: [4, 4, 0, 0]
+        }
+      },
+      {
+        name: '办结',
+        type: 'bar',
+        data: trendData.map(item => item.completed),
+        itemStyle: {
+          color: '#ffb6c1',
+          borderRadius: [4, 4, 0, 0]
+        }
+      }
+    ]
+  };
+
+  chartInstance.setOption(option);
 }
 
 // 渲染图表
@@ -1489,6 +1622,9 @@ window.addEventListener('resize', () => {
   }
   if (sourceChart.value) {
     echarts.getInstanceByDom(sourceChart.value)?.resize();
+  }
+  if (trendChart.value) {
+    echarts.getInstanceByDom(trendChart.value)?.resize();
   }
 });
 
@@ -4590,6 +4726,10 @@ async function fetchHuiwentaiDailyReports() {
   } finally {
     huiwentaiLoading.value = false;
     console.log('daily-reports数据读取操作完成');
+    // 数据加载完成后渲染趋势图
+    nextTick(() => {
+      renderTrendChart();
+    });
   }
 }
 
@@ -4602,6 +4742,10 @@ function switchHuiwentaiTab(tab) {
   } else if (tab === 'daily-reports') {
     reportsCurrentPage.value = 1;
     fetchHuiwentaiDailyReports();
+    // 切换到日报数据标签页时渲染趋势图
+    nextTick(() => {
+      renderTrendChart();
+    });
   }
 }
 
@@ -4627,6 +4771,13 @@ watch(selectedMonthTasks, () => {
 watch(selectedMonthReports, () => {
   reportsCurrentPage.value = 1;
 });
+
+// 监听日报数据变化，重新渲染趋势图
+watch(huiwentaiDailyReports, () => {
+  nextTick(() => {
+    renderTrendChart();
+  });
+}, { deep: true });
 
 // 切换日报展开/收起状态
 function toggleReportExpand(report) {
@@ -5725,6 +5876,11 @@ function getColumnIcon(index) {
           
           <!-- 日报数据标签页内容 -->
           <div v-else-if="huiwentaiActiveTab === 'daily-reports'" class="daily-reports-section">
+            <!-- 最近15天趋势图 -->
+            <div v-if="last15DaysTrendData.length > 0" class="trend-chart-container" style="margin-bottom: 20px; background: rgba(30, 58, 138, 0.3); border-radius: 12px; border: 1px solid rgba(100, 149, 237, 0.3); padding: 20px;">
+              <div ref="trendChart" style="width: 100%; height: 300px;"></div>
+            </div>
+
             <div v-if="filteredHuiwentaiDailyReports.length === 0" style="padding: 40px; text-align: center; color: rgba(255, 255, 255, 0.9); background: rgba(30, 58, 138, 0.2); border-radius: 8px; border: 1px solid rgba(100, 149, 237, 0.3);">
               暂无日报数据
             </div>
