@@ -4813,9 +4813,9 @@ function getColumnIcon(index) {
 <template>
   <div class="system-container">
     <!-- 顶部标题栏 -->
-    <div class="header">
+    <div v-if="isLoggedIn" class="header">
       <h1>运城市智慧城市管理平台-一站通</h1>
-      <div v-if="isLoggedIn" class="user-info">
+      <div class="user-info">
         <span class="username">{{ userInfo?.username }} ({{ userInfo?.role }})</span>
         <button class="logout-btn" @click="logout">登出</button>
       </div>
@@ -4826,7 +4826,10 @@ function getColumnIcon(index) {
     <!-- 登录弹窗 -->
     <div v-if="showLogin" class="login-modal">
       <div class="login-form">
-        <h2>用户登录</h2>
+        <div class="login-header">
+          <div class="login-logo">🏛️</div>
+          <h2>智慧城市管理平台-一站通</h2>
+        </div>
         <div class="form-group">
           <label for="username">用户名：</label>
           <input type="text" id="username" v-model="loginForm.username" placeholder="请输入用户名" autocomplete="username" />
@@ -4837,7 +4840,8 @@ function getColumnIcon(index) {
         </div>
         <div v-if="loginError" class="login-error">{{ loginError }}</div>
         <button class="login-btn" @click="login" :disabled="loginLoading">
-          {{ loginLoading ? '登录中...' : '登录' }}
+          <span v-if="loginLoading" class="loading-spinner"></span>
+          {{ loginLoading ? '登录中...' : '登 录' }}
         </button>
       </div>
     </div>
@@ -5088,7 +5092,6 @@ function getColumnIcon(index) {
         
         <!-- 数据分析标签页内容 -->
         <div v-if="aiAppsActiveTab === 'analysis' && (!userInfo || userInfo?.role === 'admin' || (userInfo?.permissions && userInfo?.permissions.data_analysis))">
-          <h2 class="section-title">📊 数据分析</h2>
         <div class="config-section" style="max-width: 900px; margin: 0 auto;">
           <!-- 分析配置区域 -->
           <div style="padding: 25px; background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 8px; margin-bottom: 25px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);">
@@ -5281,7 +5284,6 @@ function getColumnIcon(index) {
         
         <!-- 数据分析（新版）标签页内容 -->
         <div v-if="aiAppsActiveTab === 'analysis-v2' && (!userInfo || userInfo?.role === 'admin' || (userInfo?.permissions && userInfo?.permissions.data_analysis))">
-          <h2 class="section-title">📊 数据分析（新版）</h2>
         <div class="config-section" style="max-width: 900px; margin: 0 auto;">
           <!-- 分析配置区域 -->
           <div style="padding: 25px; background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 8px; margin-bottom: 25px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);">
@@ -5435,7 +5437,6 @@ function getColumnIcon(index) {
         
         <!-- 案件抽查标签页内容 -->
         <div v-if="aiAppsActiveTab === 'spotcheck' && (!userInfo || userInfo?.role === 'admin' || (userInfo?.permissions && userInfo?.permissions.data_analysis))">
-          <h2 class="section-title">案件抽查</h2>
         <div class="spotcheck-section" style="max-width: 900px; margin: 0 auto;">
           <!-- 提示信息 -->
           <div style="margin-bottom: 25px; padding: 16px; background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.2); border-left: 4px solid #4facfe; border-radius: 6px; color: rgba(255, 255, 255, 0.8);">
@@ -5529,7 +5530,6 @@ function getColumnIcon(index) {
         
         <!-- 城管通标签页内容 -->
         <div v-if="aiAppsActiveTab === 'chengguantong' && (!userInfo || userInfo?.role === 'admin' || (userInfo?.permissions && userInfo?.permissions.data_analysis))">
-          <h2 class="section-title">城管通</h2>
         <div class="chengguantong-section" style="max-width: 1200px; margin: 0 auto;">
           <!-- 第一行：提示文字 -->
           <div class="tip-section" style="margin-bottom: 20px; padding: 15px; background-color: rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 4px; color: rgba(255, 255, 255, 0.8);">
@@ -6354,7 +6354,6 @@ function getColumnIcon(index) {
           
           <!-- 用户管理子模块 -->
           <div v-if="adminActiveTab === 'users'" class="admin-subsection">
-            <h3 class="subsection-title">用户列表</h3>
             <div class="user-management">
               <div class="user-actions">
                 <button class="add-user-btn" @click="addNewUser">添加用户</button>
@@ -6390,8 +6389,6 @@ function getColumnIcon(index) {
           
           <!-- 业务管理子模块 -->
           <div v-if="adminActiveTab === 'business'" class="admin-subsection">
-            <h3 class="subsection-title">业务管理</h3>
-            
             <!-- 配置标签页 -->
             <div class="config-tabs">
               <button class="config-tab" :class="{ active: businessTab === 'data' }" @click="businessTab = 'data'">数据管理</button>
@@ -6411,29 +6408,31 @@ function getColumnIcon(index) {
                 </div>
                 <div class="panel-body">
                   <!-- Excel上传功能 -->
-                  <div class="data-management" style="margin-bottom: 40px;">
-                    <h5 class="management-title" style="margin-bottom: 20px;">Excel数据上传</h5>
-                    <div class="upload-section">
-                      <div class="file-selector">
+                  <div class="data-management" style="margin-bottom: 25px;">
+                    <h5 class="management-title" style="margin-bottom: 12px;">Excel数据上传</h5>
+                    <div class="upload-section" style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
+                      <div class="file-selector" style="display: flex; align-items: center; gap: 10px;">
                         <input type="file" accept=".xlsx" @change="handleFileSelect" :disabled="loading" />
                         <span class="file-name">{{ selectedFile ? selectedFile.name : '未选择任何文件' }}</span>
                       </div>
-                      <button class="upload-btn" @click="uploadFile" :disabled="loading || !selectedFile" style="margin-top: 15px;">
+                      <button class="upload-btn" @click="uploadFile" :disabled="loading || !selectedFile">
                         {{ loading ? '上传中...' : '上传并导入数据库' }}
                       </button>
-                      <div class="upload-status" style="margin-top: 15px;">
-                        <span class="status-label">上传状态：</span>
+                      <div class="upload-status">
+                        <span class="status-label">状态：</span>
                         <span class="status-value">{{ message || '等待上传' }}</span>
                       </div>
                     </div>
                   </div>
-                  
+
                   <!-- 数据表管理 -->
                   <div class="table-management">
-                    <h5 class="management-title" style="margin-bottom: 20px;">数据表管理</h5>
-                    <button class="refresh-btn" @click="fetchTablesForManagement" :disabled="adminLoading">
-                      {{ adminLoading ? '加载中...' : '刷新数据表' }}
-                    </button>
+                    <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 12px;">
+                      <h5 class="management-title" style="margin: 0;">数据表管理</h5>
+                      <button class="refresh-btn" @click="fetchTablesForManagement" :disabled="adminLoading">
+                        {{ adminLoading ? '加载中...' : '刷新数据表' }}
+                      </button>
+                    </div>
                     <div v-if="tables.length > 0" class="table-list">
                       <table class="table-table">
                         <thead>
@@ -6463,14 +6462,16 @@ function getColumnIcon(index) {
                     </div>
                     <div v-if="adminError" class="admin-error">{{ adminError }}</div>
                   </div>
-                  
+
                   <!-- 数据表可见性配置 -->
-                  <div class="table-visibility-config" style="margin-top: 30px;">
-                    <h5 class="management-title" style="margin-bottom: 15px;">数据表可见性配置</h5>
-                    <p class="config-description" style="margin-bottom: 15px; color: rgba(255, 255, 255, 0.7);">配置哪些数据表对前端用户可见，用户只能选择可见的数据表进行分析和考核。</p>
-                    <button class="save-visibility-btn" @click="saveTableVisibility" :disabled="adminLoading" style="padding: 8px 16px; background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; border: none; border-radius: 4px; cursor: pointer;">
-                      {{ adminLoading ? '保存中...' : '保存配置' }}
-                    </button>
+                  <div class="table-visibility-config" style="margin-top: 20px;">
+                    <div style="display: flex; align-items: center; gap: 15px;">
+                      <h5 class="management-title" style="margin: 0;">数据表可见性配置</h5>
+                      <button class="save-visibility-btn" @click="saveTableVisibility" :disabled="adminLoading" style="padding: 6px 14px; background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; border: none; border-radius: 4px; cursor: pointer;">
+                        {{ adminLoading ? '保存中...' : '保存配置' }}
+                      </button>
+                    </div>
+                    <p class="config-description" style="margin-top: 8px; margin-bottom: 0; font-size: 13px; color: rgba(255, 255, 255, 0.7);">配置哪些数据表对前端用户可见，用户只能选择可见的数据表进行分析和考核。</p>
                   </div>
                 </div>
               </div>
@@ -6972,8 +6973,6 @@ function getColumnIcon(index) {
 
           <!-- 系统配置子模块 -->
           <div v-if="adminActiveTab === 'system'" class="admin-subsection">
-            <h3 class="subsection-title">系统配置</h3>
-            
             <!-- 配置标签页 -->
             <div class="config-tabs">
               <button class="config-tab" :class="{ active: systemConfigTab === 'general' }" @click="systemConfigTab = 'general'">通用配置</button>
@@ -8162,7 +8161,7 @@ body {
   left: 0;
   width: 100%;
   height: 100%;
-  background-color: rgba(0, 0, 0, 0.5);
+  background: linear-gradient(135deg, #0a2463 0%, #1e3a8a 100%);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -8171,70 +8170,122 @@ body {
 
 .login-form {
   background-color: #fff;
-  padding: 40px;
-  border-radius: 8px;
-  box-shadow: 0 0 20px rgba(0, 0, 0, 0.2);
-  width: 400px;
+  padding: 50px 40px;
+  border-radius: 16px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  width: 420px;
   max-width: 90%;
+}
+
+.login-header {
+  text-align: center;
+  margin-bottom: 40px;
+}
+
+.login-logo {
+  font-size: 48px;
+  margin-bottom: 15px;
 }
 
 .login-form h2 {
   text-align: center;
-  color: #27ae60;
-  margin-bottom: 30px;
+  color: #1e3a8a;
+  margin: 0;
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: 2px;
 }
 
 .login-form .form-group {
-  margin-bottom: 20px;
+  margin-bottom: 25px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
 }
 
 .login-form label {
-  display: block;
-  margin-bottom: 8px;
-  font-weight: bold;
-  color: rgba(255, 255, 255, 0.9);
+  flex-shrink: 0;
+  width: 70px;
+  font-weight: 600;
+  color: #333;
+  font-size: 14px;
 }
 
 .login-form input {
-  width: 100%;
-  padding: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  border-radius: 4px;
-  font-size: 1em;
-  background: rgba(255, 255, 255, 0.1);
-  color: white;
+  flex: 1;
+  padding: 14px 16px;
+  border: 2px solid #e0e0e0;
+  border-radius: 8px;
+  font-size: 15px;
+  background: #f8f9fa;
+  color: #333;
+  transition: all 0.3s ease;
+  box-sizing: border-box;
+}
+
+.login-form input:focus {
+  outline: none;
+  border-color: #1e3a8a;
+  background: #fff;
+  box-shadow: 0 0 0 4px rgba(30, 58, 138, 0.1);
+}
+
+.login-form input::placeholder {
+  color: #aaa;
 }
 
 .login-error {
-  color: #ff6b6b;
+  color: #e74c3c;
   margin-bottom: 20px;
-  padding: 10px;
-  background: rgba(255, 107, 107, 0.1);
-  border-radius: 4px;
+  padding: 12px 16px;
+  background: rgba(231, 76, 60, 0.1);
+  border-radius: 8px;
   text-align: center;
-  border: 1px solid rgba(255, 107, 107, 0.3);
+  font-size: 14px;
+  border: 1px solid rgba(231, 76, 60, 0.2);
 }
 
 .login-btn {
   width: 100%;
-  padding: 15px;
-  background-color: #27ae60;
-  color: #fff;
+  padding: 14px;
+  background: linear-gradient(135deg, #1e3a8a 0%, #0a2463 100%);
+  color: white;
   border: none;
-  border-radius: 4px;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 600;
   cursor: pointer;
-  font-size: 1.1em;
-  font-weight: bold;
-  transition: background-color 0.3s ease;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
 }
 
-.login-btn:hover {
-  background-color: #219a52;
+.login-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(30, 58, 138, 0.4);
 }
 
 .login-btn:disabled {
-  background-color: #bdc3c7;
+  opacity: 0.7;
   cursor: not-allowed;
+}
+
+.loading-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* 用户信息样式 */
