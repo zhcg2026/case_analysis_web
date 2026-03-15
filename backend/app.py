@@ -5277,6 +5277,200 @@ def debug():
     print("调试接口被调用")
     return jsonify({'message': 'Debug endpoint called'}), 200
 
+# 图表分析API - 获取仪表盘数据
+@app.route('/api/chart-analysis', methods=['POST'])
+@protected
+def chart_analysis():
+    """图表分析API - 根据数据表生成仪表盘数据"""
+    try:
+        import json
+        data = request.json
+        table_name = data.get('table_name')
+
+        if not table_name:
+            return jsonify({'error': 'Missing table_name parameter'}), 400
+
+        print(f"[图表分析] 开始分析数据表: {table_name}")
+
+        # 从数据库读取数据
+        df = pd.read_sql_table(table_name, engine)
+        total_count = len(df)
+
+        if total_count == 0:
+            return jsonify({'error': '数据表为空'}), 400
+
+        print(f"[图表分析] 数据总量: {total_count} 条")
+
+        # 初始化结果
+        result = {
+            'total_count': total_count,
+            'charts': {}
+        }
+
+        # 1. 案件总数（已经在 total_count 中）
+
+        # 2. 问题来源分布（饼状图）
+        source_col = None
+        for col in ['问题来源', 'source', '案件来源']:
+            if col in df.columns:
+                source_col = col
+                break
+        if source_col:
+            source_data = df[source_col].fillna('未知').value_counts()
+            result['charts']['source_pie'] = {
+                'title': '问题来源分布',
+                'type': 'pie',
+                'data': [{'name': str(k), 'value': int(v)} for k, v in source_data.items()]
+            }
+
+        # 3. 问题类型分布（饼状图）
+        problem_type_col = None
+        for col in ['问题类型', 'problem_type', '案件类型']:
+            if col in df.columns:
+                problem_type_col = col
+                break
+        if problem_type_col:
+            type_data = df[problem_type_col].fillna('未知').value_counts()
+            result['charts']['type_pie'] = {
+                'title': '问题类型分布',
+                'type': 'pie',
+                'data': [{'name': str(k), 'value': int(v)} for k, v in type_data.items()]
+            }
+
+        # 4. 大类名称占比图（横向柱状图）
+        major_cat_col = None
+        for col in ['大类名称', 'major_category', '大类']:
+            if col in df.columns:
+                major_cat_col = col
+                break
+        if major_cat_col:
+            major_data = df[major_cat_col].fillna('未知').value_counts().head(15)
+            result['charts']['major_category'] = {
+                'title': '大类案件分布',
+                'type': 'bar',
+                'data': {'categories': [str(k) for k in major_data.index], 'values': [int(v) for v in major_data.values]}
+            }
+
+        # 5. 小类名称分布图（横向柱状图）
+        minor_cat_col = None
+        for col in ['小类名称', 'minor_category', '小类']:
+            if col in df.columns:
+                minor_cat_col = col
+                break
+        if minor_cat_col:
+            minor_data = df[minor_cat_col].fillna('未知').value_counts().head(20)
+            result['charts']['minor_category'] = {
+                'title': '小类案件分布',
+                'type': 'bar',
+                'data': {'categories': [str(k) for k in minor_data.index], 'values': [int(v) for v in minor_data.values]}
+            }
+
+        # 6. 所属片区分布图（饼状图）
+        area_col = None
+        for col in ['所属片区', '所属区域', 'area', '片区']:
+            if col in df.columns:
+                area_col = col
+                break
+        if area_col:
+            area_data = df[area_col].fillna('未知').value_counts()
+            result['charts']['area_pie'] = {
+                'title': '案件采集片区分布',
+                'type': 'pie',
+                'data': [{'name': str(k), 'value': int(v)} for k, v in area_data.items()]
+            }
+
+        # 7. 所属街道分布图（横向柱状图）
+        street_col = None
+        for col in ['所属街道', 'street', '街道']:
+            if col in df.columns:
+                street_col = col
+                break
+        if street_col:
+            street_data = df[street_col].fillna('未知').value_counts()
+            result['charts']['street'] = {
+                'title': '案件街道分布',
+                'type': 'bar',
+                'data': {'categories': [str(k) for k in street_data.index], 'values': [int(v) for v in street_data.values]}
+            }
+
+        # 8. 所属社区分布图（横向柱状图）
+        community_col = None
+        for col in ['所属社区', 'community', '社区']:
+            if col in df.columns:
+                community_col = col
+                break
+        if community_col:
+            community_data = df[community_col].fillna('未知').value_counts().head(25)
+            result['charts']['community'] = {
+                'title': '案件社区分布',
+                'type': 'bar',
+                'data': {'categories': [str(k) for k in community_data.index], 'values': [int(v) for v in community_data.values]}
+            }
+
+        # 9. 处置部门案件占比图（饼状图）
+        dept_col = None
+        for col in ['处置部门', 'department', '处理部门', '责任部门']:
+            if col in df.columns:
+                dept_col = col
+                break
+        if dept_col:
+            dept_data = df[dept_col].fillna('未知').value_counts()
+            result['charts']['department_pie'] = {
+                'title': '处置部门案件占比',
+                'type': 'pie',
+                'data': [{'name': str(k), 'value': int(v)} for k, v in dept_data.items()]
+            }
+
+        # 10. 各处置部门平均处置时间图（横向柱状图）
+        # 需要计算：结案时间 - 上报时间
+        close_time_col = None
+        for col in ['结案时间', 'close_time', 'handle_time', '完成时间']:
+            if col in df.columns:
+                close_time_col = col
+                break
+
+        report_time_col = None
+        for col in ['上报时间', 'report_time', '创建时间']:
+            if col in df.columns:
+                report_time_col = col
+                break
+
+        if close_time_col and report_time_col and dept_col:
+            try:
+                # 转换时间列
+                df['_close_time'] = pd.to_datetime(df[close_time_col], errors='coerce')
+                df['_report_time'] = pd.to_datetime(df[report_time_col], errors='coerce')
+
+                # 计算处置时间（小时）
+                df['_handling_hours'] = (df['_close_time'] - df['_report_time']).dt.total_seconds() / 3600
+
+                # 按处置部门分组计算平均处置时间（过滤掉无效数据）
+                valid_df = df[(df['_handling_hours'] > 0) & (df['_handling_hours'] < 720)]  # 过滤超过30天的异常数据
+                if len(valid_df) > 0:
+                    avg_time_by_dept = valid_df.groupby(dept_col)['_handling_hours'].mean().sort_values()
+
+                    # 转换为小时/天显示
+                    result['charts']['avg_handling_time'] = {
+                        'title': '各处置部门平均处置时间',
+                        'type': 'bar',
+                        'data': {
+                            'categories': [str(k) for k in avg_time_by_dept.index],
+                            'values': [round(v, 1) for v in avg_time_by_dept.values]
+                        },
+                        'unit': '小时'
+                    }
+            except Exception as e:
+                print(f"[图表分析] 计算处置时间出错: {str(e)}")
+
+        print(f"[图表分析] 分析完成，生成 {len(result['charts'])} 个图表")
+        return jsonify(result), 200
+
+    except Exception as e:
+        print(f"Error in chart_analysis: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
 # 前端静态文件路由 - 放在最后
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')

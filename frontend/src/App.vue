@@ -183,7 +183,7 @@ const last15DaysTrendData = computed(() => {
 });
 
 const activeModule = ref('home'); // home, data, assessment, analysis, spotcheck, tools, chengguantong, cms, map, huiwentai, ai-apps
-const aiAppsActiveTab = ref('analysis'); // analysis, analysis-v2, spotcheck, chengguantong
+const aiAppsActiveTab = ref('analysis'); // analysis, analysis-v2, chart-analysis, spotcheck, chengguantong
 
 // 数据分析（新版）状态管理
 const selectedTableV2 = ref('');
@@ -194,6 +194,14 @@ const analysisV2Result = ref(null);
 const analysisV2Message = ref('');
 const analysisV2Error = ref('');
 const chartRefs = ref([]);
+
+// 图表分析模块状态管理
+const chartAnalysisTable = ref('');
+const chartAnalysisLoading = ref(false);
+const chartAnalysisData = ref(null);
+const chartAnalysisError = ref('');
+const dashboardChartRefs = ref({}); // 存储仪表盘图表的引用
+const dashboardChartInstances = {}; // 存储ECharts实例，用于销毁
 
 // 地图服务状态管理
 const mapInstance = ref(null);
@@ -2294,6 +2302,272 @@ function copyReport() {
     analysisV2Error.value = '复制失败，请手动复制';
     console.error('复制失败:', err);
   });
+}
+
+// ========== 图表分析模块功能 ==========
+
+// 开始图表分析
+async function startChartAnalysis() {
+  if (!chartAnalysisTable.value) {
+    chartAnalysisError.value = '请选择数据表';
+    return;
+  }
+
+  const token = localStorage.getItem('token');
+  if (!token) {
+    chartAnalysisError.value = '请先登录';
+    return;
+  }
+
+  try {
+    chartAnalysisLoading.value = true;
+    chartAnalysisError.value = '';
+    chartAnalysisData.value = null;
+
+    const response = await fetch('/api/chart-analysis', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeaders()
+      },
+      body: JSON.stringify({
+        table_name: chartAnalysisTable.value
+      })
+    });
+
+    const data = await response.json();
+
+    if (data.error) {
+      chartAnalysisError.value = 'Error: ' + data.error;
+    } else {
+      chartAnalysisData.value = data;
+      // 等待DOM更新后渲染图表
+      nextTick(() => {
+        renderDashboardCharts();
+      });
+    }
+  } catch (error) {
+    chartAnalysisError.value = 'Error: ' + error.message;
+    console.error('Error in chart analysis:', error);
+  } finally {
+    chartAnalysisLoading.value = false;
+  }
+}
+
+// 渲染仪表盘图表
+function renderDashboardCharts() {
+  if (!chartAnalysisData.value || !chartAnalysisData.value.charts) return;
+
+  const charts = chartAnalysisData.value.charts;
+
+  // 定义图表颜色主题
+  const colorPalette = [
+    '#4facfe', '#00f2fe', '#43e97b', '#38f9d7', '#fa709a',
+    '#fee140', '#30cfd0', '#667eea', '#764ba2', '#f093fb',
+    '#f5576c', '#4facfe', '#00f2fe', '#43e97b', '#38f9d7'
+  ];
+
+  // 销毁所有旧实例
+  Object.keys(dashboardChartInstances).forEach(key => {
+    if (dashboardChartInstances[key]) {
+      dashboardChartInstances[key].dispose();
+      delete dashboardChartInstances[key];
+    }
+  });
+
+  // 1. 渲染问题来源饼状图
+  if (charts.source_pie) {
+    renderPieChart('sourcePieChart', charts.source_pie, colorPalette);
+  }
+
+  // 2. 渲染问题类型饼状图
+  if (charts.type_pie) {
+    renderPieChart('typePieChart', charts.type_pie, colorPalette);
+  }
+
+  // 3. 渲染大类分布图
+  if (charts.major_category) {
+    renderBarChart('majorCategoryChart', charts.major_category, colorPalette, true);
+  }
+
+  // 4. 渲染小类分布图
+  if (charts.minor_category) {
+    renderBarChart('minorCategoryChart', charts.minor_category, colorPalette, true);
+  }
+
+  // 5. 渲染片区分布饼状图
+  if (charts.area_pie) {
+    renderPieChart('areaPieChart', charts.area_pie, colorPalette);
+  }
+
+  // 6. 渲染街道分布图
+  if (charts.street) {
+    renderBarChart('streetChart', charts.street, colorPalette, true);
+  }
+
+  // 7. 渲染社区分布图
+  if (charts.community) {
+    renderBarChart('communityChart', charts.community, colorPalette, true);
+  }
+
+  // 8. 渲染处置部门占比饼状图
+  if (charts.department_pie) {
+    renderPieChart('departmentPieChart', charts.department_pie, colorPalette);
+  }
+
+  // 9. 渲染平均处置时间图
+  if (charts.avg_handling_time) {
+    renderBarChart('handlingTimeChart', charts.avg_handling_time, colorPalette, true, '小时');
+  }
+}
+
+// 渲染饼状图
+function renderPieChart(elementId, chartData, colorPalette) {
+  const chartEl = document.getElementById(elementId);
+  if (!chartEl) return;
+
+  // 销毁旧实例（如果存在）
+  if (dashboardChartInstances[elementId]) {
+    dashboardChartInstances[elementId].dispose();
+  }
+
+  const chartInstance = echarts.init(chartEl);
+  dashboardChartInstances[elementId] = chartInstance; // 存储实例
+
+  const option = {
+    backgroundColor: 'transparent',
+    tooltip: {
+      trigger: 'item',
+      formatter: '{b}: {c} ({d}%)',
+      backgroundColor: 'rgba(0, 0, 0, 0.8)',
+      borderColor: '#4facfe',
+      textStyle: { color: '#fff' }
+    },
+    legend: {
+      type: 'scroll',
+      orient: 'vertical',
+      right: 10,
+      top: 20,
+      bottom: 20,
+      textStyle: { color: 'rgba(255, 255, 255, 0.8)' }
+    },
+    series: [{
+      name: chartData.title,
+      type: 'pie',
+      radius: ['40%', '70%'],
+      center: ['40%', '50%'],
+      avoidLabelOverlap: true,
+      itemStyle: {
+        borderRadius: 10,
+        borderColor: 'rgba(255, 255, 255, 0.2)',
+        borderWidth: 2
+      },
+      label: {
+        show: false,
+        position: 'center'
+      },
+      emphasis: {
+        label: {
+          show: true,
+          fontSize: 18,
+          fontWeight: 'bold',
+          color: '#fff'
+        },
+        itemStyle: {
+          shadowBlur: 10,
+          shadowOffsetX: 0,
+          shadowColor: 'rgba(0, 0, 0, 0.5)'
+        }
+      },
+      labelLine: { show: false },
+      data: chartData.data.map((item, index) => ({
+        ...item,
+        itemStyle: { color: colorPalette[index % colorPalette.length] }
+      }))
+    }]
+  };
+  chartInstance.setOption(option);
+  window.addEventListener('resize', () => chartInstance.resize());
+}
+
+// 渲染柱状图
+function renderBarChart(elementId, chartData, colorPalette, horizontal = false, unit = '件') {
+  const chartEl = document.getElementById(elementId);
+  if (!chartEl) return;
+
+  // 销毁旧实例（如果存在）
+  if (dashboardChartInstances[elementId]) {
+    dashboardChartInstances[elementId].dispose();
+  }
+
+  const chartInstance = echarts.init(chartEl);
+  dashboardChartInstances[elementId] = chartInstance; // 存储实例
+
+  const categories = chartData.data.categories;
+  const values = chartData.data.values;
+
+  const option = {
+    backgroundColor: 'transparent',
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: { type: 'shadow' },
+      formatter: horizontal ? '{b}: {c} ' + unit : '{b}: {c} ' + unit,
+      backgroundColor: 'rgba(0, 0, 0, 0.8)',
+      borderColor: '#4facfe',
+      textStyle: { color: '#fff' }
+    },
+    grid: {
+      left: horizontal ? '3%' : '15%',
+      right: '4%',
+      bottom: horizontal ? '3%' : '10%',
+      top: '10%',
+      containLabel: true
+    },
+    xAxis: {
+      type: horizontal ? 'value' : 'category',
+      data: horizontal ? null : categories,
+      axisLine: { lineStyle: { color: 'rgba(255, 255, 255, 0.3)' } },
+      axisLabel: {
+        color: 'rgba(255, 255, 255, 0.7)',
+        rotate: horizontal ? 0 : 45,
+        fontSize: 11
+      },
+      splitLine: { lineStyle: { color: 'rgba(255, 255, 255, 0.1)' } }
+    },
+    yAxis: {
+      type: horizontal ? 'category' : 'value',
+      data: horizontal ? categories : null,
+      axisLine: { lineStyle: { color: 'rgba(255, 255, 255, 0.3)' } },
+      axisLabel: {
+        color: 'rgba(255, 255, 255, 0.7)',
+        fontSize: 11
+      },
+      splitLine: { lineStyle: { color: 'rgba(255, 255, 255, 0.1)' } }
+    },
+    series: [{
+      name: chartData.title,
+      type: 'bar',
+      data: values.map((value, index) => ({
+        value,
+        itemStyle: {
+          color: new echarts.graphic.LinearGradient(horizontal ? 0 : 0, 0, horizontal ? 1 : 0, 1, [
+            { offset: 0, color: colorPalette[index % colorPalette.length] },
+            { offset: 1, color: colorPalette[(index + 1) % colorPalette.length] }
+          ]),
+          borderRadius: horizontal ? [0, 4, 4, 0] : [4, 4, 0, 0]
+        }
+      })),
+      barWidth: horizontal ? '60%' : '50%',
+      emphasis: {
+        itemStyle: {
+          shadowBlur: 10,
+          shadowColor: 'rgba(79, 172, 254, 0.5)'
+        }
+      }
+    }]
+  };
+  chartInstance.setOption(option);
+  window.addEventListener('resize', () => chartInstance.resize());
 }
 
 // 开始考核计算
@@ -5219,6 +5493,16 @@ function getColumnIcon(index) {
           >
             数据分析（新版）
           </div>
+          <div
+            v-if="!userInfo || userInfo?.role === 'admin' || (userInfo?.permissions && userInfo?.permissions.data_analysis)"
+            class="ai-apps-tab"
+            :class="{ active: aiAppsActiveTab === 'chart-analysis' }"
+            @click="aiAppsActiveTab = 'chart-analysis'"
+            style="padding: 10px 20px; cursor: pointer; border-bottom: 3px solid transparent; margin-right: 10px; font-weight: bold;"
+            :style="aiAppsActiveTab === 'chart-analysis' ? { borderBottomColor: '#4facfe', color: '#4facfe' } : { color: 'rgba(255, 255, 255, 0.8)' }"
+          >
+            图表分析
+          </div>
           <div 
             v-if="!userInfo || userInfo?.role === 'admin' || (userInfo?.permissions && userInfo?.permissions.data_analysis)"
             class="ai-apps-tab" 
@@ -5585,7 +5869,185 @@ function getColumnIcon(index) {
           </div>
         </div>
         </div>
-        
+
+        <!-- 图表分析标签页内容 -->
+        <div v-if="aiAppsActiveTab === 'chart-analysis' && (!userInfo || userInfo?.role === 'admin' || (userInfo?.permissions && userInfo?.permissions.data_analysis))">
+        <div class="chart-analysis-section" style="max-width: 1600px; margin: 0 auto;">
+
+          <!-- 数据源选择区域 -->
+          <div style="padding: 20px 25px; background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 12px; margin-bottom: 25px; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);">
+            <div style="display: flex; align-items: center; gap: 20px; flex-wrap: wrap;">
+              <div style="flex: 1; min-width: 250px;">
+                <label for="chart-table-select" style="display: block; font-weight: 600; margin-bottom: 8px; color: rgba(255, 255, 255, 0.9); font-size: 14px;">📊 选择数据源</label>
+                <select id="chart-table-select" v-model="chartAnalysisTable" :disabled="chartAnalysisLoading" style="width: 100%; padding: 12px 15px; border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 8px; font-size: 14px; box-sizing: border-box; background: rgba(255, 255, 255, 0.15); color: white; cursor: pointer;">
+                  <option value="">-- 请选择数据表 --</option>
+                  <option v-for="table in tables" :key="table" :value="table">{{ table }}</option>
+                </select>
+              </div>
+              <button
+                @click="startChartAnalysis"
+                :disabled="chartAnalysisLoading || !chartAnalysisTable"
+                style="padding: 12px 30px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 15px; font-weight: 600; transition: all 0.3s ease; box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);"
+                :style="{ opacity: (chartAnalysisLoading || !chartAnalysisTable) ? 0.6 : 1 }"
+                @mouseenter="$event.target.style.transform='translateY(-2px)'; $event.target.style.boxShadow='0 6px 20px rgba(102, 126, 234, 0.5)'"
+                @mouseleave="$event.target.style.transform='translateY(0)'; $event.target.style.boxShadow='0 4px 15px rgba(102, 126, 234, 0.4)'"
+              >
+                <span v-if="chartAnalysisLoading">⏳ 分析中...</span>
+                <span v-else>🚀 生成仪表盘</span>
+              </button>
+            </div>
+            <div v-if="chartAnalysisError" style="margin-top: 15px; padding: 12px 15px; background: rgba(231, 76, 60, 0.2); border: 1px solid rgba(231, 76, 60, 0.4); border-radius: 8px; color: #e74c3c;">
+              ⚠️ {{ chartAnalysisError }}
+            </div>
+          </div>
+
+          <!-- 仪表盘内容 -->
+          <div v-if="chartAnalysisData" class="dashboard-container">
+
+            <!-- 第一行：统计卡片 -->
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 25px;">
+              <!-- 案件总数卡片 -->
+              <div style="padding: 25px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 16px; box-shadow: 0 8px 32px rgba(102, 126, 234, 0.3); position: relative; overflow: hidden;">
+                <div style="position: absolute; top: -20px; right: -20px; width: 100px; height: 100px; background: rgba(255,255,255,0.1); border-radius: 50%;"></div>
+                <div style="position: relative; z-index: 1;">
+                  <div style="font-size: 14px; color: rgba(255,255,255,0.8); margin-bottom: 8px;">📊 案件总数</div>
+                  <div style="font-size: 36px; font-weight: 700; color: white;">{{ chartAnalysisData.total_count.toLocaleString() }}</div>
+                  <div style="font-size: 12px; color: rgba(255,255,255,0.6); margin-top: 5px;">条记录</div>
+                </div>
+              </div>
+
+              <!-- 数据表卡片 -->
+              <div style="padding: 25px; background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); border-radius: 16px; box-shadow: 0 8px 32px rgba(240, 147, 251, 0.3); position: relative; overflow: hidden;">
+                <div style="position: absolute; top: -20px; right: -20px; width: 100px; height: 100px; background: rgba(255,255,255,0.1); border-radius: 50%;"></div>
+                <div style="position: relative; z-index: 1;">
+                  <div style="font-size: 14px; color: rgba(255,255,255,0.8); margin-bottom: 8px;">📁 数据表</div>
+                  <div style="font-size: 18px; font-weight: 600; color: white; word-break: break-all;">{{ chartAnalysisTable }}</div>
+                </div>
+              </div>
+
+              <!-- 图表数量卡片 -->
+              <div style="padding: 25px; background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); border-radius: 16px; box-shadow: 0 8px 32px rgba(79, 172, 254, 0.3); position: relative; overflow: hidden;">
+                <div style="position: absolute; top: -20px; right: -20px; width: 100px; height: 100px; background: rgba(255,255,255,0.1); border-radius: 50%;"></div>
+                <div style="position: relative; z-index: 1;">
+                  <div style="font-size: 14px; color: rgba(255,255,255,0.8); margin-bottom: 8px;">📈 图表数量</div>
+                  <div style="font-size: 36px; font-weight: 700; color: white;">{{ Object.keys(chartAnalysisData.charts).length }}</div>
+                  <div style="font-size: 12px; color: rgba(255,255,255,0.6); margin-top: 5px;">个图表</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 第二行：问题来源和问题类型饼状图 -->
+            <div v-if="chartAnalysisData.charts.source_pie || chartAnalysisData.charts.type_pie" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(450px, 1fr)); gap: 25px; margin-bottom: 25px;">
+              <div v-if="chartAnalysisData.charts.source_pie" style="padding: 25px; background: rgba(255, 255, 255, 0.08); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 16px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);">
+                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 20px;">
+                  <div style="width: 40px; height: 40px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 10px; display: flex; align-items: center; justify-content: center;">
+                    <span style="font-size: 20px;">🔗</span>
+                  </div>
+                  <h3 style="margin: 0; font-size: 16px; color: white; font-weight: 600;">问题来源分布</h3>
+                </div>
+                <div id="sourcePieChart" style="height: 300px;"></div>
+              </div>
+              <div v-if="chartAnalysisData.charts.type_pie" style="padding: 25px; background: rgba(255, 255, 255, 0.08); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 16px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);">
+                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 20px;">
+                  <div style="width: 40px; height: 40px; background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); border-radius: 10px; display: flex; align-items: center; justify-content: center;">
+                    <span style="font-size: 20px;">📋</span>
+                  </div>
+                  <h3 style="margin: 0; font-size: 16px; color: white; font-weight: 600;">问题类型分布</h3>
+                </div>
+                <div id="typePieChart" style="height: 300px;"></div>
+              </div>
+            </div>
+
+            <!-- 第三行：大类和小类分布图 -->
+            <div v-if="chartAnalysisData.charts.major_category || chartAnalysisData.charts.minor_category" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(450px, 1fr)); gap: 25px; margin-bottom: 25px;">
+              <div v-if="chartAnalysisData.charts.major_category" style="padding: 25px; background: rgba(255, 255, 255, 0.08); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 16px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);">
+                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 20px;">
+                  <div style="width: 40px; height: 40px; background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%); border-radius: 10px; display: flex; align-items: center; justify-content: center;">
+                    <span style="font-size: 20px;">📦</span>
+                  </div>
+                  <h3 style="margin: 0; font-size: 16px; color: white; font-weight: 600;">大类案件分布</h3>
+                </div>
+                <div id="majorCategoryChart" style="height: 350px;"></div>
+              </div>
+              <div v-if="chartAnalysisData.charts.minor_category" style="padding: 25px; background: rgba(255, 255, 255, 0.08); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 16px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);">
+                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 20px;">
+                  <div style="width: 40px; height: 40px; background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); border-radius: 10px; display: flex; align-items: center; justify-content: center;">
+                    <span style="font-size: 20px;">🏷️</span>
+                  </div>
+                  <h3 style="margin: 0; font-size: 16px; color: white; font-weight: 600;">小类案件分布 TOP20</h3>
+                </div>
+                <div id="minorCategoryChart" style="height: 400px;"></div>
+              </div>
+            </div>
+
+            <!-- 第四行：片区和处置部门饼状图 -->
+            <div v-if="chartAnalysisData.charts.area_pie || chartAnalysisData.charts.department_pie" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(450px, 1fr)); gap: 25px; margin-bottom: 25px;">
+              <div v-if="chartAnalysisData.charts.area_pie" style="padding: 25px; background: rgba(255, 255, 255, 0.08); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 16px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);">
+                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 20px;">
+                  <div style="width: 40px; height: 40px; background: linear-gradient(135deg, #30cfd0 0%, #330867 100%); border-radius: 10px; display: flex; align-items: center; justify-content: center;">
+                    <span style="font-size: 20px;">📍</span>
+                  </div>
+                  <h3 style="margin: 0; font-size: 16px; color: white; font-weight: 600;">案件采集片区分布</h3>
+                </div>
+                <div id="areaPieChart" style="height: 300px;"></div>
+              </div>
+              <div v-if="chartAnalysisData.charts.department_pie" style="padding: 25px; background: rgba(255, 255, 255, 0.08); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 16px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);">
+                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 20px;">
+                  <div style="width: 40px; height: 40px; background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); border-radius: 10px; display: flex; align-items: center; justify-content: center;">
+                    <span style="font-size: 20px;">🏢</span>
+                  </div>
+                  <h3 style="margin: 0; font-size: 16px; color: white; font-weight: 600;">处置部门案件占比</h3>
+                </div>
+                <div id="departmentPieChart" style="height: 300px;"></div>
+              </div>
+            </div>
+
+            <!-- 第五行：街道和社区分布图 -->
+            <div v-if="chartAnalysisData.charts.street || chartAnalysisData.charts.community" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(450px, 1fr)); gap: 25px; margin-bottom: 25px;">
+              <div v-if="chartAnalysisData.charts.street" style="padding: 25px; background: rgba(255, 255, 255, 0.08); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 16px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);">
+                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 20px;">
+                  <div style="width: 40px; height: 40px; background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%); border-radius: 10px; display: flex; align-items: center; justify-content: center;">
+                    <span style="font-size: 20px;">🏘️</span>
+                  </div>
+                  <h3 style="margin: 0; font-size: 16px; color: white; font-weight: 600;">案件街道分布</h3>
+                </div>
+                <div id="streetChart" style="height: 300px;"></div>
+              </div>
+              <div v-if="chartAnalysisData.charts.community" style="padding: 25px; background: rgba(255, 255, 255, 0.08); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 16px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);">
+                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 20px;">
+                  <div style="width: 40px; height: 40px; background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%); border-radius: 10px; display: flex; align-items: center; justify-content: center;">
+                    <span style="font-size: 20px;">🏠</span>
+                  </div>
+                  <h3 style="margin: 0; font-size: 16px; color: white; font-weight: 600;">案件社区分布 TOP25</h3>
+                </div>
+                <div id="communityChart" style="height: 400px;"></div>
+              </div>
+            </div>
+
+            <!-- 第六行：平均处置时间图 -->
+            <div v-if="chartAnalysisData.charts.avg_handling_time" style="margin-bottom: 25px;">
+              <div style="padding: 25px; background: rgba(255, 255, 255, 0.08); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 16px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);">
+                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 20px;">
+                  <div style="width: 40px; height: 40px; background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%); border-radius: 10px; display: flex; align-items: center; justify-content: center;">
+                    <span style="font-size: 20px;">⏱️</span>
+                  </div>
+                  <h3 style="margin: 0; font-size: 16px; color: white; font-weight: 600;">各处置部门平均处置时间（小时）</h3>
+                </div>
+                <div id="handlingTimeChart" style="height: 350px;"></div>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- 空状态提示 -->
+          <div v-else style="text-align: center; padding: 60px 20px;">
+            <div style="font-size: 64px; margin-bottom: 20px; opacity: 0.5;">📊</div>
+            <h3 style="color: rgba(255, 255, 255, 0.7); font-size: 18px; margin-bottom: 10px;">选择数据源生成仪表盘</h3>
+            <p style="color: rgba(255, 255, 255, 0.5); font-size: 14px;">请选择一个数据表，系统将自动生成包含多个图表的酷炫仪表盘</p>
+          </div>
+        </div>
+        </div>
+
         <!-- 案件抽查标签页内容 -->
         <div v-if="aiAppsActiveTab === 'spotcheck' && (!userInfo || userInfo?.role === 'admin' || (userInfo?.permissions && userInfo?.permissions.data_analysis))">
         <div class="spotcheck-section" style="max-width: 900px; margin: 0 auto;">
