@@ -456,21 +456,38 @@ const selectedCleaningField = ref('');
 
 
 // 初始化表格可见性状态
-function initTableVisibility() {
-  const savedVisibility = localStorage.getItem('tableVisibility');
-  if (savedVisibility) {
-    try {
-      const parsedConfig = JSON.parse(savedVisibility);
-      tableVisibility.value = parsedConfig;
-      console.log('从localStorage加载表格可见性配置:', parsedConfig);
-    } catch (error) {
-      console.error('Error parsing table visibility:', error);
+async function initTableVisibility() {
+  try {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      console.log('未登录，无法加载表格可见性配置');
       tableVisibility.value = {};
-      // 清空损坏的配置
-      localStorage.removeItem('tableVisibility');
+      return;
     }
-  } else {
-    console.log('localStorage中没有表格可见性配置');
+
+    // 从后端API获取配置
+    const response = await fetch('/api/config/table-visibility', {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      if (data.config && Object.keys(data.config).length > 0) {
+        tableVisibility.value = data.config;
+        console.log('从服务器加载表格可见性配置:', data.config);
+      } else {
+        console.log('服务器中没有表格可见性配置');
+        tableVisibility.value = {};
+      }
+    } else {
+      console.error('获取表格可见性配置失败');
+      tableVisibility.value = {};
+    }
+  } catch (error) {
+    console.error('Error loading table visibility:', error);
+    tableVisibility.value = {};
   }
 }
 
@@ -558,6 +575,12 @@ function updateStepStatus(stepIndex, status) {
 // 渲染日报趋势图（最近15天受理和办结数量）
 function renderTrendChart() {
   if (!trendChart.value) return;
+
+  // 先销毁已存在的实例，避免重复创建
+  const existingInstance = echarts.getInstanceByDom(trendChart.value);
+  if (existingInstance) {
+    existingInstance.dispose();
+  }
 
   const chartInstance = echarts.init(trendChart.value);
   const trendData = last15DaysTrendData.value;
@@ -1978,9 +2001,9 @@ async function fetchTables() {
   try {
     const token = localStorage.getItem('token');
     if (!token) return;
-    
+
     // 确保表格可见性配置已经加载
-    initTableVisibility();
+    await initTableVisibility();
     console.log('当前表格可见性配置:', tableVisibility.value);
     
     const response = await fetch('/api/tables', {
@@ -3234,11 +3257,11 @@ async function fetchTablesForManagement() {
     adminError.value = '请先登录';
     return;
   }
-  
+
   try {
     adminLoading.value = true;
     adminError.value = '';
-    
+
     const response = await fetch('/api/tables', {
       headers: getAuthHeaders()
     });
@@ -3246,7 +3269,7 @@ async function fetchTablesForManagement() {
     if (data.tables) {
       tables.value = data.tables;
       // 初始化表格可见性状态
-      initTableVisibility();
+      await initTableVisibility();
       
       // 确保所有数据表都有可见性设置
       const currentVisibility = { ...tableVisibility.value };
@@ -3270,20 +3293,32 @@ async function saveTableVisibility() {
   try {
     adminLoading.value = true;
     adminError.value = '';
-    
-    // 保存到本地存储
-    const visibilityConfig = JSON.stringify(tableVisibility.value);
-    localStorage.setItem('tableVisibility', visibilityConfig);
-    
-    // 验证保存是否成功
-    const savedConfig = localStorage.getItem('tableVisibility');
-    if (savedConfig) {
-      console.log('表格可见性配置已保存:', JSON.parse(savedConfig));
+
+    const token = localStorage.getItem('token');
+    if (!token) {
+      adminError.value = '请先登录';
+      return;
     }
-    
-    // 显示保存成功消息
-    adminError.value = '配置保存成功！';
-    
+
+    // 保存到后端API
+    const response = await fetch('/api/config/table-visibility', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ config: tableVisibility.value })
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      console.log('表格可见性配置已保存到服务器:', data);
+      adminError.value = '配置保存成功！';
+    } else {
+      const errorData = await response.json();
+      adminError.value = errorData.error || '保存配置失败';
+    }
+
     // 3秒后清除消息
     setTimeout(() => {
       adminError.value = '';
@@ -5209,6 +5244,24 @@ watch(
   (newModule) => {
     if (newModule === 'huiwentai') {
       fetchHuiwentaiTasks();
+      // 如果当前标签是日报数据，需要重新渲染趋势图
+      if (huiwentaiActiveTab.value === 'daily-reports') {
+        nextTick(() => {
+          renderTrendChart();
+        });
+      }
+    }
+  }
+);
+
+// 监听AI应用标签页切换，重新渲染图表
+watch(
+  () => aiAppsActiveTab.value,
+  (newTab) => {
+    if (newTab === 'chart-analysis' && chartAnalysisData.value) {
+      nextTick(() => {
+        renderDashboardCharts();
+      });
     }
   }
 );
@@ -6707,7 +6760,11 @@ function getColumnIcon(index) {
           <!-- 导入区域 -->
           <div style="background: rgba(30, 58, 138, 0.4); backdrop-filter: blur(10px); padding: 20px; border-radius: 12px; margin-bottom: 20px; border: 1px solid rgba(100, 149, 237, 0.3); box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);">
             <h3 style="margin: 0 0 15px 0; font-size: 18px; color: white; border-bottom: 1px solid rgba(100, 149, 237, 0.3); padding-bottom: 10px;">导入案件数据</h3>
-            
+
+            <div style="margin-bottom: 10px; padding: 10px; background: rgba(255, 193, 7, 0.15); border: 1px solid rgba(255, 193, 7, 0.4); border-radius: 6px; color: rgba(255, 255, 255, 0.9); font-size: 14px;">
+              ⚠️ 提示：上传前需确保Excel表的第一行是字段行（表头行）
+            </div>
+
             <div style="display: flex; gap: 15px; align-items: center; margin-top: 15px;">
               <input 
                 type="file" 

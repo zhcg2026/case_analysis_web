@@ -193,7 +193,7 @@ try:
     # 案件管理模型
     class Case(Base):
         __tablename__ = 'cases'
-        
+
         id = Column(Integer, primary_key=True, autoincrement=True)
         task_number = Column(String(50), unique=True, nullable=False)  # 任务号
         stage_light = Column(String(20))  # 阶段红绿灯
@@ -220,6 +220,16 @@ try:
         bundle_deadline = Column(DateTime)  # 捆绑截止时间
         bundle_time_limit = Column(String(50))  # 捆绑截止时限
         photo_path = Column(String(500))  # 图片路径
+        created_at = Column(DateTime(timezone=True), server_default=func.now())
+        updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    # 系统配置模型
+    class SystemConfig(Base):
+        __tablename__ = 'system_config'
+
+        id = Column(Integer, primary_key=True, autoincrement=True)
+        config_key = Column(String(100), unique=True, nullable=False)  # 配置键
+        config_value = Column(Text)  # 配置值（JSON格式）
         created_at = Column(DateTime(timezone=True), server_default=func.now())
         updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     
@@ -1360,14 +1370,14 @@ def delete_table(table_name):
     # 如果没有数据库连接，返回提示
     if engine is None:
         return jsonify({'error': 'Database not connected. Table management is disabled.'}), 503
-    
+
     session = Session()
     try:
         # 防止删除系统表
         protected_tables = ['users', 'permissions']
         if table_name in protected_tables:
             return jsonify({'error': f'不能删除系统表 {table_name}'}), 403
-        
+
         # 删除数据表
         from sqlalchemy import text
         session.execute(text(f"DROP TABLE IF EXISTS {table_name}"))
@@ -1376,6 +1386,69 @@ def delete_table(table_name):
     except Exception as e:
         session.rollback()
         print(f"Error in delete_table: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        session.close()
+
+# 获取表格可见性配置
+@app.route('/api/config/table-visibility', methods=['GET'])
+@protected
+def get_table_visibility():
+    """获取表格可见性配置"""
+    if engine is None:
+        return jsonify({'config': {}}), 200
+
+    session = Session()
+    try:
+        config = session.query(SystemConfig).filter_by(config_key='table_visibility').first()
+        if config and config.config_value:
+            config_data = json.loads(config.config_value)
+            return jsonify({'config': config_data}), 200
+        else:
+            return jsonify({'config': {}}), 200
+    except Exception as e:
+        session.rollback()
+        print(f"Error in get_table_visibility: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        session.close()
+
+# 保存表格可见性配置
+@app.route('/api/config/table-visibility', methods=['POST'])
+@admin_required
+def save_table_visibility():
+    """保存表格可见性配置（仅管理员）"""
+    if engine is None:
+        return jsonify({'error': 'Database not connected. Config management is disabled.'}), 503
+
+    session = Session()
+    try:
+        data = request.json
+        config_value = data.get('config', {})
+
+        # 查找现有配置
+        config = session.query(SystemConfig).filter_by(config_key='table_visibility').first()
+
+        if config:
+            # 更新现有配置
+            config.config_value = json.dumps(config_value)
+        else:
+            # 创建新配置
+            config = SystemConfig(
+                config_key='table_visibility',
+                config_value=json.dumps(config_value)
+            )
+            session.add(config)
+
+        session.commit()
+        return jsonify({'message': '配置保存成功', 'config': config_value}), 200
+    except Exception as e:
+        session.rollback()
+        print(f"Error in save_table_visibility: {str(e)}")
         import traceback
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
