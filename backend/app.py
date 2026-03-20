@@ -223,6 +223,21 @@ try:
         created_at = Column(DateTime(timezone=True), server_default=func.now())
         updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
+        # 案件管理扩展字段
+        category = Column(String(20))           # 案件分类: 非我局管辖/挂账案件/疑难案件
+        status = Column(String(20), default='跟进中')  # 状态: 跟进中/已结案
+        owner_unit = Column(String(100))        # 权属单位(非我局管辖)
+        contact_person = Column(String(50))     # 联系人
+        contact_phone = Column(String(20))      # 联系电话
+        pending_reason = Column(Text)           # 挂账原因
+        pending_deadline = Column(DateTime)     # 预计处置时间
+        difficult_type = Column(String(50))     # 疑难类型
+        last_follow_time = Column(DateTime)     # 最近跟进时间
+        follow_count = Column(Integer, default=0)  # 跟进次数
+        close_time = Column(DateTime)           # 结案时间
+        close_remark = Column(Text)             # 结案说明
+        remark = Column(Text)                   # 备注
+
     # 系统配置模型
     class SystemConfig(Base):
         __tablename__ = 'system_config'
@@ -5151,9 +5166,19 @@ def get_cases():
         page = request.args.get('page', 1, type=int)
         per_page = request.args.get('per_page', 20, type=int)
         search = request.args.get('search', '')
-        
+        category = request.args.get('category', '')  # 新增：分类筛选
+        status = request.args.get('status', '')      # 新增：状态筛选
+
         query = session.query(Case)
-        
+
+        # 分类筛选
+        if category:
+            query = query.filter(Case.category == category)
+
+        # 状态筛选
+        if status:
+            query = query.filter(Case.status == status)
+
         if search:
             search_filter = f"%{search}%"
             query = query.filter(
@@ -5196,7 +5221,21 @@ def get_cases():
                 'bundle_deadline': case.bundle_deadline.strftime('%Y-%m-%d %H:%M:%S') if case.bundle_deadline else None,
                 'bundle_time_limit': case.bundle_time_limit,
                 'photo_path': case.photo_path,
-                'created_at': case.created_at.strftime('%Y-%m-%d %H:%M:%S') if case.created_at else None
+                'created_at': case.created_at.strftime('%Y-%m-%d %H:%M:%S') if case.created_at else None,
+                # 新增字段
+                'category': case.category or '',
+                'status': case.status or '跟进中',
+                'owner_unit': case.owner_unit or '',
+                'contact_person': case.contact_person or '',
+                'contact_phone': case.contact_phone or '',
+                'pending_reason': case.pending_reason or '',
+                'pending_deadline': case.pending_deadline.strftime('%Y-%m-%d') if case.pending_deadline else None,
+                'difficult_type': case.difficult_type or '',
+                'last_follow_time': case.last_follow_time.strftime('%Y-%m-%d %H:%M') if case.last_follow_time else None,
+                'follow_count': case.follow_count or 0,
+                'close_time': case.close_time.strftime('%Y-%m-%d %H:%M') if case.close_time else None,
+                'close_remark': case.close_remark or '',
+                'remark': case.remark or ''
             })
         
         session.commit()
@@ -5254,7 +5293,21 @@ def get_case_detail(case_id):
             'bundle_time_limit': case.bundle_time_limit,
             'photo_path': case.photo_path,
             'created_at': case.created_at.strftime('%Y-%m-%d %H:%M:%S') if case.created_at else None,
-            'updated_at': case.updated_at.strftime('%Y-%m-%d %H:%M:%S') if case.updated_at else None
+            'updated_at': case.updated_at.strftime('%Y-%m-%d %H:%M:%S') if case.updated_at else None,
+            # 新增字段
+            'category': case.category or '',
+            'status': case.status or '跟进中',
+            'owner_unit': case.owner_unit or '',
+            'contact_person': case.contact_person or '',
+            'contact_phone': case.contact_phone or '',
+            'pending_reason': case.pending_reason or '',
+            'pending_deadline': case.pending_deadline.strftime('%Y-%m-%d') if case.pending_deadline else None,
+            'difficult_type': case.difficult_type or '',
+            'last_follow_time': case.last_follow_time.strftime('%Y-%m-%d %H:%M') if case.last_follow_time else None,
+            'follow_count': case.follow_count or 0,
+            'close_time': case.close_time.strftime('%Y-%m-%d %H:%M') if case.close_time else None,
+            'close_remark': case.close_remark or '',
+            'remark': case.remark or ''
         }
         
         session.commit()
@@ -5543,6 +5596,346 @@ def chart_analysis():
         import traceback
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
+
+# ==================== 案件管理模块扩展 API ====================
+
+# 跟进记录模型（动态创建，兼容现有数据库）
+try:
+    class CaseFollow(Base):
+        __tablename__ = 'case_follows'
+        id = Column(Integer, primary_key=True, autoincrement=True)
+        case_id = Column(Integer, nullable=False)
+        follow_type = Column(String(20))      # 发函/协调/督办/其他
+        content = Column(Text)
+        attachments = Column(Text)            # JSON格式附件路径
+        follow_time = Column(DateTime, default=datetime.datetime.now)
+        follow_user = Column(String(50))
+        created_at = Column(DateTime, default=datetime.datetime.now)
+
+    # 尝试创建表
+    Base.metadata.create_all(engine)
+    print("CaseFollow 模型初始化成功")
+except Exception as e:
+    print(f"CaseFollow 模型初始化警告: {e}")
+    CaseFollow = None
+
+@app.route('/api/cases/stats', methods=['GET'])
+@protected
+def get_cases_stats():
+    """获取案件统计信息"""
+    session = Session()
+    try:
+        # 统计各分类案件数量
+        stats = {
+            'total': 0,
+            'non_jurisdiction': 0,  # 非我局管辖
+            'pending': 0,           # 挂账案件
+            'difficult': 0,         # 疑难案件
+            'follow_up': 0,         # 跟进中
+            'closed': 0,            # 已结案
+            'expiring_soon': 0      # 即将到期（挂账7天内）
+        }
+
+        # 总数
+        stats['total'] = session.query(Case).count()
+
+        # 按分类统计
+        from sqlalchemy import func
+        category_stats = session.query(
+            Case.category,
+            func.count(Case.id)
+        ).group_by(Case.category).all()
+
+        for cat, count in category_stats:
+            if cat == '非我局管辖':
+                stats['non_jurisdiction'] = count
+            elif cat == '挂账案件':
+                stats['pending'] = count
+            elif cat == '疑难案件':
+                stats['difficult'] = count
+
+        # 按状态统计
+        status_stats = session.query(
+            Case.status,
+            func.count(Case.id)
+        ).group_by(Case.status).all()
+
+        for status, count in status_stats:
+            if status == '跟进中' or status is None:
+                stats['follow_up'] += count
+            elif status == '已结案':
+                stats['closed'] = count
+
+        # 即将到期的挂账案件（7天内）
+        from datetime import datetime, timedelta
+        seven_days_later = datetime.now() + timedelta(days=7)
+        stats['expiring_soon'] = session.query(Case).filter(
+            Case.category == '挂账案件',
+            Case.pending_deadline != None,
+            Case.pending_deadline <= seven_days_later,
+            Case.pending_deadline >= datetime.now(),
+            Case.status != '已结案'
+        ).count()
+
+        session.commit()
+        return jsonify(stats), 200
+    except Exception as e:
+        session.rollback()
+        print(f"Error in get_cases_stats: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+    finally:
+        session.close()
+
+
+@app.route('/api/cases/<int:case_id>/category', methods=['PUT'])
+@protected
+def update_case_category(case_id):
+    """更新案件分类"""
+    session = Session()
+    try:
+        data = request.json
+        category = data.get('category')  # 非我局管辖/挂账案件/疑难案件
+
+        if category not in ['非我局管辖', '挂账案件', '疑难案件']:
+            return jsonify({'error': '无效的分类'}), 400
+
+        case = session.query(Case).filter_by(id=case_id).first()
+        if not case:
+            return jsonify({'error': '案件不存在'}), 404
+
+        case.category = category
+        case.status = '跟进中'
+
+        # 根据分类更新相关字段
+        if category == '非我局管辖':
+            case.owner_unit = data.get('owner_unit', '')
+            case.contact_person = data.get('contact_person', '')
+            case.contact_phone = data.get('contact_phone', '')
+        elif category == '挂账案件':
+            case.pending_reason = data.get('pending_reason', '')
+            if data.get('pending_deadline'):
+                case.pending_deadline = datetime.strptime(data.get('pending_deadline'), '%Y-%m-%d')
+        elif category == '疑难案件':
+            case.difficult_type = data.get('difficult_type', '')
+
+        session.commit()
+        return jsonify({'message': '分类更新成功'}), 200
+    except Exception as e:
+        session.rollback()
+        print(f"Error in update_case_category: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+    finally:
+        session.close()
+
+
+@app.route('/api/cases/<int:case_id>/follow', methods=['POST'])
+@protected
+def add_case_follow(case_id):
+    """添加跟进记录"""
+    session = Session()
+    try:
+        if CaseFollow is None:
+            return jsonify({'error': '跟进功能暂不可用，请先运行数据库迁移'}), 500
+
+        data = request.json
+        follow_type = data.get('follow_type', '其他')  # 发函/协调/督办/其他
+        content = data.get('content', '')
+        follow_user = data.get('follow_user', '')
+
+        if not content:
+            return jsonify({'error': '跟进内容不能为空'}), 400
+
+        # 检查案件是否存在
+        case = session.query(Case).filter_by(id=case_id).first()
+        if not case:
+            return jsonify({'error': '案件不存在'}), 404
+
+        # 创建跟进记录
+        new_follow = CaseFollow(
+            case_id=case_id,
+            follow_type=follow_type,
+            content=content,
+            follow_user=follow_user,
+            follow_time=datetime.datetime.now()
+        )
+        session.add(new_follow)
+
+        # 更新案件的跟进信息
+        case.last_follow_time = datetime.datetime.now()
+        case.follow_count = (case.follow_count or 0) + 1
+
+        session.commit()
+        return jsonify({'message': '跟进记录添加成功', 'follow_id': new_follow.id}), 200
+    except Exception as e:
+        session.rollback()
+        print(f"Error in add_case_follow: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+    finally:
+        session.close()
+
+
+@app.route('/api/cases/<int:case_id>/follows', methods=['GET'])
+@protected
+def get_case_follows(case_id):
+    """获取案件的跟进记录"""
+    session = Session()
+    try:
+        if CaseFollow is None:
+            return jsonify({'follows': []}), 200
+
+        follows = session.query(CaseFollow).filter_by(case_id=case_id).order_by(CaseFollow.follow_time.desc()).all()
+
+        follows_list = []
+        for f in follows:
+            follows_list.append({
+                'id': f.id,
+                'follow_type': f.follow_type,
+                'content': f.content,
+                'attachments': f.attachments,
+                'follow_time': f.follow_time.strftime('%Y-%m-%d %H:%M') if f.follow_time else None,
+                'follow_user': f.follow_user
+            })
+
+        session.commit()
+        return jsonify({'follows': follows_list}), 200
+    except Exception as e:
+        session.rollback()
+        print(f"Error in get_case_follows: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+    finally:
+        session.close()
+
+
+@app.route('/api/cases/<int:case_id>/close', methods=['PUT'])
+@protected
+def close_case(case_id):
+    """结案"""
+    session = Session()
+    try:
+        data = request.json
+        close_remark = data.get('close_remark', '')
+
+        case = session.query(Case).filter_by(id=case_id).first()
+        if not case:
+            return jsonify({'error': '案件不存在'}), 404
+
+        case.status = '已结案'
+        case.close_time = datetime.datetime.now()
+        case.close_remark = close_remark
+
+        session.commit()
+        return jsonify({'message': '结案成功'}), 200
+    except Exception as e:
+        session.rollback()
+        print(f"Error in close_case: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+    finally:
+        session.close()
+
+
+@app.route('/api/cases/<int:case_id>', methods=['PUT'])
+@protected
+def update_case(case_id):
+    """更新案件信息"""
+    session = Session()
+    try:
+        data = request.json
+
+        case = session.query(Case).filter_by(id=case_id).first()
+        if not case:
+            return jsonify({'error': '案件不存在'}), 404
+
+        # 更新允许修改的字段
+        updatable_fields = [
+            'owner_unit', 'contact_person', 'contact_phone',
+            'pending_reason', 'pending_deadline', 'difficult_type', 'remark'
+        ]
+
+        for field in updatable_fields:
+            if field in data:
+                if field == 'pending_deadline' and data[field]:
+                    setattr(case, field, datetime.strptime(data[field], '%Y-%m-%d'))
+                else:
+                    setattr(case, field, data[field])
+
+        session.commit()
+        return jsonify({'message': '更新成功'}), 200
+    except Exception as e:
+        session.rollback()
+        print(f"Error in update_case: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+    finally:
+        session.close()
+
+
+@app.route('/api/cases/export', methods=['GET'])
+@protected
+def export_cases():
+    """导出案件数据"""
+    session = Session()
+    try:
+        import io
+        import pandas as pd
+
+        category = request.args.get('category', '')  # 可选筛选
+        status = request.args.get('status', '')
+
+        query = session.query(Case)
+
+        if category:
+            query = query.filter(Case.category == category)
+        if status:
+            query = query.filter(Case.status == status)
+
+        cases = query.all()
+
+        # 转换为DataFrame
+        data = []
+        for c in cases:
+            data.append({
+                '任务号': c.task_number,
+                '案件分类': c.category or '',
+                '状态': c.status or '跟进中',
+                '上报时间': c.report_time.strftime('%Y-%m-%d %H:%M') if c.report_time else '',
+                '问题来源': c.source or '',
+                '大类': c.major_category or '',
+                '小类': c.minor_category or '',
+                '问题描述': c.problem_desc or '',
+                '地址': c.address_desc or '',
+                '责属区域': c.responsible_area_name or '',
+                '权属单位': c.owner_unit or '',
+                '挂账原因': c.pending_reason or '',
+                '预计处置时间': c.pending_deadline.strftime('%Y-%m-%d') if c.pending_deadline else '',
+                '疑难类型': c.difficult_type or '',
+                '跟进次数': c.follow_count or 0,
+                '最近跟进': c.last_follow_time.strftime('%Y-%m-%d %H:%M') if c.last_follow_time else '',
+                '结案时间': c.close_time.strftime('%Y-%m-%d %H:%M') if c.close_time else '',
+                '结案说明': c.close_remark or '',
+                '备注': c.remark or ''
+            })
+
+        df = pd.DataFrame(data)
+
+        # 导出为Excel
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df.to_excel(writer, index=False, sheet_name='案件数据')
+        output.seek(0)
+
+        session.close()
+        return send_file(
+            output,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            as_attachment=True,
+            download_name=f'案件导出_{datetime.now().strftime("%Y%m%d_%H%M%S")}.xlsx'
+        )
+    except Exception as e:
+        session.rollback()
+        print(f"Error in export_cases: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+    finally:
+        session.close()
+
 
 # 前端静态文件路由 - 放在最后
 @app.route('/', defaults={'path': ''})

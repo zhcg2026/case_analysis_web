@@ -274,6 +274,45 @@ const caseImportFile = ref(null);
 const caseImportLoading = ref(false);
 const caseImportMessage = ref('');
 
+// 案件管理扩展状态
+const casesCategory = ref('');  // 分类筛选: 非我局管辖/挂账案件/疑难案件
+const casesStatus = ref('');    // 状态筛选: 跟进中/已结案
+const casesStats = ref({
+  total: 0,
+  non_jurisdiction: 0,
+  pending: 0,
+  difficult: 0,
+  follow_up: 0,
+  closed: 0,
+  expiring_soon: 0
+});
+const showCasesImport = ref(false);  // 导入弹窗
+
+// 案件跟进状态
+const caseFollows = ref([]);
+const showFollowForm = ref(false);
+const newFollow = ref({
+  follow_type: '其他',
+  content: '',
+  follow_user: ''
+});
+
+// 案件分类表单
+const showCategoryForm = ref(false);
+const categoryForm = ref({
+  category: '',
+  owner_unit: '',
+  contact_person: '',
+  contact_phone: '',
+  pending_reason: '',
+  pending_deadline: '',
+  difficult_type: ''
+});
+
+// 结案表单
+const showCloseForm = ref(false);
+const closeRemark = ref('');
+
 // 业务平台展示状态管理
 const displayBusinessPlatforms = ref([]);
 const businessPlatformsLoading = ref(false);
@@ -2721,6 +2760,11 @@ function switchModule(module) {
       initMap();
     });
   }
+  // 切换到案件管理模块时加载案件列表和统计
+  if (module === 'cases') {
+    fetchCasesList();
+    fetchCasesStats();
+  }
 }
 
 // 初始化地图
@@ -4756,20 +4800,28 @@ async function importCases() {
 async function fetchCasesList() {
   casesLoading.value = true;
   casesError.value = '';
-  
+
   try {
     const params = new URLSearchParams({
       page: casesCurrentPage.value,
       per_page: casesPageSize.value,
       search: casesSearch.value
     });
-    
+
+    // 添加分类和状态筛选
+    if (casesCategory.value) {
+      params.append('category', casesCategory.value);
+    }
+    if (casesStatus.value) {
+      params.append('status', casesStatus.value);
+    }
+
     const response = await fetch(`/api/cases?${params}`, {
       headers: getAuthHeaders()
     });
-    
+
     const data = await response.json();
-    
+
     if (data.error) {
       casesError.value = '获取案件列表失败: ' + data.error;
   } else {
@@ -4784,23 +4836,174 @@ async function fetchCasesList() {
   }
 }
 
+// 获取案件统计
+async function fetchCasesStats() {
+  try {
+    const response = await fetch('/api/cases/stats', {
+      headers: getAuthHeaders()
+    });
+    const data = await response.json();
+    if (!data.error) {
+      casesStats.value = data;
+    }
+  } catch (error) {
+    console.error('获取案件统计失败:', error);
+  }
+}
+
+// 切换分类 Tab
+function switchCasesCategory(category) {
+  casesCategory.value = category;
+  casesCurrentPage.value = 1;
+  fetchCasesList();
+}
+
+// 更新案件分类
+async function updateCaseCategory() {
+  if (!currentCase.value || !categoryForm.value.category) return;
+
+  try {
+    const response = await fetch(`/api/cases/${currentCase.value.id}/category`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeaders()
+      },
+      body: JSON.stringify(categoryForm.value)
+    });
+
+    const data = await response.json();
+    if (data.error) {
+      alert('更新失败: ' + data.error);
+    } else {
+      showCategoryForm.value = false;
+      viewCaseDetail(currentCase.value.id);  // 刷新详情
+      fetchCasesStats();  // 刷新统计
+    }
+  } catch (error) {
+    alert('更新失败: ' + error.message);
+  }
+}
+
+// 打开分类表单
+function openCategoryForm() {
+  categoryForm.value = {
+    category: currentCase.value?.category || '',
+    owner_unit: currentCase.value?.owner_unit || '',
+    contact_person: currentCase.value?.contact_person || '',
+    contact_phone: currentCase.value?.contact_phone || '',
+    pending_reason: currentCase.value?.pending_reason || '',
+    pending_deadline: currentCase.value?.pending_deadline || '',
+    difficult_type: currentCase.value?.difficult_type || ''
+  };
+  showCategoryForm.value = true;
+}
+
+// 添加跟进记录
+async function addCaseFollow() {
+  if (!currentCase.value || !newFollow.value.content) return;
+
+  try {
+    const response = await fetch(`/api/cases/${currentCase.value.id}/follow`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeaders()
+      },
+      body: JSON.stringify(newFollow.value)
+    });
+
+    const data = await response.json();
+    if (data.error) {
+      alert('添加失败: ' + data.error);
+    } else {
+      showFollowForm.value = false;
+      newFollow.value = { follow_type: '其他', content: '', follow_user: '' };
+      fetchCaseFollows(currentCase.value.id);  // 刷新跟进记录
+      viewCaseDetail(currentCase.value.id);  // 刷新详情
+    }
+  } catch (error) {
+    alert('添加失败: ' + error.message);
+  }
+}
+
+// 获取案件跟进记录
+async function fetchCaseFollows(caseId) {
+  try {
+    const response = await fetch(`/api/cases/${caseId}/follows`, {
+      headers: getAuthHeaders()
+    });
+    const data = await response.json();
+    if (!data.error) {
+      caseFollows.value = data.follows || [];
+    }
+  } catch (error) {
+    console.error('获取跟进记录失败:', error);
+  }
+}
+
+// 结案
+async function closeCurrentCase() {
+  if (!currentCase.value) return;
+
+  if (!confirm('确定要结案吗？')) return;
+
+  try {
+    const response = await fetch(`/api/cases/${currentCase.value.id}/close`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeaders()
+      },
+      body: JSON.stringify({ close_remark: closeRemark.value })
+    });
+
+    const data = await response.json();
+    if (data.error) {
+      alert('结案失败: ' + data.error);
+    } else {
+      showCloseForm.value = false;
+      closeRemark.value = '';
+      viewCaseDetail(currentCase.value.id);  // 刷新详情
+      fetchCasesStats();  // 刷新统计
+    }
+  } catch (error) {
+    alert('结案失败: ' + error.message);
+  }
+}
+
+// 导出案件
+async function exportCases() {
+  try {
+    const params = new URLSearchParams();
+    if (casesCategory.value) params.append('category', casesCategory.value);
+    if (casesStatus.value) params.append('status', casesStatus.value);
+
+    window.open(`/api/cases/export?${params}`, '_blank');
+  } catch (error) {
+    alert('导出失败: ' + error.message);
+  }
+}
+
 // 查看案件详情
 async function viewCaseDetail(caseId) {
   casesLoading.value = true;
   casesError.value = '';
-  
+
   try {
     const response = await fetch(`/api/cases/${caseId}`, {
       headers: getAuthHeaders()
     });
-    
+
     const data = await response.json();
-    
+
     if (data.error) {
       casesError.value = '获取案件详情失败: ' + data.error;
   } else {
     currentCase.value = data;
     showCaseDetail.value = true;
+    // 获取跟进记录
+    fetchCaseFollows(caseId);
   }
   } catch (error) {
     casesError.value = '获取案件详情失败: ' + error.message;
@@ -6756,50 +6959,63 @@ function getColumnIcon(index) {
       
       <!-- 案件管理模块 -->
       <div v-if="activeModule === 'cases'" class="tab-content">
-        <div class="cases-section" style="max-width: 1200px; margin: 0 auto;">
-          <!-- 导入区域 -->
-          <div style="background: rgba(30, 58, 138, 0.4); backdrop-filter: blur(10px); padding: 20px; border-radius: 12px; margin-bottom: 20px; border: 1px solid rgba(100, 149, 237, 0.3); box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);">
-            <h3 style="margin: 0 0 15px 0; font-size: 18px; color: white; border-bottom: 1px solid rgba(100, 149, 237, 0.3); padding-bottom: 10px;">导入案件数据</h3>
+        <div class="cases-section" style="max-width: 1400px; margin: 0 auto;">
 
-            <div style="margin-bottom: 10px; padding: 10px; background: rgba(255, 193, 7, 0.15); border: 1px solid rgba(255, 193, 7, 0.4); border-radius: 6px; color: rgba(255, 255, 255, 0.9); font-size: 14px;">
-              ⚠️ 提示：上传前需确保Excel表的第一行是字段行（表头行）
+          <!-- 顶部操作栏 -->
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <!-- 分类统计 Tab -->
+            <div style="display: flex; gap: 15px; flex-wrap: wrap;">
+              <div @click="switchCasesCategory('')"
+                   style="padding: 15px 25px; background: rgba(30, 58, 138, 0.4); border-radius: 10px; cursor: pointer; border: 2px solid transparent; transition: all 0.3s;"
+                   :style="casesCategory === '' ? { borderColor: '#4facfe', background: 'rgba(79, 172, 254, 0.3)' } : {}">
+                <div style="font-size: 14px; color: rgba(255,255,255,0.7);">全部案件</div>
+                <div style="font-size: 24px; font-weight: bold; color: white;">{{ casesStats.total }}</div>
+              </div>
+              <div @click="switchCasesCategory('非我局管辖')"
+                   style="padding: 15px 25px; background: rgba(30, 58, 138, 0.4); border-radius: 10px; cursor: pointer; border: 2px solid transparent; transition: all 0.3s;"
+                   :style="casesCategory === '非我局管辖' ? { borderColor: '#4facfe', background: 'rgba(79, 172, 254, 0.3)' } : {}">
+                <div style="font-size: 14px; color: rgba(255,255,255,0.7);">非我局管辖</div>
+                <div style="font-size: 24px; font-weight: bold; color: #ff9800;">{{ casesStats.non_jurisdiction }}</div>
+              </div>
+              <div @click="switchCasesCategory('挂账案件')"
+                   style="padding: 15px 25px; background: rgba(30, 58, 138, 0.4); border-radius: 10px; cursor: pointer; border: 2px solid transparent; transition: all 0.3s;"
+                   :style="casesCategory === '挂账案件' ? { borderColor: '#4facfe', background: 'rgba(79, 172, 254, 0.3)' } : {}">
+                <div style="font-size: 14px; color: rgba(255,255,255,0.7);">挂账案件 <span v-if="casesStats.expiring_soon > 0" style="color: #ff6b6b;">⚠{{ casesStats.expiring_soon }}</span></div>
+                <div style="font-size: 24px; font-weight: bold; color: #ffb6c1;">{{ casesStats.pending }}</div>
+              </div>
+              <div @click="switchCasesCategory('疑难案件')"
+                   style="padding: 15px 25px; background: rgba(30, 58, 138, 0.4); border-radius: 10px; cursor: pointer; border: 2px solid transparent; transition: all 0.3s;"
+                   :style="casesCategory === '疑难案件' ? { borderColor: '#4facfe', background: 'rgba(79, 172, 254, 0.3)' } : {}">
+                <div style="font-size: 14px; color: rgba(255,255,255,0.7);">疑难案件</div>
+                <div style="font-size: 24px; font-weight: bold; color: #e91e63;">{{ casesStats.difficult }}</div>
+              </div>
             </div>
-
-            <div style="display: flex; gap: 15px; align-items: center; margin-top: 15px;">
-              <input 
-                type="file" 
-                @change="handleCaseFileSelect" 
-                accept=".xlsx"
-                style="flex: 1; padding: 10px 12px; border: 1px solid rgba(100, 149, 237, 0.5); border-radius: 6px; background: rgba(30, 58, 138, 0.6); color: white;"
-              >
-              <button 
-                @click="importCases"
-                :disabled="caseImportLoading || !caseImportFile"
-                style="padding: 10px 20px; background: linear-gradient(135deg, rgba(30, 58, 138, 0.8) 0%, rgba(45, 74, 154, 0.8) 100%); color: white; border: 1px solid rgba(100, 149, 237, 0.5); border-radius: 6px; cursor: pointer; font-weight: 600; transition: all 0.3s ease;"
-              >
-                {{ caseImportLoading ? '导入中...' : '开始导入' }}
+            <!-- 操作按钮 -->
+            <div style="display: flex; gap: 10px;">
+              <button @click="showCasesImport = true" style="padding: 10px 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: 6px;">
+                📤 导入
+              </button>
+              <button @click="exportCases" style="padding: 10px 20px; background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%); color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: 6px;">
+                📥 导出
               </button>
             </div>
-            
-            <div v-if="caseImportMessage" style="margin-top: 10px; padding: 12px; background: rgba(76, 175, 80, 0.2); border: 1px solid rgba(76, 175, 80, 0.4); border-radius: 6px; color: rgba(255, 255, 255, 0.9); backdrop-filter: blur(5px);">
-              {{ caseImportMessage }}
-            </div>
-            
-            <div v-if="casesError" style="margin-top: 10px; padding: 12px; background: rgba(244, 67, 54, 0.2); border: 1px solid rgba(244, 67, 54, 0.4); border-radius: 6px; color: rgba(255, 255, 255, 0.9); backdrop-filter: blur(5px);">
-              {{ casesError }}
-            </div>
           </div>
-          
+
           <!-- 搜索区域 -->
           <div style="background: rgba(30, 58, 138, 0.4); backdrop-filter: blur(10px); padding: 20px; border-radius: 12px; margin-bottom: 20px; border: 1px solid rgba(100, 149, 237, 0.3); box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);">
-            <div style="display: flex; gap: 15px; align-items: center;">
-              <input 
+            <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
+              <input
                 v-model="casesSearch"
                 placeholder="搜索任务号、问题描述、地址..."
                 @keyup.enter="searchCases"
-                style="flex: 1; padding: 10px 12px; border: 1px solid rgba(100, 149, 237, 0.5); border-radius: 6px; background: rgba(30, 58, 138, 0.6); color: white;"
+                style="flex: 1; min-width: 200px; padding: 10px 12px; border: 1px solid rgba(100, 149, 237, 0.5); border-radius: 6px; background: rgba(30, 58, 138, 0.6); color: white;"
               >
-              <button 
+              <select v-model="casesStatus" @change="searchCases" style="padding: 10px 12px; border: 1px solid rgba(100, 149, 237, 0.5); border-radius: 6px; background: rgba(30, 58, 138, 0.6); color: white; min-width: 120px;">
+                <option value="">全部状态</option>
+                <option value="跟进中">跟进中</option>
+                <option value="已结案">已结案</option>
+              </select>
+              <button
                 @click="searchCases"
                 style="padding: 10px 20px; background: linear-gradient(135deg, rgba(30, 58, 138, 0.8) 0%, rgba(45, 74, 154, 0.8) 100%); color: white; border: 1px solid rgba(100, 149, 237, 0.5); border-radius: 6px; cursor: pointer; font-weight: 600; transition: all 0.3s ease;"
               >
@@ -6807,46 +7023,50 @@ function getColumnIcon(index) {
               </button>
             </div>
           </div>
-          
+
           <!-- 案件列表 -->
           <div v-if="!showCaseDetail" style="background: rgba(30, 58, 138, 0.3); backdrop-filter: blur(10px); border-radius: 12px; border: 1px solid rgba(100, 149, 237, 0.3); box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15); overflow: hidden;">
             <div v-if="casesLoading" style="padding: 40px; text-align: center; color: rgba(255, 255, 255, 0.9);">
               加载中...
             </div>
-            
+
             <div v-else-if="casesList.length === 0" style="padding: 40px; text-align: center; color: rgba(255, 255, 255, 0.9);">
               暂无案件数据
             </div>
-            
+
             <div v-else style="overflow-x: auto;">
               <table style="width: 100%; border-collapse: collapse;">
                 <thead>
                   <tr style="background: rgba(30, 58, 138, 0.6);">
                     <th style="padding: 14px 12px; border: 1px solid rgba(100, 149, 237, 0.3); text-align: left; color: white; font-weight: 600;">任务号</th>
                     <th style="padding: 14px 12px; border: 1px solid rgba(100, 149, 237, 0.3); text-align: left; color: white; font-weight: 600;">上报时间</th>
-                    <th style="padding: 14px 12px; border: 1px solid rgba(100, 149, 237, 0.3); text-align: left; color: white; font-weight: 600;">问题来源</th>
-                    <th style="padding: 14px 12px; border: 1px solid rgba(100, 149, 237, 0.3); text-align: left; color: white; font-weight: 600;">大类</th>
-                    <th style="padding: 14px 12px; border: 1px solid rgba(100, 149, 237, 0.3); text-align: left; color: white; font-weight: 600;">小类</th>
                     <th style="padding: 14px 12px; border: 1px solid rgba(100, 149, 237, 0.3); text-align: left; color: white; font-weight: 600;">问题描述</th>
-                    <th style="padding: 14px 12px; border: 1px solid rgba(100, 149, 237, 0.3); text-align: left; color: white; font-weight: 600;">地址</th>
-                    <th style="padding: 14px 12px; border: 1px solid rgba(100, 149, 237, 0.3); text-align: left; color: white; font-weight: 600;">状态</th>
-                    <th style="padding: 14px 12px; border: 1px solid rgba(100, 149, 237, 0.3); text-align: left; color: white; font-weight: 600;">操作</th>
+                    <th style="padding: 14px 12px; border: 1px solid rgba(100, 149, 237, 0.3); text-align: center; color: white; font-weight: 600;">分类</th>
+                    <th style="padding: 14px 12px; border: 1px solid rgba(100, 149, 237, 0.3); text-align: center; color: white; font-weight: 600;">状态</th>
+                    <th style="padding: 14px 12px; border: 1px solid rgba(100, 149, 237, 0.3); text-align: center; color: white; font-weight: 600;">跟进</th>
+                    <th style="padding: 14px 12px; border: 1px solid rgba(100, 149, 237, 0.3); text-align: center; color: white; font-weight: 600;">操作</th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr v-for="caseItem in casesList" :key="caseItem.id" style="cursor: pointer; background: rgba(30, 58, 138, 0.2);" @click="viewCaseDetail(caseItem.id)" @mouseenter="$event.currentTarget.style.background='rgba(100, 149, 237, 0.2)'" @mouseleave="$event.currentTarget.style.background='rgba(30, 58, 138, 0.2)'">
-                    <td style="padding: 12px; border: 1px solid rgba(100, 149, 237, 0.2); color: rgba(255, 255, 255, 0.9);">{{ caseItem.task_number }}</td>
-                    <td style="padding: 12px; border: 1px solid rgba(100, 149, 237, 0.2); color: rgba(255, 255, 255, 0.9);">{{ caseItem.report_time }}</td>
-                    <td style="padding: 12px; border: 1px solid rgba(100, 149, 237, 0.2); color: rgba(255, 255, 255, 0.9);">{{ caseItem.source }}</td>
-                    <td style="padding: 12px; border: 1px solid rgba(100, 149, 237, 0.2); color: rgba(255, 255, 255, 0.9);">{{ caseItem.major_category }}</td>
-                    <td style="padding: 12px; border: 1px solid rgba(100, 149, 237, 0.2); color: rgba(255, 255, 255, 0.9);">{{ caseItem.minor_category }}</td>
-                    <td style="padding: 12px; border: 1px solid rgba(100, 149, 237, 0.2); color: rgba(255, 255, 255, 0.9); max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ caseItem.problem_desc }}</td>
-                    <td style="padding: 12px; border: 1px solid rgba(100, 149, 237, 0.2); color: rgba(255, 255, 255, 0.9); max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ caseItem.address_desc }}</td>
-                    <td style="padding: 12px; border: 1px solid rgba(100, 149, 237, 0.2); color: rgba(255, 255, 255, 0.9);">
-                      <span :style="{ color: caseItem.stage_light === '绿' ? '#90ee90' : caseItem.stage_light === '黄' ? '#ffd700' : '#ffb6c1', fontWeight: '600' }">{{ caseItem.stage_light }}</span>
+                    <td style="padding: 12px; border: 1px solid rgba(100, 149, 237, 0.2); color: rgba(255, 255, 255, 0.9); font-weight: 600;">{{ caseItem.task_number }}</td>
+                    <td style="padding: 12px; border: 1px solid rgba(100, 149, 237, 0.2); color: rgba(255, 255, 255, 0.9); font-size: 13px;">{{ caseItem.report_time }}</td>
+                    <td style="padding: 12px; border: 1px solid rgba(100, 149, 237, 0.2); color: rgba(255, 255, 255, 0.9); max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px;">{{ caseItem.problem_desc }}</td>
+                    <td style="padding: 12px; border: 1px solid rgba(100, 149, 237, 0.2); text-align: center;">
+                      <span v-if="caseItem.category === '非我局管辖'" style="padding: 4px 8px; background: rgba(255, 152, 0, 0.3); border-radius: 4px; color: #ff9800; font-size: 12px;">非我局</span>
+                      <span v-else-if="caseItem.category === '挂账案件'" style="padding: 4px 8px; background: rgba(255, 182, 193, 0.3); border-radius: 4px; color: #ffb6c1; font-size: 12px;">挂账</span>
+                      <span v-else-if="caseItem.category === '疑难案件'" style="padding: 4px 8px; background: rgba(233, 30, 99, 0.3); border-radius: 4px; color: #e91e63; font-size: 12px;">疑难</span>
+                      <span v-else style="padding: 4px 8px; background: rgba(255, 255, 255, 0.1); border-radius: 4px; color: rgba(255,255,255,0.5); font-size: 12px;">未分类</span>
+                    </td>
+                    <td style="padding: 12px; border: 1px solid rgba(100, 149, 237, 0.2); text-align: center;">
+                      <span v-if="caseItem.status === '已结案'" style="color: #43e97b; font-weight: 600;">已结案</span>
+                      <span v-else style="color: #4facfe; font-weight: 600;">跟进中</span>
+                    </td>
+                    <td style="padding: 12px; border: 1px solid rgba(100, 149, 237, 0.2); text-align: center; color: rgba(255,255,255,0.8); font-size: 13px;">
+                      {{ caseItem.follow_count || 0 }}次
                     </td>
                     <td style="padding: 12px; border: 1px solid rgba(100, 149, 237, 0.2);">
-                      <button @click.stop="viewCaseDetail(caseItem.id)" style="padding: 6px 14px; background: rgba(30, 58, 138, 0.6); color: white; border: 1px solid rgba(100, 149, 237, 0.5); border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 500; transition: all 0.3s ease;" @mouseenter="$event.target.style.background='rgba(30, 58, 138, 0.8)'; $event.target.style.borderColor='rgba(100, 149, 237, 0.8)'; $event.target.style.transform='translateY(-2px)'; $event.target.style.boxShadow='0 4px 12px rgba(0, 0, 0, 0.2)'" @mouseleave="$event.target.style.background='rgba(30, 58, 138, 0.6)'; $event.target.style.borderColor='rgba(100, 149, 237, 0.5)'; $event.target.style.transform='translateY(0)'; $event.target.style.boxShadow='none'">
+                      <button @click.stop="viewCaseDetail(caseItem.id)" style="padding: 6px 14px; background: rgba(30, 58, 138, 0.6); color: white; border: 1px solid rgba(100, 149, 237, 0.5); border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 500;">
                         查看
                       </button>
                     </td>
@@ -6882,110 +7102,345 @@ function getColumnIcon(index) {
           </div>
           
           <!-- 案件详情 -->
-          <div v-if="showCaseDetail && currentCase" style="background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px); border-radius: 12px; padding: 25px; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15); border: 1px solid rgba(255, 255, 255, 0.2);">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; border-bottom: 2px solid #4facfe; padding-bottom: 15px;">
-              <h3 style="margin: 0; color: #4facfe; font-size: 20px;">案件详情</h3>
-              <button @click="showCaseDetail = false; currentCase = null;" style="padding: 10px 20px; background: rgba(255, 255, 255, 0.2); color: white; border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 6px; cursor: pointer; font-weight: 500; transition: all 0.3s ease;">
-                返回列表
-              </button>
-            </div>
-            
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
-              <div>
-                <p style="margin: 0 0 8px 0; color: rgba(255, 255, 255, 0.6); font-size: 13px;">任务号</p>
-                <p style="margin: 0; font-size: 16px; font-weight: 600; color: white;">{{ currentCase.task_number }}</p>
-              </div>
-              <div>
-                <p style="margin: 0 0 8px 0; color: rgba(255, 255, 255, 0.6); font-size: 13px;">上报时间</p>
-                <p style="margin: 0; font-size: 16px; color: rgba(255, 255, 255, 0.9);">{{ currentCase.report_time }}</p>
-              </div>
-              <div>
-                <p style="margin: 0 0 8px 0; color: rgba(255, 255, 255, 0.6); font-size: 13px;">问题来源</p>
-                <p style="margin: 0; font-size: 16px; color: rgba(255, 255, 255, 0.9);">{{ currentCase.source }}</p>
-              </div>
-              <div>
-                <p style="margin: 0 0 8px 0; color: rgba(255, 255, 255, 0.6); font-size: 13px;">问题类型</p>
-                <p style="margin: 0; font-size: 16px; color: rgba(255, 255, 255, 0.9);">{{ currentCase.problem_type }}</p>
-              </div>
-              <div>
-                <p style="margin: 0 0 8px 0; color: rgba(255, 255, 255, 0.6); font-size: 13px;">大类名称</p>
-                <p style="margin: 0; font-size: 16px; color: rgba(255, 255, 255, 0.9);">{{ currentCase.major_category }}</p>
-              </div>
-              <div>
-                <p style="margin: 0 0 8px 0; color: rgba(255, 255, 255, 0.6); font-size: 13px;">小类名称</p>
-                <p style="margin: 0; font-size: 16px; color: rgba(255, 255, 255, 0.9);">{{ currentCase.minor_category }}</p>
-              </div>
-            </div>
-            
-            <div style="margin-top: 20px;">
-              <p style="margin: 0 0 8px 0; color: rgba(255, 255, 255, 0.6); font-size: 13px;">问题描述</p>
-              <p style="margin: 0; font-size: 15px; padding: 12px 15px; background: rgba(255, 255, 255, 0.1); border-radius: 8px; color: rgba(255, 255, 255, 0.9); border: 1px solid rgba(255, 255, 255, 0.15);">{{ currentCase.problem_desc }}</p>
-            </div>
-            
-            <div style="margin-top: 20px;">
-              <p style="margin: 0 0 8px 0; color: rgba(255, 255, 255, 0.6); font-size: 13px;">地址描述</p>
-              <p style="margin: 0; font-size: 15px; padding: 12px 15px; background: rgba(255, 255, 255, 0.1); border-radius: 8px; color: rgba(255, 255, 255, 0.9); border: 1px solid rgba(255, 255, 255, 0.15);">{{ currentCase.address_desc }}</p>
-            </div>
-            
-            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; margin-top: 20px;">
-              <div>
-                <p style="margin: 0 0 8px 0; color: rgba(255, 255, 255, 0.6); font-size: 13px;">所属区域</p>
-                <p style="margin: 0; font-size: 16px; color: rgba(255, 255, 255, 0.9);">{{ currentCase.area }}</p>
-              </div>
-              <div>
-                <p style="margin: 0 0 8px 0; color: rgba(255, 255, 255, 0.6); font-size: 13px;">所属街道</p>
-                <p style="margin: 0; font-size: 16px; color: rgba(255, 255, 255, 0.9);">{{ currentCase.street }}</p>
-              </div>
-              <div>
-                <p style="margin: 0 0 8px 0; color: rgba(255, 255, 255, 0.6); font-size: 13px;">所属社区</p>
-                <p style="margin: 0; font-size: 16px; color: rgba(255, 255, 255, 0.9);">{{ currentCase.community }}</p>
-              </div>
-            </div>
-            
-            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; margin-top: 20px;">
-              <div>
-                <p style="margin: 0 0 8px 0; color: rgba(255, 255, 255, 0.6); font-size: 13px;">责任网格</p>
-                <p style="margin: 0; font-size: 16px; color: rgba(255, 255, 255, 0.9);">{{ currentCase.responsible_grid }}</p>
-              </div>
-              <div>
-                <p style="margin: 0 0 8px 0; color: rgba(255, 255, 255, 0.6); font-size: 13px;">批转时间</p>
-                <p style="margin: 0; font-size: 16px; color: rgba(255, 255, 255, 0.9);">{{ currentCase.transfer_time }}</p>
-              </div>
-              <div>
-                <p style="margin: 0 0 8px 0; color: rgba(255, 255, 255, 0.6); font-size: 13px;">当前阶段剩余时间</p>
-                <p style="margin: 0; font-size: 16px; color: rgba(255, 255, 255, 0.9);">{{ currentCase.current_stage_remaining_time }}</p>
-              </div>
-            </div>
-            
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 20px;">
-              <div>
-                <p style="margin: 0 0 8px 0; color: rgba(255, 255, 255, 0.6); font-size: 13px;">阶段红绿灯</p>
-                <p style="margin: 0; font-size: 16px;">
-                  <span style="font-weight: bold; color: #52c41b;" v-if="currentCase.stage_light == '绿'">{{ currentCase.stage_light }}</span>
-                  <span style="font-weight: bold; color: #ff9800;" v-else-if="currentCase.stage_light == '黄'">{{ currentCase.stage_light }}</span>
-                  <span style="font-weight: bold; color: #f44336;" v-else>{{ currentCase.stage_light }}</span>
-                </p>
-              </div>
-              <div>
-                <p style="margin: 0 0 8px 0; color: rgba(255, 255, 255, 0.6); font-size: 13px;">区域级别</p>
-                <p style="margin: 0; font-size: 16px; color: rgba(255, 255, 255, 0.9);">{{ currentCase.area_level_name }}</p>
-              </div>
-            </div>
-            
-            <!-- 照片展示 -->
-            <div v-if="currentCase.photo_path" style="margin-top: 20px;">
-              <p style="margin: 0 0 10px 0; color: rgba(255, 255, 255, 0.6); font-size: 13px;">案件照片</p>
-              <div style="padding: 15px; background: rgba(255, 255, 255, 0.1); border-radius: 8px; text-align: center; border: 1px solid rgba(255, 255, 255, 0.15);">
-                <div style="display: flex; flex-wrap: wrap; gap: 10px; justify-content: center;">
-                  <img 
-                    v-for="(photo, index) in getPhotoPaths(currentCase.photo_path)" 
-                    :key="index"
-                    :src="photo" 
-                    :alt="'案件照片 ' + (index + 1)" 
-                    style="max-width: 100%; max-height: 400px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);" 
-                    @error="handleImageError"
-                  >
+          <div v-if="showCaseDetail && currentCase" style="background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px); border-radius: 12px; padding: 0; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15); border: 1px solid rgba(255, 255, 255, 0.2); overflow: hidden;">
+
+            <!-- 顶部标题栏 -->
+            <div style="background: linear-gradient(135deg, rgba(30, 58, 138, 0.6) 0%, rgba(45, 74, 154, 0.6) 100%); padding: 20px 25px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(100, 149, 237, 0.3);">
+              <div style="display: flex; align-items: center; gap: 15px;">
+                <button @click="showCaseDetail = false; currentCase = null;" style="padding: 8px 12px; background: rgba(255, 255, 255, 0.1); color: white; border: none; border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 4px;">
+                  ← 返回
+                </button>
+                <div>
+                  <h3 style="margin: 0; color: white; font-size: 18px;">{{ currentCase.task_number }}</h3>
+                  <div style="margin-top: 6px; display: flex; gap: 8px; align-items: center;">
+                    <span v-if="currentCase.category" style="padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: 500;"
+                          :style="{
+                            background: currentCase.category === '非我局管辖' ? 'rgba(255, 152, 0, 0.3)' :
+                                       currentCase.category === '挂账案件' ? 'rgba(255, 182, 193, 0.3)' : 'rgba(233, 30, 99, 0.3)',
+                            color: currentCase.category === '非我局管辖' ? '#ff9800' :
+                                   currentCase.category === '挂账案件' ? '#ffb6c1' : '#e91e63'
+                          }">{{ currentCase.category }}</span>
+                    <span style="padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: 500;"
+                          :style="{ background: currentCase.status === '已结案' ? 'rgba(67, 233, 123, 0.3)' : 'rgba(79, 172, 254, 0.3)', color: currentCase.status === '已结案' ? '#43e97b' : '#4facfe' }">
+                      {{ currentCase.status || '跟进中' }}
+                    </span>
+                    <span v-if="currentCase.follow_count" style="color: rgba(255,255,255,0.6); font-size: 12px;">已跟进 {{ currentCase.follow_count }} 次</span>
+                  </div>
                 </div>
+              </div>
+              <div style="display: flex; gap: 10px;">
+                <button @click="openCategoryForm" style="padding: 8px 16px; background: rgba(255, 152, 0, 0.2); color: #ff9800; border: 1px solid rgba(255, 152, 0, 0.4); border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 500;">
+                  📝 分类
+                </button>
+                <button @click="showFollowForm = true" style="padding: 8px 16px; background: rgba(79, 172, 254, 0.2); color: #4facfe; border: 1px solid rgba(79, 172, 254, 0.4); border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 500;">
+                  ➕ 跟进
+                </button>
+                <button v-if="currentCase.status !== '已结案'" @click="showCloseForm = true" style="padding: 8px 16px; background: rgba(67, 233, 123, 0.2); color: #43e97b; border: 1px solid rgba(67, 233, 123, 0.4); border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 500;">
+                  ✓ 结案
+                </button>
+              </div>
+            </div>
+
+            <!-- 主体内容 - 两栏布局 -->
+            <div style="display: grid; grid-template-columns: 1fr 400px; gap: 0;">
+
+              <!-- 左侧：基本信息 -->
+              <div style="padding: 25px; border-right: 1px solid rgba(100, 149, 237, 0.2);">
+
+                <!-- 基本信息 -->
+                <div style="margin-bottom: 25px;">
+                  <h4 style="margin: 0 0 15px 0; color: rgba(255,255,255,0.9); font-size: 15px; display: flex; align-items: center; gap: 6px;">
+                    📋 基本信息
+                  </h4>
+                  <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px;">
+                    <div style="padding: 12px 15px; background: rgba(255,255,255,0.05); border-radius: 8px; border-left: 3px solid #4facfe;">
+                      <p style="margin: 0 0 4px 0; color: rgba(255, 255, 255, 0.5); font-size: 12px;">上报时间</p>
+                      <p style="margin: 0; font-size: 14px; color: white;">{{ currentCase.report_time || '-' }}</p>
+                    </div>
+                    <div style="padding: 12px 15px; background: rgba(255,255,255,0.05); border-radius: 8px; border-left: 3px solid #4facfe;">
+                      <p style="margin: 0 0 4px 0; color: rgba(255, 255, 255, 0.5); font-size: 12px;">问题来源</p>
+                      <p style="margin: 0; font-size: 14px; color: white;">{{ currentCase.source || '-' }}</p>
+                    </div>
+                    <div style="padding: 12px 15px; background: rgba(255,255,255,0.05); border-radius: 8px; border-left: 3px solid #4facfe;">
+                      <p style="margin: 0 0 4px 0; color: rgba(255, 255, 255, 0.5); font-size: 12px;">责属区域</p>
+                      <p style="margin: 0; font-size: 14px; color: white;">{{ currentCase.responsible_area_name || '-' }}</p>
+                    </div>
+                    <div style="padding: 12px 15px; background: rgba(255,255,255,0.05); border-radius: 8px; border-left: 3px solid #4facfe;">
+                      <p style="margin: 0 0 4px 0; color: rgba(255, 255, 255, 0.5); font-size: 12px;">最近跟进</p>
+                      <p style="margin: 0; font-size: 14px; color: white;">{{ currentCase.last_follow_time || '-' }}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 问题描述 -->
+                <div style="margin-bottom: 25px;">
+                  <h4 style="margin: 0 0 10px 0; color: rgba(255,255,255,0.9); font-size: 15px; display: flex; align-items: center; gap: 6px;">
+                    📝 问题描述
+                  </h4>
+                  <div style="padding: 15px; background: rgba(255, 255, 255, 0.05); border-radius: 8px; color: rgba(255, 255, 255, 0.9); font-size: 14px; line-height: 1.6;">
+                    {{ currentCase.problem_desc || '-' }}
+                  </div>
+                </div>
+
+                <!-- 地址 -->
+                <div style="margin-bottom: 25px;">
+                  <h4 style="margin: 0 0 10px 0; color: rgba(255,255,255,0.9); font-size: 15px; display: flex; align-items: center; gap: 6px;">
+                    📍 地址
+                  </h4>
+                  <div style="padding: 15px; background: rgba(255, 255, 255, 0.05); border-radius: 8px; color: rgba(255, 255, 255, 0.9); font-size: 14px;">
+                    {{ currentCase.address_desc || '-' }}
+                  </div>
+                </div>
+
+                <!-- 分类专属信息 -->
+                <div v-if="currentCase.category === '非我局管辖'" style="margin-bottom: 25px; padding: 15px; background: rgba(255, 152, 0, 0.1); border-radius: 8px; border: 1px solid rgba(255, 152, 0, 0.3);">
+                  <h4 style="margin: 0 0 12px 0; color: #ff9800; font-size: 14px;">🏢 权属信息</h4>
+                  <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;">
+                    <div>
+                      <p style="margin: 0 0 4px 0; color: rgba(255,255,255,0.5); font-size: 12px;">权属单位</p>
+                      <p style="margin: 0; color: white; font-size: 14px;">{{ currentCase.owner_unit || '-' }}</p>
+                    </div>
+                    <div>
+                      <p style="margin: 0 0 4px 0; color: rgba(255,255,255,0.5); font-size: 12px;">联系人</p>
+                      <p style="margin: 0; color: white; font-size: 14px;">{{ currentCase.contact_person || '-' }}</p>
+                    </div>
+                    <div>
+                      <p style="margin: 0 0 4px 0; color: rgba(255,255,255,0.5); font-size: 12px;">联系电话</p>
+                      <p style="margin: 0; color: white; font-size: 14px;">{{ currentCase.contact_phone || '-' }}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div v-if="currentCase.category === '挂账案件'" style="margin-bottom: 25px; padding: 15px; background: rgba(255, 182, 193, 0.1); border-radius: 8px; border: 1px solid rgba(255, 182, 193, 0.3);">
+                  <h4 style="margin: 0 0 12px 0; color: #ffb6c1; font-size: 14px;">⏰ 挂账信息</h4>
+                  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                    <div>
+                      <p style="margin: 0 0 4px 0; color: rgba(255,255,255,0.5); font-size: 12px;">挂账原因</p>
+                      <p style="margin: 0; color: white; font-size: 14px;">{{ currentCase.pending_reason || '-' }}</p>
+                    </div>
+                    <div>
+                      <p style="margin: 0 0 4px 0; color: rgba(255,255,255,0.5); font-size: 12px;">预计处置时间</p>
+                      <p style="margin: 0; color: white; font-size: 14px;">{{ currentCase.pending_deadline || '-' }}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div v-if="currentCase.category === '疑难案件'" style="margin-bottom: 25px; padding: 15px; background: rgba(233, 30, 99, 0.1); border-radius: 8px; border: 1px solid rgba(233, 30, 99, 0.3);">
+                  <h4 style="margin: 0 0 12px 0; color: #e91e63; font-size: 14px;">⚠️ 疑难信息</h4>
+                  <div>
+                    <p style="margin: 0 0 4px 0; color: rgba(255,255,255,0.5); font-size: 12px;">疑难类型</p>
+                    <p style="margin: 0; color: white; font-size: 14px;">{{ currentCase.difficult_type || '-' }}</p>
+                  </div>
+                </div>
+
+                <!-- 结案信息 -->
+                <div v-if="currentCase.status === '已结案'" style="margin-bottom: 25px; padding: 15px; background: rgba(67, 233, 123, 0.1); border-radius: 8px; border: 1px solid rgba(67, 233, 123, 0.3);">
+                  <h4 style="margin: 0 0 12px 0; color: #43e97b; font-size: 14px;">✅ 结案信息</h4>
+                  <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 12px;">
+                    <div>
+                      <p style="margin: 0 0 4px 0; color: rgba(255,255,255,0.5); font-size: 12px;">结案时间</p>
+                      <p style="margin: 0; color: white; font-size: 14px;">{{ currentCase.close_time || '-' }}</p>
+                    </div>
+                    <div>
+                      <p style="margin: 0 0 4px 0; color: rgba(255,255,255,0.5); font-size: 12px;">结案说明</p>
+                      <p style="margin: 0; color: white; font-size: 14px;">{{ currentCase.close_remark || '-' }}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 照片展示 -->
+                <div v-if="currentCase.photo_path" style="margin-bottom: 20px;">
+                  <h4 style="margin: 0 0 12px 0; color: rgba(255,255,255,0.9); font-size: 15px; display: flex; align-items: center; gap: 6px;">
+                    📷 案件照片
+                  </h4>
+                  <div style="display: flex; flex-wrap: wrap; gap: 10px;">
+                    <img v-for="(photo, index) in getPhotoPaths(currentCase.photo_path)" :key="index" :src="photo" :alt="'照片' + (index + 1)" style="width: 150px; height: 110px; object-fit: cover; border-radius: 8px; cursor: pointer; border: 1px solid rgba(255,255,255,0.2); transition: transform 0.2s;" @click="window.open(photo, '_blank')" @mouseenter="$event.target.style.transform='scale(1.05)'" @mouseleave="$event.target.style.transform='scale(1)'">
+                  </div>
+                </div>
+              </div>
+
+              <!-- 右侧：跟进记录 -->
+              <div style="padding: 25px; background: rgba(0,0,0,0.1);">
+                <h4 style="margin: 0 0 15px 0; color: rgba(255,255,255,0.9); font-size: 15px; display: flex; align-items: center; gap: 6px;">
+                  📋 跟进记录
+                  <span style="font-size: 12px; color: rgba(255,255,255,0.5); font-weight: normal;">（共 {{ caseFollows.length }} 条）</span>
+                </h4>
+
+                <div v-if="caseFollows.length === 0" style="padding: 40px 20px; text-align: center; color: rgba(255,255,255,0.4); background: rgba(255,255,255,0.02); border-radius: 8px; border: 1px dashed rgba(255,255,255,0.1);">
+                  <div style="font-size: 40px; margin-bottom: 10px;">📭</div>
+                  <p style="margin: 0; font-size: 14px;">暂无跟进记录</p>
+                  <button @click="showFollowForm = true" style="margin-top: 15px; padding: 8px 16px; background: rgba(79, 172, 254, 0.2); color: #4facfe; border: 1px solid rgba(79, 172, 254, 0.4); border-radius: 6px; cursor: pointer; font-size: 13px;">
+                    添加跟进
+                  </button>
+                </div>
+
+                <div v-else style="max-height: 500px; overflow-y: auto; padding-right: 5px;">
+                  <div v-for="(follow, index) in caseFollows" :key="follow.id" style="position: relative; padding-left: 25px; margin-bottom: 20px;">
+                    <!-- 时间线 -->
+                    <div style="position: absolute; left: 0; top: 8px; width: 12px; height: 12px; border-radius: 50%; background: #4facfe; border: 2px solid rgba(30, 58, 138, 1);"></div>
+                    <div v-if="index < caseFollows.length - 1" style="position: absolute; left: 5px; top: 24px; width: 2px; height: calc(100% + 8px); background: rgba(79, 172, 254, 0.3);"></div>
+
+                    <!-- 跟进卡片 -->
+                    <div style="padding: 12px 15px; background: rgba(255,255,255,0.05); border-radius: 8px; border: 1px solid rgba(255,255,255,0.1);">
+                      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                        <span style="padding: 3px 10px; background: rgba(79, 172, 254, 0.2); border-radius: 12px; color: #4facfe; font-size: 12px; font-weight: 500;">{{ follow.follow_type }}</span>
+                        <span style="color: rgba(255,255,255,0.5); font-size: 12px;">{{ follow.follow_time }}</span>
+                      </div>
+                      <p style="margin: 0 0 6px 0; color: rgba(255,255,255,0.9); font-size: 14px; line-height: 1.5;">{{ follow.content }}</p>
+                      <p v-if="follow.follow_user" style="margin: 0; color: rgba(255,255,255,0.4); font-size: 12px;">跟进人：{{ follow.follow_user }}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 分类弹窗 -->
+          <div v-if="showCategoryForm" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 1000;">
+            <div style="background: #1a1a2e; padding: 25px; border-radius: 12px; width: 450px; max-height: 80vh; overflow-y: auto;">
+              <h3 style="margin: 0 0 20px 0; color: white;">设置案件分类</h3>
+              <div style="margin-bottom: 15px;">
+                <label style="display: block; margin-bottom: 8px; color: rgba(255,255,255,0.8); font-size: 14px;">案件分类</label>
+                <select v-model="categoryForm.category" style="width: 100%; padding: 10px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 6px; color: white;">
+                  <option value="">请选择分类</option>
+                  <option value="非我局管辖">非我局管辖</option>
+                  <option value="挂账案件">挂账案件</option>
+                  <option value="疑难案件">疑难案件</option>
+                </select>
+              </div>
+
+              <!-- 非我局管辖 -->
+              <template v-if="categoryForm.category === '非我局管辖'">
+                <div style="margin-bottom: 15px;">
+                  <label style="display: block; margin-bottom: 8px; color: rgba(255,255,255,0.8); font-size: 14px;">权属单位</label>
+                  <input v-model="categoryForm.owner_unit" style="width: 100%; padding: 10px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 6px; color: white;" placeholder="请输入权属单位">
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+                  <div>
+                    <label style="display: block; margin-bottom: 8px; color: rgba(255,255,255,0.8); font-size: 14px;">联系人</label>
+                    <input v-model="categoryForm.contact_person" style="width: 100%; padding: 10px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 6px; color: white;">
+                  </div>
+                  <div>
+                    <label style="display: block; margin-bottom: 8px; color: rgba(255,255,255,0.8); font-size: 14px;">联系电话</label>
+                    <input v-model="categoryForm.contact_phone" style="width: 100%; padding: 10px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 6px; color: white;">
+                  </div>
+                </div>
+              </template>
+
+              <!-- 挂账案件 -->
+              <template v-if="categoryForm.category === '挂账案件'">
+                <div style="margin-bottom: 15px;">
+                  <label style="display: block; margin-bottom: 8px; color: rgba(255,255,255,0.8); font-size: 14px;">挂账原因</label>
+                  <textarea v-model="categoryForm.pending_reason" rows="3" style="width: 100%; padding: 10px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 6px; color: white;" placeholder="请输入挂账原因"></textarea>
+                </div>
+                <div style="margin-bottom: 15px;">
+                  <label style="display: block; margin-bottom: 8px; color: rgba(255,255,255,0.8); font-size: 14px;">预计处置时间</label>
+                  <input v-model="categoryForm.pending_deadline" type="date" style="width: 100%; padding: 10px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 6px; color: white;">
+                </div>
+              </template>
+
+              <!-- 疑难案件 -->
+              <template v-if="categoryForm.category === '疑难案件'">
+                <div style="margin-bottom: 15px;">
+                  <label style="display: block; margin-bottom: 8px; color: rgba(255,255,255,0.8); font-size: 14px;">疑难类型</label>
+                  <select v-model="categoryForm.difficult_type" style="width: 100%; padding: 10px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 6px; color: white;">
+                    <option value="">请选择</option>
+                    <option value="建筑垃圾">建筑垃圾</option>
+                    <option value="自建房">自建房</option>
+                    <option value="违建">违建</option>
+                    <option value="其他">其他</option>
+                  </select>
+                </div>
+              </template>
+
+              <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                <button @click="showCategoryForm = false" style="padding: 10px 20px; background: rgba(255,255,255,0.1); color: white; border: none; border-radius: 6px; cursor: pointer;">取消</button>
+                <button @click="updateCaseCategory" style="padding: 10px 20px; background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; border: none; border-radius: 6px; cursor: pointer;">保存</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 跟进弹窗 -->
+          <div v-if="showFollowForm" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 1000;">
+            <div style="background: #1a1a2e; padding: 25px; border-radius: 12px; width: 450px;">
+              <h3 style="margin: 0 0 20px 0; color: white;">添加跟进记录</h3>
+              <div style="margin-bottom: 15px;">
+                <label style="display: block; margin-bottom: 8px; color: rgba(255,255,255,0.8); font-size: 14px;">跟进类型</label>
+                <select v-model="newFollow.follow_type" style="width: 100%; padding: 10px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 6px; color: white;">
+                  <option value="发函">发函</option>
+                  <option value="协调">协调</option>
+                  <option value="督办">督办</option>
+                  <option value="其他">其他</option>
+                </select>
+              </div>
+              <div style="margin-bottom: 15px;">
+                <label style="display: block; margin-bottom: 8px; color: rgba(255,255,255,0.8); font-size: 14px;">跟进内容</label>
+                <textarea v-model="newFollow.content" rows="4" style="width: 100%; padding: 10px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 6px; color: white;" placeholder="请输入跟进内容"></textarea>
+              </div>
+              <div style="margin-bottom: 15px;">
+                <label style="display: block; margin-bottom: 8px; color: rgba(255,255,255,0.8); font-size: 14px;">跟进人</label>
+                <input v-model="newFollow.follow_user" style="width: 100%; padding: 10px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 6px; color: white;" placeholder="请输入跟进人姓名">
+              </div>
+              <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                <button @click="showFollowForm = false" style="padding: 10px 20px; background: rgba(255,255,255,0.1); color: white; border: none; border-radius: 6px; cursor: pointer;">取消</button>
+                <button @click="addCaseFollow" style="padding: 10px 20px; background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; border: none; border-radius: 6px; cursor: pointer;">保存</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 结案弹窗 -->
+          <div v-if="showCloseForm" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 1000;">
+            <div style="background: #1a1a2e; padding: 25px; border-radius: 12px; width: 400px;">
+              <h3 style="margin: 0 0 20px 0; color: white;">结案确认</h3>
+              <div style="margin-bottom: 15px;">
+                <label style="display: block; margin-bottom: 8px; color: rgba(255,255,255,0.8); font-size: 14px;">结案说明</label>
+                <textarea v-model="closeRemark" rows="3" style="width: 100%; padding: 10px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 6px; color: white;" placeholder="请输入结案说明（可选）"></textarea>
+              </div>
+              <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                <button @click="showCloseForm = false" style="padding: 10px 20px; background: rgba(255,255,255,0.1); color: white; border: none; border-radius: 6px; cursor: pointer;">取消</button>
+                <button @click="closeCurrentCase" style="padding: 10px 20px; background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%); color: white; border: none; border-radius: 6px; cursor: pointer;">确认结案</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 导入弹窗 -->
+          <div v-if="showCasesImport" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 1000;">
+            <div style="background: #1a1a2e; padding: 25px; border-radius: 12px; width: 500px;">
+              <h3 style="margin: 0 0 20px 0; color: white; display: flex; align-items: center; gap: 8px;">
+                📤 导入案件数据
+              </h3>
+
+              <div style="margin-bottom: 15px; padding: 12px; background: rgba(255, 193, 7, 0.15); border: 1px solid rgba(255, 193, 7, 0.4); border-radius: 6px; color: rgba(255, 255, 255, 0.9); font-size: 14px;">
+                ⚠️ 提示：上传前需确保Excel表的第一行是字段行（表头行）
+              </div>
+
+              <div style="margin-bottom: 20px;">
+                <label style="display: block; margin-bottom: 8px; color: rgba(255,255,255,0.8); font-size: 14px;">选择Excel文件</label>
+                <input
+                  type="file"
+                  @change="handleCaseFileSelect"
+                  accept=".xlsx"
+                  style="width: 100%; padding: 12px; border: 1px solid rgba(100, 149, 237, 0.5); border-radius: 6px; background: rgba(30, 58, 138, 0.6); color: white;"
+                >
+              </div>
+
+              <div v-if="caseImportFile" style="margin-bottom: 15px; padding: 10px; background: rgba(79, 172, 254, 0.1); border-radius: 6px; color: rgba(255,255,255,0.9); font-size: 13px;">
+                📄 已选择: {{ caseImportFile.name }}
+              </div>
+
+              <div v-if="caseImportMessage" style="margin-bottom: 15px; padding: 12px; background: rgba(76, 175, 80, 0.2); border: 1px solid rgba(76, 175, 80, 0.4); border-radius: 6px; color: rgba(255, 255, 255, 0.9);">
+                {{ caseImportMessage }}
+              </div>
+
+              <div v-if="casesError" style="margin-bottom: 15px; padding: 12px; background: rgba(244, 67, 54, 0.2); border: 1px solid rgba(244, 67, 54, 0.4); border-radius: 6px; color: rgba(255, 255, 255, 0.9);">
+                {{ casesError }}
+              </div>
+
+              <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                <button @click="showCasesImport = false; caseImportMessage = ''; casesError = '';" style="padding: 10px 20px; background: rgba(255,255,255,0.1); color: white; border: none; border-radius: 6px; cursor: pointer;">关闭</button>
+                <button @click="importCases" :disabled="caseImportLoading || !caseImportFile" :style="{ padding: '10px 20px', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white', border: 'none', borderRadius: '6px', cursor: (caseImportLoading || !caseImportFile) ? 'not-allowed' : 'pointer', opacity: (caseImportLoading || !caseImportFile) ? 0.6 : 1 }">
+                  {{ caseImportLoading ? '导入中...' : '开始导入' }}
+                </button>
               </div>
             </div>
           </div>
