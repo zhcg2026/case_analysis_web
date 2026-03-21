@@ -2059,8 +2059,8 @@ async function fetchTables() {
       
       // 使用当前的表格可见性配置进行过滤
       const finalTables = filteredTables.filter(table => {
-        // 只有在配置中明确设置为true的表格才显示
-        const isVisible = tableVisibility.value[table] === true;
+        // 未配置时默认可见；仅明确设置为 false 才隐藏
+        const isVisible = tableVisibility.value[table] !== false;
         console.log(`表格 ${table} 可见性: ${isVisible}`);
         return isVisible;
       });

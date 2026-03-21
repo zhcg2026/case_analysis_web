@@ -13,13 +13,46 @@ import hashlib
 import jwt
 import datetime
 from functools import wraps
+try:
+    from backend.cases_helpers import (
+        CASE_CATEGORIES,
+        parse_pending_deadline,
+        serialize_case,
+        apply_case_category_fields,
+    )
+except ImportError:
+    # 兼容在 backend 目录直接执行 python app.py
+    from cases_helpers import (
+        CASE_CATEGORIES,
+        parse_pending_deadline,
+        serialize_case,
+        apply_case_category_fields,
+    )
+
+try:
+    from backend.cases_routes import register_case_management_routes
+except ImportError:
+    from cases_routes import register_case_management_routes
 
 # 导入处理docx文件的库
 from docx import Document
 
-# JWT配置
-SECRET_KEY = 'your-secret-key-for-jwt-token'
-TOKEN_EXPIRATION = 24 * 60 * 60  # 24小时
+# JWT配置（支持环境变量，默认值保持兼容现有部署）
+SECRET_KEY = os.getenv('JWT_SECRET_KEY', 'your-secret-key-for-jwt-token')
+TOKEN_EXPIRATION = int(os.getenv('TOKEN_EXPIRATION_SECONDS', str(24 * 60 * 60)))  # 24小时
+def get_json_payload():
+    """获取 JSON 请求体，统一空值处理。"""
+    data = request.get_json(silent=True)
+    return data if isinstance(data, dict) else {}
+
+
+def get_case_or_404(session, case_id):
+    """统一案件查询，减少重复代码。"""
+    case = session.query(Case).filter_by(id=case_id).first()
+    if not case:
+        return None, (jsonify({'error': '案件不存在'}), 404)
+    return case, None
+
 
 app = Flask(__name__)
 # 配置CORS，允许所有跨域请求
@@ -92,12 +125,12 @@ def admin_required(f):
         return f(*args, **kwargs)
     return decorated
 
-# 数据库配置
-DB_USER = 'root'
-DB_PASSWORD = 'MySql@2024!Root'
-DB_NAME = 'case_analysis'
-DB_HOST = 'mysql-case-analysis'
-DB_PORT = '3306'
+# 数据库配置（支持环境变量，默认值保持兼容现有部署）
+DB_USER = os.getenv('DB_USER', 'root')
+DB_PASSWORD = os.getenv('DB_PASSWORD', 'MySql@2024!Root')
+DB_NAME = os.getenv('DB_NAME', 'case_analysis')
+DB_HOST = os.getenv('DB_HOST', 'mysql-case-analysis')
+DB_PORT = os.getenv('DB_PORT', '3306')
 
 # 定义占位符类和变量
 engine = None
@@ -4888,439 +4921,6 @@ def process_cleaning():
     finally:
         session.close()
 
-# 案件管理API端点
-@app.route('/api/cases/import', methods=['POST'])
-def import_cases():
-    print("案件导入API被调用")
-    session = Session()
-    try:
-        print("检查请求文件")
-        if 'file' not in request.files:
-            print("没有文件部分")
-            return jsonify({'error': 'No file part'}), 400
-        
-        file = request.files['file']
-        print(f"获取文件: {file.filename}")
-        if file.filename == '':
-            print("没有选择文件")
-            return jsonify({'error': 'No selected file'}), 400
-        
-        if not file.filename.endswith('.xlsx'):
-            print("文件类型不正确")
-            return jsonify({'error': 'Only xlsx files are allowed'}), 400
-        
-        print(f"文件大小: {file.content_length} bytes")
-        
-        # 保存临时文件
-        import tempfile
-        import openpyxl
-        import os
-        
-        # 确保上传目录存在
-        upload_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads', 'case_photos')
-        os.makedirs(upload_dir, exist_ok=True)
-        
-        # 保存临时Excel文件
-        with tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False) as temp:
-            file.save(temp.name)
-            temp_path = temp.name
-        
-        try:
-            # 检查文件大小
-            file_size = os.path.getsize(temp_path)
-            print(f"临时文件大小: {file_size} bytes")
-            
-            # 使用openpyxl读取Excel文件
-            wb = openpyxl.load_workbook(temp_path)
-            ws = wb.active
-            
-            # 直接从Excel文件中提取图片（不依赖openpyxl的图片检测）
-            import zipfile
-            import xml.etree.ElementTree as ET
-            
-            image_map = {}
-            
-            try:
-                with zipfile.ZipFile(temp_path, 'r') as zip_ref:
-                    # 读取drawing关系文件
-                    try:
-                        with zip_ref.open('xl/drawings/_rels/drawing1.xml.rels') as f:
-                            drawing_rels_xml = f.read()
-                    except KeyError:
-                        print("没有找到drawing关系文件")
-                        drawing_rels_xml = None
-                    
-                    if drawing_rels_xml:
-                        # 解析drawing关系文件
-                        drawing_rels_root = ET.fromstring(drawing_rels_xml)
-                        
-                        # 创建关系ID到图片文件的映射
-                        rels_map = {}
-                        for rel in drawing_rels_root.findall('.//{http://schemas.openxmlformats.org/package/2006/relationships}Relationship'):
-                            rel_id = rel.get('Id')
-                            target = rel.get('Target')
-                            if target.startswith('../media/'):
-                                image_file = 'xl/media/' + target[9:]
-                                rels_map[rel_id] = image_file
-                        
-                        print(f"找到 {len(rels_map)} 个图片关系")
-                        
-                        # 读取drawing XML
-                        try:
-                            with zip_ref.open('xl/drawings/drawing1.xml') as f:
-                                drawing_xml = f.read()
-                        except KeyError:
-                            print("没有找到drawing文件")
-                            drawing_xml = None
-                        
-                        if drawing_xml:
-                            # 解析drawing XML
-                            drawing_root = ET.fromstring(drawing_xml)
-                            
-                            # 提取图片位置信息
-                            for anchor in drawing_root.findall('.//{http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing}twoCellAnchor'):
-                                # 获取图片位置
-                                from_elem = anchor.find('.//{http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing}from')
-                                if from_elem is not None:
-                                    row_elem = from_elem.find('.//{http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing}row')
-                                    col_elem = from_elem.find('.//{http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing}col')
-                                    if row_elem is not None and col_elem is not None:
-                                        row = int(row_elem.text) + 1  # 转换为1-based索引
-                                        col = int(col_elem.text)
-                                        
-                                        # 获取图片关系ID
-                                        blip = anchor.find('.//{http://schemas.openxmlformats.org/drawingml/2006/main}blip')
-                                        if blip is not None:
-                                            embed = blip.get('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}embed')
-                                            if embed and embed in rels_map:
-                                                image_file = rels_map[embed]
-                                                if row not in image_map:
-                                                    image_map[row] = []
-                                                image_map[row].append(image_file)
-                            
-                            print(f"找到 {len(image_map)} 行包含图片")
-            except Exception as e:
-                print(f"提取图片信息失败: {str(e)}")
-                import traceback
-                traceback.print_exc()
-            
-            # 读取表头
-            headers = [cell.value for cell in ws[1]]
-            
-            # 检查必需的列
-            required_columns = ['任务号', '上报时间', '问题描述']
-            for col in required_columns:
-                if col not in headers:
-                    return jsonify({'error': f'Missing required column: {col}'}), 400
-            
-            # 获取列索引
-            task_number_col = headers.index('任务号')
-            stage_light_col = headers.index('阶段红绿灯') if '阶段红绿灯' in headers else None
-            auth_status_col = headers.index('阶段授权状态图标') if '阶段授权状态图标' in headers else None
-            supervise_status_col = headers.index('阶段督办状态图标') if '阶段督办状态图标' in headers else None
-            report_time_col = headers.index('上报时间') if '上报时间' in headers else None
-            source_col = headers.index('问题来源') if '问题来源' in headers else None
-            major_category_col = headers.index('大类名称') if '大类名称' in headers else None
-            minor_category_col = headers.index('小类名称') if '小类名称' in headers else None
-            problem_type_col = headers.index('问题类型') if '问题类型' in headers else None
-            problem_desc_col = headers.index('问题描述') if '问题描述' in headers else None
-            address_desc_col = headers.index('地址描述') if '地址描述' in headers else None
-            responsible_grid_col = headers.index('责任网格') if '责任网格' in headers else None
-            area_col = headers.index('所属区域') if '所属区域' in headers else None
-            street_col = headers.index('所属街道') if '所属街道' in headers else None
-            community_col = headers.index('所属社区') if '所属社区' in headers else None
-            transfer_time_col = headers.index('批转时间') if '批转时间' in headers else None
-            current_stage_time_info_col = headers.index('当前阶段时限信息') if '当前阶段时限信息' in headers else None
-            current_stage_deadline_col = headers.index('当前阶段截止时间') if '当前阶段截止时间' in headers else None
-            current_stage_remaining_time_col = headers.index('当前阶段剩余时间') if '当前阶段剩余时间' in headers else None
-            area_level_col = headers.index('区域级别') if '区域级别' in headers else None
-            area_level_name_col = headers.index('区域级别名称') if '区域级别名称' in headers else None
-            responsible_area_name_col = headers.index('责属区域名称') if '责属区域名称' in headers else None
-            bundle_deadline_col = headers.index('捆绑截止时间') if '捆绑截止时间' in headers else None
-            bundle_time_limit_col = headers.index('捆绑截止时限') if '捆绑截止时限' in headers else None
-            
-            imported_count = 0
-            skipped_count = 0
-            
-            # 从第二行开始处理数据
-            for row_num in range(2, ws.max_row + 1):
-                try:
-                    # 获取任务号
-                    task_number = ws.cell(row=row_num, column=task_number_col + 1).value
-                    if not task_number:
-                        skipped_count += 1
-                        continue
-                    
-                    task_number = str(task_number)
-                    
-                    # 检查任务号是否已存在
-                    existing_case = session.query(Case).filter_by(task_number=task_number).first()
-                    if existing_case:
-                        skipped_count += 1
-                        continue
-                    
-                    photo_paths = []
-                    if row_num in image_map:
-                        import uuid
-                        
-                        images = image_map[row_num]
-                        for img_idx, image_file in enumerate(images):
-                            image_filename = f"case_{task_number}_{uuid.uuid4().hex}.jpeg"
-                            image_path = os.path.join(upload_dir, image_filename)
-                            
-                            try:
-                                # 从Excel文件中提取图片
-                                with zipfile.ZipFile(temp_path, 'r') as zip_ref:
-                                    with zip_ref.open(image_file) as source:
-                                        img_data = source.read()
-                                
-                                if img_data:
-                                    os.makedirs(os.path.dirname(image_path), exist_ok=True)
-                                    
-                                    with open(image_path, 'wb') as f:
-                                        f.write(img_data)
-                                    
-                                    file_size = os.path.getsize(image_path)
-                                    print(f"Image saved to {image_path}, size: {file_size} bytes")
-                                    
-                                    if file_size > 0:
-                                        photo_paths.append(f"/uploads/case_photos/{image_filename}")
-                                        print(f"Photo path added: /uploads/case_photos/{image_filename}")
-                                    else:
-                                        print(f"Warning: Image file is empty: {image_path}")
-                                        if os.path.exists(image_path):
-                                            os.remove(image_path)
-                                else:
-                                    print(f"No image data found for image {img_idx} at row {row_num}")
-                                    
-                            except Exception as img_error:
-                                print(f"Error saving image {img_idx} for task {task_number}: {str(img_error)}")
-                                import traceback
-                                traceback.print_exc()
-                                if os.path.exists(image_path) and os.path.getsize(image_path) == 0:
-                                    os.remove(image_path)
-                    
-                    photo_path = ','.join(photo_paths) if photo_paths else None
-                    
-                    # 构建案件对象
-                    case_data = {
-                        'task_number': task_number,
-                        'stage_light': str(ws.cell(row=row_num, column=stage_light_col + 1).value) if stage_light_col is not None and ws.cell(row=row_num, column=stage_light_col + 1).value else None,
-                        'auth_status': str(ws.cell(row=row_num, column=auth_status_col + 1).value) if auth_status_col is not None and ws.cell(row=row_num, column=auth_status_col + 1).value else None,
-                        'supervise_status': str(ws.cell(row=row_num, column=supervise_status_col + 1).value) if supervise_status_col is not None and ws.cell(row=row_num, column=supervise_status_col + 1).value else None,
-                        'report_time': ws.cell(row=row_num, column=report_time_col + 1).value if report_time_col is not None and ws.cell(row=row_num, column=report_time_col + 1).value else None,
-                        'source': str(ws.cell(row=row_num, column=source_col + 1).value) if source_col is not None and ws.cell(row=row_num, column=source_col + 1).value else None,
-                        'major_category': str(ws.cell(row=row_num, column=major_category_col + 1).value) if major_category_col is not None and ws.cell(row=row_num, column=major_category_col + 1).value else None,
-                        'minor_category': str(ws.cell(row=row_num, column=minor_category_col + 1).value) if minor_category_col is not None and ws.cell(row=row_num, column=minor_category_col + 1).value else None,
-                        'problem_type': str(ws.cell(row=row_num, column=problem_type_col + 1).value) if problem_type_col is not None and ws.cell(row=row_num, column=problem_type_col + 1).value else None,
-                        'problem_desc': str(ws.cell(row=row_num, column=problem_desc_col + 1).value) if problem_desc_col is not None and ws.cell(row=row_num, column=problem_desc_col + 1).value else None,
-                        'address_desc': str(ws.cell(row=row_num, column=address_desc_col + 1).value) if address_desc_col is not None and ws.cell(row=row_num, column=address_desc_col + 1).value else None,
-                        'responsible_grid': str(ws.cell(row=row_num, column=responsible_grid_col + 1).value) if responsible_grid_col is not None and ws.cell(row=row_num, column=responsible_grid_col + 1).value else None,
-                        'area': str(ws.cell(row=row_num, column=area_col + 1).value) if area_col is not None and ws.cell(row=row_num, column=area_col + 1).value else None,
-                        'street': str(ws.cell(row=row_num, column=street_col + 1).value) if street_col is not None and ws.cell(row=row_num, column=street_col + 1).value else None,
-                        'community': str(ws.cell(row=row_num, column=community_col + 1).value) if community_col is not None and ws.cell(row=row_num, column=community_col + 1).value else None,
-                        'transfer_time': ws.cell(row=row_num, column=transfer_time_col + 1).value if transfer_time_col is not None and ws.cell(row=row_num, column=transfer_time_col + 1).value else None,
-                        'current_stage_time_info': str(ws.cell(row=row_num, column=current_stage_time_info_col + 1).value) if current_stage_time_info_col is not None and ws.cell(row=row_num, column=current_stage_time_info_col + 1).value else None,
-                        'current_stage_deadline': ws.cell(row=row_num, column=current_stage_deadline_col + 1).value if current_stage_deadline_col is not None and ws.cell(row=row_num, column=current_stage_deadline_col + 1).value else None,
-                        'current_stage_remaining_time': str(ws.cell(row=row_num, column=current_stage_remaining_time_col + 1).value) if current_stage_remaining_time_col is not None and ws.cell(row=row_num, column=current_stage_remaining_time_col + 1).value else None,
-                        'area_level': int(ws.cell(row=row_num, column=area_level_col + 1).value) if area_level_col is not None and ws.cell(row=row_num, column=area_level_col + 1).value else None,
-                        'area_level_name': str(ws.cell(row=row_num, column=area_level_name_col + 1).value) if area_level_name_col is not None and ws.cell(row=row_num, column=area_level_name_col + 1).value else None,
-                        'responsible_area_name': str(ws.cell(row=row_num, column=responsible_area_name_col + 1).value) if responsible_area_name_col is not None and ws.cell(row=row_num, column=responsible_area_name_col + 1).value else None,
-                        'bundle_deadline': ws.cell(row=row_num, column=bundle_deadline_col + 1).value if bundle_deadline_col is not None and ws.cell(row=row_num, column=bundle_deadline_col + 1).value else None,
-                        'bundle_time_limit': str(ws.cell(row=row_num, column=bundle_time_limit_col + 1).value) if bundle_time_limit_col is not None and ws.cell(row=row_num, column=bundle_time_limit_col + 1).value else None,
-                        'photo_path': photo_path
-                    }
-                    
-                    new_case = Case(**case_data)
-                    session.add(new_case)
-                    imported_count += 1
-                except Exception as e:
-                    print(f"Error importing row {row_num}: {str(e)}")
-                    skipped_count += 1
-                    continue
-        finally:
-            # 清理临时文件
-            if os.path.exists(temp_path):
-                os.remove(temp_path)
-        
-        session.commit()
-        return jsonify({
-            'message': 'Import completed',
-            'imported_count': imported_count,
-            'skipped_count': skipped_count
-        }), 200
-    except Exception as e:
-        session.rollback()
-        print(f"Error in import_cases: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({'error': str(e)}), 500
-    finally:
-        session.close()
-
-@app.route('/api/cases', methods=['GET'])
-@protected
-def get_cases():
-    session = Session()
-    try:
-        page = request.args.get('page', 1, type=int)
-        per_page = request.args.get('per_page', 20, type=int)
-        search = request.args.get('search', '')
-        category = request.args.get('category', '')  # 新增：分类筛选
-        status = request.args.get('status', '')      # 新增：状态筛选
-
-        query = session.query(Case)
-
-        # 分类筛选
-        if category:
-            query = query.filter(Case.category == category)
-
-        # 状态筛选
-        if status:
-            query = query.filter(Case.status == status)
-
-        if search:
-            search_filter = f"%{search}%"
-            query = query.filter(
-                (Case.task_number.like(search_filter)) |
-                (Case.problem_desc.like(search_filter)) |
-                (Case.address_desc.like(search_filter)) |
-                (Case.major_category.like(search_filter)) |
-                (Case.minor_category.like(search_filter))
-            )
-        
-        total = query.count()
-        cases = query.order_by(Case.created_at.desc()).offset((page - 1) * per_page).limit(per_page).all()
-        
-        cases_list = []
-        for case in cases:
-            cases_list.append({
-                'id': case.id,
-                'task_number': case.task_number,
-                'stage_light': case.stage_light,
-                'auth_status': case.auth_status,
-                'supervise_status': case.supervise_status,
-                'report_time': case.report_time.strftime('%Y-%m-%d %H:%M:%S') if case.report_time else None,
-                'source': case.source,
-                'major_category': case.major_category,
-                'minor_category': case.minor_category,
-                'problem_type': case.problem_type,
-                'problem_desc': case.problem_desc,
-                'address_desc': case.address_desc,
-                'responsible_grid': case.responsible_grid,
-                'area': case.area,
-                'street': case.street,
-                'community': case.community,
-                'transfer_time': case.transfer_time.strftime('%Y-%m-%d %H:%M:%S') if case.transfer_time else None,
-                'current_stage_time_info': case.current_stage_time_info,
-                'current_stage_deadline': case.current_stage_deadline.strftime('%Y-%m-%d %H:%M:%S') if case.current_stage_deadline else None,
-                'current_stage_remaining_time': case.current_stage_remaining_time,
-                'area_level': case.area_level,
-                'area_level_name': case.area_level_name,
-                'responsible_area_name': case.responsible_area_name,
-                'bundle_deadline': case.bundle_deadline.strftime('%Y-%m-%d %H:%M:%S') if case.bundle_deadline else None,
-                'bundle_time_limit': case.bundle_time_limit,
-                'photo_path': case.photo_path,
-                'created_at': case.created_at.strftime('%Y-%m-%d %H:%M:%S') if case.created_at else None,
-                # 新增字段
-                'category': case.category or '',
-                'status': case.status or '跟进中',
-                'owner_unit': case.owner_unit or '',
-                'contact_person': case.contact_person or '',
-                'contact_phone': case.contact_phone or '',
-                'pending_reason': case.pending_reason or '',
-                'pending_deadline': case.pending_deadline.strftime('%Y-%m-%d') if case.pending_deadline else None,
-                'difficult_type': case.difficult_type or '',
-                'last_follow_time': case.last_follow_time.strftime('%Y-%m-%d %H:%M') if case.last_follow_time else None,
-                'follow_count': case.follow_count or 0,
-                'close_time': case.close_time.strftime('%Y-%m-%d %H:%M') if case.close_time else None,
-                'close_remark': case.close_remark or '',
-                'remark': case.remark or ''
-            })
-        
-        session.commit()
-        return jsonify({
-            'cases': cases_list,
-            'total': total,
-            'page': page,
-            'per_page': per_page,
-            'total_pages': (total + per_page - 1) // per_page
-        }), 200
-    except Exception as e:
-        session.rollback()
-        print(f"Error in get_cases: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({'error': str(e)}), 500
-    finally:
-        session.close()
-
-@app.route('/api/cases/<int:case_id>', methods=['GET'])
-@protected
-def get_case_detail(case_id):
-    session = Session()
-    try:
-        case = session.query(Case).filter_by(id=case_id).first()
-        
-        if not case:
-            return jsonify({'error': 'Case not found'}), 404
-        
-        case_detail = {
-            'id': case.id,
-            'task_number': case.task_number,
-            'stage_light': case.stage_light,
-            'auth_status': case.auth_status,
-            'supervise_status': case.supervise_status,
-            'report_time': case.report_time.strftime('%Y-%m-%d %H:%M:%S') if case.report_time else None,
-            'source': case.source,
-            'major_category': case.major_category,
-            'minor_category': case.minor_category,
-            'problem_type': case.problem_type,
-            'problem_desc': case.problem_desc,
-            'address_desc': case.address_desc,
-            'responsible_grid': case.responsible_grid,
-            'area': case.area,
-            'street': case.street,
-            'community': case.community,
-            'transfer_time': case.transfer_time.strftime('%Y-%m-%d %H:%M:%S') if case.transfer_time else None,
-            'current_stage_time_info': case.current_stage_time_info,
-            'current_stage_deadline': case.current_stage_deadline.strftime('%Y-%m-%d %H:%M:%S') if case.current_stage_deadline else None,
-            'current_stage_remaining_time': case.current_stage_remaining_time,
-            'area_level': case.area_level,
-            'area_level_name': case.area_level_name,
-            'responsible_area_name': case.responsible_area_name,
-            'bundle_deadline': case.bundle_deadline.strftime('%Y-%m-%d %H:%M:%S') if case.bundle_deadline else None,
-            'bundle_time_limit': case.bundle_time_limit,
-            'photo_path': case.photo_path,
-            'created_at': case.created_at.strftime('%Y-%m-%d %H:%M:%S') if case.created_at else None,
-            'updated_at': case.updated_at.strftime('%Y-%m-%d %H:%M:%S') if case.updated_at else None,
-            # 新增字段
-            'category': case.category or '',
-            'status': case.status or '跟进中',
-            'owner_unit': case.owner_unit or '',
-            'contact_person': case.contact_person or '',
-            'contact_phone': case.contact_phone or '',
-            'pending_reason': case.pending_reason or '',
-            'pending_deadline': case.pending_deadline.strftime('%Y-%m-%d') if case.pending_deadline else None,
-            'difficult_type': case.difficult_type or '',
-            'last_follow_time': case.last_follow_time.strftime('%Y-%m-%d %H:%M') if case.last_follow_time else None,
-            'follow_count': case.follow_count or 0,
-            'close_time': case.close_time.strftime('%Y-%m-%d %H:%M') if case.close_time else None,
-            'close_remark': case.close_remark or '',
-            'remark': case.remark or ''
-        }
-        
-        session.commit()
-        return jsonify(case_detail), 200
-    except Exception as e:
-        session.rollback()
-        print(f"Error in get_case_detail: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({'error': str(e)}), 500
-    finally:
-        session.close()
-
 # 城管通API端点
 @app.route('/api/chengguantong/ask', methods=['POST'])
 @protected
@@ -5619,322 +5219,19 @@ except Exception as e:
     print(f"CaseFollow 模型初始化警告: {e}")
     CaseFollow = None
 
-@app.route('/api/cases/stats', methods=['GET'])
-@protected
-def get_cases_stats():
-    """获取案件统计信息"""
-    session = Session()
-    try:
-        # 统计各分类案件数量
-        stats = {
-            'total': 0,
-            'non_jurisdiction': 0,  # 非我局管辖
-            'pending': 0,           # 挂账案件
-            'difficult': 0,         # 疑难案件
-            'follow_up': 0,         # 跟进中
-            'closed': 0,            # 已结案
-            'expiring_soon': 0      # 即将到期（挂账7天内）
-        }
-
-        # 总数
-        stats['total'] = session.query(Case).count()
-
-        # 按分类统计
-        from sqlalchemy import func
-        category_stats = session.query(
-            Case.category,
-            func.count(Case.id)
-        ).group_by(Case.category).all()
-
-        for cat, count in category_stats:
-            if cat == '非我局管辖':
-                stats['non_jurisdiction'] = count
-            elif cat == '挂账案件':
-                stats['pending'] = count
-            elif cat == '疑难案件':
-                stats['difficult'] = count
-
-        # 按状态统计
-        status_stats = session.query(
-            Case.status,
-            func.count(Case.id)
-        ).group_by(Case.status).all()
-
-        for status, count in status_stats:
-            if status == '跟进中' or status is None:
-                stats['follow_up'] += count
-            elif status == '已结案':
-                stats['closed'] = count
-
-        # 即将到期的挂账案件（7天内）
-        from datetime import datetime, timedelta
-        seven_days_later = datetime.now() + timedelta(days=7)
-        stats['expiring_soon'] = session.query(Case).filter(
-            Case.category == '挂账案件',
-            Case.pending_deadline != None,
-            Case.pending_deadline <= seven_days_later,
-            Case.pending_deadline >= datetime.now(),
-            Case.status != '已结案'
-        ).count()
-
-        session.commit()
-        return jsonify(stats), 200
-    except Exception as e:
-        session.rollback()
-        print(f"Error in get_cases_stats: {str(e)}")
-        return jsonify({'error': str(e)}), 500
-    finally:
-        session.close()
-
-
-@app.route('/api/cases/<int:case_id>/category', methods=['PUT'])
-@protected
-def update_case_category(case_id):
-    """更新案件分类"""
-    session = Session()
-    try:
-        data = request.json
-        category = data.get('category')  # 非我局管辖/挂账案件/疑难案件
-
-        if category not in ['非我局管辖', '挂账案件', '疑难案件']:
-            return jsonify({'error': '无效的分类'}), 400
-
-        case = session.query(Case).filter_by(id=case_id).first()
-        if not case:
-            return jsonify({'error': '案件不存在'}), 404
-
-        case.category = category
-        case.status = '跟进中'
-
-        # 根据分类更新相关字段
-        if category == '非我局管辖':
-            case.owner_unit = data.get('owner_unit', '')
-            case.contact_person = data.get('contact_person', '')
-            case.contact_phone = data.get('contact_phone', '')
-        elif category == '挂账案件':
-            case.pending_reason = data.get('pending_reason', '')
-            if data.get('pending_deadline'):
-                case.pending_deadline = datetime.strptime(data.get('pending_deadline'), '%Y-%m-%d')
-        elif category == '疑难案件':
-            case.difficult_type = data.get('difficult_type', '')
-
-        session.commit()
-        return jsonify({'message': '分类更新成功'}), 200
-    except Exception as e:
-        session.rollback()
-        print(f"Error in update_case_category: {str(e)}")
-        return jsonify({'error': str(e)}), 500
-    finally:
-        session.close()
-
-
-@app.route('/api/cases/<int:case_id>/follow', methods=['POST'])
-@protected
-def add_case_follow(case_id):
-    """添加跟进记录"""
-    session = Session()
-    try:
-        if CaseFollow is None:
-            return jsonify({'error': '跟进功能暂不可用，请先运行数据库迁移'}), 500
-
-        data = request.json
-        follow_type = data.get('follow_type', '其他')  # 发函/协调/督办/其他
-        content = data.get('content', '')
-        follow_user = data.get('follow_user', '')
-
-        if not content:
-            return jsonify({'error': '跟进内容不能为空'}), 400
-
-        # 检查案件是否存在
-        case = session.query(Case).filter_by(id=case_id).first()
-        if not case:
-            return jsonify({'error': '案件不存在'}), 404
-
-        # 创建跟进记录
-        new_follow = CaseFollow(
-            case_id=case_id,
-            follow_type=follow_type,
-            content=content,
-            follow_user=follow_user,
-            follow_time=datetime.datetime.now()
-        )
-        session.add(new_follow)
-
-        # 更新案件的跟进信息
-        case.last_follow_time = datetime.datetime.now()
-        case.follow_count = (case.follow_count or 0) + 1
-
-        session.commit()
-        return jsonify({'message': '跟进记录添加成功', 'follow_id': new_follow.id}), 200
-    except Exception as e:
-        session.rollback()
-        print(f"Error in add_case_follow: {str(e)}")
-        return jsonify({'error': str(e)}), 500
-    finally:
-        session.close()
-
-
-@app.route('/api/cases/<int:case_id>/follows', methods=['GET'])
-@protected
-def get_case_follows(case_id):
-    """获取案件的跟进记录"""
-    session = Session()
-    try:
-        if CaseFollow is None:
-            return jsonify({'follows': []}), 200
-
-        follows = session.query(CaseFollow).filter_by(case_id=case_id).order_by(CaseFollow.follow_time.desc()).all()
-
-        follows_list = []
-        for f in follows:
-            follows_list.append({
-                'id': f.id,
-                'follow_type': f.follow_type,
-                'content': f.content,
-                'attachments': f.attachments,
-                'follow_time': f.follow_time.strftime('%Y-%m-%d %H:%M') if f.follow_time else None,
-                'follow_user': f.follow_user
-            })
-
-        session.commit()
-        return jsonify({'follows': follows_list}), 200
-    except Exception as e:
-        session.rollback()
-        print(f"Error in get_case_follows: {str(e)}")
-        return jsonify({'error': str(e)}), 500
-    finally:
-        session.close()
-
-
-@app.route('/api/cases/<int:case_id>/close', methods=['PUT'])
-@protected
-def close_case(case_id):
-    """结案"""
-    session = Session()
-    try:
-        data = request.json
-        close_remark = data.get('close_remark', '')
-
-        case = session.query(Case).filter_by(id=case_id).first()
-        if not case:
-            return jsonify({'error': '案件不存在'}), 404
-
-        case.status = '已结案'
-        case.close_time = datetime.datetime.now()
-        case.close_remark = close_remark
-
-        session.commit()
-        return jsonify({'message': '结案成功'}), 200
-    except Exception as e:
-        session.rollback()
-        print(f"Error in close_case: {str(e)}")
-        return jsonify({'error': str(e)}), 500
-    finally:
-        session.close()
-
-
-@app.route('/api/cases/<int:case_id>', methods=['PUT'])
-@protected
-def update_case(case_id):
-    """更新案件信息"""
-    session = Session()
-    try:
-        data = request.json
-
-        case = session.query(Case).filter_by(id=case_id).first()
-        if not case:
-            return jsonify({'error': '案件不存在'}), 404
-
-        # 更新允许修改的字段
-        updatable_fields = [
-            'owner_unit', 'contact_person', 'contact_phone',
-            'pending_reason', 'pending_deadline', 'difficult_type', 'remark'
-        ]
-
-        for field in updatable_fields:
-            if field in data:
-                if field == 'pending_deadline' and data[field]:
-                    setattr(case, field, datetime.strptime(data[field], '%Y-%m-%d'))
-                else:
-                    setattr(case, field, data[field])
-
-        session.commit()
-        return jsonify({'message': '更新成功'}), 200
-    except Exception as e:
-        session.rollback()
-        print(f"Error in update_case: {str(e)}")
-        return jsonify({'error': str(e)}), 500
-    finally:
-        session.close()
-
-
-@app.route('/api/cases/export', methods=['GET'])
-@protected
-def export_cases():
-    """导出案件数据"""
-    session = Session()
-    try:
-        import io
-        import pandas as pd
-
-        category = request.args.get('category', '')  # 可选筛选
-        status = request.args.get('status', '')
-
-        query = session.query(Case)
-
-        if category:
-            query = query.filter(Case.category == category)
-        if status:
-            query = query.filter(Case.status == status)
-
-        cases = query.all()
-
-        # 转换为DataFrame
-        data = []
-        for c in cases:
-            data.append({
-                '任务号': c.task_number,
-                '案件分类': c.category or '',
-                '状态': c.status or '跟进中',
-                '上报时间': c.report_time.strftime('%Y-%m-%d %H:%M') if c.report_time else '',
-                '问题来源': c.source or '',
-                '大类': c.major_category or '',
-                '小类': c.minor_category or '',
-                '问题描述': c.problem_desc or '',
-                '地址': c.address_desc or '',
-                '责属区域': c.responsible_area_name or '',
-                '权属单位': c.owner_unit or '',
-                '挂账原因': c.pending_reason or '',
-                '预计处置时间': c.pending_deadline.strftime('%Y-%m-%d') if c.pending_deadline else '',
-                '疑难类型': c.difficult_type or '',
-                '跟进次数': c.follow_count or 0,
-                '最近跟进': c.last_follow_time.strftime('%Y-%m-%d %H:%M') if c.last_follow_time else '',
-                '结案时间': c.close_time.strftime('%Y-%m-%d %H:%M') if c.close_time else '',
-                '结案说明': c.close_remark or '',
-                '备注': c.remark or ''
-            })
-
-        df = pd.DataFrame(data)
-
-        # 导出为Excel
-        output = io.BytesIO()
-        with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            df.to_excel(writer, index=False, sheet_name='案件数据')
-        output.seek(0)
-
-        session.close()
-        return send_file(
-            output,
-            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            as_attachment=True,
-            download_name=f'案件导出_{datetime.now().strftime("%Y%m%d_%H%M%S")}.xlsx'
-        )
-    except Exception as e:
-        session.rollback()
-        print(f"Error in export_cases: {str(e)}")
-        return jsonify({'error': str(e)}), 500
-    finally:
-        session.close()
+register_case_management_routes(
+    app=app,
+    Session=Session,
+    Case=Case,
+    CaseFollow=CaseFollow,
+    protected=protected,
+    get_json_payload=get_json_payload,
+    get_case_or_404=get_case_or_404,
+    serialize_case=serialize_case,
+    CASE_CATEGORIES=CASE_CATEGORIES,
+    apply_case_category_fields=apply_case_category_fields,
+    parse_pending_deadline=parse_pending_deadline,
+)
 
 
 # 前端静态文件路由 - 放在最后
@@ -5952,4 +5249,8 @@ def serve_frontend(path):
     return send_from_directory(frontend_dist, path)
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    app.run(
+        debug=os.getenv('FLASK_DEBUG', '1') == '1',
+        host=os.getenv('FLASK_HOST', '0.0.0.0'),
+        port=int(os.getenv('FLASK_PORT', '5000'))
+    )

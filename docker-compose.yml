@@ -32,6 +32,8 @@ services:
     volumes:
       - ./backend/uploads:/app/backend/uploads
       - ./backend/app.py:/app/backend/app.py
+      - ./backend/cases_helpers.py:/app/backend/cases_helpers.py
+      - ./backend/cases_routes.py:/app/backend/cases_routes.py
       - ./frontend/dist:/app/frontend/dist
     depends_on:
       mysql-case-analysis:
