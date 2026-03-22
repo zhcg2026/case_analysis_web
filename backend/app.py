@@ -5234,6 +5234,228 @@ register_case_management_routes(
 )
 
 
+# ==================== 城市管理数据大屏 API ====================
+
+@app.route('/api/city-dashboard', methods=['POST'])
+@protected
+def city_dashboard():
+    """城市管理数据大屏API - 提供综合数据统计和可视化数据"""
+    try:
+        data = request.json
+        table_name = data.get('table_name')
+
+        if not table_name:
+            return jsonify({'error': 'Missing table_name parameter'}), 400
+
+        print(f"[城市大屏] 开始分析数据表: {table_name}")
+
+        # 从数据库读取数据
+        df = pd.read_sql_table(table_name, engine)
+        total_count = len(df)
+
+        print(f"[城市大屏] 读取数据完成，总量: {total_count} 条")
+        print(f"[城市大屏] 数据列: {list(df.columns)}")
+
+        if total_count == 0:
+            return jsonify({'error': '数据表为空'}), 400
+
+        # 识别关键列
+        report_time_col = None
+        for col in ['上报时间', 'report_time', '创建时间']:
+            if col in df.columns:
+                report_time_col = col
+                print(f"[城市大屏] 找到上报时间列: {report_time_col}")
+                break
+
+        close_time_col = None
+        for col in ['结案时间', 'close_time', 'handle_time', '完成时间']:
+            if col in df.columns:
+                close_time_col = col
+                print(f"[城市大屏] 找到结案时间列: {close_time_col}")
+                break
+
+        source_col = None
+        for col in ['问题来源', 'source', '案件来源']:
+            if col in df.columns:
+                source_col = col
+                break
+
+        major_cat_col = None
+        for col in ['大类名称', 'major_category', '大类']:
+            if col in df.columns:
+                major_cat_col = col
+                break
+
+        minor_cat_col = None
+        for col in ['小类名称', 'minor_category', '小类']:
+            if col in df.columns:
+                minor_cat_col = col
+                break
+
+        dept_col = None
+        for col in ['处置部门', 'department', '处理部门', '责任部门']:
+            if col in df.columns:
+                dept_col = col
+                break
+
+        # 从数据表名解析月份（格式：202601 表示2026年1月）
+        month = None
+        month_display = ''
+
+        # 尝试从表名中提取6位数字格式的月份
+        import re
+        month_match = re.search(r'(20\d{2})(0[1-9]|1[0-2])', table_name)
+        if month_match:
+            year = month_match.group(1)
+            mon = month_match.group(2)
+            month = f"{year}-{mon}"
+            month_display = f"{year}年{int(mon)}月"
+            print(f"[城市大屏] 从表名解析月份: {month}")
+        else:
+            print(f"[城市大屏] 无法从表名解析月份，使用全部数据")
+
+        # 月份筛选 - 只保留该月的数据
+        if month and report_time_col:
+            try:
+                df['_report_time_parsed'] = pd.to_datetime(df[report_time_col], errors='coerce')
+
+                # 打印一些时间样本
+                sample_times = df[report_time_col].head(5).tolist()
+                print(f"[城市大屏] 上报时间样本: {sample_times}")
+
+                before_filter = len(df)
+                df_filtered = df[df['_report_time_parsed'].dt.strftime('%Y-%m') == month]
+                after_filter = len(df_filtered)
+
+                print(f"[城市大屏] 月份筛选: {before_filter} -> {after_filter} 条")
+
+                # 如果筛选后有数据，使用筛选后的数据；否则使用全部数据
+                if after_filter > 0:
+                    df = df_filtered
+                else:
+                    print(f"[城市大屏] 月份筛选后无数据，使用全部数据")
+                    month_display = f"{month_display}（实际数据）"
+            except Exception as e:
+                print(f"[城市大屏] 月份筛选出错: {str(e)}，使用全部数据")
+
+        # 再次检查数据是否为空
+        current_count = len(df)
+        print(f"[城市大屏] 最终数据量: {current_count} 条")
+
+        if current_count == 0:
+            return jsonify({'error': '没有数据'}), 400
+
+        # 初始化结果
+        result = {
+            'month': month,
+            'monthDisplay': month_display,
+            'stats': {},
+            'trend': {},
+            'sourceDistribution': [],
+            'typeDistribution': [],
+            'departmentDistribution': [],
+            'topIssues': [],
+            'avgHandlingTime': []
+        }
+
+        # 1. 基础统计
+        total = len(df)
+        closed = 0
+        handling = 0
+
+        if close_time_col:
+            df['_close_time_parsed'] = pd.to_datetime(df[close_time_col], errors='coerce')
+            closed = int(df['_close_time_parsed'].notna().sum())
+            handling = total - closed
+        else:
+            handling = total
+
+        close_rate = round((closed / total * 100), 1) if total > 0 else 0
+
+        result['stats'] = {
+            'total': total,
+            'closed': closed,
+            'handling': handling,
+            'closeRate': close_rate
+        }
+
+        # 2. 案件趋势（每日案件数量）
+        if report_time_col:
+            try:
+                if '_report_time_parsed' not in df.columns:
+                    df['_report_time_parsed'] = pd.to_datetime(df[report_time_col], errors='coerce')
+                df['_report_date'] = df['_report_time_parsed'].dt.date
+                daily_counts = df['_report_date'].value_counts().sort_index()
+                result['trend'] = {
+                    'dates': [d.strftime('%m-%d') if hasattr(d, 'strftime') else str(d) for d in daily_counts.index],
+                    'values': [int(v) for v in daily_counts.values]
+                }
+            except Exception as e:
+                print(f"[城市大屏] 计算趋势出错: {str(e)}")
+                result['trend'] = {'dates': [], 'values': []}
+
+        # 3. 来源分布
+        if source_col:
+            source_data = df[source_col].fillna('未知').value_counts()
+            result['sourceDistribution'] = [
+                {'name': str(k), 'value': int(v)}
+                for k, v in source_data.items()
+            ]
+
+        # 4. 类型分布（大类）
+        if major_cat_col:
+            type_data = df[major_cat_col].fillna('未知').value_counts()
+            result['typeDistribution'] = {
+                'categories': [str(k) for k in type_data.index],
+                'values': [int(v) for v in type_data.values]
+            }
+
+        # 5. 处置部门分布
+        if dept_col:
+            dept_data = df[dept_col].fillna('未知').value_counts()
+            result['departmentDistribution'] = [
+                {'name': str(k), 'value': int(v)}
+                for k, v in dept_data.items()
+            ]
+
+        # 6. 高发问题Top20（小类）
+        if minor_cat_col:
+            minor_data = df[minor_cat_col].fillna('未知').value_counts().head(20)
+            result['topIssues'] = [
+                {'name': str(k), 'value': int(v)}
+                for k, v in minor_data.items()
+            ]
+
+        # 7. 各处置部门平均处置时间
+        if close_time_col and report_time_col and dept_col:
+            try:
+                if '_close_time_parsed' not in df.columns:
+                    df['_close_time_parsed'] = pd.to_datetime(df[close_time_col], errors='coerce')
+                if '_report_time_parsed' not in df.columns:
+                    df['_report_time_parsed'] = pd.to_datetime(df[report_time_col], errors='coerce')
+
+                df['_handling_hours'] = (df['_close_time_parsed'] - df['_report_time_parsed']).dt.total_seconds() / 3600
+                valid_df = df[(df['_handling_hours'] > 0) & (df['_handling_hours'] < 720)]
+
+                if len(valid_df) > 0:
+                    avg_time_by_dept = valid_df.groupby(dept_col)['_handling_hours'].mean().sort_values(ascending=False)
+                    result['avgHandlingTime'] = {
+                        'categories': [str(k) for k in avg_time_by_dept.index],
+                        'values': [round(v, 1) for v in avg_time_by_dept.values]
+                    }
+            except Exception as e:
+                print(f"[城市大屏] 计算处置时间出错: {str(e)}")
+
+        print(f"[城市大屏] 分析完成")
+        return jsonify(result), 200
+
+    except Exception as e:
+        print(f"Error in city_dashboard: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
 # 前端静态文件路由 - 放在最后
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')

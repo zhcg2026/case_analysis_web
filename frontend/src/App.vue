@@ -183,7 +183,7 @@ const last15DaysTrendData = computed(() => {
 });
 
 const activeModule = ref('home'); // home, data, assessment, analysis, spotcheck, tools, chengguantong, cms, map, huiwentai, ai-apps
-const aiAppsActiveTab = ref('analysis'); // analysis, analysis-v2, chart-analysis, spotcheck, chengguantong
+const aiAppsActiveTab = ref('analysis'); // analysis, analysis-v2, chart-analysis, city-dashboard, spotcheck, chengguantong
 
 // 数据分析（新版）状态管理
 const selectedTableV2 = ref('');
@@ -202,6 +202,14 @@ const chartAnalysisData = ref(null);
 const chartAnalysisError = ref('');
 const dashboardChartRefs = ref({}); // 存储仪表盘图表的引用
 const dashboardChartInstances = {}; // 存储ECharts实例，用于销毁
+
+// 城市管理数据大屏状态管理
+const cityDashboardTable = ref('');
+const cityDashboardLoading = ref(false);
+const cityDashboardData = ref(null);
+const cityDashboardError = ref('');
+const cityDashboardChartRefs = ref({});
+const cityDashboardChartInstances = {};
 
 // 地图服务状态管理
 const mapInstance = ref(null);
@@ -2626,6 +2634,317 @@ function renderBarChart(elementId, chartData, colorPalette, horizontal = false, 
           shadowColor: 'rgba(79, 172, 254, 0.5)'
         }
       }
+    }]
+  };
+  chartInstance.setOption(option);
+  window.addEventListener('resize', () => chartInstance.resize());
+}
+
+// ========== 城市管理数据大屏功能 ==========
+
+// 获取城市管理大屏数据
+async function fetchCityDashboardData() {
+  if (!cityDashboardTable.value) {
+    cityDashboardError.value = '请选择数据表';
+    return;
+  }
+
+  const token = localStorage.getItem('token');
+  if (!token) {
+    cityDashboardError.value = '请先登录';
+    return;
+  }
+
+  try {
+    cityDashboardLoading.value = true;
+    cityDashboardError.value = '';
+    cityDashboardData.value = null;
+
+    const response = await fetch('/api/city-dashboard', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeaders()
+      },
+      body: JSON.stringify({
+        table_name: cityDashboardTable.value
+      })
+    });
+
+    const data = await response.json();
+
+    if (data.error) {
+      cityDashboardError.value = 'Error: ' + data.error;
+    } else {
+      cityDashboardData.value = data;
+      nextTick(() => {
+        renderCityDashboardCharts();
+      });
+    }
+  } catch (error) {
+    cityDashboardError.value = 'Error: ' + error.message;
+    console.error('Error in city dashboard:', error);
+  } finally {
+    cityDashboardLoading.value = false;
+  }
+}
+
+// 渲染城市管理大屏图表
+function renderCityDashboardCharts() {
+  if (!cityDashboardData.value) return;
+
+  const colorPalette = [
+    '#4facfe', '#00f2fe', '#43e97b', '#38f9d7', '#fa709a',
+    '#fee140', '#30cfd0', '#667eea', '#764ba2', '#f093fb',
+    '#f5576c', '#00d4ff', '#ff6b6b', '#4ecdc4', '#ffe66d'
+  ];
+
+  // 销毁所有旧实例
+  Object.keys(cityDashboardChartInstances).forEach(key => {
+    if (cityDashboardChartInstances[key]) {
+      cityDashboardChartInstances[key].dispose();
+      delete cityDashboardChartInstances[key];
+    }
+  });
+
+  // 1. 案件趋势折线图
+  if (cityDashboardData.value.trend && cityDashboardData.value.trend.dates.length > 0) {
+    renderCityTrendChart(colorPalette);
+  }
+
+  // 2. 来源分布饼状图
+  if (cityDashboardData.value.sourceDistribution && cityDashboardData.value.sourceDistribution.length > 0) {
+    renderCityPieChart('citySourceChart', cityDashboardData.value.sourceDistribution, colorPalette, '来源分布');
+  }
+
+  // 3. 类型分布柱状图
+  if (cityDashboardData.value.typeDistribution && cityDashboardData.value.typeDistribution.categories) {
+    renderCityBarChart('cityTypeChart', cityDashboardData.value.typeDistribution, colorPalette, '大类案件分布');
+  }
+
+  // 4. 处置部门分布饼状图（图例在右侧）
+  if (cityDashboardData.value.departmentDistribution && cityDashboardData.value.departmentDistribution.length > 0) {
+    renderCityPieChart('cityDeptChart', cityDashboardData.value.departmentDistribution, colorPalette, '处置部门占比', 'right');
+  }
+
+  // 5. 平均处置时间柱状图（横向）
+  if (cityDashboardData.value.avgHandlingTime && cityDashboardData.value.avgHandlingTime.categories) {
+    renderCityBarChart('cityAvgTimeChart', cityDashboardData.value.avgHandlingTime, colorPalette, '平均处置时间', '小时', true);
+  }
+}
+
+// 渲染趋势折线图
+function renderCityTrendChart(colorPalette) {
+  const chartEl = document.getElementById('cityTrendChart');
+  if (!chartEl) return;
+
+  if (cityDashboardChartInstances['cityTrendChart']) {
+    cityDashboardChartInstances['cityTrendChart'].dispose();
+  }
+
+  const chartInstance = echarts.init(chartEl);
+  cityDashboardChartInstances['cityTrendChart'] = chartInstance;
+
+  const trend = cityDashboardData.value.trend;
+
+  const option = {
+    backgroundColor: 'transparent',
+    tooltip: {
+      trigger: 'axis',
+      formatter: '{b}<br/>案件数: {c} 件',
+      backgroundColor: 'rgba(0, 0, 0, 0.8)',
+      borderColor: '#4facfe',
+      textStyle: { color: '#fff' }
+    },
+    grid: {
+      left: '3%',
+      right: '4%',
+      bottom: '3%',
+      top: '10%',
+      containLabel: true
+    },
+    xAxis: {
+      type: 'category',
+      data: trend.dates,
+      axisLine: { lineStyle: { color: 'rgba(255, 255, 255, 0.3)' } },
+      axisLabel: {
+        color: 'rgba(255, 255, 255, 0.7)',
+        rotate: 45,
+        fontSize: 10
+      }
+    },
+    yAxis: {
+      type: 'value',
+      axisLine: { lineStyle: { color: 'rgba(255, 255, 255, 0.3)' } },
+      axisLabel: { color: 'rgba(255, 255, 255, 0.7)' },
+      splitLine: { lineStyle: { color: 'rgba(255, 255, 255, 0.1)' } }
+    },
+    series: [{
+      name: '案件数',
+      type: 'line',
+      data: trend.values,
+      smooth: true,
+      symbol: 'circle',
+      symbolSize: 6,
+      lineStyle: {
+        width: 3,
+        color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
+          { offset: 0, color: '#4facfe' },
+          { offset: 1, color: '#00f2fe' }
+        ])
+      },
+      areaStyle: {
+        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+          { offset: 0, color: 'rgba(79, 172, 254, 0.4)' },
+          { offset: 1, color: 'rgba(79, 172, 254, 0.05)' }
+        ])
+      },
+      itemStyle: { color: '#4facfe' }
+    }]
+  };
+  chartInstance.setOption(option);
+  window.addEventListener('resize', () => chartInstance.resize());
+}
+
+// 渲染城市大屏饼状图
+function renderCityPieChart(elementId, data, colorPalette, title, legendPosition = 'bottom') {
+  const chartEl = document.getElementById(elementId);
+  if (!chartEl) return;
+
+  if (cityDashboardChartInstances[elementId]) {
+    cityDashboardChartInstances[elementId].dispose();
+  }
+
+  const chartInstance = echarts.init(chartEl);
+  cityDashboardChartInstances[elementId] = chartInstance;
+
+  // 根据图例位置设置不同配置
+  const legendConfig = legendPosition === 'right' ? {
+    type: 'scroll',
+    orient: 'vertical',
+    right: 5,
+    top: 'middle',
+    textStyle: { color: 'rgba(255, 255, 255, 0.8)', fontSize: 10 },
+    itemWidth: 10,
+    itemHeight: 10
+  } : {
+    type: 'scroll',
+    orient: 'horizontal',
+    bottom: 0,
+    left: 'center',
+    textStyle: { color: 'rgba(255, 255, 255, 0.8)', fontSize: 11 },
+    itemWidth: 12,
+    itemHeight: 12
+  };
+
+  // 饼图中心位置根据图例位置调整
+  const pieCenter = legendPosition === 'right' ? ['35%', '50%'] : ['50%', '45%'];
+
+  const option = {
+    backgroundColor: 'transparent',
+    tooltip: {
+      trigger: 'item',
+      formatter: '{b}: {c} ({d}%)',
+      backgroundColor: 'rgba(0, 0, 0, 0.8)',
+      borderColor: '#4facfe',
+      textStyle: { color: '#fff' }
+    },
+    legend: legendConfig,
+    series: [{
+      name: title,
+      type: 'pie',
+      radius: ['35%', '55%'],
+      center: pieCenter,
+      avoidLabelOverlap: true,
+      itemStyle: {
+        borderRadius: 6,
+        borderColor: 'rgba(255, 255, 255, 0.2)',
+        borderWidth: 2
+      },
+      label: { show: false },
+      emphasis: {
+        label: {
+          show: true,
+          fontSize: 14,
+          fontWeight: 'bold',
+          color: '#fff'
+        }
+      },
+      labelLine: { show: false },
+      data: data.map((item, index) => ({
+        ...item,
+        itemStyle: { color: colorPalette[index % colorPalette.length] }
+      }))
+    }]
+  };
+  chartInstance.setOption(option);
+  window.addEventListener('resize', () => chartInstance.resize());
+}
+
+// 渲染城市大屏柱状图
+function renderCityBarChart(elementId, data, colorPalette, title, unit = '件', horizontal = false) {
+  const chartEl = document.getElementById(elementId);
+  if (!chartEl) return;
+
+  if (cityDashboardChartInstances[elementId]) {
+    cityDashboardChartInstances[elementId].dispose();
+  }
+
+  const chartInstance = echarts.init(chartEl);
+  cityDashboardChartInstances[elementId] = chartInstance;
+
+  const option = {
+    backgroundColor: 'transparent',
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: { type: 'shadow' },
+      formatter: horizontal ? '{b}: {c} ' + unit : '{b}: {c} ' + unit,
+      backgroundColor: 'rgba(0, 0, 0, 0.8)',
+      borderColor: '#4facfe',
+      textStyle: { color: '#fff' }
+    },
+    grid: {
+      left: horizontal ? '3%' : '3%',
+      right: '4%',
+      bottom: horizontal ? '3%' : '3%',
+      top: '5%',
+      containLabel: true
+    },
+    xAxis: {
+      type: horizontal ? 'value' : 'category',
+      data: horizontal ? null : data.categories,
+      axisLine: { lineStyle: { color: 'rgba(255, 255, 255, 0.3)' } },
+      axisLabel: {
+        color: 'rgba(255, 255, 255, 0.7)',
+        rotate: horizontal ? 0 : 45,
+        fontSize: 10
+      },
+      splitLine: horizontal ? { lineStyle: { color: 'rgba(255, 255, 255, 0.1)' } } : undefined
+    },
+    yAxis: {
+      type: horizontal ? 'category' : 'value',
+      data: horizontal ? data.categories : null,
+      axisLine: { lineStyle: { color: 'rgba(255, 255, 255, 0.3)' } },
+      axisLabel: {
+        color: 'rgba(255, 255, 255, 0.7)',
+        fontSize: 10
+      },
+      splitLine: horizontal ? undefined : { lineStyle: { color: 'rgba(255, 255, 255, 0.1)' } }
+    },
+    series: [{
+      name: title,
+      type: 'bar',
+      data: data.values.map((value, index) => ({
+        value,
+        itemStyle: {
+          color: new echarts.graphic.LinearGradient(horizontal ? 0 : 0, horizontal ? 0 : 0, horizontal ? 1 : 0, horizontal ? 0 : 1, [
+            { offset: 0, color: colorPalette[index % colorPalette.length] },
+            { offset: 1, color: colorPalette[(index + 1) % colorPalette.length] }
+          ]),
+          borderRadius: horizontal ? [0, 4, 4, 0] : [4, 4, 0, 0]
+        }
+      })),
+      barWidth: horizontal ? '50%' : '50%'
     }]
   };
   chartInstance.setOption(option);
@@ -5466,6 +5785,11 @@ watch(
         renderDashboardCharts();
       });
     }
+    if (newTab === 'city-dashboard' && cityDashboardData.value) {
+      nextTick(() => {
+        renderCityDashboardCharts();
+      });
+    }
   }
 );
 
@@ -5758,6 +6082,16 @@ function getColumnIcon(index) {
             :style="aiAppsActiveTab === 'chart-analysis' ? { borderBottomColor: '#4facfe', color: '#4facfe' } : { color: 'rgba(255, 255, 255, 0.8)' }"
           >
             图表分析
+          </div>
+          <div
+            v-if="!userInfo || userInfo?.role === 'admin' || (userInfo?.permissions && userInfo?.permissions.data_analysis)"
+            class="ai-apps-tab"
+            :class="{ active: aiAppsActiveTab === 'city-dashboard' }"
+            @click="aiAppsActiveTab = 'city-dashboard'"
+            style="padding: 10px 20px; cursor: pointer; border-bottom: 3px solid transparent; margin-right: 10px; font-weight: bold;"
+            :style="aiAppsActiveTab === 'city-dashboard' ? { borderBottomColor: '#4facfe', color: '#4facfe' } : { color: 'rgba(255, 255, 255, 0.8)' }"
+          >
+            城市管理大屏
           </div>
           <div 
             v-if="!userInfo || userInfo?.role === 'admin' || (userInfo?.permissions && userInfo?.permissions.data_analysis)"
@@ -6300,6 +6634,131 @@ function getColumnIcon(index) {
             <div style="font-size: 64px; margin-bottom: 20px; opacity: 0.5;">📊</div>
             <h3 style="color: rgba(255, 255, 255, 0.7); font-size: 18px; margin-bottom: 10px;">选择数据源生成仪表盘</h3>
             <p style="color: rgba(255, 255, 255, 0.5); font-size: 14px;">请选择一个数据表，系统将自动生成包含多个图表的酷炫仪表盘</p>
+          </div>
+        </div>
+        </div>
+
+        <!-- 城市管理数据大屏标签页内容 -->
+        <div v-if="aiAppsActiveTab === 'city-dashboard' && (!userInfo || userInfo?.role === 'admin' || (userInfo?.permissions && userInfo?.permissions.data_analysis))">
+        <div class="city-dashboard-section" style="margin: 0 auto;">
+
+          <!-- 标题区域 -->
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 18px 25px; background: linear-gradient(135deg, rgba(79, 172, 254, 0.15) 0%, rgba(0, 242, 254, 0.1) 100%); border-radius: 12px; border: 1px solid rgba(79, 172, 254, 0.3);">
+            <div>
+              <div style="font-size: 28px; font-weight: 700; background: linear-gradient(90deg, #4facfe 0%, #00f2fe 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">城市管理大数据平台</div>
+              <div style="font-size: 13px; color: rgba(255, 255, 255, 0.5); margin-top: 4px; letter-spacing: 2px;">City Management Data Platform</div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 15px;">
+              <select v-model="cityDashboardTable" :disabled="cityDashboardLoading" style="padding: 10px 15px; border: 1px solid rgba(79, 172, 254, 0.5); border-radius: 8px; background: rgba(0, 0, 0, 0.3); color: white; font-size: 14px; cursor: pointer;">
+                <option value="">-- 选择数据表 --</option>
+                <option v-for="table in tables" :key="table" :value="table">{{ table }}</option>
+              </select>
+              <button @click="fetchCityDashboardData" :disabled="cityDashboardLoading || !cityDashboardTable" style="padding: 10px 25px; background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 14px;">
+                <span v-if="cityDashboardLoading">加载中...</span>
+                <span v-else>生成大屏</span>
+              </button>
+            </div>
+          </div>
+
+          <div v-if="cityDashboardError" style="margin-top: 20px; padding: 15px; background: rgba(231, 76, 60, 0.2); border: 1px solid rgba(231, 76, 60, 0.4); border-radius: 8px; color: #e74c3c;">
+            {{ cityDashboardError }}
+          </div>
+
+          <!-- 大屏内容 -->
+          <div v-if="cityDashboardData" class="dashboard-content" style="margin-top: 20px;">
+
+            <!-- 第一行：数据卡片 -->
+            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-bottom: 20px;">
+              <div style="padding: 22px; background: linear-gradient(135deg, rgba(79, 172, 254, 0.3) 0%, rgba(0, 242, 254, 0.2) 100%); border-radius: 12px; border: 1px solid rgba(79, 172, 254, 0.3); position: relative; overflow: hidden;">
+                <div style="position: absolute; top: -15px; right: -15px; width: 60px; height: 60px; background: rgba(79, 172, 254, 0.2); border-radius: 50%;"></div>
+                <div style="font-size: 14px; color: rgba(255,255,255,0.8); margin-bottom: 8px;">案件总数</div>
+                <div style="font-size: 36px; font-weight: 700; color: white;">{{ cityDashboardData.stats.total.toLocaleString() }}</div>
+              </div>
+              <div style="padding: 22px; background: linear-gradient(135deg, rgba(67, 233, 123, 0.3) 0%, rgba(56, 249, 215, 0.2) 100%); border-radius: 12px; border: 1px solid rgba(67, 233, 123, 0.3); position: relative; overflow: hidden;">
+                <div style="position: absolute; top: -15px; right: -15px; width: 60px; height: 60px; background: rgba(67, 233, 123, 0.2); border-radius: 50%;"></div>
+                <div style="font-size: 14px; color: rgba(255,255,255,0.8); margin-bottom: 8px;">结案数</div>
+                <div style="font-size: 36px; font-weight: 700; color: white;">{{ cityDashboardData.stats.closed.toLocaleString() }}</div>
+              </div>
+              <div style="padding: 22px; background: linear-gradient(135deg, rgba(250, 112, 154, 0.3) 0%, rgba(254, 225, 64, 0.2) 100%); border-radius: 12px; border: 1px solid rgba(250, 112, 154, 0.3); position: relative; overflow: hidden;">
+                <div style="position: absolute; top: -15px; right: -15px; width: 60px; height: 60px; background: rgba(250, 112, 154, 0.2); border-radius: 50%;"></div>
+                <div style="font-size: 14px; color: rgba(255,255,255,0.8); margin-bottom: 8px;">处置中</div>
+                <div style="font-size: 36px; font-weight: 700; color: white;">{{ cityDashboardData.stats.handling.toLocaleString() }}</div>
+              </div>
+              <div style="padding: 22px; background: linear-gradient(135deg, rgba(79, 172, 254, 0.3) 0%, rgba(0, 242, 254, 0.2) 100%); border-radius: 12px; border: 1px solid rgba(79, 172, 254, 0.3); position: relative; overflow: hidden;">
+                <div style="position: absolute; top: -15px; right: -15px; width: 60px; height: 60px; background: rgba(79, 172, 254, 0.2); border-radius: 50%;"></div>
+                <div style="font-size: 14px; color: rgba(255,255,255,0.8); margin-bottom: 8px;">结案率</div>
+                <div style="font-size: 36px; font-weight: 700; color: white;">{{ cityDashboardData.stats.closeRate }}%</div>
+              </div>
+            </div>
+
+            <!-- 第二行：案件趋势 + 来源分布 -->
+            <div style="display: grid; grid-template-columns: 60% 40%; gap: 20px; margin-bottom: 20px;">
+              <div style="padding: 20px; background: rgba(255, 255, 255, 0.05); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 12px;">
+                <div style="font-size: 15px; font-weight: 600; color: white; margin-bottom: 15px; display: flex; align-items: center; gap: 10px;">
+                  <span style="width: 4px; height: 16px; background: linear-gradient(180deg, #4facfe 0%, #00f2fe 100%); border-radius: 2px;"></span>
+                  案件趋势
+                </div>
+                <div id="cityTrendChart" style="height: 280px;"></div>
+              </div>
+              <div style="padding: 20px; background: rgba(255, 255, 255, 0.05); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 12px;">
+                <div style="font-size: 15px; font-weight: 600; color: white; margin-bottom: 15px; display: flex; align-items: center; gap: 10px;">
+                  <span style="width: 4px; height: 16px; background: linear-gradient(180deg, #43e97b 0%, #38f9d7 100%); border-radius: 2px;"></span>
+                  来源分布
+                </div>
+                <div id="citySourceChart" style="height: 280px;"></div>
+              </div>
+            </div>
+
+            <!-- 第三行：类型分布 + 处置部门占比 -->
+            <div style="display: grid; grid-template-columns: 50% 50%; gap: 20px; margin-bottom: 20px;">
+              <div style="padding: 20px; background: rgba(255, 255, 255, 0.05); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 12px;">
+                <div style="font-size: 15px; font-weight: 600; color: white; margin-bottom: 15px; display: flex; align-items: center; gap: 10px;">
+                  <span style="width: 4px; height: 16px; background: linear-gradient(180deg, #fa709a 0%, #fee140 100%); border-radius: 2px;"></span>
+                  类型分布
+                </div>
+                <div id="cityTypeChart" style="height: 280px;"></div>
+              </div>
+              <div style="padding: 20px; background: rgba(255, 255, 255, 0.05); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 12px;">
+                <div style="font-size: 15px; font-weight: 600; color: white; margin-bottom: 15px; display: flex; align-items: center; gap: 10px;">
+                  <span style="width: 4px; height: 16px; background: linear-gradient(180deg, #667eea 0%, #764ba2 100%); border-radius: 2px;"></span>
+                  处置部门案件占比
+                </div>
+                <div id="cityDeptChart" style="height: 280px;"></div>
+              </div>
+            </div>
+
+            <!-- 第四行：高发问题Top20 + 平均处置时间 -->
+            <div style="display: grid; grid-template-columns: 65% 35%; gap: 20px;">
+              <div style="padding: 20px; background: rgba(255, 255, 255, 0.05); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 12px;">
+                <div style="font-size: 15px; font-weight: 600; color: white; margin-bottom: 15px; display: flex; align-items: center; gap: 10px;">
+                  <span style="width: 4px; height: 16px; background: linear-gradient(180deg, #f093fb 0%, #f5576c 100%); border-radius: 2px;"></span>
+                  高发问题 Top20
+                </div>
+                <div v-if="cityDashboardData.topIssues && cityDashboardData.topIssues.length > 0" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; max-height: 320px; overflow-y: auto;">
+                  <div v-for="(item, index) in cityDashboardData.topIssues" :key="index" style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: rgba(255, 255, 255, 0.05); border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.1);">
+                    <span :style="{ background: index < 3 ? 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)' : 'rgba(255,255,255,0.15)', width: '26px', height: '26px', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 'bold', color: 'white' }">{{ index + 1 }}</span>
+                    <span style="flex: 1; color: white; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ item.name }}</span>
+                    <span style="color: #4facfe; font-weight: 600; font-size: 13px;">{{ item.value }}</span>
+                  </div>
+                </div>
+                <div v-else style="text-align: center; padding: 40px; color: rgba(255,255,255,0.5);">暂无数据</div>
+              </div>
+              <div style="padding: 20px; background: rgba(255, 255, 255, 0.05); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 12px;">
+                <div style="font-size: 15px; font-weight: 600; color: white; margin-bottom: 15px; display: flex; align-items: center; gap: 10px;">
+                  <span style="width: 4px; height: 16px; background: linear-gradient(180deg, #30cfd0 0%, #4facfe 100%); border-radius: 2px;"></span>
+                  处置部门平均处置时间
+                </div>
+                <div id="cityAvgTimeChart" style="height: 300px;"></div>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- 空状态 -->
+          <div v-else style="text-align: center; padding: 100px 20px;">
+            <div style="font-size: 80px; margin-bottom: 20px; opacity: 0.5;">🏙️</div>
+            <h3 style="color: rgba(255, 255, 255, 0.7); font-size: 20px; margin-bottom: 10px;">城市管理数据大屏</h3>
+            <p style="color: rgba(255, 255, 255, 0.5); font-size: 15px;">请选择数据表，系统将自动生成城市管理数据大屏</p>
           </div>
         </div>
         </div>
