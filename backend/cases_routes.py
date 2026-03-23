@@ -258,6 +258,7 @@ def register_case_management_routes(
         return output
 
     @app.route('/api/cases/import', methods=['POST'])
+    @protected
     def import_cases():
         print("案件导入API被调用")
         session = Session()

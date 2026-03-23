@@ -5,8 +5,8 @@ services:
     image: mysql:8.0
     container_name: mysql-case-analysis
     environment:
-      - MYSQL_ROOT_PASSWORD=MySql@2024!Root
-      - MYSQL_DATABASE=case_analysis
+      - MYSQL_ROOT_PASSWORD=${DB_PASSWORD:-MySql@2024!Root}
+      - MYSQL_DATABASE=${DB_NAME:-case_analysis}
     command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
     ports:
       - "3306:3306"
@@ -14,7 +14,7 @@ services:
       - mysql-data:/var/lib/mysql
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-pMySql@2024!Root"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${DB_PASSWORD:-MySql@2024!Root}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -26,6 +26,8 @@ services:
     command: gunicorn --bind 0.0.0.0:5000 --workers 4 --timeout 300 --graceful-timeout 300 backend.app:app
     ports:
       - "5000:5000"
+    env_file:
+      - .env.production
     environment:
       - FLASK_ENV=production
       - PYTHONUNBUFFERED=1

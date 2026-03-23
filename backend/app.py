@@ -13,6 +13,16 @@ import hashlib
 import jwt
 import datetime
 from functools import wraps
+import bcrypt
+
+# 加载环境变量
+from dotenv import load_dotenv
+# 优先加载 .env.local，其次 .env
+if os.path.exists('.env.local'):
+    load_dotenv('.env.local')
+elif os.path.exists('../.env.local'):
+    load_dotenv('../.env.local')
+load_dotenv()  # 加载默认 .env
 try:
     from backend.cases_helpers import (
         CASE_CATEGORIES,
@@ -40,6 +50,66 @@ from docx import Document
 # JWT配置（支持环境变量，默认值保持兼容现有部署）
 SECRET_KEY = os.getenv('JWT_SECRET_KEY', 'your-secret-key-for-jwt-token')
 TOKEN_EXPIRATION = int(os.getenv('TOKEN_EXPIRATION_SECONDS', str(24 * 60 * 60)))  # 24小时
+
+# 登录失败限制配置
+LOGIN_ATTEMPTS = {}  # {username: {'count': int, 'lock_until': timestamp}}
+MAX_LOGIN_ATTEMPTS = 5
+LOCKOUT_DURATION = 300  # 5分钟
+
+# 密码工具函数
+def hash_password(password):
+    """使用 bcrypt 对密码进行哈希"""
+    return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+
+def verify_password(password, hashed):
+    """验证密码，支持 bcrypt 和旧版 SHA256 向后兼容"""
+    # 检查是否为 bcrypt 哈希（以 $2b$ 开头）
+    if hashed.startswith('$2b$'):
+        return bcrypt.checkpw(password.encode('utf-8'), hashed.encode('utf-8'))
+    else:
+        # 旧版 SHA256 兼容验证
+        return hashlib.sha256(password.encode()).hexdigest() == hashed
+
+def is_strong_password(password):
+    """验证密码强度：至少8位，包含字母和数字"""
+    if len(password) < 8:
+        return False, '密码长度至少8位'
+    has_letter = any(c.isalpha() for c in password)
+    has_digit = any(c.isdigit() for c in password)
+    if not (has_letter and has_digit):
+        return False, '密码必须包含字母和数字'
+    return True, None
+
+def check_login_attempts(username):
+    """检查登录尝试次数，返回是否允许登录"""
+    if username not in LOGIN_ATTEMPTS:
+        return True, None
+
+    attempt = LOGIN_ATTEMPTS[username]
+    if attempt['count'] >= MAX_LOGIN_ATTEMPTS:
+        import time
+        if time.time() < attempt['lock_until']:
+            remaining = int(attempt['lock_until'] - time.time())
+            return False, f'账户已锁定，请{remaining}秒后再试'
+        else:
+            # 锁定期已过，重置
+            LOGIN_ATTEMPTS[username] = {'count': 0, 'lock_until': 0}
+
+    return True, None
+
+def record_failed_login(username):
+    """记录登录失败"""
+    import time
+    if username not in LOGIN_ATTEMPTS:
+        LOGIN_ATTEMPTS[username] = {'count': 0, 'lock_until': 0}
+    LOGIN_ATTEMPTS[username]['count'] += 1
+    if LOGIN_ATTEMPTS[username]['count'] >= MAX_LOGIN_ATTEMPTS:
+        LOGIN_ATTEMPTS[username]['lock_until'] = time.time() + LOCKOUT_DURATION
+
+def clear_login_attempts(username):
+    """清除登录失败记录"""
+    if username in LOGIN_ATTEMPTS:
+        del LOGIN_ATTEMPTS[username]
 def get_json_payload():
     """获取 JSON 请求体，统一空值处理。"""
     data = request.get_json(silent=True)
@@ -55,8 +125,14 @@ def get_case_or_404(session, case_id):
 
 
 app = Flask(__name__)
-# 配置CORS，允许所有跨域请求
-CORS(app, resources={r"/*": {"origins": "*", "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"], "allow_headers": ["Content-Type", "Authorization"]}})
+# 配置CORS（通过环境变量控制允许的域名）
+CORS_ORIGINS = os.getenv('CORS_ORIGINS', '*')  # 生产环境应设置为具体域名，如 'https://example.com'
+if CORS_ORIGINS == '*':
+    CORS(app, resources={r"/*": {"origins": "*", "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"], "allow_headers": ["Content-Type", "Authorization"]}})
+else:
+    # 支持多个域名（逗号分隔）
+    origins_list = [origin.strip() for origin in CORS_ORIGINS.split(',')]
+    CORS(app, resources={r"/*": {"origins": origins_list, "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"], "allow_headers": ["Content-Type", "Authorization"]}})
 
 # JWT令牌生成
 def generate_token(user_id, username, role):
@@ -125,11 +201,11 @@ def admin_required(f):
         return f(*args, **kwargs)
     return decorated
 
-# 数据库配置（支持环境变量，默认值保持兼容现有部署）
-DB_USER = os.getenv('DB_USER', 'root')
-DB_PASSWORD = os.getenv('DB_PASSWORD', 'MySql@2024!Root')
+# 数据库配置（必须通过环境变量配置）
+DB_USER = os.getenv('DB_USER')
+DB_PASSWORD = os.getenv('DB_PASSWORD')
 DB_NAME = os.getenv('DB_NAME', 'case_analysis')
-DB_HOST = os.getenv('DB_HOST', 'mysql-case-analysis')
+DB_HOST = os.getenv('DB_HOST')
 DB_PORT = os.getenv('DB_PORT', '3306')
 
 # 定义占位符类和变量
@@ -147,7 +223,12 @@ try:
     from sqlalchemy import Column, Integer, String, DateTime, Text
     from sqlalchemy.sql import func
     from sqlalchemy.orm import sessionmaker
-    
+
+    # 检查必要的数据库配置
+    if not all([DB_USER, DB_PASSWORD, DB_HOST]):
+        print("警告: 数据库配置不完整，请设置 DB_USER, DB_PASSWORD, DB_HOST 环境变量")
+        raise Exception("数据库配置缺失")
+
     # 创建数据库引擎
     encoded_password = urllib.parse.quote_plus(DB_PASSWORD)
     engine = create_engine(f'mysql+pymysql://{DB_USER}:{encoded_password}@{DB_HOST}:{DB_PORT}/{DB_NAME}', pool_pre_ping=True, pool_recycle=3600)
@@ -796,58 +877,41 @@ def upload_image():
 # 登录接口
 @app.route('/api/login', methods=['POST'])
 def login():
-    # 如果没有数据库连接，使用默认用户登录
+    # 如果没有数据库连接，返回错误
     if engine is None:
-        data = request.json
-        username = data.get('username')
-        password = data.get('password')
-        
-        # 默认用户：admin/admin123
-        if username == 'admin' and password == 'admin123':
-            token = generate_token(1, 'admin', 'admin')
-            permissions = {
-                'data_management': True,
-                'assessment': True,
-                'data_analysis': True,
-                'spotcheck': True,
-                'cases': True,
-                'map': True,
-                'huiwentai': True,
-                'business': True
-            }
-            return jsonify({
-                'token': token,
-                'user_id': 1,
-                'username': 'admin',
-                'role': 'admin',
-                'permissions': permissions
-            }), 200
-        else:
-            return jsonify({'error': 'Invalid username or password (no database connected)'}), 401
-    
-    # 有数据库连接时，使用正常的登录逻辑
+        return jsonify({'error': '数据库未连接，请检查配置'}), 503
+
     session = Session()
     try:
         data = request.json
         username = data.get('username')
         password = data.get('password')
-        
+
         if not username or not password:
             return jsonify({'error': 'Missing username or password'}), 400
-        
+
+        # 检查登录尝试次数
+        allowed, lock_msg = check_login_attempts(username)
+        if not allowed:
+            return jsonify({'error': lock_msg}), 429
+
         # 查找用户
         user = session.query(User).filter_by(username=username).first()
         if not user:
+            record_failed_login(username)
             return jsonify({'error': 'Invalid username or password'}), 401
-        
-        # 验证密码
-        hashed_password = hashlib.sha256(password.encode()).hexdigest()
-        if user.password != hashed_password:
+
+        # 验证密码（支持 bcrypt 和旧版 SHA256）
+        if not verify_password(password, user.password):
+            record_failed_login(username)
             return jsonify({'error': 'Invalid username or password'}), 401
-        
+
+        # 登录成功，清除失败记录
+        clear_login_attempts(username)
+
         # 生成令牌
         token = generate_token(user.id, user.username, user.role)
-        
+
         # 获取用户权限
         permission = session.execute(text("SELECT data_management, assessment, data_analysis, spotcheck, cases, map, huiwentai, business FROM permissions WHERE user_id = :user_id"), {'user_id': user.id}).fetchone()
         permissions = {
@@ -871,7 +935,7 @@ def login():
                 'huiwentai': permission[6],
                 'business': permission[7]
             }
-        
+
         session.commit()
         return jsonify({
                 'token': token,
@@ -1044,14 +1108,19 @@ def create_user():
         
         if not username or not password:
             return jsonify({'error': 'Missing username or password'}), 400
-        
+
+        # 验证密码强度
+        is_strong, strength_error = is_strong_password(password)
+        if not is_strong:
+            return jsonify({'error': strength_error}), 400
+
         # 检查用户是否已存在
         existing_user = session.query(User).filter_by(username=username).first()
         if existing_user:
             return jsonify({'error': 'Username already exists'}), 400
-        
-        # 创建新用户
-        hashed_password = hashlib.sha256(password.encode()).hexdigest()
+
+        # 创建新用户（使用 bcrypt 哈希密码）
+        hashed_password = hash_password(password)
         new_user = User(
             username=username,
             password=hashed_password,
@@ -1117,7 +1186,12 @@ def update_user(user_id):
         if 'username' in data:
             user.username = data['username']
         if 'password' in data:
-            user.password = hashlib.sha256(data['password'].encode()).hexdigest()
+            new_password = data['password']
+            # 验证密码强度
+            is_strong, strength_error = is_strong_password(new_password)
+            if not is_strong:
+                return jsonify({'error': strength_error}), 400
+            user.password = hash_password(new_password)
         if 'role' in data:
             user.role = data['role']
         
@@ -1240,6 +1314,7 @@ def delete_user(user_id):
 
 # 获取所有业务平台
 @app.route('/api/business-platforms', methods=['GET'])
+@protected
 def get_business_platforms():
     # 如果没有数据库连接，返回空列表
     if engine is None:
@@ -3607,6 +3682,7 @@ def analyze():
 # CMS栏目相关API
 
 @app.route('/api/categories', methods=['GET'])
+@protected
 def get_categories():
     # 创建新的session实例
     session = Session()
@@ -4407,6 +4483,7 @@ def create_category():
         session.close()
 
 @app.route('/api/categories/<int:category_id>', methods=['GET'])
+@protected
 def get_category(category_id):
     session = Session()
     try:
@@ -4512,6 +4589,7 @@ def delete_category(category_id):
 # CMS文章相关API
 
 @app.route('/api/articles', methods=['GET'])
+@protected
 def get_articles():
     # 创建新的session实例
     session = Session()
@@ -4658,6 +4736,7 @@ def create_article():
         session.close()
 
 @app.route('/api/articles/<int:article_id>', methods=['GET'])
+@protected
 def get_article(article_id):
     # 创建新的session实例
     session = Session()
@@ -4772,6 +4851,7 @@ def delete_article(article_id):
         session.close()
 
 @app.route('/api/articles/category/<int:category_id>', methods=['GET'])
+@protected
 def get_articles_by_category(category_id):
     session = Session()
     try:
@@ -4996,12 +5076,6 @@ def chengguantong_ask():
 @app.route('/health', methods=['GET'])
 def health_check():
     return jsonify({'status': 'healthy', 'message': 'Service is running'}), 200
-
-# 调试接口
-@app.route('/api/debug', methods=['GET'])
-def debug():
-    print("调试接口被调用")
-    return jsonify({'message': 'Debug endpoint called'}), 200
 
 # 图表分析API - 获取仪表盘数据
 @app.route('/api/chart-analysis', methods=['POST'])

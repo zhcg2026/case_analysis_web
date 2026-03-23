@@ -1798,8 +1798,10 @@ watch(
 async function fetchDisplayBusinessPlatforms() {
   try {
     businessPlatformsLoading.value = true;
-    
-    const response = await fetch('/api/business-platforms');
+
+    const response = await fetch('/api/business-platforms', {
+      headers: getAuthHeaders()
+    });
     const data = await response.json();
     if (data.platforms) {
       displayBusinessPlatforms.value = data.platforms;
@@ -3765,8 +3767,10 @@ async function fetchCMSCategories() {
   try {
     cmsLoading.value = true;
     cmsError.value = '';
-    
-    const response = await fetch('/api/categories');
+
+    const response = await fetch('/api/categories', {
+      headers: getAuthHeaders()
+    });
     const data = await response.json();
     
     if (data.categories) {
@@ -3805,8 +3809,10 @@ async function fetchCMSArticles(categoryId, page = 1) {
     }
     
     console.log('请求URL:', url);
-    
-    const response = await fetch(url);
+
+    const response = await fetch(url, {
+      headers: getAuthHeaders()
+    });
     const data = await response.json();
     
     console.log('后端返回数据:', data);
@@ -3833,7 +3839,9 @@ async function fetchCMSArticles(categoryId, page = 1) {
 async function fetchAllCMSArticles() {
   try {
     // 获取大量文章，确保首页能显示所有栏目的文章
-    const response = await fetch('/api/articles?include_drafts=true&per_page=1000');
+    const response = await fetch('/api/articles?include_drafts=true&per_page=1000', {
+      headers: getAuthHeaders()
+    });
     const data = await response.json();
     
     if (data.articles) {
@@ -4144,7 +4152,9 @@ async function editArticle(article) {
   try {
     cmsLoading.value = true;
     // 获取完整的文章详情，包括content字段
-    const response = await fetch(`/api/articles/${article.id}`);
+    const response = await fetch(`/api/articles/${article.id}`, {
+      headers: getAuthHeaders()
+    });
     const articleDetail = await response.json();
     
     if (articleDetail.error) {
@@ -4209,8 +4219,10 @@ async function fetchAllArticles(categoryId, page = 1) {
     
     console.log('=== 调试信息：fetchAllArticles 开始 ===');
     console.log('请求URL:', `/api/articles/category/${categoryId}?include_drafts=false&page=${page}&per_page=${allArticlesPerPage.value}`);
-    
-    const response = await fetch(`/api/articles/category/${categoryId}?include_drafts=false&page=${page}&per_page=${allArticlesPerPage.value}`);
+
+    const response = await fetch(`/api/articles/category/${categoryId}?include_drafts=false&page=${page}&per_page=${allArticlesPerPage.value}`, {
+      headers: getAuthHeaders()
+    });
     const data = await response.json();
     
     console.log('后端返回数据:', data);
@@ -4330,8 +4342,10 @@ async function fetchArticleDetail(articleId) {
   try {
     articleDetailLoading.value = true;
     articleDetailError.value = '';
-    
-    const response = await fetch(`/api/articles/${articleId}`);
+
+    const response = await fetch(`/api/articles/${articleId}`, {
+      headers: getAuthHeaders()
+    });
     const data = await response.json();
     
     if (data.error) {
