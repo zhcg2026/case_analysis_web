@@ -582,6 +582,31 @@ def register_case_management_routes(
         finally:
             session.close()
 
+    @app.route('/api/cases/<int:case_id>', methods=['DELETE'])
+    @protected
+    def delete_case(case_id):
+        """删除案件"""
+        session = Session()
+        try:
+            case, error_resp = get_case_or_404(session, case_id)
+            if error_resp:
+                return error_resp
+
+            # 先删除关联的跟进记录
+            if CaseFollow:
+                session.query(CaseFollow).filter(CaseFollow.case_id == case_id).delete()
+
+            # 删除案件
+            session.delete(case)
+            session.commit()
+            return jsonify({'message': '删除成功'}), 200
+        except Exception as e:
+            session.rollback()
+            print(f"Error in delete_case: {str(e)}")
+            return jsonify({'error': str(e)}), 500
+        finally:
+            session.close()
+
     @app.route('/api/cases/export', methods=['GET'])
     @protected
     def export_cases():

@@ -19,6 +19,11 @@ const analysisMessage = ref(''); // 数据分析消息
 const assessmentMessage = ref(''); // 考核计分消息
 const selectedFile = ref(null);
 
+// 数据上传相关
+const uploadMode = ref('create'); // 'create' 新建表, 'append' 追加数据
+const targetTable = ref(''); // 追加数据的目标表
+const dataMonth = ref(''); // 月份值
+
 // 计算属性：安全处理文章文件路径
 const currentArticleFileUrl = computed(() => {
   if (!currentArticle.value?.file_path) return '';
@@ -236,6 +241,23 @@ const selectedAssessmentTableV2 = ref('');
 const assessmentResultV2 = ref(null);
 const assessmentMessageV2 = ref('');
 
+// 月份筛选相关（公共）
+const availableMonths = ref([]);
+const selectedMonth = ref('');  // 月份值，如 202601, 202602
+
+// 考核计分月份
+const assessmentMonth = ref('');
+const assessmentMonthV2 = ref('');
+
+// 数据分析月份
+const analysisMonth = ref('');
+
+// 图表分析月份
+const chartAnalysisMonth = ref('');
+
+// 城市管理大屏月份
+const cityDashboardMonth = ref('');
+
 // CMS状态管理
 const cmsCategories = ref([]);
 const cmsArticles = ref([]);
@@ -320,6 +342,13 @@ const categoryForm = ref({
 // 结案表单
 const showCloseForm = ref(false);
 const closeRemark = ref('');
+
+// 删除案件确认弹窗
+const showDeleteConfirm = ref(false);
+
+// 图片预览
+const showImagePreview = ref(false);
+const previewImageUrl = ref('');
 
 // 业务平台展示状态管理
 const displayBusinessPlatforms = ref([]);
@@ -1747,6 +1776,12 @@ function getPhotoPaths(photoPath) {
   return photoPath.split(',').filter(path => path.trim());
 }
 
+// 打开图片预览
+function openImagePreview(url) {
+  previewImageUrl.value = url;
+  showImagePreview.value = true;
+}
+
 function handleImageError(event) {
   event.target.style.display = 'none';
 }
@@ -1778,6 +1813,16 @@ watch(
       fetchTablesForManagement();
     } else if (newTab === 'assessment') {
       fetchAssessmentCoefficients();
+    }
+  }
+);
+
+// 监听数据表选择变化，当选择 business_cases 时获取可用月份
+watch(
+  () => [selectedTable.value, selectedAssessmentTable.value, selectedAssessmentTableV2.value, selectedTableV2.value, chartAnalysisTable.value, cityDashboardTable.value],
+  (newValues) => {
+    if (newValues.includes('business_cases') && availableMonths.value.length === 0) {
+      fetchAvailableMonths('business_cases');
     }
   }
 );
@@ -2085,6 +2130,36 @@ async function fetchTables() {
   }
 }
 
+// 获取可用月份列表
+async function fetchAvailableMonths(table_name) {
+  if (!table_name) {
+    availableMonths.value = [];
+    return;
+  }
+
+  try {
+    const response = await fetch(`/api/available-months?table_name=${encodeURIComponent(table_name)}`, {
+      headers: getAuthHeaders()
+    });
+    const data = await response.json();
+    if (data.months) {
+      availableMonths.value = data.months;
+      console.log('可用月份:', data.months);
+    }
+  } catch (error) {
+    console.error('Error fetching available months:', error);
+    availableMonths.value = [];
+  }
+}
+
+// 格式化月份显示
+function formatMonth(month) {
+  if (!month || month.length < 6) return month;
+  const year = month.substring(0, 4);
+  const m = month.substring(4, 6);
+  return `${year}年${m}月`;
+}
+
 // 处理文件选择
 function handleFileSelect(event) {
   const file = event.target.files[0];
@@ -2106,20 +2181,45 @@ async function uploadFile() {
     return;
   }
 
+  // 追加模式检查
+  if (uploadMode.value === 'append') {
+    if (!targetTable.value) {
+      message.value = '请选择目标表';
+      return;
+    }
+  }
+
   const formData = new FormData();
   formData.append('file', selectedFile.value);
 
   try {
     loading.value = true;
-    message.value = '上传中...';
-    const response = await fetch('/api/upload', {
+    message.value = uploadMode.value === 'append' ? '追加数据中...' : '上传中...';
+
+    let url, body;
+    if (uploadMode.value === 'append') {
+      url = '/api/append-data';
+      formData.append('target_table', targetTable.value);
+      if (dataMonth.value) {
+        formData.append('data_month', dataMonth.value);
+      }
+      body = formData;
+    } else {
+      url = '/api/upload';
+      body = formData;
+    }
+
+    const response = await fetch(url, {
       method: 'POST',
       headers: getAuthHeaders(),
-      body: formData
+      body: body
     });
     const data = await response.json();
     if (data.message) {
       message.value = data.message;
+      if (data.new_columns && data.new_columns.length > 0) {
+        message.value += ` (新增列: ${data.new_columns.join(', ')})`;
+      }
       // 重新获取表列表
       await fetchTables();
     } else if (data.error) {
@@ -2175,7 +2275,8 @@ async function startAnalysis() {
         },
         body: JSON.stringify({
           table_name: selectedTable.value,
-          analysis_type: selectedAnalysisType.value
+          analysis_type: selectedAnalysisType.value,
+          month: analysisMonth.value
         }),
         signal: controller.signal
       });
@@ -2256,7 +2357,8 @@ async function startAnalysisV2() {
         body: JSON.stringify({
           table_name: selectedTableV2.value,
           prompt: analysisPrompt.value,
-          model: selectedModel.value
+          model: selectedModel.value,
+          month: analysisMonth.value
         }),
         signal: controller.signal
       });
@@ -2403,7 +2505,8 @@ async function startChartAnalysis() {
         ...getAuthHeaders()
       },
       body: JSON.stringify({
-        table_name: chartAnalysisTable.value
+        table_name: chartAnalysisTable.value,
+        month: chartAnalysisMonth.value
       })
     });
 
@@ -2669,7 +2772,8 @@ async function fetchCityDashboardData() {
         ...getAuthHeaders()
       },
       body: JSON.stringify({
-        table_name: cityDashboardTable.value
+        table_name: cityDashboardTable.value,
+        month: cityDashboardMonth.value
       })
     });
 
@@ -2978,7 +3082,8 @@ async function startAssessment() {
       },
       body: JSON.stringify({
         table_name: selectedAssessmentTable.value,
-        department: selectedDepartment.value
+        department: selectedDepartment.value,
+        month: assessmentMonth.value
       })
     });
     
@@ -3024,7 +3129,8 @@ async function startAssessmentV2() {
       body: JSON.stringify({
         table_name: selectedAssessmentTableV2.value,
         department: selectedDepartmentV2.value,
-        coefficients: assessmentCoefficients.value
+        coefficients: assessmentCoefficients.value,
+        month: assessmentMonthV2.value
       })
     });
     
@@ -5305,6 +5411,31 @@ async function closeCurrentCase() {
   }
 }
 
+// 删除案件
+async function deleteCurrentCase() {
+  if (!currentCase.value) return;
+
+  try {
+    const response = await fetch(`/api/cases/${currentCase.value.id}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders()
+    });
+
+    const data = await response.json();
+    if (data.error) {
+      alert('删除失败: ' + data.error);
+    } else {
+      showDeleteConfirm.value = false;
+      showCaseDetail.value = false;
+      currentCase.value = null;
+      fetchCasesList();  // 刷新列表
+      fetchCasesStats();  // 刷新统计
+    }
+  } catch (error) {
+    alert('删除失败: ' + error.message);
+  }
+}
+
 // 导出案件
 async function exportCases() {
   try {
@@ -6154,10 +6285,19 @@ function getColumnIcon(index) {
                 </select>
               </div>
             </div>
-            
+
+            <!-- 月份筛选（当选择了 business_cases 表时显示） -->
+            <div v-if="selectedTable === 'business_cases'" style="margin-bottom: 20px;">
+              <label style="display: block; font-weight: 600; margin-bottom: 10px; color: rgba(255, 255, 255, 0.9);">选择月份：</label>
+              <select v-model="analysisMonth" :disabled="loading" style="width: 100%; max-width: 200px; padding: 10px 12px; border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 6px; font-size: 14px; background: rgba(255, 255, 255, 0.15); color: white;">
+                <option value="">全部月份</option>
+                <option v-for="month in availableMonths" :key="month" :value="month">{{ formatMonth(month) }}</option>
+              </select>
+            </div>
+
             <!-- 操作按钮 -->
-            <button 
-              class="analyze-btn" 
+            <button
+              class="analyze-btn"
               @click="startAnalysis" 
               :disabled="loading || !selectedTable || !selectedAnalysisType"
               style="width: 100%; padding: 12px 24px; background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: 600; transition: all 0.3s ease; disabled: { opacity: 0.6, cursor: 'not-allowed' };"
@@ -6344,7 +6484,7 @@ function getColumnIcon(index) {
                 </select>
               </div>
             </div>
-            
+
             <div style="margin-bottom: 20px;">
               <label for="analysis-prompt" style="display: block; font-weight: 600; margin-bottom: 10px; color: rgba(255, 255, 255, 0.9);">分析提示词：</label>
               <textarea 
@@ -6486,6 +6626,14 @@ function getColumnIcon(index) {
                 <select id="chart-table-select" v-model="chartAnalysisTable" :disabled="chartAnalysisLoading" style="width: 100%; padding: 12px 15px; border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 8px; font-size: 14px; box-sizing: border-box; background: rgba(255, 255, 255, 0.15); color: white; cursor: pointer;">
                   <option value="">-- 请选择数据表 --</option>
                   <option v-for="table in tables" :key="table" :value="table">{{ table }}</option>
+                </select>
+              </div>
+              <!-- 月份筛选（当选择了 business_cases 表时显示） -->
+              <div v-if="chartAnalysisTable === 'business_cases'" style="min-width: 150px;">
+                <label style="display: block; font-weight: 600; margin-bottom: 8px; color: rgba(255, 255, 255, 0.9); font-size: 14px;">📅 选择月份</label>
+                <select v-model="chartAnalysisMonth" :disabled="chartAnalysisLoading" style="width: 100%; padding: 12px 15px; border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 8px; font-size: 14px; box-sizing: border-box; background: rgba(255, 255, 255, 0.15); color: white; cursor: pointer;">
+                  <option value="">全部月份</option>
+                  <option v-for="month in availableMonths" :key="month" :value="month">{{ formatMonth(month) }}</option>
                 </select>
               </div>
               <button
@@ -6666,6 +6814,11 @@ function getColumnIcon(index) {
               <select v-model="cityDashboardTable" :disabled="cityDashboardLoading" style="padding: 10px 15px; border: 1px solid rgba(79, 172, 254, 0.5); border-radius: 8px; background: rgba(0, 0, 0, 0.3); color: white; font-size: 14px; cursor: pointer;">
                 <option value="">-- 选择数据表 --</option>
                 <option v-for="table in tables" :key="table" :value="table">{{ table }}</option>
+              </select>
+              <!-- 月份筛选（当选择了 business_cases 表时显示） -->
+              <select v-if="cityDashboardTable === 'business_cases'" v-model="cityDashboardMonth" :disabled="cityDashboardLoading" style="padding: 10px 15px; border: 1px solid rgba(79, 172, 254, 0.5); border-radius: 8px; background: rgba(0, 0, 0, 0.3); color: white; font-size: 14px; cursor: pointer;">
+                <option value="">全部月份</option>
+                <option v-for="month in availableMonths" :key="month" :value="month">{{ formatMonth(month) }}</option>
               </select>
               <button @click="fetchCityDashboardData" :disabled="cityDashboardLoading || !cityDashboardTable" style="padding: 10px 25px; background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 14px;">
                 <span v-if="cityDashboardLoading">加载中...</span>
@@ -7242,10 +7395,19 @@ function getColumnIcon(index) {
                   </select>
                 </div>
               </div>
-              
+
+              <!-- 月份筛选（当选择了 business_cases 表时显示） -->
+              <div v-if="selectedAssessmentTable === 'business_cases'" style="margin-bottom: 20px;">
+                <label style="display: block; font-weight: 600; margin-bottom: 10px; color: rgba(255, 255, 255, 0.9);">选择月份：</label>
+                <select v-model="assessmentMonth" :disabled="loading" style="width: 100%; max-width: 200px; padding: 10px 12px; border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 6px; font-size: 14px; background: rgba(255, 255, 255, 0.15); color: white;">
+                  <option value="">全部月份</option>
+                  <option v-for="month in availableMonths" :key="month" :value="month">{{ formatMonth(month) }}</option>
+                </select>
+              </div>
+
               <!-- 操作按钮 -->
-              <button 
-                class="start-btn" 
+              <button
+                class="start-btn"
                 @click="startAssessment" 
                 :disabled="loading || !selectedDepartment || !selectedAssessmentTable"
                 style="width: 100%; padding: 12px 24px; background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: 600; transition: all 0.3s ease; disabled: { opacity: 0.6, cursor: 'not-allowed' };"
@@ -7353,10 +7515,19 @@ function getColumnIcon(index) {
                   </select>
                 </div>
               </div>
-              
+
+              <!-- 月份筛选（当选择了 business_cases 表时显示） -->
+              <div v-if="selectedAssessmentTableV2 === 'business_cases'" style="margin-bottom: 20px;">
+                <label style="display: block; font-weight: 600; margin-bottom: 10px; color: rgba(255, 255, 255, 0.9);">选择月份：</label>
+                <select v-model="assessmentMonthV2" :disabled="loading" style="width: 100%; max-width: 200px; padding: 10px 12px; border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 6px; font-size: 14px; background: rgba(255, 255, 255, 0.15); color: white;">
+                  <option value="">全部月份</option>
+                  <option v-for="month in availableMonths" :key="month" :value="month">{{ formatMonth(month) }}</option>
+                </select>
+              </div>
+
               <!-- 操作按钮 -->
-              <button 
-                class="start-btn" 
+              <button
+                class="start-btn"
                 @click="startAssessmentV2" 
                 :disabled="loading || !selectedDepartmentV2 || !selectedAssessmentTableV2"
                 style="width: 100%; padding: 12px 24px; background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: 600; transition: all 0.3s ease; disabled: { opacity: 0.6, cursor: 'not-allowed' };"
@@ -7468,9 +7639,6 @@ function getColumnIcon(index) {
               <button @click="showCasesImport = true" style="padding: 10px 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: 6px;">
                 📤 导入
               </button>
-              <button @click="exportCases" style="padding: 10px 20px; background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%); color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: 6px;">
-                📥 导出
-              </button>
             </div>
           </div>
 
@@ -7516,29 +7684,25 @@ function getColumnIcon(index) {
                     <th style="padding: 14px 12px; border: 1px solid rgba(100, 149, 237, 0.3); text-align: left; color: white; font-weight: 600;">问题描述</th>
                     <th style="padding: 14px 12px; border: 1px solid rgba(100, 149, 237, 0.3); text-align: center; color: white; font-weight: 600;">分类</th>
                     <th style="padding: 14px 12px; border: 1px solid rgba(100, 149, 237, 0.3); text-align: center; color: white; font-weight: 600;">状态</th>
-                    <th style="padding: 14px 12px; border: 1px solid rgba(100, 149, 237, 0.3); text-align: center; color: white; font-weight: 600;">跟进</th>
                     <th style="padding: 14px 12px; border: 1px solid rgba(100, 149, 237, 0.3); text-align: center; color: white; font-weight: 600;">操作</th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr v-for="caseItem in casesList" :key="caseItem.id" style="cursor: pointer; background: rgba(30, 58, 138, 0.2);" @click="viewCaseDetail(caseItem.id)" @mouseenter="$event.currentTarget.style.background='rgba(100, 149, 237, 0.2)'" @mouseleave="$event.currentTarget.style.background='rgba(30, 58, 138, 0.2)'">
-                    <td style="padding: 12px; border: 1px solid rgba(100, 149, 237, 0.2); color: rgba(255, 255, 255, 0.9); font-weight: 600;">{{ caseItem.task_number }}</td>
-                    <td style="padding: 12px; border: 1px solid rgba(100, 149, 237, 0.2); color: rgba(255, 255, 255, 0.9); font-size: 13px;">{{ caseItem.report_time }}</td>
-                    <td style="padding: 12px; border: 1px solid rgba(100, 149, 237, 0.2); color: rgba(255, 255, 255, 0.9); max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px;">{{ caseItem.problem_desc }}</td>
-                    <td style="padding: 12px; border: 1px solid rgba(100, 149, 237, 0.2); text-align: center;">
+                    <td style="padding: 12px; border: 1px solid rgba(100, 149, 237, 0.2); color: rgba(255, 255, 255, 0.9); font-weight: 600; white-space: nowrap;">{{ caseItem.task_number }}</td>
+                    <td style="padding: 12px; border: 1px solid rgba(100, 149, 237, 0.2); color: rgba(255, 255, 255, 0.9); font-size: 13px; white-space: nowrap;">{{ caseItem.report_time }}</td>
+                    <td style="padding: 12px; border: 1px solid rgba(100, 149, 237, 0.2); color: rgba(255, 255, 255, 0.9); font-size: 13px; white-space: pre-wrap; word-break: break-word; text-align: left; max-width: 200px;">{{ caseItem.problem_desc }}</td>
+                    <td style="padding: 12px; border: 1px solid rgba(100, 149, 237, 0.2); text-align: center; white-space: nowrap;">
                       <span v-if="caseItem.category === '非我局管辖'" style="padding: 4px 8px; background: rgba(255, 152, 0, 0.3); border-radius: 4px; color: #ff9800; font-size: 12px;">非我局</span>
                       <span v-else-if="caseItem.category === '挂账案件'" style="padding: 4px 8px; background: rgba(255, 182, 193, 0.3); border-radius: 4px; color: #ffb6c1; font-size: 12px;">挂账</span>
                       <span v-else-if="caseItem.category === '疑难案件'" style="padding: 4px 8px; background: rgba(233, 30, 99, 0.3); border-radius: 4px; color: #e91e63; font-size: 12px;">疑难</span>
                       <span v-else style="padding: 4px 8px; background: rgba(255, 255, 255, 0.1); border-radius: 4px; color: rgba(255,255,255,0.5); font-size: 12px;">未分类</span>
                     </td>
-                    <td style="padding: 12px; border: 1px solid rgba(100, 149, 237, 0.2); text-align: center;">
+                    <td style="padding: 12px; border: 1px solid rgba(100, 149, 237, 0.2); text-align: center; white-space: nowrap;">
                       <span v-if="caseItem.status === '已结案'" style="color: #43e97b; font-weight: 600;">已结案</span>
                       <span v-else style="color: #4facfe; font-weight: 600;">跟进中</span>
                     </td>
-                    <td style="padding: 12px; border: 1px solid rgba(100, 149, 237, 0.2); text-align: center; color: rgba(255,255,255,0.8); font-size: 13px;">
-                      {{ caseItem.follow_count || 0 }}次
-                    </td>
-                    <td style="padding: 12px; border: 1px solid rgba(100, 149, 237, 0.2);">
+                    <td style="padding: 12px; border: 1px solid rgba(100, 149, 237, 0.2); white-space: nowrap;">
                       <button @click.stop="viewCaseDetail(caseItem.id)" style="padding: 6px 14px; background: rgba(30, 58, 138, 0.6); color: white; border: 1px solid rgba(100, 149, 237, 0.5); border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 500;">
                         查看
                       </button>
@@ -7580,9 +7744,6 @@ function getColumnIcon(index) {
             <!-- 顶部标题栏 -->
             <div style="background: linear-gradient(135deg, rgba(30, 58, 138, 0.6) 0%, rgba(45, 74, 154, 0.6) 100%); padding: 20px 25px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(100, 149, 237, 0.3);">
               <div style="display: flex; align-items: center; gap: 15px;">
-                <button @click="showCaseDetail = false; currentCase = null;" style="padding: 8px 12px; background: rgba(255, 255, 255, 0.1); color: white; border: none; border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 4px;">
-                  ← 返回
-                </button>
                 <div>
                   <h3 style="margin: 0; color: white; font-size: 18px;">{{ currentCase.task_number }}</h3>
                   <div style="margin-top: 6px; display: flex; gap: 8px; align-items: center;">
@@ -7610,6 +7771,12 @@ function getColumnIcon(index) {
                 </button>
                 <button v-if="currentCase.status !== '已结案'" @click="showCloseForm = true" style="padding: 8px 16px; background: rgba(67, 233, 123, 0.2); color: #43e97b; border: 1px solid rgba(67, 233, 123, 0.4); border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 500;">
                   ✓ 结案
+                </button>
+                <button @click="showDeleteConfirm = true" style="padding: 8px 16px; background: rgba(231, 76, 60, 0.2); color: #e74c3c; border: 1px solid rgba(231, 76, 60, 0.4); border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 500;">
+                  🗑️ 删除
+                </button>
+                <button @click="showCaseDetail = false; currentCase = null;" style="padding: 8px 12px; background: rgba(255, 255, 255, 0.1); color: white; border: none; border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 4px;">
+                  ← 返回
                 </button>
               </div>
             </div>
@@ -7727,7 +7894,7 @@ function getColumnIcon(index) {
                     📷 案件照片
                   </h4>
                   <div style="display: flex; flex-wrap: wrap; gap: 10px;">
-                    <img v-for="(photo, index) in getPhotoPaths(currentCase.photo_path)" :key="index" :src="photo" :alt="'照片' + (index + 1)" style="width: 150px; height: 110px; object-fit: cover; border-radius: 8px; cursor: pointer; border: 1px solid rgba(255,255,255,0.2); transition: transform 0.2s;" @click="window.open(photo, '_blank')" @mouseenter="$event.target.style.transform='scale(1.05)'" @mouseleave="$event.target.style.transform='scale(1)'">
+                    <img v-for="(photo, index) in getPhotoPaths(currentCase.photo_path)" :key="index" :src="photo" :alt="'照片' + (index + 1)" style="width: 150px; height: 110px; object-fit: cover; border-radius: 8px; cursor: pointer; border: 1px solid rgba(255,255,255,0.2); transition: transform 0.2s;" @click="openImagePreview(photo)" @mouseenter="$event.target.style.transform='scale(1.05)'" @mouseleave="$event.target.style.transform='scale(1)'">
                   </div>
                 </div>
               </div>
@@ -7876,6 +8043,27 @@ function getColumnIcon(index) {
             </div>
           </div>
 
+          <!-- 删除确认弹窗 -->
+          <div v-if="showDeleteConfirm" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 1000;">
+            <div style="background: #1a1a2e; padding: 25px; border-radius: 12px; width: 400px;">
+              <h3 style="margin: 0 0 20px 0; color: #e74c3c;">⚠️ 删除确认</h3>
+              <p style="margin: 0 0 20px 0; color: rgba(255,255,255,0.8); font-size: 14px; line-height: 1.6;">
+                确定要删除案件 <strong style="color: white;">{{ currentCase?.task_number }}</strong> 吗？<br>
+                <span style="color: rgba(255,255,255,0.6); font-size: 13px;">此操作不可恢复。</span>
+              </p>
+              <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                <button @click="showDeleteConfirm = false" style="padding: 10px 20px; background: rgba(255,255,255,0.1); color: white; border: none; border-radius: 6px; cursor: pointer;">取消</button>
+                <button @click="deleteCurrentCase" style="padding: 10px 20px; background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%); color: white; border: none; border-radius: 6px; cursor: pointer;">确认删除</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 图片预览弹窗 -->
+          <div v-if="showImagePreview" @click="showImagePreview = false" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); display: flex; align-items: center; justify-content: center; z-index: 2000; cursor: zoom-out;">
+            <img :src="previewImageUrl" style="max-width: 90%; max-height: 90%; object-fit: contain; border-radius: 8px; box-shadow: 0 0 30px rgba(0,0,0,0.5);" @click.stop>
+            <button @click="showImagePreview = false" style="position: absolute; top: 20px; right: 20px; padding: 10px 15px; background: rgba(255,255,255,0.1); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 16px;">✕ 关闭</button>
+          </div>
+
           <!-- 导入弹窗 -->
           <div v-if="showCasesImport" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 1000;">
             <div style="background: #1a1a2e; padding: 25px; border-radius: 12px; width: 500px;">
@@ -8013,13 +8201,41 @@ function getColumnIcon(index) {
                   <!-- Excel上传功能 -->
                   <div class="data-management" style="margin-bottom: 25px;">
                     <h5 class="management-title" style="margin-bottom: 12px;">Excel数据上传</h5>
+
+                    <!-- 上传模式选择 -->
+                    <div style="margin-bottom: 15px; display: flex; gap: 20px;">
+                      <label style="display: flex; align-items: center; gap: 6px; color: rgba(255,255,255,0.9); cursor: pointer;">
+                        <input type="radio" v-model="uploadMode" value="create" style="accent-color: #667eea;" />
+                        <span>新建表（以文件名命名）</span>
+                      </label>
+                      <label style="display: flex; align-items: center; gap: 6px; color: rgba(255,255,255,0.9); cursor: pointer;">
+                        <input type="radio" v-model="uploadMode" value="append" style="accent-color: #667eea;" />
+                        <span>追加到现有表</span>
+                      </label>
+                    </div>
+
+                    <!-- 追加模式的额外选项 -->
+                    <div v-if="uploadMode === 'append'" style="margin-bottom: 15px; padding: 12px; background: rgba(102, 126, 234, 0.1); border: 1px solid rgba(102, 126, 234, 0.3); border-radius: 6px; display: flex; gap: 20px; flex-wrap: wrap; align-items: center;">
+                      <div style="display: flex; align-items: center; gap: 8px;">
+                        <label style="color: rgba(255,255,255,0.8); font-size: 14px;">目标表：</label>
+                        <select v-model="targetTable" style="padding: 6px 10px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.2); background: rgba(255,255,255,0.1); color: white; min-width: 150px;">
+                          <option value="">请选择...</option>
+                          <option v-for="table in tables" :key="table" :value="table">{{ table }}</option>
+                        </select>
+                      </div>
+                      <div style="display: flex; align-items: center; gap: 8px;">
+                        <label style="color: rgba(255,255,255,0.8); font-size: 14px;">月份：</label>
+                        <input type="text" v-model="dataMonth" placeholder="如：202603" style="padding: 6px 10px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.2); background: rgba(255,255,255,0.1); color: white; width: 100px;" />
+                      </div>
+                    </div>
+
                     <div class="upload-section" style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
                       <div class="file-selector" style="display: flex; align-items: center; gap: 10px;">
                         <input type="file" accept=".xlsx" @change="handleFileSelect" :disabled="loading" />
                         <span class="file-name">{{ selectedFile ? selectedFile.name : '未选择任何文件' }}</span>
                       </div>
-                      <button class="upload-btn" @click="uploadFile" :disabled="loading || !selectedFile">
-                        {{ loading ? '上传中...' : '上传并导入数据库' }}
+                      <button class="upload-btn" @click="uploadFile" :disabled="loading || !selectedFile || (uploadMode === 'append' && !targetTable)">
+                        {{ loading ? (uploadMode === 'append' ? '追加中...' : '上传中...') : (uploadMode === 'append' ? '追加数据' : '上传并导入数据库') }}
                       </button>
                       <div class="upload-status">
                         <span class="status-label">状态：</span>

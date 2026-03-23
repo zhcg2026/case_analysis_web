@@ -778,6 +778,93 @@ def upload_file():
     finally:
         session.close()
 
+# 追加数据到现有表接口
+@app.route('/api/append-data', methods=['POST'])
+@admin_required
+def append_data():
+    """追加Excel数据到现有表"""
+    session = Session()
+    try:
+        if 'file' not in request.files:
+            return jsonify({'error': '没有文件'}), 400
+
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({'error': '未选择文件'}), 400
+
+        if not file.filename.endswith('.xlsx'):
+            return jsonify({'error': '只支持Excel文件'}), 400
+
+        # 获取参数
+        target_table = request.form.get('target_table')
+        data_month = request.form.get('data_month', '')
+
+        if not target_table:
+            return jsonify({'error': '未指定目标表'}), 400
+
+        # 读取Excel文件
+        df = pd.read_excel(file)
+
+        # 检查目标表是否存在
+        from sqlalchemy import text, inspect
+        inspector = inspect(engine)
+        existing_tables = inspector.get_table_names()
+
+        if target_table not in existing_tables:
+            return jsonify({'error': f'目标表 {target_table} 不存在'}), 400
+
+        # 获取目标表的列结构
+        existing_columns = [col['name'] for col in inspector.get_columns(target_table)]
+
+        # 检查是否有月份列，如果有则添加月份值
+        has_month_column = '月份' in existing_columns or 'data_month' in existing_columns
+        month_column_name = '月份' if '月份' in existing_columns else 'data_month' if 'data_month' in existing_columns else None
+
+        # 新增的列（Excel有但表没有的）
+        new_columns = [col for col in df.columns if col not in existing_columns]
+
+        # 添加新列到表
+        if new_columns:
+            for col in new_columns:
+                col_type = 'TEXT'  # 默认使用TEXT类型
+                session.execute(text(f"ALTER TABLE `{target_table}` ADD COLUMN `{col}` {col_type}"))
+            session.commit()
+            print(f"添加了新列: {new_columns}")
+
+        # 准备数据
+        df_to_insert = df.copy()
+
+        # 添加月份值
+        if month_column_name and data_month:
+            df_to_insert[month_column_name] = data_month
+
+        # 获取更新后的列列表
+        updated_columns = [col['name'] for col in inspector.get_columns(target_table)]
+
+        # 只保留目标表中存在的列
+        common_columns = [col for col in df_to_insert.columns if col in updated_columns]
+        df_to_insert = df_to_insert[common_columns]
+
+        # 追加数据到表
+        df_to_insert.to_sql(target_table, engine, if_exists='append', index=False)
+
+        inserted_count = len(df_to_insert)
+
+        return jsonify({
+            'message': f'成功追加 {inserted_count} 条数据到表 {target_table}',
+            'inserted_count': inserted_count,
+            'new_columns': new_columns
+        }), 200
+
+    except Exception as e:
+        session.rollback()
+        print(f"Error in append_data: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        session.close()
+
 # CMS文件上传接口
 @app.route('/api/upload/file', methods=['POST'])
 @admin_required
@@ -1486,6 +1573,49 @@ def get_tables():
     finally:
         session.close()
 
+# 获取数据表中可用的月份列表
+@app.route('/api/available-months', methods=['GET'])
+@protected
+def get_available_months():
+    """从指定表中查询已有的月份值"""
+    table_name = request.args.get('table_name')
+    if not table_name:
+        return jsonify({'error': 'Missing table_name parameter'}), 400
+
+    if engine is None:
+        return jsonify({'months': []}), 200
+
+    try:
+        # 检查表是否存在
+        inspector = inspect(engine)
+        tables = inspector.get_table_names()
+        if table_name not in tables:
+            return jsonify({'months': []}), 200
+
+        # 检查是否有月份列
+        columns = [col['name'] for col in inspector.get_columns(table_name)]
+        month_column = None
+        for col in ['data_month', '月份']:
+            if col in columns:
+                month_column = col
+                break
+
+        if not month_column:
+            return jsonify({'months': []}), 200
+
+        # 查询月份值
+        from sqlalchemy import text
+        with engine.connect() as conn:
+            result = conn.execute(text(f"SELECT DISTINCT `{month_column}` FROM `{table_name}` WHERE `{month_column}` IS NOT NULL AND `{month_column}` != '' ORDER BY `{month_column}` DESC"))
+            months = [row[0] for row in result.fetchall()]
+
+        return jsonify({'months': months}), 200
+    except Exception as e:
+        print(f"Error in get_available_months: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
 # 删除数据表接口
 @app.route('/api/tables/<table_name>', methods=['DELETE'])
 @protected
@@ -1501,9 +1631,11 @@ def delete_table(table_name):
         if table_name in protected_tables:
             return jsonify({'error': f'不能删除系统表 {table_name}'}), 403
 
-        # 删除数据表
+        # 删除数据表（使用反引号包裹表名，处理外键约束）
         from sqlalchemy import text
-        session.execute(text(f"DROP TABLE IF EXISTS {table_name}"))
+        session.execute(text("SET FOREIGN_KEY_CHECKS = 0"))
+        session.execute(text(f"DROP TABLE IF EXISTS `{table_name}`"))
+        session.execute(text("SET FOREIGN_KEY_CHECKS = 1"))
         session.commit()
         return jsonify({'message': f'Table {table_name} deleted successfully'})
     except Exception as e:
@@ -2601,12 +2733,25 @@ def assess():
         data = request.json
         table_name = data.get('table_name')
         department = data.get('department')
-        
+        month = data.get('month', '')  # 新增：月份筛选
+
         if not table_name or not department:
             return jsonify({'error': 'Missing table_name or department'}), 400
-        
+
         # 从数据库读取数据
         df = pd.read_sql_table(table_name, engine)
+
+        # 月份筛选
+        if month:
+            month_col = None
+            for col in ['data_month', '月份']:
+                if col in df.columns:
+                    month_col = col
+                    break
+            if month_col:
+                df = df[df[month_col] == month]
+                print(f"[考核计分] 筛选月份 {month}，剩余 {len(df)} 条数据")
+
         cases = df.to_dict('records')
         
         # 根据部门选择计算逻辑
@@ -2739,20 +2884,33 @@ def assess_v2():
         data = request.json
         table_name = data.get('table_name')
         department = data.get('department')
-        
+        month = data.get('month', '')  # 新增：月份筛选
+
         if not table_name or not department:
             return jsonify({'error': 'Missing table_name or department'}), 400
-        
+
         # 每次都从文件重新加载最新的系数
         current_coefficients = load_coefficients()
-        
+
         # 获取该部门的系数
         if department in current_coefficients:
             coefficients = current_coefficients[department]
         else:
             coefficients = DEFAULT_COEFFICIENTS.copy()
-        
+
         df = pd.read_sql_table(table_name, engine)
+
+        # 月份筛选
+        if month:
+            month_col = None
+            for col in ['data_month', '月份']:
+                if col in df.columns:
+                    month_col = col
+                    break
+            if month_col:
+                df = df[df[month_col] == month]
+                print(f"[考核计分V2] 筛选月份 {month}，剩余 {len(df)} 条数据")
+
         cases = df.to_dict('records')
         
         if department == '城市综合行政执法队':
@@ -2879,13 +3037,25 @@ def analyze():
         data = request.json
         table_name = data.get('table_name')
         analysis_type = data.get('analysis_type')
-        
+        month = data.get('month', '')  # 新增：月份筛选
+
         if not table_name or not analysis_type:
             return jsonify({'error': 'Missing table_name or analysis_type'}), 400
-        
+
         # 从数据库读取数据
         df = pd.read_sql_table(table_name, engine)
-        
+
+        # 月份筛选
+        if month:
+            month_col = None
+            for col in ['data_month', '月份']:
+                if col in df.columns:
+                    month_col = col
+                    break
+            if month_col:
+                df = df[df[month_col] == month]
+                print(f"[数据分析] 筛选月份 {month}，剩余 {len(df)} 条数据")
+
         # 基础结果
         result = {
             'table_name': table_name,
@@ -3824,6 +3994,7 @@ def analyze_v2():
         table_name = data.get('table_name')
         user_prompt = data.get('prompt')
         model_choice = data.get('model', 'volcengine')  # 默认使用火山引擎
+        month = data.get('month', '')  # 新增：月份筛选
 
         if not table_name or not user_prompt:
             return jsonify({'error': 'Missing table_name or prompt'}), 400
@@ -3831,6 +4002,17 @@ def analyze_v2():
         # 从数据库读取数据
         df = pd.read_sql_table(table_name, engine)
         original_count = len(df)
+
+        # 月份筛选
+        if month:
+            month_col = None
+            for col in ['data_month', '月份']:
+                if col in df.columns:
+                    month_col = col
+                    break
+            if month_col:
+                df = df[df[month_col] == month]
+                print(f"[数据分析] 筛选月份 {month}，剩余 {len(df)} 条数据")
 
         print(f"[数据分析] 原始数据表: {table_name}, 总记录数: {original_count}")
         print(f"[数据分析] 用户提示词: {user_prompt}")
@@ -5086,6 +5268,7 @@ def chart_analysis():
         import json
         data = request.json
         table_name = data.get('table_name')
+        month = data.get('month', '')  # 新增：月份筛选
 
         if not table_name:
             return jsonify({'error': 'Missing table_name parameter'}), 400
@@ -5094,6 +5277,18 @@ def chart_analysis():
 
         # 从数据库读取数据
         df = pd.read_sql_table(table_name, engine)
+
+        # 月份筛选
+        if month:
+            month_col = None
+            for col in ['data_month', '月份']:
+                if col in df.columns:
+                    month_col = col
+                    break
+            if month_col:
+                df = df[df[month_col] == month]
+                print(f"[图表分析] 筛选月份 {month}，剩余 {len(df)} 条数据")
+
         total_count = len(df)
 
         if total_count == 0:
@@ -5317,6 +5512,7 @@ def city_dashboard():
     try:
         data = request.json
         table_name = data.get('table_name')
+        month = data.get('month', '')  # 新增：月份筛选
 
         if not table_name:
             return jsonify({'error': 'Missing table_name parameter'}), 400
@@ -5332,6 +5528,21 @@ def city_dashboard():
 
         if total_count == 0:
             return jsonify({'error': '数据表为空'}), 400
+
+        # 月份筛选（在识别列之前进行，确保后续所有统计都基于筛选后的数据）
+        if month:
+            month_col = None
+            for col in ['data_month', '月份']:
+                if col in df.columns:
+                    month_col = col
+                    break
+            if month_col:
+                df = df[df[month_col] == month]
+                total_count = len(df)
+                print(f"[城市大屏] 筛选月份 {month}，剩余 {total_count} 条数据")
+
+        if total_count == 0:
+            return jsonify({'error': f'月份 {month} 没有数据'}), 400
 
         # 识别关键列
         report_time_col = None
@@ -5372,45 +5583,23 @@ def city_dashboard():
                 dept_col = col
                 break
 
-        # 从数据表名解析月份（格式：202601 表示2026年1月）
-        month = None
+        # 从数据表名解析月份（格式：202601 表示2026年1月）- 仅当用户没有选择月份时使用
+        if not month:
+            # 尝试从表名中提取6位数字格式的月份
+            import re
+            month_match = re.search(r'(20\d{2})(0[1-9]|1[0-2])', table_name)
+            if month_match:
+                year = month_match.group(1)
+                mon = month_match.group(2)
+                month = f"{year}{mon}"  # 使用与前端一致的格式，如 202601
+                print(f"[城市大屏] 从表名解析月份: {month}")
+
+        # 生成月份显示文本
         month_display = ''
-
-        # 尝试从表名中提取6位数字格式的月份
-        import re
-        month_match = re.search(r'(20\d{2})(0[1-9]|1[0-2])', table_name)
-        if month_match:
-            year = month_match.group(1)
-            mon = month_match.group(2)
-            month = f"{year}-{mon}"
-            month_display = f"{year}年{int(mon)}月"
-            print(f"[城市大屏] 从表名解析月份: {month}")
-        else:
-            print(f"[城市大屏] 无法从表名解析月份，使用全部数据")
-
-        # 月份筛选 - 只保留该月的数据
-        if month and report_time_col:
-            try:
-                df['_report_time_parsed'] = pd.to_datetime(df[report_time_col], errors='coerce')
-
-                # 打印一些时间样本
-                sample_times = df[report_time_col].head(5).tolist()
-                print(f"[城市大屏] 上报时间样本: {sample_times}")
-
-                before_filter = len(df)
-                df_filtered = df[df['_report_time_parsed'].dt.strftime('%Y-%m') == month]
-                after_filter = len(df_filtered)
-
-                print(f"[城市大屏] 月份筛选: {before_filter} -> {after_filter} 条")
-
-                # 如果筛选后有数据，使用筛选后的数据；否则使用全部数据
-                if after_filter > 0:
-                    df = df_filtered
-                else:
-                    print(f"[城市大屏] 月份筛选后无数据，使用全部数据")
-                    month_display = f"{month_display}（实际数据）"
-            except Exception as e:
-                print(f"[城市大屏] 月份筛选出错: {str(e)}，使用全部数据")
+        if month and len(month) == 6:
+            year_part = month[:4]
+            month_part = month[4:6]
+            month_display = f"{year_part}年{int(month_part)}月"
 
         # 再次检查数据是否为空
         current_count = len(df)
@@ -5453,13 +5642,28 @@ def city_dashboard():
             'closeRate': close_rate
         }
 
-        # 2. 案件趋势（每日案件数量）
+        # 2. 案件趋势（每日案件数量）- 如果选择了月份，只统计上报时间在该月的数据
         if report_time_col:
             try:
                 if '_report_time_parsed' not in df.columns:
                     df['_report_time_parsed'] = pd.to_datetime(df[report_time_col], errors='coerce')
-                df['_report_date'] = df['_report_time_parsed'].dt.date
-                daily_counts = df['_report_date'].value_counts().sort_index()
+
+                # 用于趋势统计的数据
+                df_trend = df.copy()
+
+                # 如果选择了月份，只保留上报时间在该月的数据
+                if month:
+                    # 将月份格式从 "202601" 转换为 "2026-01"
+                    year_part = month[:4]
+                    month_part = month[4:6]
+                    target_month = f"{year_part}-{month_part}"
+
+                    # 筛选上报时间在该月的数据
+                    df_trend = df_trend[df_trend['_report_time_parsed'].dt.strftime('%Y-%m') == target_month]
+                    print(f"[城市大屏] 案件趋势：上报时间在 {target_month} 的数据 {len(df_trend)} 条")
+
+                df_trend['_report_date'] = df_trend['_report_time_parsed'].dt.date
+                daily_counts = df_trend['_report_date'].value_counts().sort_index()
                 result['trend'] = {
                     'dates': [d.strftime('%m-%d') if hasattr(d, 'strftime') else str(d) for d in daily_counts.index],
                     'values': [int(v) for v in daily_counts.values]
