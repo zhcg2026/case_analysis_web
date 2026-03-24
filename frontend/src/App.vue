@@ -339,6 +339,20 @@ const categoryForm = ref({
   difficult_type: ''
 });
 
+// 案件多选和批量分类
+const selectedCaseIds = ref([]);
+const showBatchCategoryForm = ref(false);
+const showBatchDeleteConfirm = ref(false);
+const batchCategoryForm = ref({
+  category: '',
+  owner_unit: '',
+  contact_person: '',
+  contact_phone: '',
+  pending_reason: '',
+  pending_deadline: '',
+  difficult_type: ''
+});
+
 // 结案表单
 const showCloseForm = ref(false);
 const closeRemark = ref('');
@@ -5294,6 +5308,9 @@ async function fetchCasesStats() {
 function switchCasesCategory(category) {
   casesCategory.value = category;
   casesCurrentPage.value = 1;
+  selectedCaseIds.value = [];  // 清空选中状态
+  showCaseDetail.value = false;  // 关闭详情页
+  currentCase.value = null;  // 清空当前案件
   fetchCasesList();
 }
 
@@ -5436,6 +5453,109 @@ async function deleteCurrentCase() {
   }
 }
 
+// 案件多选相关
+const isAllSelected = computed(() => {
+  return casesList.value.length > 0 && selectedCaseIds.value.length === casesList.value.length;
+});
+
+function toggleCaseSelection(caseId) {
+  const index = selectedCaseIds.value.indexOf(caseId);
+  if (index === -1) {
+    selectedCaseIds.value.push(caseId);
+  } else {
+    selectedCaseIds.value.splice(index, 1);
+  }
+}
+
+function toggleSelectAll() {
+  if (isAllSelected.value) {
+    selectedCaseIds.value = [];
+  } else {
+    selectedCaseIds.value = casesList.value.map(c => c.id);
+  }
+}
+
+// 打开批量分类表单
+function openBatchCategoryForm() {
+  batchCategoryForm.value = {
+    category: '',
+    owner_unit: '',
+    contact_person: '',
+    contact_phone: '',
+    pending_reason: '',
+    pending_deadline: '',
+    difficult_type: ''
+  };
+  showBatchCategoryForm.value = true;
+}
+
+// 批量更新分类
+async function batchUpdateCategory() {
+  if (selectedCaseIds.value.length === 0) return;
+  if (!batchCategoryForm.value.category) {
+    alert('请选择分类');
+    return;
+  }
+
+  try {
+    const response = await fetch('/api/cases/batch-category', {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeaders()
+      },
+      body: JSON.stringify({
+        case_ids: selectedCaseIds.value,
+        ...batchCategoryForm.value
+      })
+    });
+
+    const data = await response.json();
+    if (data.error) {
+      alert('批量更新失败: ' + data.error);
+    } else {
+      showBatchCategoryForm.value = false;
+      selectedCaseIds.value = [];
+      fetchCasesList();  // 刷新列表
+      fetchCasesStats();  // 刷新统计
+      alert(`成功更新 ${data.updated_count} 条案件`);
+    }
+  } catch (error) {
+    alert('批量更新失败: ' + error.message);
+  }
+}
+
+// 批量删除案件
+async function batchDeleteCases() {
+  if (selectedCaseIds.value.length === 0) return;
+
+  try {
+    const response = await fetch('/api/cases/batch-delete', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeaders()
+      },
+      body: JSON.stringify({
+        case_ids: selectedCaseIds.value
+      })
+    });
+
+    const data = await response.json();
+    if (data.error) {
+      alert('批量删除失败: ' + data.error);
+    } else {
+      showBatchDeleteConfirm.value = false;
+      selectedCaseIds.value = [];
+      fetchCasesList();  // 刷新列表
+      fetchCasesStats();  // 刷新统计
+      alert(`成功删除 ${data.deleted_count} 条案件`);
+    }
+  } catch (error) {
+    alert('批量删除失败: ' + error.message);
+  }
+}
+
 // 导出案件
 async function exportCases() {
   try {
@@ -5493,12 +5613,14 @@ function handleCaseFileSelect(event) {
 // 搜索案件
 function searchCases() {
   casesCurrentPage.value = 1;
+  selectedCaseIds.value = [];  // 清空选中状态
   fetchCasesList();
 }
 
 // 翻页
 function handleCasesPageChange(page) {
   casesCurrentPage.value = page;
+  selectedCaseIds.value = [];  // 清空选中状态
   fetchCasesList();
 }
 
@@ -7676,9 +7798,25 @@ function getColumnIcon(index) {
             </div>
 
             <div v-else style="overflow-x: auto;">
+              <!-- 批量操作栏 -->
+              <div v-if="selectedCaseIds.length > 0" style="padding: 12px 20px; background: rgba(79, 172, 254, 0.2); border-bottom: 1px solid rgba(100, 149, 237, 0.3); display: flex; align-items: center; gap: 15px;">
+                <span style="color: white; font-size: 14px;">已选择 {{ selectedCaseIds.length }} 项</span>
+                <button @click="openBatchCategoryForm" style="padding: 8px 16px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 500; font-size: 13px;">
+                  📝 批量分类
+                </button>
+                <button @click="showBatchDeleteConfirm = true" style="padding: 8px 16px; background: rgba(231, 76, 60, 0.8); color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 500; font-size: 13px;">
+                  🗑️ 批量删除
+                </button>
+                <button @click="selectedCaseIds = []" style="padding: 8px 16px; background: rgba(255, 255, 255, 0.1); color: white; border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 6px; cursor: pointer; font-size: 13px;">
+                  取消选择
+                </button>
+              </div>
               <table style="width: 100%; border-collapse: collapse;">
                 <thead>
                   <tr style="background: rgba(30, 58, 138, 0.6);">
+                    <th style="padding: 14px 12px; border: 1px solid rgba(100, 149, 237, 0.3); text-align: center; color: white; font-weight: 600; width: 40px;">
+                      <input type="checkbox" :checked="isAllSelected" @change="toggleSelectAll" style="cursor: pointer; width: 16px; height: 16px;">
+                    </th>
                     <th style="padding: 14px 12px; border: 1px solid rgba(100, 149, 237, 0.3); text-align: left; color: white; font-weight: 600;">任务号</th>
                     <th style="padding: 14px 12px; border: 1px solid rgba(100, 149, 237, 0.3); text-align: left; color: white; font-weight: 600;">上报时间</th>
                     <th style="padding: 14px 12px; border: 1px solid rgba(100, 149, 237, 0.3); text-align: left; color: white; font-weight: 600;">问题描述</th>
@@ -7688,7 +7826,10 @@ function getColumnIcon(index) {
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-for="caseItem in casesList" :key="caseItem.id" style="cursor: pointer; background: rgba(30, 58, 138, 0.2);" @click="viewCaseDetail(caseItem.id)" @mouseenter="$event.currentTarget.style.background='rgba(100, 149, 237, 0.2)'" @mouseleave="$event.currentTarget.style.background='rgba(30, 58, 138, 0.2)'">
+                  <tr v-for="caseItem in casesList" :key="caseItem.id" style="cursor: pointer; background: rgba(30, 58, 138, 0.2);" :style="{ background: selectedCaseIds.includes(caseItem.id) ? 'rgba(79, 172, 254, 0.3)' : 'rgba(30, 58, 138, 0.2)' }" @click="viewCaseDetail(caseItem.id)" @mouseenter="$event.currentTarget.style.background='rgba(100, 149, 237, 0.2)'" @mouseleave="$event.currentTarget.style.background = selectedCaseIds.includes(caseItem.id) ? 'rgba(79, 172, 254, 0.3)' : 'rgba(30, 58, 138, 0.2)'">
+                    <td style="padding: 12px; border: 1px solid rgba(100, 149, 237, 0.2); text-align: center;" @click.stop>
+                      <input type="checkbox" :checked="selectedCaseIds.includes(caseItem.id)" @change="toggleCaseSelection(caseItem.id)" style="cursor: pointer; width: 16px; height: 16px;">
+                    </td>
                     <td style="padding: 12px; border: 1px solid rgba(100, 149, 237, 0.2); color: rgba(255, 255, 255, 0.9); font-weight: 600; white-space: nowrap;">{{ caseItem.task_number }}</td>
                     <td style="padding: 12px; border: 1px solid rgba(100, 149, 237, 0.2); color: rgba(255, 255, 255, 0.9); font-size: 13px; white-space: nowrap;">{{ caseItem.report_time }}</td>
                     <td style="padding: 12px; border: 1px solid rgba(100, 149, 237, 0.2); color: rgba(255, 255, 255, 0.9); font-size: 13px; white-space: pre-wrap; word-break: break-word; text-align: left; max-width: 200px;">{{ caseItem.problem_desc }}</td>
@@ -8000,6 +8141,72 @@ function getColumnIcon(index) {
             </div>
           </div>
 
+          <!-- 批量分类弹窗 -->
+          <div v-if="showBatchCategoryForm" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 1000;">
+            <div style="background: #1a1a2e; padding: 25px; border-radius: 12px; width: 450px; max-height: 80vh; overflow-y: auto;">
+              <h3 style="margin: 0 0 10px 0; color: white;">批量设置分类</h3>
+              <p style="margin: 0 0 20px 0; color: rgba(255,255,255,0.6); font-size: 13px;">已选择 {{ selectedCaseIds.length }} 条案件</p>
+              <div style="margin-bottom: 15px;">
+                <label style="display: block; margin-bottom: 8px; color: rgba(255,255,255,0.8); font-size: 14px;">案件分类</label>
+                <select v-model="batchCategoryForm.category" style="width: 100%; padding: 10px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 6px; color: white;">
+                  <option value="">请选择分类</option>
+                  <option value="非我局管辖">非我局管辖</option>
+                  <option value="挂账案件">挂账案件</option>
+                  <option value="疑难案件">疑难案件</option>
+                </select>
+              </div>
+
+              <!-- 非我局管辖 -->
+              <template v-if="batchCategoryForm.category === '非我局管辖'">
+                <div style="margin-bottom: 15px;">
+                  <label style="display: block; margin-bottom: 8px; color: rgba(255,255,255,0.8); font-size: 14px;">权属单位</label>
+                  <input v-model="batchCategoryForm.owner_unit" style="width: 100%; padding: 10px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 6px; color: white;" placeholder="请输入权属单位">
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+                  <div>
+                    <label style="display: block; margin-bottom: 8px; color: rgba(255,255,255,0.8); font-size: 14px;">联系人</label>
+                    <input v-model="batchCategoryForm.contact_person" style="width: 100%; padding: 10px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 6px; color: white;">
+                  </div>
+                  <div>
+                    <label style="display: block; margin-bottom: 8px; color: rgba(255,255,255,0.8); font-size: 14px;">联系电话</label>
+                    <input v-model="batchCategoryForm.contact_phone" style="width: 100%; padding: 10px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 6px; color: white;">
+                  </div>
+                </div>
+              </template>
+
+              <!-- 挂账案件 -->
+              <template v-if="batchCategoryForm.category === '挂账案件'">
+                <div style="margin-bottom: 15px;">
+                  <label style="display: block; margin-bottom: 8px; color: rgba(255,255,255,0.8); font-size: 14px;">挂账原因</label>
+                  <textarea v-model="batchCategoryForm.pending_reason" rows="3" style="width: 100%; padding: 10px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 6px; color: white;" placeholder="请输入挂账原因"></textarea>
+                </div>
+                <div style="margin-bottom: 15px;">
+                  <label style="display: block; margin-bottom: 8px; color: rgba(255,255,255,0.8); font-size: 14px;">预计处置时间</label>
+                  <input v-model="batchCategoryForm.pending_deadline" type="date" style="width: 100%; padding: 10px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 6px; color: white;">
+                </div>
+              </template>
+
+              <!-- 疑难案件 -->
+              <template v-if="batchCategoryForm.category === '疑难案件'">
+                <div style="margin-bottom: 15px;">
+                  <label style="display: block; margin-bottom: 8px; color: rgba(255,255,255,0.8); font-size: 14px;">疑难类型</label>
+                  <select v-model="batchCategoryForm.difficult_type" style="width: 100%; padding: 10px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 6px; color: white;">
+                    <option value="">请选择</option>
+                    <option value="建筑垃圾">建筑垃圾</option>
+                    <option value="自建房">自建房</option>
+                    <option value="违建">违建</option>
+                    <option value="其他">其他</option>
+                  </select>
+                </div>
+              </template>
+
+              <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                <button @click="showBatchCategoryForm = false" style="padding: 10px 20px; background: rgba(255,255,255,0.1); color: white; border: none; border-radius: 6px; cursor: pointer;">取消</button>
+                <button @click="batchUpdateCategory" style="padding: 10px 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 6px; cursor: pointer;">批量保存</button>
+              </div>
+            </div>
+          </div>
+
           <!-- 跟进弹窗 -->
           <div v-if="showFollowForm" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 1000;">
             <div style="background: #1a1a2e; padding: 25px; border-radius: 12px; width: 450px;">
@@ -8054,6 +8261,21 @@ function getColumnIcon(index) {
               <div style="display: flex; gap: 10px; justify-content: flex-end;">
                 <button @click="showDeleteConfirm = false" style="padding: 10px 20px; background: rgba(255,255,255,0.1); color: white; border: none; border-radius: 6px; cursor: pointer;">取消</button>
                 <button @click="deleteCurrentCase" style="padding: 10px 20px; background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%); color: white; border: none; border-radius: 6px; cursor: pointer;">确认删除</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 批量删除确认弹窗 -->
+          <div v-if="showBatchDeleteConfirm" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 1000;">
+            <div style="background: #1a1a2e; padding: 25px; border-radius: 12px; width: 400px;">
+              <h3 style="margin: 0 0 20px 0; color: #e74c3c;">⚠️ 批量删除确认</h3>
+              <p style="margin: 0 0 20px 0; color: rgba(255,255,255,0.8); font-size: 14px; line-height: 1.6;">
+                确定要删除选中的 <strong style="color: #e74c3c;">{{ selectedCaseIds.length }}</strong> 条案件吗？<br>
+                <span style="color: rgba(255,255,255,0.6); font-size: 13px;">此操作不可恢复。</span>
+              </p>
+              <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                <button @click="showBatchDeleteConfirm = false" style="padding: 10px 20px; background: rgba(255,255,255,0.1); color: white; border: none; border-radius: 6px; cursor: pointer;">取消</button>
+                <button @click="batchDeleteCases" style="padding: 10px 20px; background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%); color: white; border: none; border-radius: 6px; cursor: pointer;">确认删除</button>
               </div>
             </div>
           </div>

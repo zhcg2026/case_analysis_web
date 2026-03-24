@@ -450,6 +450,75 @@ def register_case_management_routes(
         finally:
             session.close()
 
+    @app.route('/api/cases/batch-category', methods=['PUT'])
+    @protected
+    def batch_update_case_category():
+        """批量更新案件分类"""
+        session = Session()
+        try:
+            data = get_json_payload()
+            case_ids = data.get('case_ids', [])
+            category = data.get('category')
+
+            if not case_ids:
+                return jsonify({'error': '请选择要分类的案件'}), 400
+
+            if category not in CASE_CATEGORIES:
+                return jsonify({'error': '无效的分类'}), 400
+
+            # 查询所有要更新的案件
+            cases = session.query(Case).filter(Case.id.in_(case_ids)).all()
+            if not cases:
+                return jsonify({'error': '未找到要更新的案件'}), 404
+
+            updated_count = 0
+            for case in cases:
+                case.category = category
+                case.status = '跟进中'
+                apply_case_category_fields(case, category, data)
+                updated_count += 1
+
+            session.commit()
+            return jsonify({'message': '批量分类成功', 'updated_count': updated_count}), 200
+        except Exception as e:
+            session.rollback()
+            print(f"Error in batch_update_case_category: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return jsonify({'error': str(e)}), 500
+        finally:
+            session.close()
+
+    @app.route('/api/cases/batch-delete', methods=['POST'])
+    @protected
+    def batch_delete_cases():
+        """批量删除案件"""
+        session = Session()
+        try:
+            data = get_json_payload()
+            case_ids = data.get('case_ids', [])
+
+            if not case_ids:
+                return jsonify({'error': '请选择要删除的案件'}), 400
+
+            # 先删除关联的跟进记录
+            if CaseFollow:
+                session.query(CaseFollow).filter(CaseFollow.case_id.in_(case_ids)).delete(synchronize_session=False)
+
+            # 删除案件
+            deleted_count = session.query(Case).filter(Case.id.in_(case_ids)).delete(synchronize_session=False)
+
+            session.commit()
+            return jsonify({'message': '批量删除成功', 'deleted_count': deleted_count}), 200
+        except Exception as e:
+            session.rollback()
+            print(f"Error in batch_delete_cases: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return jsonify({'error': str(e)}), 500
+        finally:
+            session.close()
+
     @app.route('/api/cases/<int:case_id>/follow', methods=['POST'])
     @protected
     def add_case_follow(case_id):
