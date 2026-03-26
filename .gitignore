@@ -66,3 +66,4 @@ logs/
 # OS generated files
 ehthumbs.db
 Desktop.ini
+.gstack/

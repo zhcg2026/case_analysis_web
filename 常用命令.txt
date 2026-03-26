@@ -254,3 +254,22 @@ DELETE FROM cases;
 # 3. 退出MySQL
 EXIT;
 
+根据记忆中的信息，项目使用 Docker 容器运行。停止服务的命令：
+
+  停止单个容器：                                                             docker stop case-analysis-web        # 停止应用容器
+  docker stop mysql-case-analysis      # 停止数据库容器                                                                 
+  如果使用 docker-compose：
+  docker-compose down                  # 停止并移除容器
+  docker-compose stop                  # 仅停止容器
+
+  查看容器状态：
+  docker ps                            # 查看运行中的容器
+
+  需要我帮你查看项目的 docker-compose 配置吗？
+
+                                                                                       
+● 好的，需要时再执行即可。恢复服务的命令是：
+
+  docker start case-analysis-web
+  docker start mysql-case-analysis                                                                                      
+  或者用 docker-compose：                                           docker-compose up -d
