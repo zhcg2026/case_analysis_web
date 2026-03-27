@@ -5097,6 +5097,52 @@ def get_articles_by_category(category_id):
     finally:
         session.close()
 
+# 首页栏目文章API - 获取各栏目最新文章
+@app.route('/api/cms/home-columns', methods=['GET'])
+@protected
+def get_home_columns():
+    session = Session()
+    try:
+        # 获取所有栏目
+        categories = session.query(Category).order_by(Category.order).all()
+
+        result = []
+        for cat in categories:
+            # 获取该栏目下最新的5篇已发布文章
+            articles = session.query(Article).filter_by(
+                category_id=cat.id,
+                status='published'
+            ).order_by(Article.created_at.desc()).limit(5).all()
+
+            articles_list = []
+            for article in articles:
+                articles_list.append({
+                    'id': article.id,
+                    'title': article.title,
+                    'summary': article.summary,
+                    'view_count': article.view_count,
+                    'created_at': article.created_at.strftime('%Y-%m-%d %H:%M:%S') if article.created_at else None
+                })
+
+            result.append({
+                'id': cat.id,
+                'name': cat.name,
+                'slug': cat.slug,
+                'description': cat.description,
+                'articles': articles_list
+            })
+
+        session.commit()
+        return jsonify(result), 200
+    except Exception as e:
+        session.rollback()
+        print(f"Error in get_home_columns: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        session.close()
+
 # 配置静态文件服务
 import os
 app.config['UPLOAD_FOLDER'] = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')

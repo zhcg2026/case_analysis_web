@@ -1,0 +1,383 @@
+/* ============================================
+   主题样式 - Theme Styles
+   ============================================ */
+
+/* ========== 亮色主题背景渐变 ========== */
+[data-theme="light"] .app-container {
+  background: linear-gradient(135deg, #f5f7fa 0%, #e4e8ed 100%);
+}
+
+/* ========== 暗色主题背景渐变 ========== */
+[data-theme="dark"] .app-container {
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+}
+
+/* ========== 主布局 ========== */
+.app-layout {
+  display: flex;
+  min-height: 100vh;
+}
+
+.app-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+.app-content {
+  flex: 1;
+  padding: var(--space-6);
+  overflow-y: auto;
+}
+
+/* 侧边栏折叠时的内容区域 */
+.sidebar-collapsed .app-content {
+  margin-left: var(--sidebar-collapsed-width);
+}
+
+/* ========== 页面容器 ========== */
+.page-container {
+  max-width: 100%;
+  margin: 0 auto;
+}
+
+/* ========== 玻璃态效果 ========== */
+.glass {
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+[data-theme="light"] .glass {
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+/* ========== 图表主题适配 ========== */
+.chart-container {
+  background: var(--bg-card);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  border: 1px solid var(--border-lighter);
+}
+
+/* 暗色模式图表背景 */
+[data-theme="dark"] .chart-container {
+  background: rgba(26, 26, 46, 0.8);
+}
+
+/* ========== 表格主题 ========== */
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--bg-card);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  border: 1px solid var(--border-lighter);
+}
+
+.data-table th {
+  background: var(--bg-tertiary);
+  padding: var(--space-3) var(--space-4);
+  text-align: left;
+  font-weight: 600;
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.data-table td {
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border-lighter);
+  color: var(--text-secondary);
+}
+
+.data-table tr:hover td {
+  background: var(--fill-light);
+}
+
+.data-table tr:last-child td {
+  border-bottom: none;
+}
+
+/* ========== 表单主题 ========== */
+.form-group {
+  margin-bottom: var(--space-4);
+}
+
+.form-label {
+  display: block;
+  margin-bottom: var(--space-2);
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.form-input,
+.form-select,
+.form-textarea {
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.form-input:hover,
+.form-select:hover,
+.form-textarea:hover {
+  border-color: var(--primary-400);
+}
+
+.form-input:focus,
+.form-select:focus,
+.form-textarea:focus {
+  outline: none;
+  border-color: var(--primary-500);
+  box-shadow: 0 0 0 3px var(--primary-100);
+}
+
+[data-theme="dark"] .form-input:focus,
+[data-theme="dark"] .form-select:focus,
+[data-theme="dark"] .form-textarea:focus {
+  box-shadow: 0 0 0 3px rgba(64, 158, 255, 0.2);
+}
+
+.form-textarea {
+  min-height: 100px;
+  resize: vertical;
+}
+
+/* ========== 按钮主题 ========== */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.5;
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  color: #fff;
+  background: var(--primary-500);
+  border-color: var(--primary-500);
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--primary-600);
+  border-color: var(--primary-600);
+}
+
+.btn-secondary {
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  border-color: var(--border-color);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: var(--fill-light);
+  border-color: var(--primary-400);
+}
+
+.btn-success {
+  color: #fff;
+  background: var(--success);
+  border-color: var(--success);
+}
+
+.btn-danger {
+  color: #fff;
+  background: var(--danger);
+  border-color: var(--danger);
+}
+
+.btn-text {
+  color: var(--primary-500);
+  background: transparent;
+  border-color: transparent;
+}
+
+.btn-text:hover:not(:disabled) {
+  background: var(--primary-50);
+}
+
+[data-theme="dark"] .btn-text:hover:not(:disabled) {
+  background: rgba(64, 158, 255, 0.1);
+}
+
+/* ========== 标签页主题 ========== */
+.tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border-lighter);
+  margin-bottom: var(--space-4);
+}
+
+.tab {
+  padding: var(--space-3) var(--space-4);
+  font-weight: 500;
+  color: var(--text-tertiary);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.tab:hover {
+  color: var(--primary-500);
+}
+
+.tab.active {
+  color: var(--primary-500);
+  border-bottom-color: var(--primary-500);
+}
+
+/* ========== 消息提示主题 ========== */
+.message {
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-4);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.message-success {
+  background: var(--success-light);
+  color: var(--success-dark);
+  border: 1px solid var(--success);
+}
+
+.message-warning {
+  background: var(--warning-light);
+  color: var(--warning-dark);
+  border: 1px solid var(--warning);
+}
+
+.message-danger {
+  background: var(--danger-light);
+  color: var(--danger-dark);
+  border: 1px solid var(--danger);
+}
+
+.message-info {
+  background: var(--info-light);
+  color: var(--info-dark);
+  border: 1px solid var(--info);
+}
+
+[data-theme="dark"] .message-success {
+  background: rgba(103, 194, 58, 0.1);
+  border-color: var(--success);
+}
+
+[data-theme="dark"] .message-warning {
+  background: rgba(230, 162, 60, 0.1);
+  border-color: var(--warning);
+}
+
+[data-theme="dark"] .message-danger {
+  background: rgba(245, 108, 108, 0.1);
+  border-color: var(--danger);
+}
+
+/* ========== 分页主题 ========== */
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+}
+
+.pagination-btn {
+  min-width: 32px;
+  height: 32px;
+  padding: 0 var(--space-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  color: var(--text-secondary);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.pagination-btn:hover:not(:disabled) {
+  color: var(--primary-500);
+  border-color: var(--primary-500);
+}
+
+.pagination-btn.active {
+  color: #fff;
+  background: var(--primary-500);
+  border-color: var(--primary-500);
+}
+
+.pagination-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ========== 模态框主题 ========== */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--bg-overlay);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: var(--z-modal-backdrop);
+}
+
+.modal {
+  background: var(--bg-card);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xl);
+  max-width: 90vw;
+  max-height: 90vh;
+  overflow: auto;
+  z-index: var(--z-modal);
+}
+
+.modal-header {
+  padding: var(--space-4) var(--space-6);
+  border-bottom: 1px solid var(--border-lighter);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.modal-body {
+  padding: var(--space-6);
+}
+
+.modal-footer {
+  padding: var(--space-4) var(--space-6);
+  border-top: 1px solid var(--border-lighter);
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+}

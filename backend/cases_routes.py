@@ -421,6 +421,54 @@ def register_case_management_routes(
         finally:
             session.close()
 
+    @app.route('/api/cases/category-stats', methods=['GET'])
+    @protected
+    def get_cases_category_stats():
+        """获取案件分类统计"""
+        session = Session()
+        try:
+            # 按大类统计
+            major_stats = session.query(
+                Case.major_category,
+                func.count(Case.id)
+            ).filter(
+                Case.major_category != None,
+                Case.major_category != ''
+            ).group_by(Case.major_category).all()
+
+            result = []
+            for name, count in major_stats:
+                result.append({
+                    'category': name,
+                    'name': name,
+                    'count': count
+                })
+
+            # 按案件分类字段统计
+            category_stats = session.query(
+                Case.category,
+                func.count(Case.id)
+            ).filter(
+                Case.category != None,
+                Case.category != ''
+            ).group_by(Case.category).all()
+
+            for name, count in category_stats:
+                result.append({
+                    'category': name,
+                    'name': name,
+                    'count': count
+                })
+
+            session.commit()
+            return jsonify(result), 200
+        except Exception as e:
+            session.rollback()
+            print(f"Error in get_cases_category_stats: {str(e)}")
+            return jsonify({'error': str(e)}), 500
+        finally:
+            session.close()
+
     @app.route('/api/cases/<int:case_id>/category', methods=['PUT'])
     @protected
     def update_case_category(case_id):
