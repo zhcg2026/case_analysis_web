@@ -4,7 +4,7 @@
     <div class="welcome-banner">
       <div class="welcome-content">
         <h1 class="welcome-title">欢迎回来，{{ userStore.username }}</h1>
-        <p class="welcome-subtitle">案件分析系统 v2.0 - 智能数据分析平台</p>
+        <p class="welcome-subtitle">智慧平台一站通 v2.0 - 智能数据分析平台</p>
       </div>
       <div class="welcome-time">
         <div class="time-display">{{ currentTime }}</div>
@@ -15,7 +15,7 @@
     <!-- 核心数据卡片 -->
     <div class="stats-section">
       <div class="stats-card">
-        <div class="stats-icon">
+        <div class="stats-icon primary">
           <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/>
             <path d="M14 2v4a2 2 0 0 0 2 2h4"/>
@@ -127,14 +127,6 @@
           </span>
           <span class="action-text">地图服务</span>
         </router-link>
-        <router-link to="/tools" class="action-card">
-          <span class="action-icon tools">
-            <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
-            </svg>
-          </span>
-          <span class="action-text">小工具</span>
-        </router-link>
         <router-link to="/business" class="action-card">
           <span class="action-icon business">
             <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -221,7 +213,14 @@ function updateTime() {
 async function fetchStats() {
   try {
     const response = await axios.get('/api/cases/stats')
-    stats.value = response.data || {}
+    const data = response.data || {}
+    // 映射后端字段到前端
+    stats.value = {
+      totalCases: data.total || 0,
+      completedCases: data.closed || 0,
+      pendingCases: data.follow_up || 0,
+      expiringCases: data.expiring_soon || 0
+    }
   } catch (error) {
     console.error('获取统计数据失败:', error)
   }
@@ -282,21 +281,22 @@ onUnmounted(() => {
   justify-content: space-between;
   align-items: center;
   padding: var(--space-6);
-  background: linear-gradient(135deg, #2a64a6 0%, #1e4e8c 100%);
+  background: var(--bg-card);
   border-radius: var(--radius-lg);
+  border: 1px solid var(--border-lighter);
   margin-bottom: var(--space-6);
-  color: white;
 }
 
 .welcome-title {
   font-size: 24px;
   font-weight: 700;
   margin: 0 0 var(--space-1);
+  color: var(--text-primary);
 }
 
 .welcome-subtitle {
   font-size: 14px;
-  opacity: 0.8;
+  color: var(--text-tertiary);
   margin: 0;
 }
 
@@ -308,11 +308,12 @@ onUnmounted(() => {
   font-size: 32px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
 }
 
 .date-display {
   font-size: 14px;
-  opacity: 0.8;
+  color: var(--text-tertiary);
   margin-top: var(--space-1);
 }
 
@@ -346,8 +347,11 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--primary-50);
   border-radius: var(--radius-md);
+}
+
+.stats-icon.primary {
+  background: rgba(64, 158, 255, 0.1);
   color: var(--primary-500);
 }
 
@@ -429,7 +433,6 @@ onUnmounted(() => {
 .action-icon.huiwentai { background: rgba(103, 194, 58, 0.1); color: #67c23a; }
 .action-icon.assessment { background: rgba(230, 162, 60, 0.1); color: #e6a23c; }
 .action-icon.map { background: rgba(64, 158, 255, 0.1); color: #409eff; }
-.action-icon.tools { background: rgba(144, 147, 153, 0.1); color: #909399; }
 .action-icon.business { background: rgba(103, 194, 58, 0.1); color: #67c23a; }
 
 .action-card:hover .action-icon.cases { background: rgba(64, 158, 255, 0.2); }
@@ -437,7 +440,6 @@ onUnmounted(() => {
 .action-card:hover .action-icon.huiwentai { background: rgba(103, 194, 58, 0.2); }
 .action-card:hover .action-icon.assessment { background: rgba(230, 162, 60, 0.2); }
 .action-card:hover .action-icon.map { background: rgba(64, 158, 255, 0.2); }
-.action-card:hover .action-icon.tools { background: rgba(144, 147, 153, 0.2); }
 .action-card:hover .action-icon.business { background: rgba(103, 194, 58, 0.2); }
 
 .action-text {

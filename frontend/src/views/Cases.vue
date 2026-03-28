@@ -8,15 +8,15 @@
         <span class="stat-value">{{ stats.total }}</span>
         <span class="stat-label">全部案件</span>
       </div>
-      <div class="stat-card warning" :class="{ active: filterCategory === '非我局管辖' }" @click="switchCategory('非我局管辖')">
+      <div class="stat-card" :class="{ active: filterCategory === '非我局管辖' }" @click="switchCategory('非我局管辖')">
         <span class="stat-value">{{ stats.non_jurisdiction }}</span>
         <span class="stat-label">非我局管辖</span>
       </div>
-      <div class="stat-card danger" :class="{ active: filterCategory === '挂账案件' }" @click="switchCategory('挂账案件')">
+      <div class="stat-card" :class="{ active: filterCategory === '挂账案件' }" @click="switchCategory('挂账案件')">
         <span class="stat-value">{{ stats.pending }}<span v-if="stats.expiring_soon > 0" class="expiring-badge">!{{ stats.expiring_soon }}</span></span>
         <span class="stat-label">挂账案件</span>
       </div>
-      <div class="stat-card purple" :class="{ active: filterCategory === '疑难案件' }" @click="switchCategory('疑难案件')">
+      <div class="stat-card" :class="{ active: filterCategory === '疑难案件' }" @click="switchCategory('疑难案件')">
         <span class="stat-value">{{ stats.difficult }}</span>
         <span class="stat-label">疑难案件</span>
       </div>
@@ -131,11 +131,11 @@
           </div>
         </div>
         <div class="header-actions">
-          <button class="btn btn-warning" @click="showCategoryModal = true">分类</button>
-          <button class="btn btn-info" @click="showFollowModal = true">跟进</button>
-          <button v-if="currentCase.status !== '已结案'" class="btn btn-success" @click="showCloseModal = true">结案</button>
-          <button class="btn btn-danger" @click="showDeleteModal = true">删除</button>
-          <button class="btn btn-secondary" @click="closeDetail">返回</button>
+          <button class="btn btn-secondary" @click="showCategoryModal = true">分类</button>
+          <button class="btn btn-secondary" @click="showFollowModal = true">跟进</button>
+          <button v-if="currentCase.status !== '已结案'" class="btn btn-secondary" @click="showCloseModal = true">结案</button>
+          <button class="btn btn-secondary danger" @click="showDeleteModal = true">删除</button>
+          <button class="btn btn-primary" @click="closeDetail">返回</button>
         </div>
       </div>
 
@@ -825,16 +825,15 @@ onMounted(() => {
   padding: var(--space-4);
   background: var(--bg-card);
   border-radius: var(--radius-lg);
-  border: 2px solid var(--border-lighter);
+  border: 1px solid var(--border-lighter);
   cursor: pointer;
   transition: all var(--transition-fast);
 }
 
-.stat-card:hover { border-color: var(--primary-200); }
-.stat-card.active { border-color: var(--primary-500); background: var(--primary-50); }
-.stat-card.warning { border-left: 4px solid var(--warning); }
-.stat-card.danger { border-left: 4px solid var(--danger); }
-.stat-card.purple { border-left: 4px solid #e91e63; }
+.stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
+}
 
 .stat-value {
   font-size: 28px;
@@ -933,6 +932,8 @@ onMounted(() => {
 .btn-primary:hover { background: var(--primary-600); }
 .btn-secondary { background: var(--bg-card); color: var(--text-primary); border-color: var(--border-lighter); }
 .btn-secondary:hover { border-color: var(--primary-300); }
+.btn-secondary.danger { color: var(--danger); }
+.btn-secondary.danger:hover { background: rgba(245, 108, 108, 0.1); border-color: var(--danger); }
 .btn-success { background: var(--success); color: white; }
 .btn-danger { background: var(--danger); color: white; }
 .btn-warning { background: var(--warning); color: white; }
@@ -1028,7 +1029,11 @@ onMounted(() => {
 .checkbox-col { width: 40px; text-align: center !important; }
 .task-number { font-weight: 600; white-space: nowrap; }
 .report-time { font-size: 13px; white-space: nowrap; }
-.problem-desc { max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.problem-desc {
+  max-width: 300px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
 
 /* 分类标签 */
 .category-badge {
@@ -1090,11 +1095,11 @@ onMounted(() => {
   justify-content: space-between;
   align-items: center;
   padding: var(--space-4) var(--space-6);
-  background: linear-gradient(135deg, var(--primary-500) 0%, #00c6fb 100%);
-  color: white;
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border-lighter);
 }
 
-.case-title { font-size: 18px; font-weight: 600; margin: 0; }
+.case-title { font-size: 18px; font-weight: 600; margin: 0; color: var(--text-primary); }
 
 .case-tags { display: flex; gap: var(--space-2); margin-top: var(--space-2); align-items: center; }
 
@@ -1105,14 +1110,14 @@ onMounted(() => {
   font-weight: 500;
 }
 
-.category-tag.non-jurisdiction { background: rgba(255, 152, 0, 0.3); color: #ff9800; }
-.category-tag.pending { background: rgba(255, 182, 193, 0.3); color: #ffb6c1; }
-.category-tag.difficult { background: rgba(233, 30, 99, 0.3); color: #ff6b9d; }
+.category-tag.non-jurisdiction { background: rgba(255, 152, 0, 0.15); color: #ff9800; }
+.category-tag.pending { background: rgba(233, 30, 99, 0.15); color: #e91e63; }
+.category-tag.difficult { background: rgba(156, 39, 176, 0.15); color: #9c27b0; }
 
-.status-tag.following { background: rgba(79, 172, 254, 0.3); color: white; }
-.status-tag.closed { background: rgba(67, 233, 123, 0.3); color: #43e97b; }
+.status-tag.following { background: rgba(64, 158, 255, 0.15); color: var(--primary-500); }
+.status-tag.closed { background: rgba(103, 194, 58, 0.15); color: #67c23a; }
 
-.follow-count { font-size: 12px; opacity: 0.8; }
+.follow-count { font-size: 12px; color: var(--text-tertiary); }
 
 .header-actions { display: flex; gap: var(--space-2); }
 

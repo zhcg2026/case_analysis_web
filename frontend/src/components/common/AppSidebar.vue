@@ -1,6 +1,24 @@
 <template>
   <aside class="app-sidebar" :class="{ collapsed: isCollapsed }">
     <div class="sidebar-content">
+      <!-- 顶部标题 -->
+      <div class="sidebar-header">
+        <div class="header-logo">
+          <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect width="40" height="40" rx="8" fill="url(#grad1)"/>
+            <path d="M12 20L18 26L28 14" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+            <circle cx="20" cy="20" r="16" stroke="white" stroke-width="2" stroke-dasharray="4 4" opacity="0.5"/>
+            <defs>
+              <linearGradient id="grad1" x1="0" y1="0" x2="40" y2="40">
+                <stop offset="0%" stop-color="#409eff"/>
+                <stop offset="100%" stop-color="#00c6fb"/>
+              </linearGradient>
+            </defs>
+          </svg>
+        </div>
+        <span class="header-text" v-show="!isCollapsed">智慧平台一站通</span>
+      </div>
+
       <nav class="sidebar-nav">
         <router-link
           v-for="item in navItems"
@@ -64,13 +82,13 @@ const icons = {
 const navItems = computed(() => {
   const items = [
     { path: '/', title: '首页', icon: icons.home },
-    { path: '/dashboard', title: '数据大屏', icon: icons.dashboard },
-    { path: '/ai-apps', title: 'AI应用', icon: icons.ai },
-    { path: '/huiwentai', title: '汇问台', icon: icons.huiwentai, permission: 'huiwentai' },
+    { path: '/dashboard', title: '数据大屏', icon: icons.dashboard, permission: 'dashboard' },
     { path: '/assessment', title: '考核计分', icon: icons.assessment, permission: 'assessment' },
+    { path: '/ai-apps', title: 'AI应用', icon: icons.ai, permission: 'data_analysis' },
     { path: '/cases', title: '案件管理', icon: icons.cases, permission: 'cases' },
+    { path: '/huiwentai', title: '汇问台', icon: icons.huiwentai, permission: 'huiwentai' },
     { path: '/map', title: '地图服务', icon: icons.map, permission: 'map' },
-    { path: '/business', title: '业务平台', icon: icons.business },
+    { path: '/business', title: '业务平台', icon: icons.business, permission: 'business' },
     { path: '/admin', title: '系统管理', icon: icons.admin, requiresAdmin: true }
   ]
 
@@ -117,6 +135,33 @@ function toggleCollapse() {
   flex-direction: column;
   overflow-y: auto;
   padding: var(--space-4);
+}
+
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-2);
+  margin-bottom: var(--space-4);
+  border-bottom: 1px solid var(--border-lighter);
+}
+
+.header-logo {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+}
+
+.header-logo svg {
+  width: 100%;
+  height: 100%;
+}
+
+.header-text {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
 }
 
 .sidebar-nav {

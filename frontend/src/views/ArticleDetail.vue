@@ -40,6 +40,24 @@
       </div>
 
       <div class="article-content" v-html="formattedContent"></div>
+
+      <!-- 附件下载区域 -->
+      <div class="attachment-section" v-if="article.file_path">
+        <h3 class="attachment-title">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+          </svg>
+          附件下载
+        </h3>
+        <button class="download-btn" @click="downloadFile">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/>
+            <line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+          下载附件
+        </button>
+      </div>
     </div>
 
     <div class="loading-state" v-else-if="loading">
@@ -104,9 +122,49 @@ function formatDate(dateStr) {
 
 const formattedContent = computed(() => {
   if (!article.value?.content) return ''
-  // 简单的换行处理，后续可以用富文本编辑器
-  return article.value.content.replace(/\n/g, '<br>')
+
+  let content = article.value.content
+
+  // 处理markdown风格的图片: ![alt](url)
+  content = content.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" style="max-width:100%;border-radius:8px;margin:16px 0;" />')
+
+  // 简单的换行处理
+  content = content.replace(/\n/g, '<br>')
+
+  return content
 })
+
+function downloadFile() {
+  if (!article.value?.file_path) return
+
+  // 确保路径以 / 开头
+  const path = article.value.file_path
+  const url = path.startsWith('/') ? path : '/' + path
+
+  // 使用 fetch 下载文件
+  fetch(url)
+    .then(response => {
+      if (!response.ok) throw new Error('下载失败')
+      return response.blob()
+    })
+    .then(blob => {
+      // 从路径中提取文件名
+      const filename = path.split('/').pop() || 'download'
+      // 创建下载链接
+      const blobUrl = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = blobUrl
+      link.download = filename
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(blobUrl)
+    })
+    .catch(error => {
+      console.error('下载失败:', error)
+      alert('下载失败，请重试')
+    })
+}
 
 watch(() => route.params.id, fetchArticle)
 
@@ -203,6 +261,48 @@ onMounted(fetchArticle)
 .article-content :deep(img) {
   max-width: 100%;
   border-radius: var(--radius-md);
+  margin: var(--space-4) 0;
+}
+
+.attachment-section {
+  margin-top: var(--space-8);
+  padding-top: var(--space-6);
+  border-top: 1px solid var(--border-lighter);
+}
+
+.attachment-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 var(--space-4);
+}
+
+.attachment-title svg {
+  color: var(--primary-500);
+}
+
+.download-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  background: var(--primary-50);
+  color: var(--primary-600);
+  border-radius: var(--radius-md);
+  border: none;
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.download-btn:hover {
+  background: var(--primary-100);
+  color: var(--primary-700);
 }
 
 .loading-state,

@@ -8,10 +8,6 @@
           <line x1="3" y1="18" x2="21" y2="18"></line>
         </svg>
       </button>
-      <div class="logo">
-        <span class="logo-icon">📊</span>
-        <span class="logo-text">案件分析系统</span>
-      </div>
     </div>
 
     <div class="header-right">
@@ -25,10 +21,6 @@
 
         <Transition name="fade">
           <div v-if="showUserDropdown" class="user-dropdown">
-            <div class="dropdown-item" @click="goToProfile">
-              <span>👤</span> 个人信息
-            </div>
-            <div class="dropdown-divider"></div>
             <div class="dropdown-item danger" @click="handleLogout">
               <span>🚪</span> 退出登录
             </div>
@@ -54,10 +46,6 @@ const userMenuRef = ref(null)
 
 const username = computed(() => userStore.username || '用户')
 const userInitial = computed(() => username.value.charAt(0).toUpperCase())
-
-function goToProfile() {
-  showUserDropdown.value = false
-}
 
 function handleLogout() {
   showUserDropdown.value = false
@@ -117,22 +105,6 @@ onUnmounted(() => {
 
 .sidebar-toggle:hover {
   background: var(--fill-light);
-  color: var(--text-primary);
-}
-
-.logo {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.logo-icon {
-  font-size: 24px;
-}
-
-.logo-text {
-  font-size: 18px;
-  font-weight: 600;
   color: var(--text-primary);
 }
 
@@ -214,12 +186,6 @@ onUnmounted(() => {
 
 .dropdown-item.danger {
   color: var(--danger);
-}
-
-.dropdown-divider {
-  height: 1px;
-  background: var(--border-lighter);
-  margin: var(--space-1) 0;
 }
 
 @media (max-width: 640px) {

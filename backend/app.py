@@ -361,14 +361,53 @@ try:
         config_value = Column(Text)  # 配置值（JSON格式）
         created_at = Column(DateTime(timezone=True), server_default=func.now())
         updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
-    
+
+    # 案件跟进模型
+    class CaseFollow(Base):
+        __tablename__ = 'case_follows'
+        id = Column(Integer, primary_key=True, autoincrement=True)
+        case_id = Column(Integer, nullable=False)
+        follow_type = Column(String(20))      # 发函/协调/督办/其他
+        content = Column(Text)
+        attachments = Column(Text)            # JSON格式附件路径
+        follow_time = Column(DateTime, default=datetime.datetime.now)
+        follow_user = Column(String(50))
+        created_at = Column(DateTime, default=datetime.datetime.now)
+
     # 创建数据库表
     # 只创建不存在的表，保留现有数据
     Base.metadata.create_all(engine)
 
+    # 数据库迁移：添加 dashboard 列
+    try:
+        with engine.connect() as conn:
+            result = conn.execute(text("SHOW COLUMNS FROM permissions LIKE 'dashboard'"))
+            if result.fetchone() is None:
+                conn.execute(text("ALTER TABLE permissions ADD COLUMN dashboard INT NOT NULL DEFAULT 0 AFTER user_id"))
+                conn.commit()
+                print("数据库迁移：已添加 dashboard 列")
+    except Exception as e:
+        print(f"数据库迁移检查: {e}")
+
     # 创建会话工厂
     Session = sessionmaker(bind=engine)
-    
+
+    # 注册案件管理路由
+    register_case_management_routes(
+        app=app,
+        Session=Session,
+        Case=Case,
+        CaseFollow=CaseFollow,
+        protected=protected,
+        get_json_payload=get_json_payload,
+        get_case_or_404=get_case_or_404,
+        serialize_case=serialize_case,
+        CASE_CATEGORIES=CASE_CATEGORIES,
+        apply_case_category_fields=apply_case_category_fields,
+        parse_pending_deadline=parse_pending_deadline,
+    )
+    print("案件管理路由注册成功")
+
 except Exception as e:
     print(f"数据库初始化失败: {e}")
     print("应用将以无数据库模式运行（登录和用户管理功能不可用）")
@@ -564,7 +603,8 @@ def call_llm_api(api_url, api_key, model, messages, max_tokens=3000, temperature
                 api_url,
                 headers=headers,
                 json=payload,
-                timeout=(API_CONNECT_TIMEOUT, API_READ_TIMEOUT)
+                timeout=(API_CONNECT_TIMEOUT, API_READ_TIMEOUT),
+                proxies={"http": None, "https": None}  # 禁用代理，直连API
             )
 
             print(f"[{provider_name}] 响应状态码: {response.status_code}")
@@ -1000,12 +1040,11 @@ def login():
         token = generate_token(user.id, user.username, user.role)
 
         # 获取用户权限
-        permission = session.execute(text("SELECT data_management, assessment, data_analysis, spotcheck, cases, map, huiwentai, business FROM permissions WHERE user_id = :user_id"), {'user_id': user.id}).fetchone()
+        permission = session.execute(text("SELECT dashboard, assessment, data_analysis, cases, map, huiwentai, business FROM permissions WHERE user_id = :user_id"), {'user_id': user.id}).fetchone()
         permissions = {
-            'data_management': False,
+            'dashboard': False,
             'assessment': False,
             'data_analysis': False,
-            'spotcheck': False,
             'cases': False,
             'map': False,
             'huiwentai': False,
@@ -1013,14 +1052,13 @@ def login():
         }
         if permission:
             permissions = {
-                'data_management': permission[0],
+                'dashboard': permission[0],
                 'assessment': permission[1],
                 'data_analysis': permission[2],
-                'spotcheck': permission[3],
-                'cases': permission[4],
-                'map': permission[5],
-                'huiwentai': permission[6],
-                'business': permission[7]
+                'cases': permission[3],
+                'map': permission[4],
+                'huiwentai': permission[5],
+                'business': permission[6]
             }
 
         session.commit()
@@ -1047,10 +1085,9 @@ def get_current_user():
     # 如果没有数据库连接，返回默认权限
     if engine is None:
         permissions = {
-                'data_management': True,
+                'dashboard': True,
                 'assessment': True,
                 'data_analysis': True,
-                'spotcheck': True,
                 'cases': True,
                 'map': True,
                 'huiwentai': True,
@@ -1062,17 +1099,16 @@ def get_current_user():
             'role': request.role,
             'permissions': permissions
         }), 200
-    
+
     session = Session()
     try:
         # 获取用户权限
-        permission = session.execute(text("SELECT data_management, assessment, data_analysis, spotcheck, cases, map, huiwentai, business FROM permissions WHERE user_id = :user_id"), {'user_id': request.user_id}).fetchone()
+        permission = session.execute(text("SELECT dashboard, assessment, data_analysis, cases, map, huiwentai, business FROM permissions WHERE user_id = :user_id"), {'user_id': request.user_id}).fetchone()
 
         permissions = {
-            'data_management': False,
+            'dashboard': False,
             'assessment': False,
             'data_analysis': False,
-            'spotcheck': False,
             'cases': False,
             'map': False,
             'huiwentai': False,
@@ -1081,14 +1117,13 @@ def get_current_user():
 
         if permission:
             permissions = {
-                'data_management': permission[0],
+                'dashboard': permission[0],
                 'assessment': permission[1],
                 'data_analysis': permission[2],
-                'spotcheck': permission[3],
-                'cases': permission[4],
-                'map': permission[5],
-                'huiwentai': permission[6],
-                'business': permission[7]
+                'cases': permission[3],
+                'map': permission[4],
+                'huiwentai': permission[5],
+                'business': permission[6]
             }
         
         session.commit()
@@ -1114,10 +1149,9 @@ def get_users():
     # 如果没有数据库连接，返回默认用户
     if engine is None:
         permissions = {
-            'data_management': True,
+            'dashboard': True,
             'assessment': True,
             'data_analysis': True,
-            'spotcheck': True,
             'cases': True,
             'map': True,
             'huiwentai': True,
@@ -1138,12 +1172,11 @@ def get_users():
         user_list = []
         for user in users:
             # 获取用户权限
-            permission = session.execute(text("SELECT data_management, assessment, data_analysis, spotcheck, cases, map, huiwentai, business FROM permissions WHERE user_id = :user_id"), {'user_id': user.id}).fetchone()
+            permission = session.execute(text("SELECT dashboard, assessment, data_analysis, cases, map, huiwentai, business FROM permissions WHERE user_id = :user_id"), {'user_id': user.id}).fetchone()
             permissions = {
-                'data_management': False,
+                'dashboard': False,
                 'assessment': False,
                 'data_analysis': False,
-                'spotcheck': False,
                 'cases': False,
                 'map': False,
                 'huiwentai': False,
@@ -1151,14 +1184,13 @@ def get_users():
             }
             if permission:
                 permissions = {
-                    'data_management': permission[0],
+                    'dashboard': permission[0],
                     'assessment': permission[1],
                     'data_analysis': permission[2],
-                    'spotcheck': permission[3],
-                    'cases': permission[4],
-                    'map': permission[5],
-                    'huiwentai': permission[6],
-                    'business': permission[7]
+                    'cases': permission[3],
+                    'map': permission[4],
+                    'huiwentai': permission[5],
+                    'business': permission[6]
                 }
             user_list.append({
                 'id': user.id,
@@ -1217,28 +1249,26 @@ def create_user():
         session.commit()
         
         # 为新用户添加默认权限
-        session.execute(text("INSERT INTO permissions (user_id, data_management, assessment, data_analysis, spotcheck, cases, map, huiwentai, business) VALUES (:user_id, :data_management, :assessment, :data_analysis, :spotcheck, :cases, :map, :huiwentai, :business)"), {
+        session.execute(text("INSERT INTO permissions (user_id, dashboard, assessment, data_analysis, cases, map, huiwentai, business) VALUES (:user_id, :dashboard, :assessment, :data_analysis, :cases, :map, :huiwentai, :business)"), {
             'user_id': new_user.id,
-            'data_management': False,
+            'dashboard': False,
             'assessment': False,
             'data_analysis': False,
-            'spotcheck': False,
             'cases': False,
             'map': False,
             'huiwentai': False,
             'business': False
         })
         session.commit()
-        
+
         return jsonify({
             'id': new_user.id,
             'username': new_user.username,
             'role': new_user.role,
             'permissions': {
-                'data_management': False,
+                'dashboard': False,
                 'assessment': False,
                 'data_analysis': False,
-                'spotcheck': False,
                 'cases': False,
                 'map': False,
                 'huiwentai': False,
@@ -1316,12 +1346,11 @@ def update_user_permissions(user_id):
             return jsonify({'error': 'User not found'}), 404
         
         # 更新用户权限
-        session.execute(text("UPDATE permissions SET data_management = :data_management, assessment = :assessment, data_analysis = :data_analysis, spotcheck = :spotcheck, cases = :cases, map = :map, huiwentai = :huiwentai, business = :business WHERE user_id = :user_id"), {
+        session.execute(text("UPDATE permissions SET dashboard = :dashboard, assessment = :assessment, data_analysis = :data_analysis, cases = :cases, map = :map, huiwentai = :huiwentai, business = :business WHERE user_id = :user_id"), {
             'user_id': user_id,
-            'data_management': data.get('data_management', False),
+            'dashboard': data.get('dashboard', False),
             'assessment': data.get('assessment', False),
             'data_analysis': data.get('data_analysis', False),
-            'spotcheck': data.get('spotcheck', False),
             'cases': data.get('cases', False),
             'map': data.get('map', False),
             'huiwentai': data.get('huiwentai', False),
@@ -1330,12 +1359,11 @@ def update_user_permissions(user_id):
         session.commit()
 
         # 返回更新后的权限
-        permission = session.execute(text("SELECT data_management, assessment, data_analysis, spotcheck, cases, map, huiwentai, business FROM permissions WHERE user_id = :user_id"), {'user_id': user_id}).fetchone()
+        permission = session.execute(text("SELECT dashboard, assessment, data_analysis, cases, map, huiwentai, business FROM permissions WHERE user_id = :user_id"), {'user_id': user_id}).fetchone()
         permissions = {
-            'data_management': False,
+            'dashboard': False,
             'assessment': False,
             'data_analysis': False,
-            'spotcheck': False,
             'cases': False,
             'map': False,
             'huiwentai': False,
@@ -1343,14 +1371,13 @@ def update_user_permissions(user_id):
         }
         if permission:
             permissions = {
-                'data_management': permission[0],
+                'dashboard': permission[0],
                 'assessment': permission[1],
                 'data_analysis': permission[2],
-                'spotcheck': permission[3],
-                'cases': permission[4],
-                'map': permission[5],
-                'huiwentai': permission[6],
-                'business': permission[7]
+                'cases': permission[3],
+                'map': permission[4],
+                'huiwentai': permission[5],
+                'business': permission[6]
             }
         
         return jsonify({
@@ -1553,15 +1580,27 @@ def delete_business_platform(platform_id):
 @app.route('/api/tables', methods=['GET'])
 @protected
 def get_tables():
+    """获取数据表列表 - 根据可见性配置过滤"""
     # 如果没有数据库连接，返回空列表
     if engine is None:
         return jsonify({'tables': []}), 200
-    
+
     session = Session()
     try:
         # 获取数据库中所有表名
         inspector = inspect(engine)
-        tables = inspector.get_table_names()
+        all_tables = inspector.get_table_names()
+
+        # 根据可见性配置过滤
+        config = session.query(SystemConfig).filter_by(config_key='table_visibility').first()
+        if config and config.config_value:
+            visibility = json.loads(config.config_value)
+            # 只返回可见的表（visibility[table] !== False）
+            tables = [t for t in all_tables if visibility.get(t, True) != False]
+        else:
+            # 没有配置则全部可见
+            tables = all_tables
+
         session.commit()
         return jsonify({'tables': tables}), 200
     except Exception as e:
@@ -1569,6 +1608,26 @@ def get_tables():
         print(f"Error in get_tables: {str(e)}")
         import traceback
         traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        session.close()
+
+
+@app.route('/api/tables/all', methods=['GET'])
+@admin_required
+def get_all_tables():
+    """获取所有数据表列表（仅管理员，用于系统管理页面）"""
+    if engine is None:
+        return jsonify({'tables': []}), 200
+
+    session = Session()
+    try:
+        inspector = inspect(engine)
+        tables = inspector.get_table_names()
+        session.commit()
+        return jsonify({'tables': tables}), 200
+    except Exception as e:
+        session.rollback()
         return jsonify({'error': str(e)}), 500
     finally:
         session.close()
@@ -1585,6 +1644,59 @@ def get_available_months():
     if engine is None:
         return jsonify({'months': []}), 200
 
+    session = Session()
+    try:
+        # 查询数据表中的月份列
+        inspector = inspect(engine)
+        columns = inspector.get_columns(table_name)
+        column_names = [col['name'] for col in columns]
+
+        # 查找月份列
+        month_col = None
+        for col in ['data_month', '月份', 'month']:
+            if col in column_names:
+                month_col = col
+                break
+
+        if month_col:
+            # 查询所有不同的月份值
+            query = text(f"SELECT DISTINCT {month_col} FROM {table_name} WHERE {month_col} IS NOT NULL ORDER BY {month_col} DESC")
+            result_proxy = session.execute(query)
+            months = [row[0] for row in result_proxy if row[0]]
+            session.commit()
+            return jsonify({'months': months}), 200
+        else:
+            session.commit()
+            return jsonify({'months': []}), 200
+    except Exception as e:
+        session.rollback()
+        print(f"Error in get_available_months: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+    finally:
+        session.close()
+
+
+# 获取数据表的列名
+@app.route('/api/table-columns', methods=['GET'])
+@protected
+def get_table_columns():
+    """获取指定数据表的所有列名"""
+    table_name = request.args.get('table_name')
+    if not table_name:
+        return jsonify({'error': 'Missing table_name parameter'}), 400
+
+    if engine is None:
+        return jsonify({'columns': []}), 200
+
+    try:
+        inspector = inspect(engine)
+        columns = inspector.get_columns(table_name)
+        column_names = [col['name'] for col in columns]
+        return jsonify({'columns': column_names}), 200
+    except Exception as e:
+        print(f"Error in get_table_columns: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
     try:
         # 检查表是否存在
         inspector = inspect(engine)
@@ -1592,16 +1704,20 @@ def get_available_months():
         if table_name not in tables:
             return jsonify({'months': []}), 200
 
-        # 检查是否有月份列
+        # 获取所有列名
         columns = [col['name'] for col in inspector.get_columns(table_name)]
+
+        # 检查是否有月份列（支持多种命名）
         month_column = None
-        for col in ['data_month', '月份']:
+        month_column_names = ['data_month', '月份', 'month', 'Month', 'dataMonth', 'data_monthly', 'report_month']
+        for col in month_column_names:
             if col in columns:
                 month_column = col
                 break
 
         if not month_column:
-            return jsonify({'months': []}), 200
+            print(f"表 {table_name} 未找到月份字段，现有字段: {columns}")
+            return jsonify({'months': [], 'available_columns': columns}), 200
 
         # 查询月份值
         from sqlalchemy import text
@@ -2707,10 +2823,11 @@ def call_doubao_api(prompt, data_summary, analysis_type):
             }
             
             response = requests.post(
-                API_URL, 
-                headers=combined_headers, 
-                json=payload, 
-                timeout=(10, 300)  # 连接超时10秒，读取超时300秒
+                API_URL,
+                headers=combined_headers,
+                json=payload,
+                timeout=(10, 300),  # 连接超时10秒，读取超时300秒
+                proxies={"http": None, "https": None}  # 禁用代理
             )
             response.raise_for_status()
             result = response.json()
@@ -2988,10 +3105,11 @@ def spotcheck():
         for attempt in range(max_retries):
             try:
                 response = requests.post(
-                    API_URL, 
-                    headers=headers, 
-                    json=payload, 
-                    timeout=(10, 300)  # 连接超时10秒，读取超时300秒
+                    API_URL,
+                    headers=headers,
+                    json=payload,
+                    timeout=(10, 300),  # 连接超时10秒，读取超时300秒
+                    proxies={"http": None, "https": None}  # 禁用代理
                 )
                 response.raise_for_status()
                 result = response.json()
@@ -3940,10 +4058,11 @@ def natural_language_query():
         for attempt in range(max_retries):
             try:
                 response = requests.post(
-                    API_URL, 
-                    headers=headers, 
-                    json=payload, 
-                    timeout=(10, 300)  # 连接超时10秒，读取超时300秒
+                    API_URL,
+                    headers=headers,
+                    json=payload,
+                    timeout=(10, 300),  # 连接超时10秒，读取超时300秒
+                    proxies={"http": None, "https": None}  # 禁用代理
                 )
                 response.raise_for_status()
                 result = response.json()
@@ -3982,10 +4101,25 @@ def natural_language_query():
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
-# 数据分析（新版）API
+# 数据分析（新版）API - 优化版：合并3次大模型调用为1次
 @app.route('/api/analyze-v2', methods=['POST'])
 @protected
 def analyze_v2():
+    def make_json_serializable(obj):
+        """递归转换所有 int64/float64 为 Python 原生类型"""
+        import numpy as np
+        if isinstance(obj, dict):
+            return {k: make_json_serializable(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [make_json_serializable(item) for item in obj]
+        elif isinstance(obj, (np.integer,)):
+            return int(obj)
+        elif isinstance(obj, (np.floating,)):
+            return float(obj)
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return obj
+
     try:
         import json
         import re
@@ -3993,11 +4127,13 @@ def analyze_v2():
         data = request.json
         table_name = data.get('table_name')
         user_prompt = data.get('prompt')
-        model_choice = data.get('model', 'volcengine')  # 默认使用火山引擎
-        month = data.get('month', '')  # 新增：月份筛选
+        model_choice = data.get('model', 'volcengine')
+        month = data.get('month', '')
 
         if not table_name or not user_prompt:
             return jsonify({'error': 'Missing table_name or prompt'}), 400
+
+        print(f"[数据分析V2] 开始分析, 表: {table_name}, 模型: {model_choice}")
 
         # 从数据库读取数据
         df = pd.read_sql_table(table_name, engine)
@@ -4012,78 +4148,76 @@ def analyze_v2():
                     break
             if month_col:
                 df = df[df[month_col] == month]
-                print(f"[数据分析] 筛选月份 {month}，剩余 {len(df)} 条数据")
+                print(f"[数据分析V2] 筛选月份 {month}，剩余 {len(df)} 条数据")
 
-        print(f"[数据分析] 原始数据表: {table_name}, 总记录数: {original_count}")
-        print(f"[数据分析] 用户提示词: {user_prompt}")
-
-        # ===== 第一步：让大模型解析筛选条件 =====
-        # 准备列信息和样本数据供大模型参考
+        # 准备列信息（供大模型参考）
         columns_info = []
         for col in df.columns:
             unique_vals = df[col].dropna().unique()
-            sample_vals = list(unique_vals[:10]) if len(unique_vals) > 0 else []
+            sample_vals = list(unique_vals[:5]) if len(unique_vals) > 0 else []
             columns_info.append({
                 'name': col,
                 'type': str(df[col].dtype),
-                'unique_count': len(unique_vals),
-                'sample_values': [str(v) for v in sample_vals]
+                'unique_count': int(len(unique_vals)),
+                'sample_values': [str(v)[:50] for v in sample_vals]  # 截断长文本
             })
 
-        filter_parse_prompt = f"""请分析用户的分析需求，提取出数据筛选条件。
-
-数据表信息：
-- 表名：{table_name}
-- 总记录数：{original_count}
-- 列信息：
+        # 准备数据摘要（用于统计分析，使用完整数据）
+        data_summary = f"""数据表：{table_name}
+总记录数：{original_count}
+列数：{len(df.columns)}
+列信息：
 """
         for col_info in columns_info:
-            filter_parse_prompt += f"\n  - {col_info['name']} (类型: {col_info['type']}, 唯一值数: {col_info['unique_count']})"
+            data_summary += f"  - {col_info['name']} (类型: {col_info['type']}, 唯一值数: {col_info['unique_count']})\n"
             if col_info['sample_values']:
-                filter_parse_prompt += f"\n    示例值: {', '.join(col_info['sample_values'][:5])}"
+                data_summary += f"    示例: {', '.join(col_info['sample_values'][:3])}\n"
 
-        filter_parse_prompt += f"""
+        # ===== 一次性调用大模型：同时获取筛选条件、图表需求和初步分析 =====
+        combined_prompt = f"""你是一个数据分析专家。请根据用户需求和数据信息，完成以下任务：
 
-用户分析需求：
-{user_prompt}
+{data_summary}
 
-请提取用户需求中的筛选条件，以JSON格式返回：
+用户分析需求：{user_prompt}
+
+请以JSON格式返回结果，格式如下：
 {{
-    "has_filter": true/false,
-    "filter_conditions": [
-        {{
-            "field": "字段名（必须与上面列信息中的字段名完全一致）",
-            "operator": "等于|包含|不等于|大于|小于|大于等于|小于等于",
-            "value": "筛选值或值列表",
-            "logic": "AND|OR（与其他条件的关系，最后一个条件可省略）"
-        }}
+    "filter": {{
+        "has_filter": true或false,
+        "conditions": [
+            {{"field": "字段名", "operator": "等于|包含|不等于|大于|小于", "value": "值"}}
+        ],
+        "description": "筛选条件描述"
+    }},
+    "charts": [
+        {{"title": "图表标题", "chart_type": "bar|pie|line", "x_field": "X轴字段名", "description": "图表说明"}}
     ],
-    "analysis_focus": "用户想要分析的重点（如：分布、趋势、对比等）"
+    "analysis": "初步分析见解（2-3句话概括数据特点）",
+    "report": "详细分析报告，包含：数据概况、关键发现、趋势分析、建议措施等内容，使用Markdown格式，需要详细专业并引用具体统计数据"
 }}
 
 重要规则：
-1. 如果用户需求中包含筛选条件（如"筛选出"、"只看"、"符合条件的"等），必须提取为filter_conditions
-2. 字段名必须与数据表的列名完全一致，不要自己编造字段名
-3. 如果用户提到多个值（如"A和B"），使用OR逻辑，value设为数组
-4. 如果用户说"等于"、"是"、"为"，operator设为"等于"
-5. 如果用户说"包含"、"含有"，operator设为"包含"
-6. 如果用户没有明确筛选条件，has_filter设为false
-7. 只返回JSON，不要有其他文字"""
+1. 字段名必须与上面列信息中的字段名完全一致
+2. chart_type 只能是 bar（柱状图）、pie（饼图）、line（折线图）
+3. 图表数量建议1-3个，选择最合适的类型
+4. 如果用户没有明确筛选条件，has_filter设为false，conditions留空数组
+5. report字段需要详细、专业，包含具体的统计数据引用和分析见解
+6. 只返回JSON，不要有其他文字"""
 
-        # 调用大模型解析筛选条件
         messages = [
-            {"role": "system", "content": "你是一个数据分析专家，擅长理解用户意图并提取结构化的筛选条件。"},
-            {"role": "user", "content": filter_parse_prompt}
+            {"role": "system", "content": "你是一个数据分析专家，擅长理解用户意图并生成结构化的分析结果。"},
+            {"role": "user", "content": combined_prompt}
         ]
 
+        # 选择大模型
         if model_choice == 'bailian':
             success, result = call_llm_api(
                 BAILIAN_GENERAL_API_URL,
                 BAILIAN_GENERAL_API_KEY,
                 BAILIAN_GENERAL_MODEL,
                 messages,
-                max_tokens=2000,
-                provider_name="百炼-筛选解析"
+                max_tokens=3000,
+                provider_name="百炼-综合分析"
             )
         else:
             success, result = call_llm_api(
@@ -4091,399 +4225,234 @@ def analyze_v2():
                 API_KEY,
                 MODEL,
                 messages,
-                max_tokens=2000,
-                provider_name="火山引擎-筛选解析"
+                max_tokens=3000,
+                provider_name="火山引擎-综合分析"
             )
 
         if not success:
-            raise Exception(f"解析筛选条件失败: {result}")
+            raise Exception(f"大模型调用失败: {result}")
 
-        filter_parse_text = result
-        print(f"[数据分析] 筛选条件解析结果: {filter_parse_text[:500]}")
+        print(f"[数据分析V2] 大模型返回结果: {result[:500]}...")
 
-        # 解析筛选条件并执行筛选
+        # 解析返回结果
+        llm_result = {}
+        json_match = re.search(r'\{[\s\S]*\}', result)
+        if json_match:
+            llm_result = json.loads(json_match.group())
+
+        # ===== 执行筛选 =====
         filtered_df = df.copy()
         filter_applied = False
         filter_summary = ""
 
-        try:
-            json_match = re.search(r'\{[\s\S]*\}', filter_parse_text)
-            if json_match:
-                filter_config = json.loads(json_match.group())
+        if llm_result.get('filter', {}).get('has_filter', False):
+            conditions = llm_result.get('filter', {}).get('conditions', [])
+            filter_parts = []
 
-                if filter_config.get('has_filter', False) and filter_config.get('filter_conditions'):
-                    filter_conditions = filter_config['filter_conditions']
-                    filter_parts = []
+            for cond in conditions:
+                field = cond.get('field')
+                operator = cond.get('operator', '等于')
+                value = cond.get('value')
 
-                    for condition in filter_conditions:
-                        field = condition.get('field')
-                        operator = condition.get('operator', '等于')
-                        value = condition.get('value')
+                if not field or field not in df.columns:
+                    print(f"[数据分析V2] 警告: 字段 '{field}' 不存在，跳过")
+                    continue
 
-                        if not field or field not in df.columns:
-                            print(f"[数据分析] 警告: 字段 '{field}' 不存在，跳过此条件")
-                            continue
+                before_count = len(filtered_df)
 
-                        original_count_before = len(filtered_df)
+                if operator == '等于':
+                    if isinstance(value, list):
+                        filtered_df = filtered_df[filtered_df[field].astype(str).isin([str(v) for v in value])]
+                        filter_parts.append(f"{field} 在 {value} 中")
+                    else:
+                        filtered_df = filtered_df[filtered_df[field].astype(str) == str(value)]
+                        filter_parts.append(f"{field}={value}")
+                elif operator == '包含':
+                    if isinstance(value, list):
+                        mask = filtered_df[field].astype(str).apply(lambda x: any(str(v) in x for v in value))
+                        filtered_df = filtered_df[mask]
+                    else:
+                        filtered_df = filtered_df[filtered_df[field].astype(str).str.contains(str(value), na=False)]
+                    filter_parts.append(f"{field}包含{value}")
+                elif operator == '不等于':
+                    if isinstance(value, list):
+                        filtered_df = filtered_df[~filtered_df[field].astype(str).isin([str(v) for v in value])]
+                    else:
+                        filtered_df = filtered_df[filtered_df[field].astype(str) != str(value)]
+                    filter_parts.append(f"{field}!={value}")
+                elif operator == '大于':
+                    filtered_df = filtered_df[pd.to_numeric(filtered_df[field], errors='coerce') > float(value)]
+                    filter_parts.append(f"{field}>{value}")
+                elif operator == '小于':
+                    filtered_df = filtered_df[pd.to_numeric(filtered_df[field], errors='coerce') < float(value)]
+                    filter_parts.append(f"{field}<{value}")
 
-                        if operator == '等于':
-                            if isinstance(value, list):
-                                filtered_df = filtered_df[filtered_df[field].astype(str).isin([str(v) for v in value])]
-                                filter_parts.append(f"{field} 在 {value} 中")
-                            else:
-                                filtered_df = filtered_df[filtered_df[field].astype(str) == str(value)]
-                                filter_parts.append(f"{field} = {value}")
-                        elif operator == '包含':
-                            if isinstance(value, list):
-                                mask = filtered_df[field].astype(str).apply(lambda x: any(str(v) in x for v in value))
-                                filtered_df = filtered_df[mask]
-                                filter_parts.append(f"{field} 包含 {value}")
-                            else:
-                                filtered_df = filtered_df[filtered_df[field].astype(str).str.contains(str(value), na=False)]
-                                filter_parts.append(f"{field} 包含 {value}")
-                        elif operator == '不等于':
-                            if isinstance(value, list):
-                                filtered_df = filtered_df[~filtered_df[field].astype(str).isin([str(v) for v in value])]
-                            else:
-                                filtered_df = filtered_df[filtered_df[field].astype(str) != str(value)]
-                            filter_parts.append(f"{field} != {value}")
-                        elif operator == '大于':
-                            filtered_df = filtered_df[pd.to_numeric(filtered_df[field], errors='coerce') > float(value)]
-                            filter_parts.append(f"{field} > {value}")
-                        elif operator == '小于':
-                            filtered_df = filtered_df[pd.to_numeric(filtered_df[field], errors='coerce') < float(value)]
-                            filter_parts.append(f"{field} < {value}")
-                        elif operator == '大于等于':
-                            filtered_df = filtered_df[pd.to_numeric(filtered_df[field], errors='coerce') >= float(value)]
-                            filter_parts.append(f"{field} >= {value}")
-                        elif operator == '小于等于':
-                            filtered_df = filtered_df[pd.to_numeric(filtered_df[field], errors='coerce') <= float(value)]
-                            filter_parts.append(f"{field} <= {value}")
+                print(f"[数据分析V2] 筛选: {field} {operator} {value}, {before_count} -> {len(filtered_df)}")
 
-                        print(f"[数据分析] 执行筛选条件: {field} {operator} {value}, 筛选前: {original_count_before}, 筛选后: {len(filtered_df)}")
-
-                    filter_applied = True
-                    filter_summary = " AND ".join(filter_parts)
-        except Exception as e:
-            print(f"[数据分析] 解析筛选条件时出错: {e}")
-            import traceback
-            traceback.print_exc()
+            if filter_parts:
+                filter_applied = True
+                filter_summary = " AND ".join(filter_parts)
 
         filtered_count = len(filtered_df)
-        print(f"[数据分析] 筛选完成: 原始数据 {original_count} 条 -> 筛选后 {filtered_count} 条")
+        print(f"[数据分析V2] 筛选完成: {original_count} -> {filtered_count} 条")
 
-        # 准备数据信息（使用筛选后的数据）
-        sample_size = min(100, len(filtered_df))
-        df_sample = filtered_df.head(sample_size)
-
-        data_info = f"数据表名：{table_name}\n"
-        data_info += f"原始记录数：{original_count}\n"
-        if filter_applied:
-            data_info += f"筛选条件：{filter_summary}\n"
-        data_info += f"筛选后记录数：{filtered_count}\n"
-        data_info += f"列名：{', '.join(filtered_df.columns.tolist())}\n\n"
-        data_info += f"数据样本（前{sample_size}条）：\n"
-        data_info += df_sample.to_csv(index=False, sep='\t', na_rep='空')
-
-        # ===== 第二步：让大模型分析需要什么样的图表 =====
-        chart_requirement_system_prompt = "你是一个专业的数据可视化专家。请根据用户的分析需求和提供的数据，分析应该生成什么类型的图表。"
-
-        chart_requirement_prompt = f"{data_info}\n\n用户分析需求：{user_prompt}\n\n"
-        chart_requirement_prompt += "请根据以上数据和用户需求，分析应该生成什么类型的图表。\n"
-        chart_requirement_prompt += "请以JSON格式返回，格式如下：\n"
-        chart_requirement_prompt += '{\n'
-        chart_requirement_prompt += '  "charts": [\n'
-        chart_requirement_prompt += '    {\n'
-        chart_requirement_prompt += '      "title": "图表标题",\n'
-        chart_requirement_prompt += '      "chart_type": "line|bar|pie|scatter",\n'
-        chart_requirement_prompt += '      "x_field": "X轴字段名",\n'
-        chart_requirement_prompt += '      "y_field": "Y轴字段名（可选，用于计数可以留空）",\n'
-        chart_requirement_prompt += '      "description": "图表说明"\n'
-        chart_requirement_prompt += '    }\n'
-        chart_requirement_prompt += '  ]\n'
-        chart_requirement_prompt += '}\n'
-        chart_requirement_prompt += "注意：只返回JSON，不要有其他文字。图表类型只能是line（折线图）、bar（柱状图）、pie（饼图）、scatter（散点图）中的一种。"
-
+        # ===== 生成图表 =====
         charts = []
+        chart_configs = llm_result.get('charts', [])
 
-        # 根据选择调用不同的大模型获取图表需求
-        chart_requirement_text = None
-        messages = [
-            {"role": "system", "content": chart_requirement_system_prompt},
-            {"role": "user", "content": chart_requirement_prompt}
-        ]
-
-        if model_choice == 'bailian':
-            success, result = call_llm_api(
-                BAILIAN_GENERAL_API_URL,
-                BAILIAN_GENERAL_API_KEY,
-                BAILIAN_GENERAL_MODEL,
-                messages,
-                max_tokens=2000,
-                provider_name="百炼-图表需求"
-            )
-        else:
-            success, result = call_llm_api(
-                API_URL,
-                API_KEY,
-                MODEL,
-                messages,
-                max_tokens=2000,
-                provider_name="火山引擎-图表需求"
-            )
-
-        if not success:
-            raise Exception(result)
-
-        chart_requirement_text = result
-
-        # 尝试解析JSON并生成图表（使用筛选后的数据 filtered_df）
-        if chart_requirement_text:
-            json_match = re.search(r'\{[\s\S]*\}', chart_requirement_text)
-            if json_match:
-                chart_requirement = json.loads(json_match.group())
-
-                # 根据需求生成图表
-                if 'charts' in chart_requirement:
-                    for chart_req in chart_requirement['charts']:
-                        try:
-                            chart_title = chart_req.get('title', '图表')
-                            chart_type = chart_req.get('chart_type', 'bar')
-                            x_field = chart_req.get('x_field')
-
-                            if x_field and x_field in filtered_df.columns:
-                                if chart_type == 'pie':
-                                    # 饼图
-                                    value_counts = filtered_df[x_field].value_counts().head(15).reset_index()
-                                    value_counts.columns = [x_field, 'count']
-
-                                    charts.append({
-                                        'title': chart_title,
-                                        'type': 'echarts',
-                                        'data': {
-                                            'title': {'text': chart_title},
-                                            'tooltip': {'trigger': 'item'},
-                                            'series': [{
-                                                'data': [{'name': str(row[x_field]), 'value': row['count']} for _, row in value_counts.iterrows()],
-                                                'type': 'pie',
-                                                'radius': '50%'
-                                            }]
-                                        }
-                                    })
-                                elif chart_type == 'line':
-                                    # 折线图 - 检查是否是时间字段
-                                    is_time_field = any(keyword in x_field for keyword in ['时间', '日期', 'date', 'time'])
-                                    if is_time_field:
-                                        df_temp = filtered_df.copy()
-                                        df_temp[x_field] = pd.to_datetime(df_temp[x_field], errors='coerce')
-                                        df_valid = df_temp.dropna(subset=[x_field])
-                                        if len(df_valid) > 0:
-                                            df_valid['day'] = df_valid[x_field].dt.day
-                                            counts = df_valid.groupby('day').size().reset_index(name='count')
-
-                                            charts.append({
-                                                'title': chart_title,
-                                                'type': 'echarts',
-                                                'data': {
-                                                    'title': {'text': chart_title},
-                                                    'tooltip': {'trigger': 'axis'},
-                                                    'xAxis': {'type': 'category', 'data': counts['day'].tolist()},
-                                                    'yAxis': {'type': 'value'},
-                                                    'series': [{'data': counts['count'].tolist(), 'type': 'line', 'smooth': True}]
-                                                }
-                                            })
-                                    else:
-                                        # 普通字段的折线图
-                                        counts = filtered_df[x_field].value_counts().head(15).reset_index()
-                                        counts.columns = [x_field, 'count']
-
-                                        charts.append({
-                                            'title': chart_title,
-                                            'type': 'echarts',
-                                            'data': {
-                                                'title': {'text': chart_title},
-                                                'tooltip': {'trigger': 'axis'},
-                                                'xAxis': {'type': 'category', 'data': [str(x) for x in counts[x_field].tolist()], 'axisLabel': {'rotate': 45}},
-                                                'yAxis': {'type': 'value'},
-                                                'series': [{'data': counts['count'].tolist(), 'type': 'line', 'smooth': True}]
-                                            }
-                                        })
-                                else:
-                                    # 默认柱状图
-                                    counts = filtered_df[x_field].value_counts().head(15).reset_index()
-                                    counts.columns = [x_field, 'count']
-
-                                    charts.append({
-                                        'title': chart_title,
-                                        'type': 'echarts',
-                                        'data': {
-                                            'title': {'text': chart_title},
-                                            'tooltip': {'trigger': 'axis'},
-                                            'xAxis': {'type': 'category', 'data': [str(x) for x in counts[x_field].tolist()], 'axisLabel': {'rotate': 45}},
-                                            'yAxis': {'type': 'value'},
-                                            'series': [{'data': counts['count'].tolist(), 'type': 'bar'}]
-                                        }
-                                    })
-                        except Exception as e:
-                            print(f"生成图表失败: {e}")
-                            continue
-
-        # 如果没有生成图表，生成一些基础图表作为后备（使用筛选后的数据）
-        if not charts:
+        for chart_req in chart_configs:
             try:
-                # 检查是否有时间字段
-                time_col = None
-                for col in filtered_df.columns:
-                    if '时间' in col or '日期' in col or 'date' in col.lower():
-                        time_col = col
-                        break
+                chart_title = chart_req.get('title', '图表')
+                chart_type = chart_req.get('chart_type', 'bar')
+                x_field = chart_req.get('x_field')
 
-                if time_col:
-                    try:
-                        filtered_df_temp = filtered_df.copy()
-                        filtered_df_temp[time_col] = pd.to_datetime(filtered_df_temp[time_col], errors='coerce')
-                        df_valid = filtered_df_temp.dropna(subset=[time_col])
+                if not x_field or x_field not in filtered_df.columns:
+                    continue
+
+                if chart_type == 'pie':
+                    value_counts = filtered_df[x_field].value_counts().head(15).reset_index()
+                    value_counts.columns = [x_field, 'count']
+                    charts.append({
+                        'title': chart_title,
+                        'type': 'echarts',
+                        'data': {
+                            'title': {'text': chart_title},
+                            'tooltip': {'trigger': 'item'},
+                            'legend': {'type': 'scroll', 'bottom': 0},
+                            'series': [{
+                                'data': [{'name': str(row[x_field]), 'value': int(row['count'])} for _, row in value_counts.iterrows()],
+                                'type': 'pie',
+                                'radius': ['40%', '70%'],
+                                'label': {'show': False}
+                            }]
+                        }
+                    })
+                elif chart_type == 'line':
+                    # 检查是否是时间字段
+                    is_time = any(kw in x_field for kw in ['时间', '日期', 'date', 'time'])
+                    if is_time:
+                        df_temp = filtered_df.copy()
+                        df_temp[x_field] = pd.to_datetime(df_temp[x_field], errors='coerce')
+                        df_valid = df_temp.dropna(subset=[x_field])
                         if len(df_valid) > 0:
-                            df_valid['day'] = df_valid[time_col].dt.day
-                            daily_counts = df_valid.groupby('day').size().reset_index(name='count')
-
+                            df_valid['day'] = df_valid[x_field].dt.day
+                            counts = df_valid.groupby('day').size().reset_index(name='count')
                             charts.append({
-                                'title': '日案件量趋势',
+                                'title': chart_title,
                                 'type': 'echarts',
                                 'data': {
-                                    'title': {'text': '日案件量趋势'},
+                                    'title': {'text': chart_title},
                                     'tooltip': {'trigger': 'axis'},
-                                    'xAxis': {'type': 'category', 'data': daily_counts['day'].tolist()},
+                                    'xAxis': {'type': 'category', 'data': [int(x) for x in counts['day'].tolist()]},
                                     'yAxis': {'type': 'value'},
-                                    'series': [{'data': daily_counts['count'].tolist(), 'type': 'line', 'smooth': True}]
+                                    'series': [{'data': [int(x) for x in counts['count'].tolist()], 'type': 'line', 'smooth': True}]
                                 }
                             })
-                    except Exception as e:
-                        print(f"生成时间图表失败: {e}")
-
-                # 检查是否有类型字段
-                type_col = None
-                for col in filtered_df.columns:
-                    if '类型' in col or '小类' in col or '大类' in col:
-                        type_col = col
-                        break
-
-                if type_col:
-                    try:
-                        type_counts = filtered_df[type_col].value_counts().head(10).reset_index()
-                        type_counts.columns = [type_col, 'count']
-
+                    else:
+                        counts = filtered_df[x_field].value_counts().head(15).reset_index()
+                        counts.columns = [x_field, 'count']
                         charts.append({
-                            'title': '案件类型分布TOP10',
+                            'title': chart_title,
                             'type': 'echarts',
                             'data': {
-                                'title': {'text': '案件类型分布TOP10'},
-                                'tooltip': {'trigger': 'item'},
-                                'xAxis': {'type': 'category', 'data': type_counts[type_col].tolist(), 'axisLabel': {'rotate': 45}},
+                                'title': {'text': chart_title},
+                                'tooltip': {'trigger': 'axis'},
+                                'xAxis': {'type': 'category', 'data': [str(x) for x in counts[x_field].tolist()], 'axisLabel': {'rotate': 45}},
                                 'yAxis': {'type': 'value'},
-                                'series': [{'data': type_counts['count'].tolist(), 'type': 'bar'}]
+                                'series': [{'data': [int(x) for x in counts['count'].tolist()], 'type': 'line', 'smooth': True}]
                             }
                         })
-                    except Exception as e:
-                        print(f"生成类型图表失败: {e}")
+                else:  # bar
+                    counts = filtered_df[x_field].value_counts().head(15).reset_index()
+                    counts.columns = [x_field, 'count']
+                    charts.append({
+                        'title': chart_title,
+                        'type': 'echarts',
+                        'data': {
+                            'title': {'text': chart_title},
+                            'tooltip': {'trigger': 'axis'},
+                            'xAxis': {'type': 'category', 'data': [str(x) for x in counts[x_field].tolist()], 'axisLabel': {'rotate': 45}},
+                            'yAxis': {'type': 'value'},
+                            'series': [{'data': [int(x) for x in counts['count'].tolist()], 'type': 'bar'}]
+                        }
+                    })
+            except Exception as e:
+                print(f"[数据分析V2] 生成图表失败: {e}")
+                continue
 
-                # 检查是否有来源字段
-                source_col = None
-                for col in filtered_df.columns:
-                    if '来源' in col or 'source' in col.lower():
-                        source_col = col
-                        break
-
-                if source_col:
-                    try:
-                        source_counts = filtered_df[source_col].value_counts().reset_index()
-                        source_counts.columns = [source_col, 'count']
-
+        # 如果没有生成图表，创建默认图表
+        if not charts and len(filtered_df) > 0:
+            # 尝试找时间字段
+            time_col = None
+            for col in filtered_df.columns:
+                if '时间' in col or '日期' in col or 'date' in col.lower():
+                    time_col = col
+                    break
+            if time_col:
+                try:
+                    df_temp = filtered_df.copy()
+                    df_temp[time_col] = pd.to_datetime(df_temp[time_col], errors='coerce')
+                    df_valid = df_temp.dropna(subset=[time_col])
+                    if len(df_valid) > 0:
+                        df_valid['day'] = df_valid[time_col].dt.day
+                        daily_counts = df_valid.groupby('day').size().reset_index(name='count')
                         charts.append({
-                            'title': '案件来源分布',
+                            'title': '日案件量趋势',
                             'type': 'echarts',
                             'data': {
-                                'title': {'text': '案件来源分布'},
-                                'tooltip': {'trigger': 'item'},
-                                'series': [{
-                                    'data': [{'name': row[source_col], 'value': row['count']} for _, row in source_counts.iterrows()],
-                                    'type': 'pie',
-                                    'radius': '50%'
-                                }]
+                                'title': {'text': '日案件量趋势'},
+                                'tooltip': {'trigger': 'axis'},
+                                'xAxis': {'type': 'category', 'data': [int(x) for x in daily_counts['day'].tolist()]},
+                                'yAxis': {'type': 'value'},
+                                'series': [{'data': [int(x) for x in daily_counts['count'].tolist()], 'type': 'line', 'smooth': True}]
                             }
                         })
-                    except Exception as e:
-                        print(f"生成来源图表失败: {e}")
-            except Exception as e:
-                print(f"生成后备图表时出错: {e}")
+                except:
+                    pass
 
-        # ===== 第三步：生成分析报告 =====
-        analysis_report = None
+        # 使用第一次LLM调用返回的报告
+        analysis_report = llm_result.get('report', '')
 
-        # 构建报告提示词
-        system_prompt = "你是一个专业的数据分析助手，擅长分析城市管理相关的案件数据。请根据用户的需求和提供的数据，生成详细的分析报告。"
+        # 如果LLM没有返回报告，生成一个基本报告
+        if not analysis_report:
+            stats_info = f"数据统计：\n- 总记录数：{filtered_count}\n"
+            for col in filtered_df.columns[:5]:
+                unique_count = filtered_df[col].nunique()
+                if unique_count <= 20 and unique_count > 1:
+                    top_vals = filtered_df[col].value_counts().head(3)
+                    stats_info += f"- {col} TOP3: {dict(top_vals)}\n"
+            analysis_report = f"""## 数据分析报告
 
-        final_prompt = f"{data_info}\n\n用户分析需求：{user_prompt}\n\n"
-        final_prompt += "已生成的图表：\n"
-        for i, chart in enumerate(charts):
-            final_prompt += f"{i+1}. {chart['title']}\n"
-        final_prompt += "\n请根据以上数据和用户需求，结合已生成的图表，生成一份详细的分析报告。\n"
-        final_prompt += "要求：\n"
-        final_prompt += "1. 分析报告内容要详细、有深度\n"
-        final_prompt += "2. 报告格式使用HTML，支持加粗、标题等格式\n"
-        final_prompt += "3. 请结合图表进行分析\n"
-        final_prompt += "4. 数据要准确，数量要精确，不要编造数据\n"
+### 数据概况
+- 数据表：{table_name}
+- 分析数据量：{filtered_count} 条记录
 
-        # 根据选择调用不同的大模型
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": final_prompt}
-        ]
+### 统计摘要
+{stats_info}
 
-        if model_choice == 'bailian':
-            success, result = call_llm_api(
-                BAILIAN_GENERAL_API_URL,
-                BAILIAN_GENERAL_API_KEY,
-                BAILIAN_GENERAL_MODEL,
-                messages,
-                max_tokens=4000,
-                provider_name="百炼-分析报告"
-            )
-            if success:
-                analysis_report = result
-            else:
-                analysis_report = f"API调用失败: {result}"
-        else:
-            success, result = call_llm_api(
-                API_URL,
-                API_KEY,
-                MODEL,
-                messages,
-                max_tokens=4000,
-                provider_name="火山引擎-分析报告"
-            )
-            if success:
-                analysis_report = result
-            else:
-                analysis_report = f"API调用失败: {result}"
+### 初步分析
+{llm_result.get('analysis', '暂无分析内容')}
+"""
 
         # 返回结果
         result = {
             'table_name': table_name,
-            'original_count': original_count,
-            'filtered_count': filtered_count,
+            'original_count': int(original_count),
+            'filtered_count': int(filtered_count),
             'filter_applied': filter_applied,
             'filter_summary': filter_summary if filter_applied else None,
             'report': analysis_report,
-            'charts': charts
+            'charts': make_json_serializable(charts)
         }
 
+        print(f"[数据分析V2] 分析完成, 图表数: {len(charts)}")
         return jsonify(result), 200
+
     except Exception as e:
         print(f"Error in analyze_v2: {str(e)}")
         import traceback
         traceback.print_exc()
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': str(e), 'details': traceback.format_exc()}), 500
 
 # 小工具模块API - 市容环卫案件分配
 @app.route('/api/tools/huanwei-assignment', methods=['POST'])
@@ -4496,17 +4465,17 @@ def huanwei_assignment():
         # 检查是否有文件上传
         if 'file' not in request.files:
             return jsonify({'error': 'No file part'}), 400
-        
+
         file = request.files['file']
         if file.filename == '':
             return jsonify({'error': 'No selected file'}), 400
-        
+
         # 检查文件类型
         if not file.filename.endswith('.xlsx'):
             return jsonify({'error': 'Only xlsx files are allowed'}), 400
-        
+
         print(f"Processing huanwei assignment file: {file.filename}")
-        
+
         # 读取Excel文件
         try:
             df = pd.read_excel(file)
@@ -4514,36 +4483,36 @@ def huanwei_assignment():
         except Exception as read_error:
             print(f"Error reading Excel file: {str(read_error)}")
             return jsonify({'error': f'读取Excel文件失败: {str(read_error)}'}), 400
-        
+
         # 检查必要的列是否存在
         required_cols = ['处置部门', '所属片区']
         for col in required_cols:
             if col not in df.columns:
                 return jsonify({'error': f'Missing required column: {col}. 文件中必须包含以下列: {", ".join(required_cols)}'}), 400
-        
+
         # 处理数据：仅更新处置部门列，所属片区列保持不变
         filter_condition = df["处置部门"] == "市容环卫中心"
         matched_count = filter_condition.sum()
         print(f"Found {matched_count} rows with '市容环卫中心' as 处置部门")
-        
+
         df["所属片区"] = df["所属片区"].astype(str)  # 确保是字符串类型
         # 基于所属片区列的值更新处置部门列，添加"环卫"前缀
         df.loc[filter_condition, "处置部门"] = "环卫" + df.loc[filter_condition, "所属片区"]
-        
+
         print(f"Updated {matched_count} rows with new department names")
-        
+
         # 生成输出文件名
         with tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False) as temp:
             output_file = temp.name
-        
+
         # 保存处理后的数据
         df.to_excel(output_file, index=False)
         print(f"Successfully saved processed file to: {output_file}")
-        
+
         # 读取文件内容并返回
         from flask import send_file
         response = send_file(output_file, as_attachment=True, download_name='hwcase_data_updated.xlsx', mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-        
+
         # 在响应发送后删除临时文件的回调
         @response.call_on_close
         def cleanup():
@@ -4553,7 +4522,7 @@ def huanwei_assignment():
                     print(f"Cleaned up temporary file: {output_file}")
             except Exception as cleanup_error:
                 print(f"Error cleaning up temporary file: {cleanup_error}")
-        
+
         return response
     except Exception as e:
         print(f"Error in huanwei_assignment: {str(e)}")
@@ -4575,24 +4544,24 @@ def extract_location():
         # 检查是否有文件上传
         if 'file' not in request.files:
             return jsonify({'error': 'No file part'}), 400
-        
+
         file = request.files['file']
         if file.filename == '':
             return jsonify({'error': 'No selected file'}), 400
-        
+
         # 检查文件类型
         if not file.filename.endswith('.xlsx'):
             return jsonify({'error': 'Only xlsx files are allowed'}), 400
-        
+
         # 读取Excel文件
         df = pd.read_excel(file)
-        
+
         # 检查必要的列是否存在
         required_cols = ['问题描述', '地址描述']
         for col in required_cols:
             if col not in df.columns:
                 return jsonify({'error': f'Missing required column: {col}'}), 400
-        
+
         # 处理数据：提取地址信息
         updated_count = 0
         for idx, row in df.iterrows():
@@ -4602,16 +4571,16 @@ def extract_location():
                 new_addr = extract_location_from_text(row["问题描述"])
                 df.loc[idx, "地址描述"] = new_addr
                 updated_count += 1
-        
+
         # 生成输出文件名
         import tempfile
         import os
         with tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False) as temp:
             output_file = temp.name
-        
+
         # 保存处理后的数据
         df.to_excel(output_file, index=False)
-        
+
         # 读取文件内容并返回
         from flask import send_file
         return send_file(output_file, as_attachment=True, download_name='case_data_with_extracted_location.xlsx', mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
@@ -4627,16 +4596,16 @@ def create_category():
     session = Session()
     try:
         data = request.json
-        
+
         # 验证必填字段
         if not data.get('name'):
             return jsonify({'error': '名称不能为空'}), 400
-        
+
         # 自动生成slug
         slug = data.get('slug')
         if not slug:
             slug = generate_slug(data.get('name'))
-        
+
         # 创建新栏目
         new_category = Category(
             name=data.get('name'),
@@ -4644,10 +4613,10 @@ def create_category():
             description=data.get('description'),
             order=data.get('order', 0)
         )
-        
+
         session.add(new_category)
         session.commit()
-        
+
         return jsonify({
             'id': new_category.id,
             'name': new_category.name,
@@ -4672,7 +4641,7 @@ def get_category(category_id):
         category = session.query(Category).filter_by(id=category_id).first()
         if not category:
             return jsonify({'error': '栏目不存在'}), 404
-        
+
         session.commit()
         return jsonify({
             'id': category.id,
@@ -4697,27 +4666,21 @@ def get_category(category_id):
 def update_category(category_id):
     session = Session()
     try:
-        data = request.json
         category = session.query(Category).filter_by(id=category_id).first()
-        
         if not category:
             return jsonify({'error': '栏目不存在'}), 404
-        
-        # 更新栏目信息
+
+        data = request.json
         if 'name' in data:
             category.name = data['name']
         if 'slug' in data:
             category.slug = data['slug']
-        elif 'name' in data:
-            # 如果修改了名称但没有提供slug，自动生成
-            category.slug = generate_slug(data['name'])
         if 'description' in data:
             category.description = data['description']
         if 'order' in data:
             category.order = data['order']
-        
+
         session.commit()
-        
         return jsonify({
             'id': category.id,
             'name': category.name,
@@ -4745,14 +4708,14 @@ def delete_category(category_id):
         if not category:
             print("栏目不存在")
             return jsonify({'error': '栏目不存在'}), 404
-        
+
         # 检查是否有文章属于该栏目
         article_count = session.query(Article).filter_by(category_id=category_id).count()
         print(f"该栏目下的文章数量: {article_count}")
         if article_count > 0:
             print(f"该栏目下还有{article_count}篇文章，无法删除")
             return jsonify({'error': f'该栏目下还有{article_count}篇文章，无法删除'}), 400
-        
+
         # 尝试删除栏目
         session.delete(category)
         session.commit()
@@ -4782,10 +4745,10 @@ def get_articles():
         category_id = request.args.get('category_id', type=int)
         status = request.args.get('status')
         include_drafts = request.args.get('include_drafts', 'false').lower() == 'true'
-        
+
         # 构建查询
         query = session.query(Article)
-        
+
         # 应用筛选条件
         if category_id:
             query = query.filter_by(category_id=category_id)
@@ -4794,13 +4757,13 @@ def get_articles():
         elif not include_drafts:
             # 如果没有指定状态且不包含草稿，只获取已发布的
             query = query.filter_by(status='published')
-        
+
         # 计算总数
         total = query.count()
-        
+
         # 分页
         articles = query.order_by(Article.created_at.desc()).offset((page-1)*per_page).limit(per_page).all()
-        
+
         # 转换为字典列表
         articles_list = []
         for article in articles:
@@ -4826,9 +4789,8 @@ def get_articles():
                 articles_list.append(article_dict)
             except Exception as article_error:
                 print(f"Error processing article {article.id}: {str(article_error)}")
-                # 跳过有错误的文章，继续处理其他文章
                 continue
-        
+
         session.commit()
         return jsonify({
             'articles': articles_list,
@@ -4846,258 +4808,6 @@ def get_articles():
     finally:
         session.close()
 
-@app.route('/api/articles', methods=['POST'])
-@admin_required
-def create_article():
-    # 创建新的session实例
-    session = Session()
-    try:
-        data = request.json
-        
-        # 验证必填字段
-        if not data.get('title'):
-            return jsonify({'error': '标题不能为空'}), 400
-        
-        # 自动生成slug
-        slug = data.get('slug')
-        print(f"Original slug from frontend: '{slug}'")
-        print(f"if not slug: {not slug}")
-        if not slug:
-            title = data.get('title')
-            print(f"Generating slug from title: '{title}'")
-            slug = generate_slug(title)
-            print(f"Generated slug: '{slug}'")
-        
-        # 确保slug唯一
-        slug_base = slug
-        counter = 1
-        while True:
-            existing_article = session.query(Article).filter_by(slug=slug).first()
-            if not existing_article:
-                break
-            # slug已存在，添加数字后缀
-            slug = f"{slug_base}-{counter}"
-            counter += 1
-        
-        # 创建新文章
-        new_article = Article(
-            title=data.get('title'),
-            slug=slug,
-            content=data.get('content'),
-            summary=data.get('summary'),
-            category_id=data.get('category_id'),
-            author_id=request.user_id,
-            status=data.get('status', 'draft'),
-            file_path=data.get('file_path')
-        )
-        
-        # 如果状态为published，设置发布时间
-        if data.get('status') == 'published':
-            new_article.published_at = datetime.datetime.utcnow()
-        
-        session.add(new_article)
-        session.commit()
-        
-        return jsonify({
-            'id': new_article.id,
-            'title': new_article.title,
-            'slug': new_article.slug,
-            'summary': new_article.summary,
-            'category_id': new_article.category_id,
-            'author_id': new_article.author_id,
-            'status': new_article.status,
-            'file_path': new_article.file_path
-        }), 201
-    except Exception as e:
-        session.rollback()
-        print(f"Error in create_article: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({'error': str(e)}), 500
-    finally:
-        session.close()
-
-@app.route('/api/articles/<int:article_id>', methods=['GET'])
-@protected
-def get_article(article_id):
-    # 创建新的session实例
-    session = Session()
-    try:
-        article = session.query(Article).filter_by(id=article_id).first()
-        if not article:
-            return jsonify({'error': '文章不存在'}), 404
-        
-        # 增加浏览量
-        article.view_count += 1
-        session.commit()
-        
-        return jsonify({
-            'id': article.id,
-            'title': article.title,
-            'slug': article.slug,
-            'content': article.content,
-            'summary': article.summary,
-            'category_id': article.category_id,
-            'author_id': article.author_id,
-            'status': article.status,
-            'view_count': article.view_count,
-            'file_path': article.file_path,
-            'created_at': article.created_at.strftime('%Y-%m-%d %H:%M:%S') if article.created_at else None,
-            'updated_at': article.updated_at.strftime('%Y-%m-%d %H:%M:%S') if article.updated_at else None,
-            'published_at': article.published_at.strftime('%Y-%m-%d %H:%M:%S') if article.published_at else None
-        }), 200
-    except Exception as e:
-        session.rollback()
-        print(f"Error in get_article: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({'error': str(e)}), 500
-    finally:
-        session.close()
-
-@app.route('/api/articles/<int:article_id>', methods=['PUT'])
-@admin_required
-def update_article(article_id):
-    # 创建新的session实例
-    session = Session()
-    try:
-        data = request.json
-        article = session.query(Article).filter_by(id=article_id).first()
-        
-        if not article:
-            return jsonify({'error': '文章不存在'}), 404
-        
-        # 更新文章信息
-        if 'title' in data:
-            article.title = data['title']
-        if 'slug' in data:
-            article.slug = data['slug']
-        elif 'title' in data:
-            # 如果修改了标题但没有提供slug，自动生成
-            article.slug = generate_slug(data['title'])
-        if 'content' in data:
-            article.content = data['content']
-        if 'summary' in data:
-            article.summary = data['summary']
-        if 'category_id' in data:
-            article.category_id = data['category_id']
-        if 'status' in data:
-            article.status = data['status']
-            # 如果状态从draft变为published，设置发布时间
-            if data['status'] == 'published' and article.status != 'published':
-                article.published_at = datetime.datetime.utcnow()
-        if 'file_path' in data:
-            article.file_path = data['file_path']
-        
-        session.commit()
-        
-        return jsonify({
-            'id': article.id,
-            'title': article.title,
-            'slug': article.slug,
-            'summary': article.summary,
-            'category_id': article.category_id,
-            'status': article.status
-        }), 200
-    except Exception as e:
-        session.rollback()
-        print(f"Error in update_article: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({'error': str(e)}), 500
-    finally:
-        session.close()
-
-
-
-@app.route('/api/articles/<int:article_id>', methods=['DELETE'])
-@admin_required
-def delete_article(article_id):
-    session = Session()
-    try:
-        article = session.query(Article).filter_by(id=article_id).first()
-        if not article:
-            return jsonify({'error': '文章不存在'}), 404
-        
-        session.delete(article)
-        session.commit()
-        
-        return jsonify({'message': '文章删除成功'}), 200
-    except Exception as e:
-        session.rollback()
-        print(f"Error in delete_article: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({'error': str(e)}), 500
-    finally:
-        session.close()
-
-@app.route('/api/articles/category/<int:category_id>', methods=['GET'])
-@protected
-def get_articles_by_category(category_id):
-    session = Session()
-    try:
-        # 获取查询参数
-        page = request.args.get('page', 1, type=int)
-        per_page = request.args.get('per_page', 10, type=int)
-        include_drafts = request.args.get('include_drafts', 'false').lower() == 'true'
-        
-        # 构建查询
-        query = session.query(Article).filter_by(category_id=category_id)
-        
-        # 如果不包含草稿，只获取已发布的
-        if not include_drafts:
-            query = query.filter_by(status='published')
-        
-        # 计算总数
-        total = query.count()
-        
-        # 分页
-        articles = query.order_by(Article.created_at.desc()).offset((page-1)*per_page).limit(per_page).all()
-        
-        # 转换为字典列表
-        articles_list = []
-        for article in articles:
-            try:
-                article_dict = {
-                    'id': article.id,
-                    'title': article.title,
-                    'slug': article.slug,
-                    'summary': article.summary,
-                    'category_id': article.category_id,
-                    'view_count': article.view_count,
-                    'status': article.status,
-                    'created_at': article.created_at.strftime('%Y-%m-%d %H:%M:%S') if article.created_at else None,
-                    'published_at': article.published_at.strftime('%Y-%m-%d %H:%M:%S') if article.published_at else None
-                }
-                # 尝试获取file_path字段
-                try:
-                    article_dict['file_path'] = article.file_path
-                except AttributeError:
-                    article_dict['file_path'] = None
-                articles_list.append(article_dict)
-            except Exception as article_error:
-                print(f"Error processing article {article.id}: {str(article_error)}")
-                continue
-        
-        session.commit()
-        return jsonify({
-            'articles': articles_list,
-            'total': total,
-            'page': page,
-            'per_page': per_page,
-            'pages': (total + per_page - 1) // per_page
-        }), 200
-    except Exception as e:
-        session.rollback()
-        print(f"Error in get_articles_by_category: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({'error': str(e)}), 500
-    finally:
-        session.close()
-
-# 首页栏目文章API - 获取各栏目最新文章
 @app.route('/api/cms/home-columns', methods=['GET'])
 @protected
 def get_home_columns():
@@ -5143,642 +4853,11 @@ def get_home_columns():
     finally:
         session.close()
 
-# 配置静态文件服务
-import os
-app.config['UPLOAD_FOLDER'] = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
-
-# 静态文件服务路由
+# 静态文件路由 - uploads 目录
 @app.route('/uploads/<path:filename>')
-def serve_uploaded_file(filename):
-    from flask import send_from_directory
-    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
-
-# 数据清洗脱敏API端点 - 获取文件字段
-@app.route('/api/tools/data-cleaning/fields', methods=['POST'])
-@protected
-def get_cleaning_fields():
-    session = Session()
-    try:
-        if 'file' not in request.files:
-            return jsonify({'error': 'No file part'}), 400
-        
-        file = request.files['file']
-        if file.filename == '':
-            return jsonify({'error': 'No selected file'}), 400
-        
-        # 读取Excel文件
-        df = pd.read_excel(file)
-        
-        # 获取所有字段名
-        fields = list(df.columns)
-        
-        session.commit()
-        return jsonify({'fields': fields}), 200
-    except Exception as e:
-        session.rollback()
-        print(f"Error in get_cleaning_fields: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({'error': str(e)}), 500
-    finally:
-        session.close()
-
-# 数据清洗脱敏API端点 - 处理文件
-@app.route('/api/tools/data-cleaning', methods=['POST'])
-@protected
-def process_cleaning():
-    session = Session()
-    try:
-        if 'file' not in request.files:
-            return jsonify({'error': 'No file part'}), 400
-        
-        file = request.files['file']
-        if file.filename == '':
-            return jsonify({'error': 'No selected file'}), 400
-        
-        # 读取字段配置
-        fields_config = {}
-        if 'fields' in request.form:
-            import json
-            fields_config = json.loads(request.form['fields'])
-        
-        # 读取Excel文件
-        df = pd.read_excel(file)
-        
-        # 执行数据清洗和脱敏
-        processed_df = clean_and_desensitize_data(df, fields_config)
-        
-        # 保存处理后的文件
-        import tempfile
-        import os
-        
-        with tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False) as temp:
-            temp_path = temp.name
-        
-        processed_df.to_excel(temp_path, index=False)
-        
-        # 返回文件
-        from flask import send_file
-        return send_file(temp_path, as_attachment=True, download_name='cleaned_data.xlsx', mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-    except Exception as e:
-        session.rollback()
-        print(f"Error in process_cleaning: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({'error': str(e)}), 500
-    finally:
-        session.close()
-
-# 城管通API端点
-@app.route('/api/chengguantong/ask', methods=['POST'])
-@protected
-def chengguantong_ask():
-    try:
-        data = request.json
-        message = data.get('message')
-        
-        if not message:
-            return jsonify({'error': 'Missing message parameter'}), 400
-        
-        # 调用阿里云百炼城管通专用应用API
-        headers = {
-            'Content-Type': 'application/json',
-            'Authorization': f'Bearer {BAILIAN_CHENGGUANTONG_API_KEY}'
-        }
-        
-        payload = {
-            "input": {
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": message
-                    }
-                ]
-            },
-            "parameters": {
-                "temperature": 0.7
-            }
-        }
-        
-        # 调用API，添加重试机制
-        max_retries = 3
-        retry_delay = 5
-        
-        for attempt in range(max_retries):
-            try:
-                response = requests.post(
-                    BAILIAN_CHENGGUANTONG_API_URL, 
-                    headers=headers, 
-                    json=payload, 
-                    timeout=(10, 300)  # 连接超时10秒，读取超时300秒
-                )
-                response.raise_for_status()
-                result = response.json()
-                
-                # 检查响应结构
-                if 'output' in result and 'text' in result['output']:
-                    return jsonify({
-                        'response': result['output']['text']
-                    }), 200
-                else:
-                    return jsonify({'error': 'Invalid API response structure'}), 500
-                    
-            except requests.exceptions.Timeout as e:
-                if attempt < max_retries - 1:
-                    print(f"API调用超时，{retry_delay}秒后重试... (尝试 {attempt+1}/{max_retries})")
-                    import time
-                    time.sleep(retry_delay)
-                    retry_delay *= 2  # 指数退避
-                else:
-                    return jsonify({'error': f'多次尝试后仍然超时 - {str(e)}'}), 500
-            except Exception as e:
-                return jsonify({'error': f'API调用失败: {str(e)}'}), 500
-                
-    except Exception as e:
-        print(f"Error in chengguantong_ask: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({'error': str(e)}), 500
-
-# 健康检查接口
-@app.route('/health', methods=['GET'])
-def health_check():
-    return jsonify({'status': 'healthy', 'message': 'Service is running'}), 200
-
-# 图表分析API - 获取仪表盘数据
-@app.route('/api/chart-analysis', methods=['POST'])
-@protected
-def chart_analysis():
-    """图表分析API - 根据数据表生成仪表盘数据"""
-    try:
-        import json
-        data = request.json
-        table_name = data.get('table_name')
-        month = data.get('month', '')  # 新增：月份筛选
-
-        if not table_name:
-            return jsonify({'error': 'Missing table_name parameter'}), 400
-
-        print(f"[图表分析] 开始分析数据表: {table_name}")
-
-        # 从数据库读取数据
-        df = pd.read_sql_table(table_name, engine)
-
-        # 月份筛选
-        if month:
-            month_col = None
-            for col in ['data_month', '月份']:
-                if col in df.columns:
-                    month_col = col
-                    break
-            if month_col:
-                df = df[df[month_col] == month]
-                print(f"[图表分析] 筛选月份 {month}，剩余 {len(df)} 条数据")
-
-        total_count = len(df)
-
-        if total_count == 0:
-            return jsonify({'error': '数据表为空'}), 400
-
-        print(f"[图表分析] 数据总量: {total_count} 条")
-
-        # 初始化结果
-        result = {
-            'total_count': total_count,
-            'charts': {}
-        }
-
-        # 1. 案件总数（已经在 total_count 中）
-
-        # 2. 问题来源分布（饼状图）
-        source_col = None
-        for col in ['问题来源', 'source', '案件来源']:
-            if col in df.columns:
-                source_col = col
-                break
-        if source_col:
-            source_data = df[source_col].fillna('未知').value_counts()
-            result['charts']['source_pie'] = {
-                'title': '问题来源分布',
-                'type': 'pie',
-                'data': [{'name': str(k), 'value': int(v)} for k, v in source_data.items()]
-            }
-
-        # 3. 问题类型分布（饼状图）
-        problem_type_col = None
-        for col in ['问题类型', 'problem_type', '案件类型']:
-            if col in df.columns:
-                problem_type_col = col
-                break
-        if problem_type_col:
-            type_data = df[problem_type_col].fillna('未知').value_counts()
-            result['charts']['type_pie'] = {
-                'title': '问题类型分布',
-                'type': 'pie',
-                'data': [{'name': str(k), 'value': int(v)} for k, v in type_data.items()]
-            }
-
-        # 4. 大类名称占比图（横向柱状图）
-        major_cat_col = None
-        for col in ['大类名称', 'major_category', '大类']:
-            if col in df.columns:
-                major_cat_col = col
-                break
-        if major_cat_col:
-            major_data = df[major_cat_col].fillna('未知').value_counts().head(15)
-            result['charts']['major_category'] = {
-                'title': '大类案件分布',
-                'type': 'bar',
-                'data': {'categories': [str(k) for k in major_data.index], 'values': [int(v) for v in major_data.values]}
-            }
-
-        # 5. 小类名称分布图（横向柱状图）
-        minor_cat_col = None
-        for col in ['小类名称', 'minor_category', '小类']:
-            if col in df.columns:
-                minor_cat_col = col
-                break
-        if minor_cat_col:
-            minor_data = df[minor_cat_col].fillna('未知').value_counts().head(20)
-            result['charts']['minor_category'] = {
-                'title': '小类案件分布',
-                'type': 'bar',
-                'data': {'categories': [str(k) for k in minor_data.index], 'values': [int(v) for v in minor_data.values]}
-            }
-
-        # 6. 所属片区分布图（饼状图）
-        area_col = None
-        for col in ['所属片区', '所属区域', 'area', '片区']:
-            if col in df.columns:
-                area_col = col
-                break
-        if area_col:
-            area_data = df[area_col].fillna('未知').value_counts()
-            result['charts']['area_pie'] = {
-                'title': '案件采集片区分布',
-                'type': 'pie',
-                'data': [{'name': str(k), 'value': int(v)} for k, v in area_data.items()]
-            }
-
-        # 7. 所属街道分布图（横向柱状图）
-        street_col = None
-        for col in ['所属街道', 'street', '街道']:
-            if col in df.columns:
-                street_col = col
-                break
-        if street_col:
-            street_data = df[street_col].fillna('未知').value_counts()
-            result['charts']['street'] = {
-                'title': '案件街道分布',
-                'type': 'bar',
-                'data': {'categories': [str(k) for k in street_data.index], 'values': [int(v) for v in street_data.values]}
-            }
-
-        # 8. 所属社区分布图（横向柱状图）
-        community_col = None
-        for col in ['所属社区', 'community', '社区']:
-            if col in df.columns:
-                community_col = col
-                break
-        if community_col:
-            community_data = df[community_col].fillna('未知').value_counts().head(25)
-            result['charts']['community'] = {
-                'title': '案件社区分布',
-                'type': 'bar',
-                'data': {'categories': [str(k) for k in community_data.index], 'values': [int(v) for v in community_data.values]}
-            }
-
-        # 9. 处置部门案件占比图（饼状图）
-        dept_col = None
-        for col in ['处置部门', 'department', '处理部门', '责任部门']:
-            if col in df.columns:
-                dept_col = col
-                break
-        if dept_col:
-            dept_data = df[dept_col].fillna('未知').value_counts()
-            result['charts']['department_pie'] = {
-                'title': '处置部门案件占比',
-                'type': 'pie',
-                'data': [{'name': str(k), 'value': int(v)} for k, v in dept_data.items()]
-            }
-
-        # 10. 各处置部门平均处置时间图（横向柱状图）
-        # 需要计算：结案时间 - 上报时间
-        close_time_col = None
-        for col in ['结案时间', 'close_time', 'handle_time', '完成时间']:
-            if col in df.columns:
-                close_time_col = col
-                break
-
-        report_time_col = None
-        for col in ['上报时间', 'report_time', '创建时间']:
-            if col in df.columns:
-                report_time_col = col
-                break
-
-        if close_time_col and report_time_col and dept_col:
-            try:
-                # 转换时间列
-                df['_close_time'] = pd.to_datetime(df[close_time_col], errors='coerce')
-                df['_report_time'] = pd.to_datetime(df[report_time_col], errors='coerce')
-
-                # 计算处置时间（小时）
-                df['_handling_hours'] = (df['_close_time'] - df['_report_time']).dt.total_seconds() / 3600
-
-                # 按处置部门分组计算平均处置时间（过滤掉无效数据）
-                valid_df = df[(df['_handling_hours'] > 0) & (df['_handling_hours'] < 720)]  # 过滤超过30天的异常数据
-                if len(valid_df) > 0:
-                    avg_time_by_dept = valid_df.groupby(dept_col)['_handling_hours'].mean().sort_values()
-
-                    # 转换为小时/天显示
-                    result['charts']['avg_handling_time'] = {
-                        'title': '各处置部门平均处置时间',
-                        'type': 'bar',
-                        'data': {
-                            'categories': [str(k) for k in avg_time_by_dept.index],
-                            'values': [round(v, 1) for v in avg_time_by_dept.values]
-                        },
-                        'unit': '小时'
-                    }
-            except Exception as e:
-                print(f"[图表分析] 计算处置时间出错: {str(e)}")
-
-        print(f"[图表分析] 分析完成，生成 {len(result['charts'])} 个图表")
-        return jsonify(result), 200
-
-    except Exception as e:
-        print(f"Error in chart_analysis: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({'error': str(e)}), 500
-
-# ==================== 案件管理模块扩展 API ====================
-
-# 跟进记录模型（动态创建，兼容现有数据库）
-try:
-    class CaseFollow(Base):
-        __tablename__ = 'case_follows'
-        id = Column(Integer, primary_key=True, autoincrement=True)
-        case_id = Column(Integer, nullable=False)
-        follow_type = Column(String(20))      # 发函/协调/督办/其他
-        content = Column(Text)
-        attachments = Column(Text)            # JSON格式附件路径
-        follow_time = Column(DateTime, default=datetime.datetime.now)
-        follow_user = Column(String(50))
-        created_at = Column(DateTime, default=datetime.datetime.now)
-
-    # 尝试创建表
-    Base.metadata.create_all(engine)
-    print("CaseFollow 模型初始化成功")
-except Exception as e:
-    print(f"CaseFollow 模型初始化警告: {e}")
-    CaseFollow = None
-
-register_case_management_routes(
-    app=app,
-    Session=Session,
-    Case=Case,
-    CaseFollow=CaseFollow,
-    protected=protected,
-    get_json_payload=get_json_payload,
-    get_case_or_404=get_case_or_404,
-    serialize_case=serialize_case,
-    CASE_CATEGORIES=CASE_CATEGORIES,
-    apply_case_category_fields=apply_case_category_fields,
-    parse_pending_deadline=parse_pending_deadline,
-)
-
-
-# ==================== 城市管理数据大屏 API ====================
-
-@app.route('/api/city-dashboard', methods=['POST'])
-@protected
-def city_dashboard():
-    """城市管理数据大屏API - 提供综合数据统计和可视化数据"""
-    try:
-        data = request.json
-        table_name = data.get('table_name')
-        month = data.get('month', '')  # 新增：月份筛选
-
-        if not table_name:
-            return jsonify({'error': 'Missing table_name parameter'}), 400
-
-        print(f"[城市大屏] 开始分析数据表: {table_name}")
-
-        # 从数据库读取数据
-        df = pd.read_sql_table(table_name, engine)
-        total_count = len(df)
-
-        print(f"[城市大屏] 读取数据完成，总量: {total_count} 条")
-        print(f"[城市大屏] 数据列: {list(df.columns)}")
-
-        if total_count == 0:
-            return jsonify({'error': '数据表为空'}), 400
-
-        # 月份筛选（在识别列之前进行，确保后续所有统计都基于筛选后的数据）
-        if month:
-            month_col = None
-            for col in ['data_month', '月份']:
-                if col in df.columns:
-                    month_col = col
-                    break
-            if month_col:
-                df = df[df[month_col] == month]
-                total_count = len(df)
-                print(f"[城市大屏] 筛选月份 {month}，剩余 {total_count} 条数据")
-
-        if total_count == 0:
-            return jsonify({'error': f'月份 {month} 没有数据'}), 400
-
-        # 识别关键列
-        report_time_col = None
-        for col in ['上报时间', 'report_time', '创建时间']:
-            if col in df.columns:
-                report_time_col = col
-                print(f"[城市大屏] 找到上报时间列: {report_time_col}")
-                break
-
-        close_time_col = None
-        for col in ['结案时间', 'close_time', 'handle_time', '完成时间']:
-            if col in df.columns:
-                close_time_col = col
-                print(f"[城市大屏] 找到结案时间列: {close_time_col}")
-                break
-
-        source_col = None
-        for col in ['问题来源', 'source', '案件来源']:
-            if col in df.columns:
-                source_col = col
-                break
-
-        major_cat_col = None
-        for col in ['大类名称', 'major_category', '大类']:
-            if col in df.columns:
-                major_cat_col = col
-                break
-
-        minor_cat_col = None
-        for col in ['小类名称', 'minor_category', '小类']:
-            if col in df.columns:
-                minor_cat_col = col
-                break
-
-        dept_col = None
-        for col in ['处置部门', 'department', '处理部门', '责任部门']:
-            if col in df.columns:
-                dept_col = col
-                break
-
-        # 从数据表名解析月份（格式：202601 表示2026年1月）- 仅当用户没有选择月份时使用
-        if not month:
-            # 尝试从表名中提取6位数字格式的月份
-            import re
-            month_match = re.search(r'(20\d{2})(0[1-9]|1[0-2])', table_name)
-            if month_match:
-                year = month_match.group(1)
-                mon = month_match.group(2)
-                month = f"{year}{mon}"  # 使用与前端一致的格式，如 202601
-                print(f"[城市大屏] 从表名解析月份: {month}")
-
-        # 生成月份显示文本
-        month_display = ''
-        if month and len(month) == 6:
-            year_part = month[:4]
-            month_part = month[4:6]
-            month_display = f"{year_part}年{int(month_part)}月"
-
-        # 再次检查数据是否为空
-        current_count = len(df)
-        print(f"[城市大屏] 最终数据量: {current_count} 条")
-
-        if current_count == 0:
-            return jsonify({'error': '没有数据'}), 400
-
-        # 初始化结果
-        result = {
-            'month': month,
-            'monthDisplay': month_display,
-            'stats': {},
-            'trend': {},
-            'sourceDistribution': [],
-            'typeDistribution': [],
-            'departmentDistribution': [],
-            'topIssues': [],
-            'avgHandlingTime': []
-        }
-
-        # 1. 基础统计
-        total = len(df)
-        closed = 0
-        handling = 0
-
-        if close_time_col:
-            df['_close_time_parsed'] = pd.to_datetime(df[close_time_col], errors='coerce')
-            closed = int(df['_close_time_parsed'].notna().sum())
-            handling = total - closed
-        else:
-            handling = total
-
-        close_rate = round((closed / total * 100), 1) if total > 0 else 0
-
-        result['stats'] = {
-            'total': total,
-            'closed': closed,
-            'handling': handling,
-            'closeRate': close_rate
-        }
-
-        # 2. 案件趋势（每日案件数量）- 如果选择了月份，只统计上报时间在该月的数据
-        if report_time_col:
-            try:
-                if '_report_time_parsed' not in df.columns:
-                    df['_report_time_parsed'] = pd.to_datetime(df[report_time_col], errors='coerce')
-
-                # 用于趋势统计的数据
-                df_trend = df.copy()
-
-                # 如果选择了月份，只保留上报时间在该月的数据
-                if month:
-                    # 将月份格式从 "202601" 转换为 "2026-01"
-                    year_part = month[:4]
-                    month_part = month[4:6]
-                    target_month = f"{year_part}-{month_part}"
-
-                    # 筛选上报时间在该月的数据
-                    df_trend = df_trend[df_trend['_report_time_parsed'].dt.strftime('%Y-%m') == target_month]
-                    print(f"[城市大屏] 案件趋势：上报时间在 {target_month} 的数据 {len(df_trend)} 条")
-
-                df_trend['_report_date'] = df_trend['_report_time_parsed'].dt.date
-                daily_counts = df_trend['_report_date'].value_counts().sort_index()
-                result['trend'] = {
-                    'dates': [d.strftime('%m-%d') if hasattr(d, 'strftime') else str(d) for d in daily_counts.index],
-                    'values': [int(v) for v in daily_counts.values]
-                }
-            except Exception as e:
-                print(f"[城市大屏] 计算趋势出错: {str(e)}")
-                result['trend'] = {'dates': [], 'values': []}
-
-        # 3. 来源分布
-        if source_col:
-            source_data = df[source_col].fillna('未知').value_counts()
-            result['sourceDistribution'] = [
-                {'name': str(k), 'value': int(v)}
-                for k, v in source_data.items()
-            ]
-
-        # 4. 类型分布（大类）
-        if major_cat_col:
-            type_data = df[major_cat_col].fillna('未知').value_counts()
-            result['typeDistribution'] = {
-                'categories': [str(k) for k in type_data.index],
-                'values': [int(v) for v in type_data.values]
-            }
-
-        # 5. 处置部门分布
-        if dept_col:
-            dept_data = df[dept_col].fillna('未知').value_counts()
-            result['departmentDistribution'] = [
-                {'name': str(k), 'value': int(v)}
-                for k, v in dept_data.items()
-            ]
-
-        # 6. 高发问题Top20（小类）
-        if minor_cat_col:
-            minor_data = df[minor_cat_col].fillna('未知').value_counts().head(20)
-            result['topIssues'] = [
-                {'name': str(k), 'value': int(v)}
-                for k, v in minor_data.items()
-            ]
-
-        # 7. 各处置部门平均处置时间
-        if close_time_col and report_time_col and dept_col:
-            try:
-                if '_close_time_parsed' not in df.columns:
-                    df['_close_time_parsed'] = pd.to_datetime(df[close_time_col], errors='coerce')
-                if '_report_time_parsed' not in df.columns:
-                    df['_report_time_parsed'] = pd.to_datetime(df[report_time_col], errors='coerce')
-
-                df['_handling_hours'] = (df['_close_time_parsed'] - df['_report_time_parsed']).dt.total_seconds() / 3600
-                valid_df = df[(df['_handling_hours'] > 0) & (df['_handling_hours'] < 720)]
-
-                if len(valid_df) > 0:
-                    avg_time_by_dept = valid_df.groupby(dept_col)['_handling_hours'].mean().sort_values(ascending=False)
-                    result['avgHandlingTime'] = {
-                        'categories': [str(k) for k in avg_time_by_dept.index],
-                        'values': [round(v, 1) for v in avg_time_by_dept.values]
-                    }
-            except Exception as e:
-                print(f"[城市大屏] 计算处置时间出错: {str(e)}")
-
-        print(f"[城市大屏] 分析完成")
-        return jsonify(result), 200
-
-    except Exception as e:
-        print(f"Error in city_dashboard: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({'error': str(e)}), 500
-
+def serve_upload(filename):
+    upload_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
+    return send_from_directory(upload_dir, filename)
 
 # 前端静态文件路由 - 放在最后
 @app.route('/', defaults={'path': ''})

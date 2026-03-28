@@ -403,11 +403,11 @@ def register_case_management_routes(
                 elif status == '已结案':
                     stats['closed'] = count
 
-            seven_days_later = datetime.datetime.now() + datetime.timedelta(days=7)
+            two_days_later = datetime.datetime.now() + datetime.timedelta(days=2)
             stats['expiring_soon'] = session.query(Case).filter(
                 Case.category == '挂账案件',
                 Case.pending_deadline != None,
-                Case.pending_deadline <= seven_days_later,
+                Case.pending_deadline <= two_days_later,
                 Case.pending_deadline >= datetime.datetime.now(),
                 Case.status != '已结案'
             ).count()
@@ -465,6 +465,37 @@ def register_case_management_routes(
         except Exception as e:
             session.rollback()
             print(f"Error in get_cases_category_stats: {str(e)}")
+            return jsonify({'error': str(e)}), 500
+        finally:
+            session.close()
+
+    @app.route('/api/cases/source-stats', methods=['GET'])
+    @protected
+    def get_cases_source_stats():
+        """获取案件来源统计"""
+        session = Session()
+        try:
+            # 按问题来源统计
+            source_stats = session.query(
+                Case.source,
+                func.count(Case.id)
+            ).filter(
+                Case.source != None,
+                Case.source != ''
+            ).group_by(Case.source).order_by(func.count(Case.id).desc()).limit(10).all()
+
+            result = []
+            for name, count in source_stats:
+                result.append({
+                    'source': name,
+                    'count': count
+                })
+
+            session.commit()
+            return jsonify(result), 200
+        except Exception as e:
+            session.rollback()
+            print(f"Error in get_cases_source_stats: {str(e)}")
             return jsonify({'error': str(e)}), 500
         finally:
             session.close()

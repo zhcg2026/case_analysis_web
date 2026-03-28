@@ -248,14 +248,23 @@ const availableMonthsReports = computed(() => {
   return Array.from(months).sort().reverse()
 })
 
-// 计算属性：过滤后的问题列表
+// 计算属性：过滤后的问题列表（按创建时间倒序）
 const filteredTasks = computed(() => {
-  if (!selectedMonth.value) return tasks.value
-  return tasks.value.filter(task => {
-    if (!task.createdAt) return false
-    const date = new Date(task.createdAt)
-    const month = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
-    return month === selectedMonth.value
+  let data = tasks.value
+
+  if (selectedMonth.value) {
+    data = data.filter(task => {
+      if (!task.createdAt) return false
+      const date = new Date(task.createdAt)
+      const month = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+      return month === selectedMonth.value
+    })
+  }
+
+  return [...data].sort((a, b) => {
+    const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0
+    const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0
+    return dateB - dateA
   })
 })
 

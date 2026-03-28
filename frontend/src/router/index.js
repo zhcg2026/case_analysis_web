@@ -111,7 +111,7 @@ router.beforeEach((to, from, next) => {
   const userStore = useUserStore()
 
   // 设置页面标题
-  document.title = to.meta.title ? `${to.meta.title} - 案件分析系统` : '案件分析系统'
+  document.title = to.meta.title ? `${to.meta.title} - 智慧平台一站通` : '智慧平台一站通'
 
   // 检查是否需要登录
   if (to.meta.requiresAuth !== false && !userStore.isLoggedIn) {

@@ -9,19 +9,27 @@
     <div class="login-container">
       <div class="login-card">
         <div class="login-header">
-          <div class="login-logo">📊</div>
-          <h1 class="login-title">案件分析系统</h1>
+          <div class="login-logo">
+            <svg viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect width="60" height="60" rx="12" fill="url(#loginGrad)"/>
+              <path d="M18 30L27 39L42 21" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+              <circle cx="30" cy="30" r="24" stroke="white" stroke-width="2" stroke-dasharray="6 6" opacity="0.4"/>
+              <defs>
+                <linearGradient id="loginGrad" x1="0" y1="0" x2="60" y2="60">
+                  <stop offset="0%" stop-color="#409eff"/>
+                  <stop offset="100%" stop-color="#00c6fb"/>
+                </linearGradient>
+              </defs>
+            </svg>
+          </div>
+          <h1 class="login-title">智慧平台一站通</h1>
           <p class="login-subtitle">智能数据分析平台</p>
         </div>
 
         <form class="login-form" @submit.prevent="handleLogin">
           <div class="form-group">
-            <label class="form-label">用户名</label>
             <div class="input-wrapper">
-              <svg class="input-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-                <circle cx="12" cy="7" r="4"></circle>
-              </svg>
+              <label class="form-label">用户名</label>
               <input
                 v-model="form.username"
                 type="text"
@@ -34,12 +42,8 @@
           </div>
 
           <div class="form-group">
-            <label class="form-label">密码</label>
             <div class="input-wrapper">
-              <svg class="input-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
-                <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
-              </svg>
+              <label class="form-label">密　码</label>
               <input
                 v-model="form.password"
                 :type="showPassword ? 'text' : 'password'"
@@ -82,7 +86,7 @@
         </form>
 
         <div class="login-footer">
-          <p>© 2024 案件分析系统 v2.0</p>
+          <p>© 2026 智慧平台一站通 v2.0</p>
         </div>
       </div>
     </div>
@@ -227,8 +231,15 @@ async function handleLogin() {
 }
 
 .login-logo {
-  font-size: 48px;
-  margin-bottom: var(--space-4);
+  width: 64px;
+  height: 64px;
+  margin: 0 auto var(--space-4);
+}
+
+.login-logo svg {
+  width: 100%;
+  height: 100%;
+  filter: drop-shadow(0 4px 12px rgba(64, 158, 255, 0.3));
 }
 
 .login-title {
@@ -259,6 +270,8 @@ async function handleLogin() {
   font-size: 14px;
   font-weight: 500;
   color: rgba(255, 255, 255, 0.8);
+  width: 60px;
+  flex-shrink: 0;
 }
 
 .input-wrapper {
@@ -267,16 +280,9 @@ async function handleLogin() {
   align-items: center;
 }
 
-.input-icon {
-  position: absolute;
-  left: var(--space-3);
-  color: rgba(255, 255, 255, 0.4);
-  pointer-events: none;
-}
-
 .form-input {
-  width: 100%;
-  padding: var(--space-3) var(--space-3) var(--space-3) 44px;
+  flex: 1;
+  padding: var(--space-3);
   font-size: 15px;
   color: white;
   background: rgba(255, 255, 255, 0.1);

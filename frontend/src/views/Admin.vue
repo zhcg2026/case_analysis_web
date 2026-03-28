@@ -15,8 +15,50 @@
       </button>
     </div>
 
+    <!-- 用户管理 -->
+    <div v-if="activeTab === 'users'" class="content-card">
+      <div class="card-header">
+        <h2 class="section-title">用户管理</h2>
+        <button class="btn btn-primary" @click="openAddUserModal">
+          <span>+</span> 添加用户
+        </button>
+      </div>
+
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>用户名</th>
+            <th>角色</th>
+            <th>创建时间</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="user in validUsers" :key="user.id">
+            <td>{{ user.id }}</td>
+            <td>{{ user.username }}</td>
+            <td>
+              <span :class="['role-badge', user.role]">
+                {{ roleMap[user.role] || user.role }}
+              </span>
+            </td>
+            <td>{{ formatDate(user.created_at) }}</td>
+            <td>
+              <button class="btn-text" @click="editUser(user)">编辑</button>
+              <button v-if="user.username !== 'admin'" class="btn-text danger" @click="deleteUser(user)">删除</button>
+              <button v-if="user.role !== 'admin'" class="btn-text" @click="openPermissionsEditor(user)">权限</button>
+            </td>
+          </tr>
+          <tr v-if="validUsers.length === 0">
+            <td colspan="5" class="empty-text">暂无用户</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
     <!-- 文章管理 -->
-    <div v-if="activeTab === 'articles'" class="content-card">
+    <div v-else-if="activeTab === 'articles'" class="content-card">
       <div class="card-header">
         <h2 class="section-title">文章管理</h2>
         <div class="header-actions">
@@ -39,33 +81,35 @@
       <!-- 分类导航 -->
       <div class="category-nav">
         <button
-          v-for="cat in categories"
+          v-for="cat in articleCategories"
           :key="cat.id"
           class="category-btn"
-          :class="{ active: selectedCategory === cat.id }"
-          @click="selectCategory(cat.id)"
+          :class="{ active: selectedArticleCategory === cat.id }"
+          @click="selectArticleCategory(cat.id)"
         >
           {{ cat.name }}
-          <span class="category-count" v-if="cat.count">{{ cat.count }}</span>
         </button>
       </div>
 
       <!-- 文章列表 -->
-      <div v-if="articleLoading" class="loading-state">
+      <div v-if="articlesLoading" class="loading-state">
         <div class="loading-spinner"></div>
       </div>
 
       <div v-else class="articles-list">
         <div v-for="article in articles" :key="article.id" class="article-item">
-          <div class="article-info" @click="viewArticle(article)">
+          <div class="article-info">
             <div class="article-header">
               <h3 class="article-title">{{ article.title }}</h3>
-              <span :class="['status-tag', article.status]">
-                {{ article.status === 'published' ? '已发布' : '草稿' }}
+              <span v-if="article.file_path" class="attachment-tag">
+                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+                </svg>
+                附件
               </span>
             </div>
             <div class="article-meta">
-              <span class="category-tag">{{ getCategoryName(article.category_id) }}</span>
+              <span class="category-tag">{{ getArticleCategoryName(article.category_id) }}</span>
               <span>{{ formatDate(article.created_at) }}</span>
               <span v-if="article.view_count">阅读 {{ article.view_count }}</span>
             </div>
@@ -99,14 +143,14 @@
       </div>
 
       <!-- 分页 -->
-      <div class="pagination" v-if="totalPages > 1">
-        <button class="pagination-btn" :disabled="currentPage === 1" @click="currentPage--">
+      <div class="pagination" v-if="articlesTotalPages > 1">
+        <button class="pagination-btn" :disabled="articlesCurrentPage === 1" @click="articlesCurrentPage--">
           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polyline points="15 18 9 12 15 6"/>
           </svg>
         </button>
-        <span class="page-info">{{ currentPage }} / {{ totalPages }}</span>
-        <button class="pagination-btn" :disabled="currentPage === totalPages" @click="currentPage++">
+        <span class="page-info">{{ articlesCurrentPage }} / {{ articlesTotalPages }}</span>
+        <button class="pagination-btn" :disabled="articlesCurrentPage === articlesTotalPages" @click="articlesCurrentPage++">
           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polyline points="9 18 15 12 9 6"/>
           </svg>
@@ -114,46 +158,156 @@
       </div>
     </div>
 
-    <!-- 用户管理 -->
-    <div v-else-if="activeTab === 'users'" class="content-card">
-      <div class="card-header">
-        <h2 class="section-title">用户管理</h2>
-        <button class="btn btn-primary" @click="showAddUser = true">
-          <span>+</span> 添加用户
-        </button>
-      </div>
+    <!-- 文章编辑弹窗 -->
+    <div class="modal-overlay" v-if="showArticleEditor" @click.self="closeArticleEditor">
+      <div class="modal-content article-editor">
+        <div class="modal-header">
+          <h2>{{ editingArticle ? '编辑文章' : '发布文章' }}</h2>
+          <button class="btn-close" @click="closeArticleEditor">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18"/>
+              <line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label class="form-label">文章标题 *</label>
+            <input v-model="articleForm.title" type="text" class="form-input" placeholder="请输入文章标题" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">所属栏目 *</label>
+            <select v-model="articleForm.category_id" class="form-select">
+              <option value="">请选择栏目</option>
+              <option v-for="cat in categoryList" :key="cat.id" :value="cat.id">{{ cat.name }}</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">文章摘要</label>
+            <textarea v-model="articleForm.summary" class="form-textarea" rows="2" placeholder="请输入文章摘要（选填）"></textarea>
+          </div>
 
-      <table class="data-table">
-        <thead>
-          <tr>
-            <th>ID</th>
-            <th>用户名</th>
-            <th>角色</th>
-            <th>创建时间</th>
-            <th>操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="user in users" :key="user.id">
-            <td>{{ user.id }}</td>
-            <td>{{ user.username }}</td>
-            <td>
-              <span :class="['role-badge', user.role]">
-                {{ roleMap[user.role] || user.role }}
-              </span>
-            </td>
-            <td>{{ formatDate(user.created_at) }}</td>
-            <td>
-              <button class="btn-text" @click="editUser(user)">编辑</button>
-              <button class="btn-text danger" @click="deleteUser(user)" :disabled="user.id === 1">删除</button>
-              <button v-if="user.role !== 'admin'" class="btn-text" @click="openPermissionsEditor(user)">权限</button>
-            </td>
-          </tr>
-          <tr v-if="users.length === 0">
-            <td colspan="5" class="empty-text">暂无用户</td>
-          </tr>
-        </tbody>
-      </table>
+          <!-- 图片上传区域 -->
+          <div class="form-group">
+            <label class="form-label">插入图片</label>
+            <div class="upload-area">
+              <input ref="imageInput" type="file" accept="image/*" @change="handleImageUpload" hidden />
+              <button class="btn btn-secondary" @click="$refs.imageInput.click()" :disabled="uploadingImage">
+                {{ uploadingImage ? '上传中...' : '选择图片' }}
+              </button>
+              <span class="upload-hint">支持 jpg、png、gif 格式</span>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">文章内容 *</label>
+            <textarea v-model="articleForm.content" class="form-textarea content-editor" rows="12" placeholder="请输入文章内容，图片将显示为 ![图片](图片链接)"></textarea>
+          </div>
+
+          <!-- 附件上传区域 -->
+          <div class="form-group">
+            <label class="form-label">附件上传</label>
+            <div class="upload-area">
+              <input ref="fileInput" type="file" @change="handleFileUpload" hidden />
+              <button class="btn btn-secondary" @click="$refs.fileInput.click()" :disabled="uploadingFile">
+                {{ uploadingFile ? '上传中...' : '选择附件' }}
+              </button>
+              <span class="upload-hint">支持 doc、docx、pdf、xls、xlsx 等格式</span>
+            </div>
+            <div v-if="articleForm.file_path" class="attachment-info">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+              </svg>
+              <span>已上传附件</span>
+              <button class="btn-link" @click="articleForm.file_path = ''">移除</button>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" @click="closeArticleEditor">取消</button>
+          <button class="btn btn-primary" @click="saveArticle" :disabled="articleSaving">
+            {{ articleSaving ? '发布中...' : (editingArticle ? '保存' : '发布') }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 栏目管理弹窗 -->
+    <div class="modal-overlay" v-if="showCategoryManager" @click.self="showCategoryManager = false">
+      <div class="modal-content category-manager">
+        <div class="modal-header">
+          <h2>栏目管理</h2>
+          <button class="btn-close" @click="showCategoryManager = false">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18"/>
+              <line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+        </div>
+        <div class="modal-body">
+          <!-- 添加栏目 -->
+          <div class="add-category">
+            <input v-model="newCategoryName" type="text" class="form-input" placeholder="输入新栏目名称" @keyup.enter="addCategory" />
+            <button class="btn btn-primary" @click="addCategory" :disabled="!newCategoryName.trim()">添加</button>
+          </div>
+          <!-- 栏目列表 -->
+          <div class="category-list">
+            <div v-for="cat in categoryList" :key="cat.id" class="category-item">
+              <div class="category-info">
+                <span class="category-name">{{ cat.name }}</span>
+                <span class="category-slug">{{ cat.slug }}</span>
+              </div>
+              <div class="category-actions">
+                <button class="btn-icon" @click="editCategory(cat)" title="编辑">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                  </svg>
+                </button>
+                <button class="btn-icon danger" @click="deleteCategory(cat)" title="删除">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="3 6 5 6 21 6"/>
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 栏目编辑弹窗 -->
+    <div class="modal-overlay" v-if="showCategoryEditor" @click.self="showCategoryEditor = false">
+      <div class="modal-content category-editor">
+        <div class="modal-header">
+          <h2>编辑栏目</h2>
+          <button class="btn-close" @click="showCategoryEditor = false">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18"/>
+              <line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label class="form-label">栏目名称</label>
+            <input v-model="editingCategory.name" type="text" class="form-input" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">栏目描述</label>
+            <textarea v-model="editingCategory.description" class="form-textarea" rows="2"></textarea>
+          </div>
+          <div class="form-group">
+            <label class="form-label">排序</label>
+            <input v-model.number="editingCategory.order" type="number" class="form-input" />
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" @click="showCategoryEditor = false">取消</button>
+          <button class="btn btn-primary" @click="updateCategory">保存</button>
+        </div>
+      </div>
     </div>
 
     <!-- 用户权限编辑弹窗 -->
@@ -171,6 +325,10 @@
         <div class="modal-body">
           <div class="permissions-grid">
             <label class="permission-item">
+              <input type="checkbox" v-model="editingPermissions.dashboard" />
+              <span>数据大屏</span>
+            </label>
+            <label class="permission-item">
               <input type="checkbox" v-model="editingPermissions.assessment" />
               <span>考核计分</span>
             </label>
@@ -179,16 +337,16 @@
               <span>AI应用</span>
             </label>
             <label class="permission-item">
-              <input type="checkbox" v-model="editingPermissions.map" />
-              <span>地图服务</span>
+              <input type="checkbox" v-model="editingPermissions.cases" />
+              <span>案件管理</span>
             </label>
             <label class="permission-item">
               <input type="checkbox" v-model="editingPermissions.huiwentai" />
               <span>汇问台</span>
             </label>
             <label class="permission-item">
-              <input type="checkbox" v-model="editingPermissions.cases" />
-              <span>案件管理</span>
+              <input type="checkbox" v-model="editingPermissions.map" />
+              <span>地图服务</span>
             </label>
             <label class="permission-item">
               <input type="checkbox" v-model="editingPermissions.business" />
@@ -220,15 +378,15 @@
         <div class="modal-body">
           <div class="form-group">
             <label class="form-label">用户名</label>
-            <input v-model="userForm.username" type="text" class="form-input" placeholder="请输入用户名" />
+            <input v-model="userForm.username" type="text" class="form-input" placeholder="请输入用户名" :disabled="isAdminUser" autocomplete="off" />
           </div>
           <div class="form-group">
             <label class="form-label">密码{{ editingUser ? '（留空不修改）' : '' }}</label>
-            <input v-model="userForm.password" type="password" class="form-input" placeholder="请输入密码" />
+            <input v-model="userForm.password" type="password" class="form-input" placeholder="请输入密码" autocomplete="new-password" />
           </div>
           <div class="form-group">
             <label class="form-label">角色</label>
-            <select v-model="userForm.role" class="form-select">
+            <select v-model="userForm.role" class="form-select" :disabled="isAdminUser">
               <option value="user">普通用户</option>
               <option value="admin">管理员</option>
             </select>
@@ -292,10 +450,16 @@
       <div class="data-section">
         <div class="section-header">
           <h3 class="subsection-title">数据表管理</h3>
-          <button class="btn btn-secondary" @click="fetchDataTables" :disabled="tablesLoading">
-            {{ tablesLoading ? '加载中...' : '刷新' }}
-          </button>
+          <div class="section-actions">
+            <button class="btn btn-secondary" @click="fetchDataTables" :disabled="tablesLoading">
+              {{ tablesLoading ? '加载中...' : '刷新' }}
+            </button>
+            <button class="btn btn-primary" @click="saveTableVisibility" :disabled="visibilitySaving">
+              {{ visibilitySaving ? '保存中...' : '保存配置' }}
+            </button>
+          </div>
         </div>
+        <p class="section-hint">勾选的数据表将对前端用户可见，未勾选的表用户无法查看。</p>
         <table class="data-table">
           <thead>
             <tr>
@@ -308,7 +472,7 @@
             <tr v-for="table in dataTables" :key="table">
               <td>{{ table }}</td>
               <td>
-                <input type="checkbox" v-model="tableVisibility[table]" @change="saveTableVisibility" />
+                <input type="checkbox" v-model="tableVisibility[table]" />
               </td>
               <td>
                 <button class="btn-text danger" @click="deleteDataTable(table)">删除</button>
@@ -319,6 +483,8 @@
             </tr>
           </tbody>
         </table>
+        <div v-if="visibilityMessage" class="message success">{{ visibilityMessage }}</div>
+        <div v-if="visibilityError" class="message error">{{ visibilityError }}</div>
       </div>
     </div>
 
@@ -494,135 +660,6 @@
       </div>
     </div>
 
-    <!-- 文章编辑弹窗 -->
-    <div class="modal-overlay" v-if="showArticleEditor" @click.self="closeArticleEditor">
-      <div class="modal-content article-editor">
-        <div class="modal-header">
-          <h2>{{ editingArticle ? '编辑文章' : '发布文章' }}</h2>
-          <button class="btn-close" @click="closeArticleEditor">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="18" y1="6" x2="6" y2="18"/>
-              <line x1="6" y1="6" x2="18" y2="18"/>
-            </svg>
-          </button>
-        </div>
-        <div class="modal-body">
-          <div class="form-group">
-            <label class="form-label">文章标题 *</label>
-            <input v-model="articleForm.title" type="text" class="form-input" placeholder="请输入文章标题" />
-          </div>
-          <div class="form-row">
-            <div class="form-group">
-              <label class="form-label">所属栏目 *</label>
-              <select v-model="articleForm.category_id" class="form-select">
-                <option value="">请选择栏目</option>
-                <option v-for="cat in categoryList" :key="cat.id" :value="cat.id">{{ cat.name }}</option>
-              </select>
-            </div>
-            <div class="form-group">
-              <label class="form-label">发布状态</label>
-              <select v-model="articleForm.status" class="form-select">
-                <option value="draft">草稿</option>
-                <option value="published">发布</option>
-              </select>
-            </div>
-          </div>
-          <div class="form-group">
-            <label class="form-label">文章摘要</label>
-            <textarea v-model="articleForm.summary" class="form-textarea" rows="2" placeholder="请输入文章摘要（选填）"></textarea>
-          </div>
-          <div class="form-group">
-            <label class="form-label">文章内容 *</label>
-            <textarea v-model="articleForm.content" class="form-textarea content-editor" rows="12" placeholder="请输入文章内容"></textarea>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button class="btn btn-secondary" @click="closeArticleEditor">取消</button>
-          <button class="btn btn-primary" @click="saveArticle" :disabled="saving">
-            {{ saving ? '保存中...' : '保存' }}
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <!-- 栏目管理弹窗 -->
-    <div class="modal-overlay" v-if="showCategoryManager" @click.self="showCategoryManager = false">
-      <div class="modal-content category-manager">
-        <div class="modal-header">
-          <h2>栏目管理</h2>
-          <button class="btn-close" @click="showCategoryManager = false">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="18" y1="6" x2="6" y2="18"/>
-              <line x1="6" y1="6" x2="18" y2="18"/>
-            </svg>
-          </button>
-        </div>
-        <div class="modal-body">
-          <!-- 添加栏目 -->
-          <div class="add-category">
-            <input v-model="newCategoryName" type="text" class="form-input" placeholder="输入新栏目名称" @keyup.enter="addCategory" />
-            <button class="btn btn-primary" @click="addCategory" :disabled="!newCategoryName.trim()">添加</button>
-          </div>
-          <!-- 栏目列表 -->
-          <div class="category-list">
-            <div v-for="cat in categoryList" :key="cat.id" class="category-item">
-              <div class="category-info">
-                <span class="category-name">{{ cat.name }}</span>
-                <span class="category-slug">{{ cat.slug }}</span>
-              </div>
-              <div class="category-actions">
-                <button class="btn-icon" @click="editCategory(cat)" title="编辑">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                  </svg>
-                </button>
-                <button class="btn-icon danger" @click="deleteCategory(cat)" title="删除">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polyline points="3 6 5 6 21 6"/>
-                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-                  </svg>
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- 栏目编辑弹窗 -->
-    <div class="modal-overlay" v-if="showCategoryEditor" @click.self="showCategoryEditor = false">
-      <div class="modal-content category-editor">
-        <div class="modal-header">
-          <h2>编辑栏目</h2>
-          <button class="btn-close" @click="showCategoryEditor = false">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="18" y1="6" x2="6" y2="18"/>
-              <line x1="6" y1="6" x2="18" y2="18"/>
-            </svg>
-          </button>
-        </div>
-        <div class="modal-body">
-          <div class="form-group">
-            <label class="form-label">栏目名称</label>
-            <input v-model="editingCategory.name" type="text" class="form-input" />
-          </div>
-          <div class="form-group">
-            <label class="form-label">栏目描述</label>
-            <textarea v-model="editingCategory.description" class="form-textarea" rows="2"></textarea>
-          </div>
-          <div class="form-group">
-            <label class="form-label">排序</label>
-            <input v-model.number="editingCategory.order" type="number" class="form-input" />
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button class="btn btn-secondary" @click="showCategoryEditor = false">取消</button>
-          <button class="btn btn-primary" @click="updateCategory">保存</button>
-        </div>
-      </div>
-    </div>
-
     <!-- 平台编辑弹窗 -->
     <div class="modal-overlay" v-if="showPlatformEditor" @click.self="closePlatformEditor">
       <div class="modal-content platform-editor">
@@ -680,8 +717,8 @@ import { ref, computed, onMounted, watch } from 'vue'
 import axios from 'axios'
 
 const tabs = [
-  { key: 'articles', label: '文章管理' },
   { key: 'users', label: '用户管理' },
+  { key: 'articles', label: '文章管理' },
   { key: 'data', label: '数据管理' },
   { key: 'business', label: '业务平台' },
   { key: 'assessment', label: '考核系数' },
@@ -689,10 +726,12 @@ const tabs = [
   { key: 'system', label: '系统设置' }
 ]
 
-const activeTab = ref('articles')
+const activeTab = ref('users')
 
 // 用户管理
 const users = ref([])
+const validUsers = computed(() => (users.value || []).filter(u => u.username))
+const isAdminUser = computed(() => editingUser.value?.username === 'admin')
 const showAddUser = ref(false)
 const editingUser = ref(null)
 const userForm = ref({ username: '', password: '', role: 'user' })
@@ -717,6 +756,9 @@ const uploadLoading = ref(false)
 const uploadMessage = ref('')
 const uploadError = ref('')
 const tablesLoading = ref(false)
+const visibilitySaving = ref(false)
+const visibilityMessage = ref('')
+const visibilityError = ref('')
 
 // 考核系数配置
 const assessmentDepartments = [
@@ -753,33 +795,29 @@ const platformSaving = ref(false)
 const systemConfig = ref({ name: '', logo: '' })
 
 // 文章管理
-const categories = ref([{ id: 'all', name: '全部' }])
-const categoryList = ref([])
 const articles = ref([])
-const articleLoading = ref(false)
-const saving = ref(false)
-const currentPage = ref(1)
-const pageSize = 10
-const totalArticles = ref(0)
-const totalPages = ref(1)
-const selectedCategory = ref('all')
-
-// 文章编辑
+const articlesLoading = ref(false)
+const articlesCurrentPage = ref(1)
+const articlesTotalPages = ref(1)
+const selectedArticleCategory = ref('all')
+const articleCategories = ref([{ id: 'all', name: '全部' }])
+const categoryList = ref([])
 const showArticleEditor = ref(false)
+const showCategoryManager = ref(false)
+const showCategoryEditor = ref(false)
 const editingArticle = ref(null)
+const editingCategory = ref({})
+const newCategoryName = ref('')
+const articleSaving = ref(false)
+const uploadingImage = ref(false)
+const uploadingFile = ref(false)
 const articleForm = ref({
   title: '',
   category_id: '',
-  status: 'draft',
   summary: '',
-  content: ''
+  content: '',
+  file_path: ''
 })
-
-// 栏目管理
-const showCategoryManager = ref(false)
-const showCategoryEditor = ref(false)
-const newCategoryName = ref('')
-const editingCategory = ref({})
 
 // 方法
 function formatDate(dateStr) {
@@ -787,195 +825,52 @@ function formatDate(dateStr) {
   return new Date(dateStr).toLocaleDateString('zh-CN')
 }
 
-// ===== 文章管理方法 =====
-function getCategoryName(categoryId) {
-  const cat = categoryList.value.find(c => c.id === categoryId)
-  return cat ? cat.name : '未分类'
-}
-
-async function fetchCategories() {
-  try {
-    const response = await axios.get('/api/categories')
-    categoryList.value = response.data.categories || []
-    categories.value = [
-      { id: 'all', name: '全部' },
-      ...categoryList.value.map(c => ({ id: c.id, name: c.name }))
-    ]
-  } catch (error) {
-    console.error('获取栏目失败:', error)
-  }
-}
-
-async function fetchArticles() {
-  articleLoading.value = true
-  try {
-    const params = {
-      page: currentPage.value,
-      per_page: pageSize,
-      include_drafts: 'true'
+const currentCoefficients = computed({
+  get: () => {
+    if (!coefficients.value[selectedDept.value]) {
+      // 自动初始化该部门的系数
+      coefficients.value[selectedDept.value] = {
+        on_time: 1.0,
+        overdue: 0.4,
+        closure_weight: 0.8,
+        delay_weight: 0.1,
+        rework_weight: 0.1
+      }
     }
-    if (selectedCategory.value !== 'all') {
-      params.category_id = selectedCategory.value
-    }
-    const response = await axios.get('/api/articles', { params })
-    articles.value = response.data.articles || []
-    totalArticles.value = response.data.total || 0
-    totalPages.value = Math.ceil(totalArticles.value / pageSize) || 1
-  } catch (error) {
-    console.error('获取文章列表失败:', error)
-  } finally {
-    articleLoading.value = false
+    return coefficients.value[selectedDept.value]
+  },
+  set: (val) => {
+    coefficients.value[selectedDept.value] = val
   }
-}
-
-function selectCategory(categoryId) {
-  selectedCategory.value = categoryId
-  currentPage.value = 1
-  fetchArticles()
-}
-
-function openArticleEditor(article = null) {
-  editingArticle.value = article
-  if (article) {
-    articleForm.value = {
-      title: article.title,
-      category_id: article.category_id,
-      status: article.status,
-      summary: article.summary || '',
-      content: article.content || ''
-    }
-  } else {
-    articleForm.value = {
-      title: '',
-      category_id: '',
-      status: 'draft',
-      summary: '',
-      content: ''
-    }
-  }
-  showArticleEditor.value = true
-}
-
-function closeArticleEditor() {
-  showArticleEditor.value = false
-  editingArticle.value = null
-}
-
-async function saveArticle() {
-  if (!articleForm.value.title.trim()) {
-    alert('请输入文章标题')
-    return
-  }
-  if (!articleForm.value.category_id) {
-    alert('请选择所属栏目')
-    return
-  }
-  if (!articleForm.value.content.trim()) {
-    alert('请输入文章内容')
-    return
-  }
-
-  saving.value = true
-  try {
-    if (editingArticle.value) {
-      await axios.put(`/api/articles/${editingArticle.value.id}`, articleForm.value)
-    } else {
-      await axios.post('/api/articles', articleForm.value)
-    }
-    closeArticleEditor()
-    fetchArticles()
-  } catch (error) {
-    console.error('保存文章失败:', error)
-    alert(error.response?.data?.error || '保存失败')
-  } finally {
-    saving.value = false
-  }
-}
-
-function viewArticle(article) {
-  console.log('查看文章:', article)
-}
-
-async function deleteArticle(article) {
-  if (!confirm(`确定删除文章「${article.title}」？`)) return
-
-  try {
-    await axios.delete(`/api/articles/${article.id}`)
-    fetchArticles()
-  } catch (error) {
-    console.error('删除文章失败:', error)
-    alert(error.response?.data?.error || '删除失败')
-  }
-}
-
-// 栏目操作
-async function addCategory() {
-  if (!newCategoryName.value.trim()) return
-
-  try {
-    await axios.post('/api/categories', { name: newCategoryName.value.trim() })
-    newCategoryName.value = ''
-    fetchCategories()
-  } catch (error) {
-    console.error('添加栏目失败:', error)
-    alert(error.response?.data?.error || '添加失败')
-  }
-}
-
-function editCategory(category) {
-  editingCategory.value = { ...category }
-  showCategoryEditor.value = true
-}
-
-async function updateCategory() {
-  try {
-    await axios.put(`/api/categories/${editingCategory.value.id}`, {
-      name: editingCategory.value.name,
-      description: editingCategory.value.description,
-      order: editingCategory.value.order
-    })
-    showCategoryEditor.value = false
-    fetchCategories()
-  } catch (error) {
-    console.error('更新栏目失败:', error)
-    alert(error.response?.data?.error || '更新失败')
-  }
-}
-
-async function deleteCategory(category) {
-  if (!confirm(`确定删除栏目「${category.name}」？\n注意：该栏目下有文章时无法删除。`)) return
-
-  try {
-    await axios.delete(`/api/categories/${category.id}`)
-    fetchCategories()
-  } catch (error) {
-    console.error('删除栏目失败:', error)
-    alert(error.response?.data?.error || '删除失败')
-  }
-}
-
-watch(currentPage, fetchArticles)
-
-const currentCoefficients = computed(() => coefficients.value[selectedDept.value] || {
-  on_time: 1.0,
-  overdue: 0.4,
-  closure_weight: 0.8,
-  delay_weight: 0.1,
-  rework_weight: 0.1
 })
 
 // ===== 数据管理方法 =====
 async function fetchDataTables() {
   tablesLoading.value = true
   try {
-    const response = await axios.get('/api/tables')
+    // 管理员获取所有表（用于配置）
+    const response = await axios.get('/api/tables/all')
     dataTables.value = response.data.tables || []
-    // 初始化可见性为全部可见
-    const visibility = {}
-    dataTables.value.forEach(table => {
-      visibility[table] = true
-    })
-    tableVisibility.value = visibility
+
+    // 获取已保存的可见性配置
+    try {
+      const visibilityResponse = await axios.get('/api/config/table-visibility')
+      const savedVisibility = visibilityResponse.data.config || {}
+
+      // 初始化可见性
+      const visibility = {}
+      dataTables.value.forEach(table => {
+        visibility[table] = savedVisibility[table] !== false // 默认可见
+      })
+      tableVisibility.value = visibility
+    } catch (e) {
+      // 如果获取配置失败，默认全部可见
+      const visibility = {}
+      dataTables.value.forEach(table => {
+        visibility[table] = true
+      })
+      tableVisibility.value = visibility
+    }
   } catch (error) {
     console.error('获取数据表失败:', error)
   } finally {
@@ -1020,8 +915,19 @@ async function uploadExcel() {
 }
 
 async function saveTableVisibility() {
-  // 可见性配置是本地概念，暂不持久化
-  console.log('保存可见性配置:', tableVisibility.value)
+  visibilitySaving.value = true
+  visibilityMessage.value = ''
+  visibilityError.value = ''
+
+  try {
+    await axios.post('/api/config/table-visibility', { config: tableVisibility.value })
+    visibilityMessage.value = '保存成功'
+  } catch (error) {
+    console.error('保存可见性配置失败:', error)
+    visibilityError.value = error.response?.data?.error || '保存失败'
+  } finally {
+    visibilitySaving.value = false
+  }
 }
 
 async function deleteDataTable(tableName) {
@@ -1054,10 +960,12 @@ async function saveCoefficients() {
   coefficientsError.value = ''
 
   try {
-    await axios.put('/api/assessment-coefficients', {
+    const response = await axios.put('/api/assessment-coefficients', {
       department: selectedDept.value,
       ...currentCoefficients.value
     })
+    // 更新本地系数数据
+    coefficients.value = response.data.coefficients || coefficients.value
     coefficientsMessage.value = '保存成功'
   } catch (error) {
     coefficientsError.value = error.response?.data?.error || '保存失败'
@@ -1130,7 +1038,7 @@ function processCleaning() {
 async function fetchUsers() {
   try {
     const response = await axios.get('/api/users')
-    users.value = response.data || []
+    users.value = response.data.users || []
   } catch (error) {
     console.error('获取用户列表失败:', error)
   }
@@ -1143,6 +1051,12 @@ function editUser(user) {
     password: '',
     role: user.role
   }
+  showAddUser.value = true
+}
+
+function openAddUserModal() {
+  editingUser.value = null
+  userForm.value = { username: '', password: '', role: 'user' }
   showAddUser.value = true
 }
 
@@ -1203,7 +1117,17 @@ async function deleteUser(user) {
 
 function openPermissionsEditor(user) {
   editingPermissionsUser.value = user
-  editingPermissions.value = { ...(user.permissions || {}) }
+  // 确保所有权限字段都有值，并将整数转换为布尔值
+  const perms = user.permissions || {}
+  editingPermissions.value = {
+    dashboard: Boolean(perms.dashboard),
+    assessment: Boolean(perms.assessment),
+    data_analysis: Boolean(perms.data_analysis),
+    cases: Boolean(perms.cases),
+    map: Boolean(perms.map),
+    huiwentai: Boolean(perms.huiwentai),
+    business: Boolean(perms.business)
+  }
   showPermissionsEditor.value = true
 }
 
@@ -1216,7 +1140,17 @@ function closePermissionsEditor() {
 async function savePermissions() {
   permissionsSaving.value = true
   try {
-    await axios.put(`/api/users/${editingPermissionsUser.value.id}/permissions`, editingPermissions.value)
+    // 确保发送布尔值
+    const dataToSend = {
+      dashboard: Boolean(editingPermissions.value.dashboard),
+      assessment: Boolean(editingPermissions.value.assessment),
+      data_analysis: Boolean(editingPermissions.value.data_analysis),
+      cases: Boolean(editingPermissions.value.cases),
+      map: Boolean(editingPermissions.value.map),
+      huiwentai: Boolean(editingPermissions.value.huiwentai),
+      business: Boolean(editingPermissions.value.business)
+    }
+    await axios.put(`/api/users/${editingPermissionsUser.value.id}/permissions`, dataToSend)
     closePermissionsEditor()
     fetchUsers()
   } catch (error) {
@@ -1360,15 +1294,215 @@ async function saveSystemConfig() {
   }
 }
 
-onMounted(() => {
-  fetchCategories()
+// ===== 文章管理方法 =====
+async function fetchCategories() {
+  try {
+    const response = await axios.get('/api/categories')
+    categoryList.value = response.data.categories || []
+    articleCategories.value = [
+      { id: 'all', name: '全部' },
+      ...categoryList.value.map(c => ({ id: c.id, name: c.name }))
+    ]
+  } catch (error) {
+    console.error('获取栏目失败:', error)
+  }
+}
+
+async function fetchArticles() {
+  articlesLoading.value = true
+  try {
+    const params = {
+      page: articlesCurrentPage.value,
+      per_page: 10,
+      include_drafts: 'true'
+    }
+    if (selectedArticleCategory.value !== 'all') {
+      params.category_id = selectedArticleCategory.value
+    }
+    const response = await axios.get('/api/articles', { params })
+    articles.value = response.data.articles || []
+    const total = response.data.total || 0
+    articlesTotalPages.value = Math.ceil(total / 10) || 1
+  } catch (error) {
+    console.error('获取文章列表失败:', error)
+  } finally {
+    articlesLoading.value = false
+  }
+}
+
+function selectArticleCategory(categoryId) {
+  selectedArticleCategory.value = categoryId
+  articlesCurrentPage.value = 1
   fetchArticles()
+}
+
+function getArticleCategoryName(categoryId) {
+  const cat = categoryList.value.find(c => c.id === categoryId)
+  return cat ? cat.name : '未分类'
+}
+
+async function openArticleEditor(article = null) {
+  if (article) {
+    try {
+      articlesLoading.value = true
+      const response = await axios.get(`/api/articles/${article.id}`)
+      const fullArticle = response.data
+      editingArticle.value = fullArticle
+      articleForm.value = {
+        title: fullArticle.title,
+        category_id: fullArticle.category_id,
+        summary: fullArticle.summary || '',
+        content: fullArticle.content || '',
+        file_path: fullArticle.file_path || ''
+      }
+    } catch (error) {
+      console.error('获取文章详情失败:', error)
+      alert('获取文章详情失败')
+      return
+    } finally {
+      articlesLoading.value = false
+    }
+  } else {
+    editingArticle.value = null
+    articleForm.value = { title: '', category_id: '', summary: '', content: '', file_path: '' }
+  }
+  showArticleEditor.value = true
+}
+
+function closeArticleEditor() {
+  showArticleEditor.value = false
+  editingArticle.value = null
+}
+
+async function handleImageUpload(e) {
+  const file = e.target.files[0]
+  if (!file) return
+  uploadingImage.value = true
+  const formData = new FormData()
+  formData.append('file', file)
+  try {
+    const response = await axios.post('/api/upload/image', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
+    const imageUrl = response.data.location
+    articleForm.value.content += `\n![${file.name}](${imageUrl})\n`
+  } catch (error) {
+    console.error('上传图片失败:', error)
+    alert('上传图片失败')
+  } finally {
+    uploadingImage.value = false
+    e.target.value = ''
+  }
+}
+
+async function handleFileUpload(e) {
+  const file = e.target.files[0]
+  if (!file) return
+  uploadingFile.value = true
+  const formData = new FormData()
+  formData.append('file', file)
+  try {
+    const response = await axios.post('/api/upload/file', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
+    articleForm.value.file_path = response.data.file_path
+  } catch (error) {
+    console.error('上传附件失败:', error)
+    alert('上传附件失败')
+  } finally {
+    uploadingFile.value = false
+    e.target.value = ''
+  }
+}
+
+async function saveArticle() {
+  if (!articleForm.value.title.trim()) { alert('请输入文章标题'); return }
+  if (!articleForm.value.category_id) { alert('请选择所属栏目'); return }
+  if (!articleForm.value.content.trim()) { alert('请输入文章内容'); return }
+
+  articleSaving.value = true
+  try {
+    const dataToSave = { ...articleForm.value, status: 'published' }
+    if (editingArticle.value) {
+      await axios.put(`/api/articles/${editingArticle.value.id}`, dataToSave)
+    } else {
+      await axios.post('/api/articles', dataToSave)
+    }
+    closeArticleEditor()
+    fetchArticles()
+  } catch (error) {
+    console.error('保存文章失败:', error)
+    alert(error.response?.data?.error || '保存失败')
+  } finally {
+    articleSaving.value = false
+  }
+}
+
+async function deleteArticle(article) {
+  if (!confirm(`确定删除文章「${article.title}」？`)) return
+  try {
+    await axios.delete(`/api/articles/${article.id}`)
+    fetchArticles()
+  } catch (error) {
+    console.error('删除文章失败:', error)
+    alert(error.response?.data?.error || '删除失败')
+  }
+}
+
+async function addCategory() {
+  if (!newCategoryName.value.trim()) return
+  try {
+    await axios.post('/api/categories', { name: newCategoryName.value.trim() })
+    newCategoryName.value = ''
+    fetchCategories()
+  } catch (error) {
+    console.error('添加栏目失败:', error)
+    alert(error.response?.data?.error || '添加失败')
+  }
+}
+
+function editCategory(category) {
+  editingCategory.value = { ...category }
+  showCategoryEditor.value = true
+}
+
+async function updateCategory() {
+  try {
+    await axios.put(`/api/categories/${editingCategory.value.id}`, {
+      name: editingCategory.value.name,
+      description: editingCategory.value.description,
+      order: editingCategory.value.order
+    })
+    showCategoryEditor.value = false
+    fetchCategories()
+  } catch (error) {
+    console.error('更新栏目失败:', error)
+    alert(error.response?.data?.error || '更新失败')
+  }
+}
+
+async function deleteCategory(category) {
+  if (!confirm(`确定删除栏目「${category.name}」？\n注意：该栏目下有文章时无法删除。`)) return
+  try {
+    await axios.delete(`/api/categories/${category.id}`)
+    fetchCategories()
+  } catch (error) {
+    console.error('删除栏目失败:', error)
+    alert(error.response?.data?.error || '删除失败')
+  }
+}
+
+onMounted(() => {
   fetchUsers()
   fetchPlatforms()
   fetchSystemConfig()
   fetchDataTables()
   fetchCoefficients()
+  fetchCategories()
+  fetchArticles()
 })
+
+watch(articlesCurrentPage, fetchArticles)
 </script>
 
 <style scoped>
@@ -1547,116 +1681,10 @@ onMounted(() => {
   padding: var(--space-4);
 }
 
-/* 文章列表样式 */
-.category-nav {
-  display: flex;
-  gap: var(--space-2);
-  margin-bottom: var(--space-4);
-  flex-wrap: wrap;
-}
-
-.category-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-4);
-  font-size: 14px;
-  color: var(--text-secondary);
-  background: var(--bg-card);
-  border: 1px solid var(--border-lighter);
-  border-radius: var(--radius-full);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-}
-
-.category-btn:hover { border-color: var(--primary-300); }
-.category-btn.active {
-  background: var(--primary-500);
-  color: white;
-  border-color: var(--primary-500);
-}
-
-.category-count {
-  padding: 1px 6px;
-  font-size: 11px;
-  background: rgba(255, 255, 255, 0.2);
-  border-radius: var(--radius-full);
-}
-
-.category-btn:not(.active) .category-count {
-  background: var(--neutral-100);
-}
-
 .loading-state {
   display: flex;
   justify-content: center;
   padding: var(--space-8);
-}
-
-.articles-list {
-  display: flex;
-  flex-direction: column;
-}
-
-.article-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: var(--space-4);
-  border-bottom: 1px solid var(--border-lighter);
-  transition: background var(--transition-fast);
-}
-
-.article-item:last-child { border-bottom: none; }
-.article-item:hover { background: var(--fill-light); }
-
-.article-info { flex: 1; cursor: pointer; }
-
-.article-header {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  margin-bottom: var(--space-1);
-}
-
-.article-title {
-  font-size: 16px;
-  font-weight: 500;
-  color: var(--text-primary);
-  margin: 0;
-}
-
-.status-tag {
-  padding: 2px 8px;
-  font-size: 11px;
-  font-weight: 500;
-  border-radius: var(--radius-sm);
-}
-
-.status-tag.published {
-  background: var(--success-light);
-  color: var(--success-dark);
-}
-
-.status-tag.draft {
-  background: var(--neutral-100);
-  color: var(--neutral-600);
-}
-
-.article-meta {
-  display: flex;
-  gap: var(--space-3);
-  font-size: 13px;
-  color: var(--text-tertiary);
-}
-
-.category-tag {
-  color: var(--primary-500);
-}
-
-.article-actions {
-  display: flex;
-  gap: var(--space-2);
 }
 
 .empty-state {
@@ -1669,35 +1697,6 @@ onMounted(() => {
 }
 
 .empty-state svg { opacity: 0.3; }
-
-.pagination {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-3);
-  margin-top: var(--space-4);
-  padding-top: var(--space-4);
-  border-top: 1px solid var(--border-lighter);
-}
-
-.pagination-btn {
-  width: 32px;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--bg-primary);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  color: var(--text-secondary);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-}
-
-.pagination-btn:hover:not(:disabled) { border-color: var(--primary-500); color: var(--primary-500); }
-.pagination-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-
-.page-info { color: var(--text-secondary); font-size: 14px; }
 
 /* 弹窗样式 */
 .modal-overlay {
@@ -1723,9 +1722,7 @@ onMounted(() => {
   box-shadow: var(--shadow-xl);
 }
 
-.article-editor { max-width: 800px; }
-.category-manager { max-width: 500px; }
-.category-editor { max-width: 400px; }
+.platform-editor { max-width: 500px; }
 
 .modal-header {
   display: flex;
@@ -1826,53 +1823,6 @@ onMounted(() => {
 
 .settings-form {
   max-width: 500px;
-}
-
-/* 栏目管理 */
-.add-category {
-  display: flex;
-  gap: var(--space-2);
-  margin-bottom: var(--space-4);
-  padding-bottom: var(--space-4);
-  border-bottom: 1px solid var(--border-lighter);
-}
-
-.add-category .form-input { flex: 1; }
-
-.category-list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-
-.category-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: var(--space-3);
-  background: var(--fill-light);
-  border-radius: var(--radius-md);
-}
-
-.category-info {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.category-name {
-  font-weight: 500;
-  color: var(--text-primary);
-}
-
-.category-slug {
-  font-size: 12px;
-  color: var(--text-tertiary);
-}
-
-.category-actions {
-  display: flex;
-  gap: var(--space-1);
 }
 
 /* 平台管理样式 */
@@ -1988,6 +1938,11 @@ onMounted(() => {
   margin-bottom: var(--space-4);
 }
 
+.section-actions {
+  display: flex;
+  gap: var(--space-3);
+}
+
 .upload-options {
   display: flex;
   gap: var(--space-6);
@@ -2029,8 +1984,8 @@ onMounted(() => {
 /* 考核系数样式 */
 .info-box {
   padding: var(--space-4);
-  background: var(--primary-50);
-  border: 1px solid var(--primary-200);
+  background: var(--fill-light);
+  border: 1px solid var(--border-lighter);
   border-radius: var(--radius-md);
   margin-bottom: var(--space-6);
 }
@@ -2187,4 +2142,203 @@ onMounted(() => {
     flex-wrap: wrap;
   }
 }
+
+/* 文章管理样式 */
+.category-nav {
+  display: flex;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.category-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  font-size: 14px;
+  color: var(--text-secondary);
+  background: var(--bg-card);
+  border: 1px solid var(--border-lighter);
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.category-btn:hover { border-color: var(--primary-300); }
+.category-btn.active {
+  background: var(--primary-500);
+  color: white;
+  border-color: var(--primary-500);
+}
+
+.articles-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.article-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-4);
+  border-bottom: 1px solid var(--border-lighter);
+  transition: background var(--transition-fast);
+}
+
+.article-item:last-child { border-bottom: none; }
+.article-item:hover { background: var(--fill-light); }
+
+.article-info { flex: 1; }
+.article-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-1);
+}
+
+.article-title {
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.article-meta {
+  display: flex;
+  gap: var(--space-3);
+  font-size: 13px;
+  color: var(--text-tertiary);
+}
+
+.category-tag { color: var(--primary-500); }
+
+.attachment-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  font-size: 11px;
+  background: var(--primary-50);
+  color: var(--primary-600);
+  border-radius: var(--radius-sm);
+}
+
+.article-actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border-lighter);
+}
+
+.pagination-btn {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.pagination-btn:hover:not(:disabled) { border-color: var(--primary-500); color: var(--primary-500); }
+.pagination-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.page-info { color: var(--text-secondary); font-size: 14px; }
+
+.article-editor { max-width: 800px; }
+.category-manager { max-width: 500px; }
+.category-editor { max-width: 400px; }
+
+.content-editor {
+  font-family: var(--font-mono);
+  line-height: 1.6;
+}
+
+.add-category {
+  display: flex;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--border-lighter);
+}
+
+.add-category .form-input { flex: 1; }
+
+.category-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.category-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-3);
+  background: var(--fill-light);
+  border-radius: var(--radius-md);
+}
+
+.category-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.category-name {
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.category-slug {
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.category-actions {
+  display: flex;
+  gap: var(--space-1);
+}
+
+.upload-hint {
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.attachment-info {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--fill-light);
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.attachment-info svg { color: var(--primary-500); }
+
+.btn-link {
+  background: none;
+  border: none;
+  color: var(--danger);
+  cursor: pointer;
+  font-size: 12px;
+  text-decoration: underline;
+}
+
+.btn-link:hover { color: var(--danger-dark); }
 </style>

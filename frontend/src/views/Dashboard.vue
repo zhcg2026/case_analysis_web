@@ -127,11 +127,13 @@
             </svg>
             实时案件动态
           </div>
-          <div class="scroll-wrapper" ref="scrollWrapper">
-            <div class="scroll-item" v-for="item in recentCases" :key="item.id">
-              <span class="scroll-time">{{ item.time }}</span>
-              <span class="scroll-content">{{ item.content }}</span>
-              <span class="scroll-status" :class="item.status">{{ item.statusText }}</span>
+          <div class="scroll-container">
+            <div class="scroll-wrapper" ref="scrollWrapper">
+              <div class="scroll-item" v-for="item in recentCases" :key="item.id">
+                <span class="scroll-time">{{ item.time }}</span>
+                <span class="scroll-content">{{ item.content }}</span>
+                <span class="scroll-status" :class="item.status">{{ item.statusText }}</span>
+              </div>
             </div>
           </div>
         </div>
@@ -300,6 +302,10 @@ async function fetchDashboardData() {
     const categoryRes = await axios.get('/api/cases/category-stats')
     categoryChartData.value = categoryRes.data || []
 
+    // 获取案件来源统计
+    const sourceRes = await axios.get('/api/cases/source-stats')
+    sourceChartData.value = sourceRes.data || []
+
     // 获取最近案件（用于底部滚动和实时动态）
     const recentRes = await axios.get('/api/cases', { params: { page: 1, pageSize: 10 } })
     const cases = recentRes.data.cases || []
@@ -395,6 +401,14 @@ function initCharts() {
 
   // 案件来源图表
   if (sourceChartRef.value) {
+    // 使用真实数据或默认数据
+    const sourceLabels = sourceChartData.value.length > 0
+      ? sourceChartData.value.map(item => item.source?.substring(0, 6) || '其他')
+      : ['12345', '网格员', '巡查', '其他']
+    const sourceValues = sourceChartData.value.length > 0
+      ? sourceChartData.value.map(item => item.count)
+      : [320, 280, 180, 120]
+
     sourceChart = echarts.init(sourceChartRef.value)
     sourceChart.setOption({
       tooltip: {
@@ -405,7 +419,7 @@ function initCharts() {
       },
       xAxis: {
         type: 'category',
-        data: ['12345', '网格员', '巡查', '其他'],
+        data: sourceLabels,
         axisLabel: { color: 'rgba(255, 255, 255, 0.7)', fontSize: 11 },
         axisLine: { lineStyle: { color: 'rgba(64, 158, 255, 0.3)' } },
         axisTick: { show: false }
@@ -417,7 +431,7 @@ function initCharts() {
         splitLine: { lineStyle: { color: 'rgba(64, 158, 255, 0.1)' } }
       },
       series: [{
-        data: [320, 280, 180, 120],
+        data: sourceValues,
         type: 'bar',
         barWidth: '50%',
         itemStyle: {
@@ -497,8 +511,8 @@ function initMap() {
 
   try {
     mapInstance = new window.AMap.Map(mapRef.value, {
-      zoom: 12,
-      center: [110.976935, 35.06161],
+      zoom: 14,
+      center: [111.04, 35.017],
       resizeEnable: true,
       mapStyle: 'amap://styles/dark'
     })
@@ -707,6 +721,22 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
+  overflow-y: auto;
+  flex-shrink: 0;
+}
+
+.dashboard-panel::-webkit-scrollbar {
+  width: 4px;
+}
+
+.dashboard-panel::-webkit-scrollbar-track {
+  background: rgba(64, 158, 255, 0.05);
+  border-radius: 2px;
+}
+
+.dashboard-panel::-webkit-scrollbar-thumb {
+  background: rgba(64, 158, 255, 0.2);
+  border-radius: 2px;
 }
 
 .panel-section {
@@ -716,6 +746,7 @@ onUnmounted(() => {
   padding: var(--space-4);
   position: relative;
   overflow: hidden;
+  flex-shrink: 0;
 }
 
 .panel-section::before {
@@ -878,6 +909,7 @@ onUnmounted(() => {
   right: 0;
   height: 1px;
   background: linear-gradient(90deg, transparent, rgba(64, 158, 255, 0.5), transparent);
+  z-index: 3;
 }
 
 .scroll-label {
@@ -890,14 +922,22 @@ onUnmounted(() => {
   white-space: nowrap;
   border-right: 1px solid rgba(64, 158, 255, 0.2);
   height: 100%;
-  background: rgba(64, 158, 255, 0.05);
+  background: rgba(10, 22, 40, 1);
+  flex-shrink: 0;
+}
+
+.scroll-container {
+  flex: 1;
+  overflow: hidden;
+  height: 100%;
 }
 
 .scroll-wrapper {
-  flex: 1;
   display: flex;
   gap: var(--space-6);
   padding: 0 var(--space-4);
+  height: 100%;
+  align-items: center;
   animation: scroll 30s linear infinite;
 }
 

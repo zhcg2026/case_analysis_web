@@ -273,7 +273,9 @@ async function fetchTables() {
 // 获取可用月份
 async function fetchAvailableMonths(tableName) {
   try {
-    const response = await axios.get(`/api/tables/${tableName}/months`)
+    const response = await axios.get(`/api/available-months`, {
+      params: { table_name: tableName }
+    })
     return response.data.months || []
   } catch (error) {
     console.error('获取月份列表失败:', error)
@@ -283,9 +285,10 @@ async function fetchAvailableMonths(tableName) {
 
 // 格式化月份
 function formatMonth(month) {
-  if (!month) return ''
-  const [year, m] = month.split('-')
-  return `${year}年${parseInt(m)}月`
+  if (!month || month.length < 6) return month || ''
+  const year = month.substring(0, 4)
+  const m = month.substring(4, 6)
+  return `${year}年${m}月`
 }
 
 // 获取排名样式类
@@ -415,9 +418,8 @@ onMounted(() => {
   display: flex;
   gap: var(--space-3);
   padding: var(--space-4);
-  background: var(--primary-50);
-  border: 1px solid var(--primary-200);
-  border-left: 4px solid var(--primary-500);
+  background: var(--fill-light);
+  border: 1px solid var(--border-lighter);
   border-radius: var(--radius-md);
   margin-bottom: var(--space-6);
 }
@@ -442,7 +444,7 @@ onMounted(() => {
 
 .info-title {
   font-weight: 600;
-  color: var(--primary-500);
+  color: var(--text-primary);
   margin-bottom: var(--space-1);
 }
 
@@ -566,8 +568,15 @@ onMounted(() => {
 
 .stat-card {
   padding: var(--space-6);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-lighter);
   text-align: center;
+  transition: all var(--transition-fast);
+}
+
+.stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
 }
 
 .stat-card.primary {

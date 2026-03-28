@@ -81,7 +81,16 @@
         <!-- AI分析 -->
         <div v-if="analysisResult.analysis" class="ai-result">
           <div class="ai-header">
-            <span class="ai-icon">🤖</span>
+            <span class="ai-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 8V4H8"/>
+                <rect width="16" height="12" x="4" y="8" rx="2"/>
+                <path d="M2 14h2"/>
+                <path d="M20 14h2"/>
+                <path d="M15 13v2"/>
+                <path d="M9 13v2"/>
+              </svg>
+            </span>
             <h4>AI智能分析</h4>
           </div>
           <div class="ai-content" v-html="formatAnalysis(analysisResult.analysis)"></div>
@@ -133,14 +142,23 @@
             <div v-if="chart.type === 'image'" class="chart-image">
               <img :src="chart.data" :alt="chart.title" />
             </div>
-            <div v-else :ref="el => chartV2Refs[index] = el" class="chart-container"></div>
+            <div v-else :ref="el => { if (el) chartV2Refs[index] = el }" class="chart-container"></div>
           </div>
         </div>
 
         <!-- 分析报告 -->
         <div v-if="analysisV2Result.report" class="ai-result">
           <div class="ai-header">
-            <span class="ai-icon">🤖</span>
+            <span class="ai-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 8V4H8"/>
+                <rect width="16" height="12" x="4" y="8" rx="2"/>
+                <path d="M2 14h2"/>
+                <path d="M20 14h2"/>
+                <path d="M15 13v2"/>
+                <path d="M9 13v2"/>
+              </svg>
+            </span>
             <h4>AI智能分析报告</h4>
             <button class="btn btn-secondary btn-sm" @click="copyReport">复制报告</button>
           </div>
@@ -184,7 +202,7 @@
         <div class="dashboard-charts">
           <div v-for="(chart, key) in chartResult.charts" :key="key" class="dashboard-chart">
             <h4>{{ chart.title }}</h4>
-            <div :ref="el => dashboardChartRefs[key] = el" class="chart-container"></div>
+            <div :ref="el => setDashboardChartRef(key, el)" class="chart-container"></div>
           </div>
         </div>
       </div>
@@ -193,20 +211,34 @@
     <!-- 案件抽查 -->
     <div v-else-if="activeTab === 'spotcheck'" class="content-card">
       <div class="config-section">
-        <div class="upload-area" @click="$refs.spotcheckFile.click()">
-          <input ref="spotcheckFile" type="file" accept=".docx,.xlsx" @change="handleSpotcheckFile" hidden />
-          <div class="upload-icon">📄</div>
-          <div class="upload-text">点击上传案件文件</div>
-          <div class="upload-hint">支持 .docx、.xlsx 格式</div>
+        <div class="form-group">
+          <label class="form-label">上传案件文件</label>
+          <div class="file-upload-row">
+            <input ref="spotcheckFile" type="file" accept=".docx,.xlsx" @change="onSpotcheckFileSelect" hidden />
+            <button class="btn btn-secondary" @click="$refs.spotcheckFile.click()">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="17 8 12 3 7 8"/>
+                <line x1="12" y1="3" x2="12" y2="15"/>
+              </svg>
+              选择文件
+            </button>
+            <span v-if="spotcheckFileName" class="file-name">{{ spotcheckFileName }}</span>
+            <span v-else class="file-hint">支持 .docx、.xlsx 格式</span>
+          </div>
         </div>
+
+        <button class="btn btn-primary btn-block" @click="runSpotcheck" :disabled="spotcheckLoading || !spotcheckFileName">
+          {{ spotcheckLoading ? '分析中...' : '开始分析' }}
+        </button>
 
         <div v-if="spotcheckLoading" class="loading-state">
           <div class="loading-spinner"></div>
           <span>AI分析中，请稍候...</span>
         </div>
 
-        <div v-if="spotcheckResult" class="spotcheck-result">
-          <h4>分析结果</h4>
+        <div v-if="spotcheckResult" class="result-section">
+          <h3 class="result-title">分析结果</h3>
           <div class="result-content" v-html="formatAnalysis(spotcheckResult.analysis)"></div>
         </div>
       </div>
@@ -290,7 +322,7 @@ const selectedModel = ref('volcengine')
 const analysisPrompt = ref('')
 const loadingV2 = ref(false)
 const analysisV2Result = ref(null)
-const chartV2Refs = ref({})
+const chartV2Refs = ref([])
 
 // ===== 图表分析 =====
 const chartTable = ref('')
@@ -301,10 +333,19 @@ const chartAvailableMonths = ref([])
 const dashboardChartRefs = ref({})
 
 // ===== 案件抽查 =====
+const spotcheckFile = ref(null)
+const spotcheckFileName = ref('')
 const spotcheckLoading = ref(false)
 const spotcheckResult = ref(null)
 
 // ===== 方法定义 =====
+
+// 设置图表 ref 的辅助函数
+function setDashboardChartRef(key, el) {
+  if (el) {
+    dashboardChartRefs.value[key] = el
+  }
+}
 
 async function fetchTables() {
   try {
@@ -317,7 +358,7 @@ async function fetchTables() {
 
 async function fetchAvailableMonths(tableName) {
   try {
-    const response = await axios.get(`/api/tables/${tableName}/months`)
+    const response = await axios.get(`/api/available-months?table_name=${tableName}`)
     return response.data.months || []
   } catch (error) {
     console.error('获取月份列表失败:', error)
@@ -326,9 +367,10 @@ async function fetchAvailableMonths(tableName) {
 }
 
 function formatMonth(month) {
-  if (!month) return ''
-  const [year, m] = month.split('-')
-  return `${year}年${parseInt(m)}月`
+  if (!month || month.length < 6) return month || ''
+  const year = month.substring(0, 4)
+  const m = month.substring(4, 6)
+  return `${year}年${m}月`
 }
 
 function getAnalysisTypeName(type) {
@@ -345,7 +387,31 @@ function getAnalysisTypeName(type) {
 
 function formatAnalysis(text) {
   if (!text) return ''
-  return text.replace(/\n/g, '<br>')
+
+  let formatted = text
+
+  // 处理markdown标题，转换为带样式的HTML（统一字体大小）
+  formatted = formatted.replace(/^#{1,6}\s+(.+)$/gm, '<strong style="display:block;margin-top:12px;margin-bottom:4px;">$1</strong>')
+
+  // 去除粗体符号 (**)
+  formatted = formatted.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+
+  // 去除斜体符号 (*)
+  formatted = formatted.replace(/\*([^*]+)\*/g, '$1')
+
+  // 去除列表符号 (- 开头)
+  formatted = formatted.replace(/^[-•]\s*/gm, '• ')
+
+  // 减少多余空行（连续多个换行变成最多两个）
+  formatted = formatted.replace(/\n{3,}/g, '\n\n')
+
+  // 处理换行
+  formatted = formatted.replace(/\n/g, '<br>')
+
+  // 去除连续多个<br>
+  formatted = formatted.replace(/(<br>){3,}/g, '<br><br>')
+
+  return formatted
 }
 
 function resetSteps() {
@@ -420,32 +486,87 @@ function renderCharts() {
     let option = {}
     const chartData = config.data
 
+    console.log(`渲染图表 ${key}, 类型: ${config.type}, 数据:`, chartData)
+
     if (config.type === 'pie') {
+      // 处理饼图数据格式
+      let pieData = []
+      if (Array.isArray(chartData)) {
+        // 数据格式: [{字段名: "xxx", count: 100}, ...]
+        pieData = chartData.map(item => {
+          // 找到第一个不是 count 的字段作为 name
+          const nameKey = Object.keys(item).find(k => k !== 'count')
+          return {
+            name: item[nameKey] || '未知',
+            value: item.count || 0
+          }
+        })
+      } else if (chartData.data && Array.isArray(chartData.data)) {
+        pieData = chartData.data
+      }
+
       option = {
-        tooltip: { trigger: 'item' },
+        tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
         legend: { type: 'scroll', bottom: 0 },
         series: [{
           type: 'pie',
           radius: ['40%', '70%'],
-          data: chartData.data || chartData,
+          data: pieData,
           label: { show: false }
         }]
       }
     } else if (config.type === 'bar') {
-      const data = chartData.data || chartData
+      // 处理柱状图数据格式
+      let categories = []
+      let values = []
+
+      if (Array.isArray(chartData)) {
+        // 数据格式: [{字段名: "xxx", count: 100}, ...]
+        categories = chartData.map(item => {
+          const nameKey = Object.keys(item).find(k => k !== 'count')
+          return item[nameKey] || ''
+        })
+        values = chartData.map(item => item.count || 0)
+      } else if (chartData.data) {
+        const data = chartData.data
+        categories = data.categories || data.map((_, i) => i + 1)
+        values = data.values || data
+      } else {
+        categories = chartData.categories || chartData.map((_, i) => i + 1)
+        values = chartData.values || chartData
+      }
+
       option = {
         tooltip: { trigger: 'axis' },
-        xAxis: { type: 'category', data: data.categories || data.map((_, i) => i + 1), axisLabel: { rotate: 45 } },
+        xAxis: { type: 'category', data: categories, axisLabel: { rotate: 45, interval: 0 } },
         yAxis: { type: 'value' },
-        series: [{ type: 'bar', data: data.values || data }]
+        series: [{ type: 'bar', data: values }]
       }
     } else if (config.type === 'line') {
-      const data = chartData.data || chartData
+      // 处理折线图数据格式
+      let categories = []
+      let values = []
+
+      if (Array.isArray(chartData)) {
+        categories = chartData.map(item => {
+          const nameKey = Object.keys(item).find(k => k !== 'count')
+          return item[nameKey] || ''
+        })
+        values = chartData.map(item => item.count || 0)
+      } else if (chartData.data) {
+        const data = chartData.data
+        categories = data.categories || data.map((_, i) => i + 1)
+        values = data.values || data
+      } else {
+        categories = chartData.categories || chartData.map((_, i) => i + 1)
+        values = chartData.values || chartData
+      }
+
       option = {
         tooltip: { trigger: 'axis' },
-        xAxis: { type: 'category', data: data.categories || data.map((_, i) => i + 1) },
+        xAxis: { type: 'category', data: categories },
         yAxis: { type: 'value' },
-        series: [{ type: 'line', data: data.values || data, smooth: true }]
+        series: [{ type: 'line', data: values, smooth: true }]
       }
     }
 
@@ -467,11 +588,16 @@ async function runAnalysisV2() {
     })
     analysisV2Result.value = response.data
 
+    // 等待 DOM 更新后渲染图表
     await nextTick()
-    renderV2Charts()
+    setTimeout(() => {
+      renderV2Charts()
+    }, 100)
   } catch (error) {
     console.error('分析失败:', error)
-    alert('分析失败: ' + (error.response?.data?.error || error.message))
+    console.error('错误详情:', error.response?.data)
+    const errorMsg = error.response?.data?.error || error.message || '未知错误'
+    alert('分析失败: ' + errorMsg + (error.response?.data?.details ? '\n' + error.response?.data?.details : ''))
   } finally {
     loadingV2.value = false
   }
@@ -480,22 +606,50 @@ async function runAnalysisV2() {
 function renderV2Charts() {
   if (!analysisV2Result.value?.charts) return
 
+  console.log('开始渲染图表，图表数量:', analysisV2Result.value.charts.length)
+  console.log('图表数据:', JSON.stringify(analysisV2Result.value.charts, null, 2))
+
   analysisV2Result.value.charts.forEach((chart, index) => {
     if (chart.type === 'image') return
 
     const chartEl = chartV2Refs.value[index]
-    if (!chartEl) return
+    console.log(`图表 ${index} 元素:`, chartEl, '类型:', chart.type)
 
-    const echartsChart = echarts.init(chartEl)
-    // 根据图表数据渲染
-    echartsChart.setOption({
-      tooltip: { trigger: 'item' },
-      legend: { bottom: 0 },
-      series: [{
-        type: chart.type || 'pie',
-        data: chart.data
-      }]
-    })
+    if (!chartEl) {
+      console.log(`图表元素 ${index} 未找到`)
+      return
+    }
+
+    try {
+      const echartsChart = echarts.init(chartEl)
+
+      if (chart.type === 'echarts' && chart.data) {
+        console.log(`图表 ${index} 完整数据:`, JSON.stringify(chart.data, null, 2))
+
+        // 确保 series 存在且 data 是数组
+        if (chart.data.series && Array.isArray(chart.data.series)) {
+          chart.data.series.forEach((s, i) => {
+            if (!Array.isArray(s.data)) {
+              console.warn(`图表 ${index} series[${i}].data 不是数组:`, s.data)
+            }
+          })
+        }
+
+        echartsChart.setOption(chart.data)
+      } else if (chart.data) {
+        // 兼容旧格式
+        echartsChart.setOption({
+          tooltip: { trigger: 'item' },
+          legend: { bottom: 0 },
+          series: [{
+            type: 'pie',
+            data: Array.isArray(chart.data) ? chart.data : []
+          }]
+        })
+      }
+    } catch (error) {
+      console.error('渲染图表失败:', error)
+    }
   })
 }
 
@@ -511,6 +665,7 @@ async function runChartAnalysis() {
 
   chartLoading.value = true
   chartResult.value = null
+  dashboardChartRefs.value = {} // 清空旧的 refs
 
   try {
     const response = await axios.post('/api/chart-analysis', {
@@ -519,8 +674,14 @@ async function runChartAnalysis() {
     })
     chartResult.value = response.data
 
+    console.log('图表分析结果:', response.data)
+    console.log('图表数量:', Object.keys(response.data.charts || {}).length)
+
+    // 使用更长的延迟确保 DOM 完全渲染
     await nextTick()
-    renderDashboardCharts()
+    setTimeout(() => {
+      renderDashboardCharts()
+    }, 200)
   } catch (error) {
     console.error('图表分析失败:', error)
     alert('图表分析失败: ' + (error.response?.data?.error || error.message))
@@ -530,49 +691,116 @@ async function runChartAnalysis() {
 }
 
 function renderDashboardCharts() {
-  if (!chartResult.value?.charts) return
+  if (!chartResult.value?.charts) {
+    console.log('没有图表数据')
+    return
+  }
 
-  Object.keys(chartResult.value.charts).forEach(key => {
+  const charts = chartResult.value.charts
+  console.log('开始渲染仪表盘图表，图表数量:', Object.keys(charts).length)
+  console.log('图表 keys:', Object.keys(charts))
+  console.log('图表 refs:', dashboardChartRefs.value)
+
+  Object.keys(charts).forEach(key => {
+    console.log(`处理图表 ${key}...`)
     const chartEl = dashboardChartRefs.value[key]
-    if (!chartEl) return
+    console.log(`图表 ${key} 元素:`, chartEl)
 
-    const chartData = chartResult.value.charts[key]
-    const chart = echarts.init(chartEl)
-
-    let option = {}
-    if (chartData.type === 'pie') {
-      option = {
-        tooltip: { trigger: 'item' },
-        legend: { type: 'scroll', bottom: 0 },
-        series: [{
-          type: 'pie',
-          radius: ['40%', '70%'],
-          data: chartData.data,
-          label: { show: false }
-        }]
-      }
-    } else if (chartData.type === 'bar') {
-      option = {
-        tooltip: { trigger: 'axis' },
-        xAxis: { type: 'category', data: chartData.data.map(d => d.name), axisLabel: { rotate: 45, interval: 0 } },
-        yAxis: { type: 'value' },
-        series: [{ type: 'bar', data: chartData.data.map(d => d.value) }]
-      }
+    if (!chartEl) {
+      console.warn(`图表元素 ${key} 未找到`)
+      return
     }
 
-    chart.setOption(option)
+    const chartData = charts[key]
+    console.log(`图表 ${key} 数据:`, chartData)
+
+    if (!chartData || !chartData.data) {
+      console.warn(`图表 ${key} 没有数据`)
+      return
+    }
+
+    try {
+      const chart = echarts.init(chartEl)
+      let option = {}
+
+      if (chartData.type === 'pie') {
+        // 饼图数据格式: [{name: "xxx", value: 100}, ...]
+        const pieData = Array.isArray(chartData.data) ? chartData.data : []
+        console.log(`图表 ${key} 饼图数据条数:`, pieData.length)
+        option = {
+          tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
+          legend: { type: 'scroll', bottom: 0 },
+          series: [{
+            type: 'pie',
+            radius: ['40%', '70%'],
+            data: pieData,
+            label: { show: false }
+          }]
+        }
+      } else if (chartData.type === 'bar') {
+        // 柱状图数据格式: {categories: [...], values: [...]}
+        const categories = chartData.data?.categories || []
+        const values = chartData.data?.values || []
+        console.log(`图表 ${key} 柱状图数据:`, categories.length, '个分类')
+
+        option = {
+          tooltip: { trigger: 'axis' },
+          xAxis: {
+            type: 'category',
+            data: categories,
+            axisLabel: {
+              rotate: categories.length > 5 ? 45 : 0,
+              interval: 0,
+              fontSize: 10
+            }
+          },
+          yAxis: { type: 'value' },
+          series: [{
+            type: 'bar',
+            data: values,
+            itemStyle: {
+              color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                { offset: 0, color: '#4facfe' },
+                { offset: 1, color: '#00f2fe' }
+              ])
+            }
+          }],
+          grid: {
+            left: '3%',
+            right: '4%',
+            bottom: categories.length > 5 ? '15%' : '3%',
+            containLabel: true
+          }
+        }
+      }
+
+      chart.setOption(option)
+      console.log(`图表 ${key} 渲染完成`)
+    } catch (error) {
+      console.error(`渲染图表 ${key} 失败:`, error)
+    }
   })
 }
 
-async function handleSpotcheckFile(e) {
+function onSpotcheckFileSelect(e) {
   const file = e.target.files[0]
   if (!file) return
+  spotcheckFile.value = file
+  spotcheckFileName.value = file.name
+  spotcheckResult.value = null
+}
+
+async function runSpotcheck() {
+  if (!spotcheckFile.value) {
+    alert('请先选择文件')
+    return
+  }
 
   spotcheckLoading.value = true
   spotcheckResult.value = null
 
   const formData = new FormData()
-  formData.append('file', file)
+  formData.append('file', spotcheckFile.value)
 
   try {
     const response = await axios.post('/api/spotcheck', formData, {
@@ -585,7 +813,6 @@ async function handleSpotcheckFile(e) {
     alert('分析失败: ' + (error.response?.data?.error || error.message))
   } finally {
     spotcheckLoading.value = false
-    e.target.value = ''
   }
 }
 
@@ -861,8 +1088,8 @@ onMounted(() => {
 }
 
 .ai-result {
-  padding: var(--space-6);
-  background: linear-gradient(135deg, var(--primary-50) 0%, var(--bg-secondary) 100%);
+  padding: var(--space-4);
+  background: var(--bg-secondary);
   border-radius: var(--radius-lg);
   border-left: 4px solid var(--primary-500);
 }
@@ -870,16 +1097,28 @@ onMounted(() => {
 .ai-header {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
-  margin-bottom: var(--space-4);
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
 }
 
 .ai-icon {
-  font-size: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  background: var(--primary-50);
+  border-radius: var(--radius-md);
+  color: var(--primary-500);
+}
+
+.ai-icon svg {
+  width: 20px;
+  height: 20px;
 }
 
 .ai-header h4 {
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 600;
   color: var(--text-primary);
   margin: 0;
@@ -889,7 +1128,16 @@ onMounted(() => {
 .ai-content {
   font-size: 14px;
   line-height: 1.8;
-  color: var(--text-secondary);
+  color: var(--text-primary);
+}
+
+.ai-content :deep(p) {
+  margin: 0 0 var(--space-2);
+}
+
+.ai-content :deep(strong) {
+  color: var(--primary-600);
+  font-weight: 600;
 }
 
 .upload-area {
@@ -945,18 +1193,39 @@ onMounted(() => {
   to { transform: rotate(360deg); }
 }
 
-.spotcheck-result {
-  margin-top: var(--space-6);
-  padding: var(--space-4);
-  background: var(--bg-secondary);
-  border-radius: var(--radius-md);
+.file-upload-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
 }
 
-.spotcheck-result h4 {
+.file-hint {
+  font-size: 13px;
+  color: var(--text-tertiary);
+}
+
+.file-name {
+  font-size: 14px;
+  color: var(--primary-500);
+  font-weight: 500;
+}
+
+.spotcheck-result,
+.result-section {
+  margin-top: var(--space-6);
+  padding: var(--space-6);
+  background: var(--bg-secondary);
+  border-radius: var(--radius-lg);
+}
+
+.spotcheck-result h4,
+.result-section .result-title {
   margin: 0 0 var(--space-4);
+  padding-bottom: var(--space-4);
   font-size: 16px;
   font-weight: 600;
   color: var(--text-primary);
+  border-bottom: 2px solid var(--primary-500);
 }
 
 .result-content {
