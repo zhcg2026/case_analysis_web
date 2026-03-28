@@ -4808,6 +4808,171 @@ def get_articles():
     finally:
         session.close()
 
+# 获取单个文章详情
+@app.route('/api/articles/<int:id>', methods=['GET'])
+@protected
+def get_article_detail(id):
+    session = Session()
+    try:
+        article = session.query(Article).filter_by(id=id).first()
+        if not article:
+            return jsonify({'error': '文章不存在'}), 404
+
+        # 增加阅读计数
+        article.view_count = (article.view_count or 0) + 1
+        session.commit()
+
+        article_dict = {
+            'id': article.id,
+            'title': article.title,
+            'slug': article.slug,
+            'content': article.content,
+            'summary': article.summary,
+            'category_id': article.category_id,
+            'author_id': article.author_id,
+            'status': article.status,
+            'view_count': article.view_count,
+            'file_path': article.file_path,
+            'created_at': article.created_at.strftime('%Y-%m-%d %H:%M:%S') if article.created_at else None,
+            'updated_at': article.updated_at.strftime('%Y-%m-%d %H:%M:%S') if article.updated_at else None,
+            'published_at': article.published_at.strftime('%Y-%m-%d %H:%M:%S') if article.published_at else None
+        }
+
+        return jsonify(article_dict), 200
+    except Exception as e:
+        session.rollback()
+        print(f"Error in get_article_detail: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        session.close()
+
+# 创建文章
+@app.route('/api/articles', methods=['POST'])
+@protected
+def create_article():
+    session = Session()
+    try:
+        data = request.get_json()
+        title = data.get('title', '').strip()
+        category_id = data.get('category_id')
+        content = data.get('content', '')
+        summary = data.get('summary', '')
+        status = data.get('status', 'draft')
+        file_path = data.get('file_path', '')
+
+        if not title:
+            return jsonify({'error': '标题不能为空'}), 400
+        if not category_id:
+            return jsonify({'error': '请选择栏目'}), 400
+
+        slug = generate_slug(title)
+        # 确保slug唯一
+        existing = session.query(Article).filter_by(slug=slug).first()
+        if existing:
+            slug = slug + '-' + str(int(datetime.datetime.now().timestamp()))
+
+        article = Article(
+            title=title,
+            slug=slug,
+            content=content,
+            summary=summary,
+            category_id=category_id,
+            author_id=request.user_id,
+            status=status,
+            file_path=file_path,
+            published_at=datetime.datetime.now() if status == 'published' else None
+        )
+        session.add(article)
+        session.commit()
+
+        return jsonify({
+            'id': article.id,
+            'title': article.title,
+            'message': '创建成功'
+        }), 201
+    except Exception as e:
+        session.rollback()
+        print(f"Error in create_article: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        session.close()
+
+# 更新文章
+@app.route('/api/articles/<int:id>', methods=['PUT'])
+@protected
+def update_article(id):
+    session = Session()
+    try:
+        article = session.query(Article).filter_by(id=id).first()
+        if not article:
+            return jsonify({'error': '文章不存在'}), 404
+
+        data = request.get_json()
+        title = data.get('title', '').strip()
+        category_id = data.get('category_id')
+        content = data.get('content', '')
+        summary = data.get('summary', '')
+        status = data.get('status', 'draft')
+        file_path = data.get('file_path', '')
+
+        if title:
+            article.title = title
+        if category_id:
+            article.category_id = category_id
+        if content is not None:
+            article.content = content
+        if summary is not None:
+            article.summary = summary
+        if status:
+            article.status = status
+            if status == 'published' and not article.published_at:
+                article.published_at = datetime.datetime.now()
+        if file_path is not None:
+            article.file_path = file_path
+
+        session.commit()
+
+        return jsonify({
+            'id': article.id,
+            'title': article.title,
+            'message': '更新成功'
+        }), 200
+    except Exception as e:
+        session.rollback()
+        print(f"Error in update_article: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        session.close()
+
+# 删除文章
+@app.route('/api/articles/<int:id>', methods=['DELETE'])
+@protected
+def delete_article(id):
+    session = Session()
+    try:
+        article = session.query(Article).filter_by(id=id).first()
+        if not article:
+            return jsonify({'error': '文章不存在'}), 404
+
+        session.delete(article)
+        session.commit()
+
+        return jsonify({'message': '删除成功'}), 200
+    except Exception as e:
+        session.rollback()
+        print(f"Error in delete_article: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        session.close()
+
 @app.route('/api/cms/home-columns', methods=['GET'])
 @protected
 def get_home_columns():
