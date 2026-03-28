@@ -67,3 +67,6 @@ logs/
 ehthumbs.db
 Desktop.ini
 .gstack/
+
+# Uploaded files
+backend/uploads/
