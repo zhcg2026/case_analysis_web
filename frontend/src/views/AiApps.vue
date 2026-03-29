@@ -196,7 +196,7 @@
       <div v-if="chartResult" class="dashboard">
         <div class="dashboard-header">
           <h3>{{ chartTable }} 数据仪表盘</h3>
-          <p>共 {{ chartResult.total_count }} 条数据</p>
+          <p>共 {{ chartResult.filtered_count || chartResult.total_count }} 条数据{{ chartResult.month ? `（${formatMonth(chartResult.month)}）` : '' }}</p>
         </div>
 
         <div class="dashboard-charts">

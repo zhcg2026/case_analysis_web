@@ -374,6 +374,18 @@ try:
         follow_user = Column(String(50))
         created_at = Column(DateTime, default=datetime.datetime.now)
 
+    # 操作日志模型
+    class OperationLog(Base):
+        __tablename__ = 'operation_logs'
+        id = Column(Integer, primary_key=True, autoincrement=True)
+        user_id = Column(Integer, nullable=False)
+        table_name = Column(String(100))
+        operation_type = Column(String(20))   # create, update, delete
+        record_id = Column(String(100))       # 任务号或记录ID
+        old_value = Column(Text)              # JSON格式，修改前的值
+        new_value = Column(Text)              # JSON格式，修改后的值
+        created_at = Column(DateTime, default=datetime.datetime.now)
+
     # 创建数据库表
     # 只创建不存在的表，保留现有数据
     Base.metadata.create_all(engine)
@@ -1653,7 +1665,7 @@ def get_available_months():
 
         # 查找月份列
         month_col = None
-        for col in ['data_month', '月份', 'month']:
+        for col in ['月份', 'data_month', 'month']:
             if col in column_names:
                 month_col = col
                 break
@@ -2861,7 +2873,7 @@ def assess():
         # 月份筛选
         if month:
             month_col = None
-            for col in ['data_month', '月份']:
+            for col in ['月份', 'data_month']:
                 if col in df.columns:
                     month_col = col
                     break
@@ -3020,7 +3032,7 @@ def assess_v2():
         # 月份筛选
         if month:
             month_col = None
-            for col in ['data_month', '月份']:
+            for col in ['月份', 'data_month']:
                 if col in df.columns:
                     month_col = col
                     break
@@ -3166,7 +3178,7 @@ def analyze():
         # 月份筛选
         if month:
             month_col = None
-            for col in ['data_month', '月份']:
+            for col in ['月份', 'data_month']:
                 if col in df.columns:
                     month_col = col
                     break
@@ -4142,7 +4154,7 @@ def analyze_v2():
         # 月份筛选
         if month:
             month_col = None
-            for col in ['data_month', '月份']:
+            for col in ['月份', 'data_month']:
                 if col in df.columns:
                     month_col = col
                     break
@@ -4453,6 +4465,211 @@ def analyze_v2():
         import traceback
         traceback.print_exc()
         return jsonify({'error': str(e), 'details': traceback.format_exc()}), 500
+
+# 图表分析API - 获取仪表盘数据（纯统计分析，不调用大模型）
+@app.route('/api/chart-analysis', methods=['POST'])
+@protected
+def chart_analysis():
+    """图表分析API - 根据数据表生成仪表盘数据"""
+    try:
+        import json
+        data = request.json
+        table_name = data.get('table_name')
+        month = data.get('month', '')
+
+        if not table_name:
+            return jsonify({'error': 'Missing table_name parameter'}), 400
+
+        print(f"[图表分析] 开始分析数据表: {table_name}, 月份: {month}")
+
+        # 从数据库读取数据
+        df = pd.read_sql_table(table_name, engine)
+        total_count = len(df)
+
+        # 月份筛选
+        if month:
+            month_col = None
+            for col in ['月份', 'data_month', 'month']:
+                if col in df.columns:
+                    month_col = col
+                    break
+            if month_col:
+                print(f"[图表分析] 找到月份列: {month_col}, 筛选值: {month}")
+                print(f"[图表分析] 筛选前月份值分布: {df[month_col].value_counts().head()}")
+                df = df[df[month_col] == month]
+                print(f"[图表分析] 筛选月份 {month}，剩余 {len(df)} 条数据")
+            else:
+                print(f"[图表分析] 未找到月份列，列名: {list(df.columns)}")
+
+        filtered_count = len(df)
+
+        if filtered_count == 0:
+            return jsonify({'error': '筛选后数据为空'}), 400
+
+        print(f"[图表分析] 数据总量: {total_count}, 筛选后: {filtered_count} 条")
+
+        # 初始化结果
+        result = {
+            'total_count': total_count,
+            'filtered_count': filtered_count,
+            'month': month,
+            'charts': {}
+        }
+
+        # 1. 问题来源分布（饼状图）
+        source_col = None
+        for col in ['问题来源', 'source', '案件来源']:
+            if col in df.columns:
+                source_col = col
+                break
+        if source_col:
+            source_data = df[source_col].fillna('未知').value_counts()
+            result['charts']['source_pie'] = {
+                'title': '问题来源分布',
+                'type': 'pie',
+                'data': [{'name': str(k), 'value': int(v)} for k, v in source_data.items()]
+            }
+
+        # 2. 问题类型分布（饼状图）
+        problem_type_col = None
+        for col in ['问题类型', 'problem_type', '案件类型']:
+            if col in df.columns:
+                problem_type_col = col
+                break
+        if problem_type_col:
+            type_data = df[problem_type_col].fillna('未知').value_counts()
+            result['charts']['type_pie'] = {
+                'title': '问题类型分布',
+                'type': 'pie',
+                'data': [{'name': str(k), 'value': int(v)} for k, v in type_data.items()]
+            }
+
+        # 3. 大类名称占比图（横向柱状图）
+        major_cat_col = None
+        for col in ['大类名称', 'major_category', '大类']:
+            if col in df.columns:
+                major_cat_col = col
+                break
+        if major_cat_col:
+            major_data = df[major_cat_col].fillna('未知').value_counts().head(15)
+            result['charts']['major_category'] = {
+                'title': '大类案件分布',
+                'type': 'bar',
+                'data': {'categories': [str(k) for k in major_data.index], 'values': [int(v) for v in major_data.values]}
+            }
+
+        # 4. 小类名称分布图（横向柱状图）
+        minor_cat_col = None
+        for col in ['小类名称', 'minor_category', '小类']:
+            if col in df.columns:
+                minor_cat_col = col
+                break
+        if minor_cat_col:
+            minor_data = df[minor_cat_col].fillna('未知').value_counts().head(20)
+            result['charts']['minor_category'] = {
+                'title': '小类案件分布',
+                'type': 'bar',
+                'data': {'categories': [str(k) for k in minor_data.index], 'values': [int(v) for v in minor_data.values]}
+            }
+
+        # 5. 所属片区分布图（饼状图）
+        area_col = None
+        for col in ['所属片区', '所属区域', 'area', '片区']:
+            if col in df.columns:
+                area_col = col
+                break
+        if area_col:
+            area_data = df[area_col].fillna('未知').value_counts()
+            result['charts']['area_pie'] = {
+                'title': '案件采集片区分布',
+                'type': 'pie',
+                'data': [{'name': str(k), 'value': int(v)} for k, v in area_data.items()]
+            }
+
+        # 6. 所属街道分布图（横向柱状图）
+        street_col = None
+        for col in ['所属街道', 'street', '街道']:
+            if col in df.columns:
+                street_col = col
+                break
+        if street_col:
+            street_data = df[street_col].fillna('未知').value_counts()
+            result['charts']['street'] = {
+                'title': '案件街道分布',
+                'type': 'bar',
+                'data': {'categories': [str(k) for k in street_data.index], 'values': [int(v) for v in street_data.values]}
+            }
+
+        # 7. 所属社区分布图（横向柱状图）
+        community_col = None
+        for col in ['所属社区', 'community', '社区']:
+            if col in df.columns:
+                community_col = col
+                break
+        if community_col:
+            community_data = df[community_col].fillna('未知').value_counts().head(25)
+            result['charts']['community'] = {
+                'title': '案件社区分布',
+                'type': 'bar',
+                'data': {'categories': [str(k) for k in community_data.index], 'values': [int(v) for v in community_data.values]}
+            }
+
+        # 8. 处置部门案件占比图（饼状图）
+        dept_col = None
+        for col in ['处置部门', 'department', '处理部门', '责任部门']:
+            if col in df.columns:
+                dept_col = col
+                break
+        if dept_col:
+            dept_data = df[dept_col].fillna('未知').value_counts()
+            result['charts']['department_pie'] = {
+                'title': '处置部门案件占比',
+                'type': 'pie',
+                'data': [{'name': str(k), 'value': int(v)} for k, v in dept_data.items()]
+            }
+
+        # 9. 各处置部门平均处置时间图（横向柱状图）
+        close_time_col = None
+        for col in ['结案时间', 'close_time', 'handle_time', '完成时间']:
+            if col in df.columns:
+                close_time_col = col
+                break
+
+        report_time_col = None
+        for col in ['上报时间', 'report_time', '创建时间']:
+            if col in df.columns:
+                report_time_col = col
+                break
+
+        if close_time_col and report_time_col and dept_col:
+            try:
+                df['_close_time'] = pd.to_datetime(df[close_time_col], errors='coerce')
+                df['_report_time'] = pd.to_datetime(df[report_time_col], errors='coerce')
+                df['_handling_hours'] = (df['_close_time'] - df['_report_time']).dt.total_seconds() / 3600
+
+                valid_df = df[(df['_handling_hours'] > 0) & (df['_handling_hours'] < 720)]
+                if len(valid_df) > 0:
+                    avg_time_by_dept = valid_df.groupby(dept_col)['_handling_hours'].mean().sort_values()
+                    result['charts']['avg_handling_time'] = {
+                        'title': '各处置部门平均处置时间',
+                        'type': 'bar',
+                        'data': {
+                            'categories': [str(k) for k in avg_time_by_dept.index],
+                            'values': [round(v, 1) for v in avg_time_by_dept.values]
+                        },
+                        'unit': '小时'
+                    }
+            except Exception as e:
+                print(f"[图表分析] 计算处置时间出错: {str(e)}")
+
+        print(f"[图表分析] 分析完成，生成 {len(result['charts'])} 个图表")
+        return jsonify(result), 200
+
+    except Exception as e:
+        print(f"Error in chart_analysis: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
 
 # 小工具模块API - 市容环卫案件分配
 @app.route('/api/tools/huanwei-assignment', methods=['POST'])
@@ -5018,7 +5235,514 @@ def get_home_columns():
     finally:
         session.close()
 
-# 静态文件路由 - uploads 目录
+# ==================== 数据编辑 API ====================
+
+# 数据编辑列表显示的字段（精简版）
+DATA_EDIT_DISPLAY_FIELDS = [
+    '任务号', '问题描述', '处置部门', '结案时间', '是否超时', '延期次数', '返工次数'
+]
+
+# 数据编辑弹窗可编辑的字段（完整版）
+DATA_EDIT_FORM_FIELDS = [
+    '任务号', '上报时间', '问题描述', '所属街道', '所属社区',
+    '处置部门', '结案时间', '是否超时', '延期次数', '返工次数'
+]
+
+@app.route('/api/data-edit/records', methods=['GET'])
+@admin_required
+def get_data_edit_records():
+    """获取数据列表（支持分页、筛选、查找）"""
+    try:
+        table_name = request.args.get('table_name', '')
+        month = request.args.get('month', '')
+        page = int(request.args.get('page', 1))
+        page_size = int(request.args.get('page_size', 20))
+        search_field = request.args.get('search_field', '')
+        search_value = request.args.get('search_value', '')
+
+        if not table_name:
+            return jsonify({'error': '请选择数据表'}), 400
+
+        # 检查表是否存在
+        inspector = inspect(engine)
+        tables = inspector.get_table_names()
+        if table_name not in tables:
+            return jsonify({'error': '数据表不存在'}), 400
+
+        # 获取表的列名
+        columns = [col['name'] for col in inspector.get_columns(table_name)]
+
+        # 构建SQL查询
+        where_clauses = []
+        params = {}
+
+        # 月份筛选
+        if month and '月份' in columns:
+            where_clauses.append("`月份` = :month")
+            params['month'] = month
+
+        # 字段查找
+        if search_field and search_value:
+            if search_field in columns:
+                if search_field == '任务号':
+                    # 任务号精确匹配
+                    where_clauses.append(f"`{search_field}` = :search_value")
+                else:
+                    # 其他字段模糊匹配
+                    where_clauses.append(f"`{search_field}` LIKE :search_value")
+                    search_value = f"%{search_value}%"
+                params['search_value'] = search_value
+
+        where_sql = " AND ".join(where_clauses)
+        if where_sql:
+            where_sql = "WHERE " + where_sql
+
+        # 查询总数
+        count_sql = f"SELECT COUNT(*) as cnt FROM `{table_name}` {where_sql}"
+        with engine.connect() as conn:
+            result = conn.execute(text(count_sql), params)
+            total = result.fetchone()[0]
+
+        # 查询数据
+        offset = (page - 1) * page_size
+        data_sql = f"SELECT * FROM `{table_name}` {where_sql} LIMIT {page_size} OFFSET {offset}"
+        df = pd.read_sql(text(data_sql), engine, params=params)
+
+        # 转换数据
+        records = df.to_dict('records')
+        # 处理 NaN 值
+        for record in records:
+            for key in record:
+                if pd.isna(record[key]):
+                    record[key] = None
+
+        return jsonify({
+            'records': records,
+            'total': total,
+            'page': page,
+            'page_size': page_size,
+            'columns': columns,
+            'display_fields': [f for f in DATA_EDIT_DISPLAY_FIELDS if f in columns],
+            'edit_fields': [f for f in DATA_EDIT_FORM_FIELDS if f in columns]
+        }), 200
+
+    except Exception as e:
+        print(f"Error in get_data_edit_records: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/data-edit/record', methods=['POST'])
+@admin_required
+def create_data_edit_record():
+    """新增记录"""
+    session = Session()
+    try:
+        data = request.get_json()
+        table_name = data.get('table_name')
+        record_data = data.get('record_data', {})
+
+        if not table_name:
+            return jsonify({'error': '请选择数据表'}), 400
+
+        # 检查表是否存在
+        inspector = inspect(engine)
+        tables = inspector.get_table_names()
+        if table_name not in tables:
+            return jsonify({'error': '数据表不存在'}), 400
+
+        # 获取表的列名
+        columns = [col['name'] for col in inspector.get_columns(table_name)]
+
+        # 检查任务号是否重复
+        if '任务号' in record_data and '任务号' in columns:
+            with engine.connect() as conn:
+                result = conn.execute(
+                    text(f"SELECT COUNT(*) FROM `{table_name}` WHERE `任务号` = :task_number"),
+                    {'task_number': record_data['任务号']}
+                )
+                if result.fetchone()[0] > 0:
+                    return jsonify({'error': '任务号已存在，不能重复添加'}), 400
+
+        # 构建插入SQL
+        fields = []
+        values = []
+        params = {}
+        for key, value in record_data.items():
+            if key in columns and value is not None and value != '':
+                fields.append(f"`{key}`")
+                values.append(f":{key}")
+                params[key] = value
+
+        if not fields:
+            return jsonify({'error': '没有有效数据'}), 400
+
+        insert_sql = f"INSERT INTO `{table_name}` ({', '.join(fields)}) VALUES ({', '.join(values)})"
+        with engine.connect() as conn:
+            conn.execute(text(insert_sql), params)
+            conn.commit()
+
+        # 记录操作日志
+        log = OperationLog(
+            user_id=request.user_id,
+            table_name=table_name,
+            operation_type='create',
+            record_id=record_data.get('任务号', ''),
+            old_value=None,
+            new_value=json.dumps(record_data, ensure_ascii=False)
+        )
+        session.add(log)
+        session.commit()
+
+        return jsonify({'message': '新增成功', 'task_number': record_data.get('任务号')}), 201
+
+    except Exception as e:
+        session.rollback()
+        print(f"Error in create_data_edit_record: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        session.close()
+
+@app.route('/api/data-edit/record/<task_number>', methods=['PUT'])
+@admin_required
+def update_data_edit_record(task_number):
+    """修改记录"""
+    session = Session()
+    try:
+        data = request.get_json()
+        table_name = data.get('table_name')
+        new_data = data.get('record_data', {})
+
+        if not table_name:
+            return jsonify({'error': '请选择数据表'}), 400
+
+        # 检查表是否存在
+        inspector = inspect(engine)
+        tables = inspector.get_table_names()
+        if table_name not in tables:
+            return jsonify({'error': '数据表不存在'}), 400
+
+        columns = [col['name'] for col in inspector.get_columns(table_name)]
+
+        # 查询原数据
+        with engine.connect() as conn:
+            result = conn.execute(
+                text(f"SELECT * FROM `{table_name}` WHERE `任务号` = :task_number"),
+                {'task_number': task_number}
+            )
+            row = result.fetchone()
+            if not row:
+                return jsonify({'error': '记录不存在'}), 404
+
+            # 转换为字典
+            old_data = dict(zip(columns, row))
+
+        # 构建更新SQL
+        set_clauses = []
+        params = {'task_number': task_number}
+        for key, value in new_data.items():
+            if key in columns and key != '任务号':  # 任务号不允许修改
+                set_clauses.append(f"`{key}` = :{key}")
+                params[key] = value
+
+        if not set_clauses:
+            return jsonify({'error': '没有需要更新的字段'}), 400
+
+        update_sql = f"UPDATE `{table_name}` SET {', '.join(set_clauses)} WHERE `任务号` = :task_number"
+        with engine.connect() as conn:
+            conn.execute(text(update_sql), params)
+            conn.commit()
+
+        # 记录操作日志
+        log = OperationLog(
+            user_id=request.user_id,
+            table_name=table_name,
+            operation_type='update',
+            record_id=task_number,
+            old_value=json.dumps(old_data, ensure_ascii=False, default=str),
+            new_value=json.dumps(new_data, ensure_ascii=False)
+        )
+        session.add(log)
+        session.commit()
+
+        return jsonify({'message': '修改成功'}), 200
+
+    except Exception as e:
+        session.rollback()
+        print(f"Error in update_data_edit_record: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        session.close()
+
+@app.route('/api/data-edit/record/<task_number>', methods=['DELETE'])
+@admin_required
+def delete_data_edit_record(task_number):
+    """删除单条记录"""
+    session = Session()
+    try:
+        table_name = request.args.get('table_name')
+        if not table_name:
+            return jsonify({'error': '请选择数据表'}), 400
+
+        # 检查表是否存在
+        inspector = inspect(engine)
+        tables = inspector.get_table_names()
+        if table_name not in tables:
+            return jsonify({'error': '数据表不存在'}), 400
+
+        columns = [col['name'] for col in inspector.get_columns(table_name)]
+
+        # 查询原数据
+        with engine.connect() as conn:
+            result = conn.execute(
+                text(f"SELECT * FROM `{table_name}` WHERE `任务号` = :task_number"),
+                {'task_number': task_number}
+            )
+            row = result.fetchone()
+            if not row:
+                return jsonify({'error': '记录不存在'}), 404
+
+            old_data = dict(zip(columns, row))
+
+        # 删除记录
+        with engine.connect() as conn:
+            conn.execute(
+                text(f"DELETE FROM `{table_name}` WHERE `任务号` = :task_number"),
+                {'task_number': task_number}
+            )
+            conn.commit()
+
+        # 记录操作日志
+        log = OperationLog(
+            user_id=request.user_id,
+            table_name=table_name,
+            operation_type='delete',
+            record_id=task_number,
+            old_value=json.dumps(old_data, ensure_ascii=False, default=str),
+            new_value=None
+        )
+        session.add(log)
+        session.commit()
+
+        return jsonify({'message': '删除成功'}), 200
+
+    except Exception as e:
+        session.rollback()
+        print(f"Error in delete_data_edit_record: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        session.close()
+
+@app.route('/api/data-edit/batch-delete', methods=['POST'])
+@admin_required
+def batch_delete_data_edit_records():
+    """批量删除记录"""
+    session = Session()
+    try:
+        data = request.get_json()
+        table_name = data.get('table_name')
+        task_numbers = data.get('task_numbers', [])
+
+        if not table_name:
+            return jsonify({'error': '请选择数据表'}), 400
+        if not task_numbers:
+            return jsonify({'error': '请选择要删除的记录'}), 400
+
+        # 检查表是否存在
+        inspector = inspect(engine)
+        tables = inspector.get_table_names()
+        if table_name not in tables:
+            return jsonify({'error': '数据表不存在'}), 400
+
+        columns = [col['name'] for col in inspector.get_columns(table_name)]
+
+        # 查询原数据用于日志
+        placeholders = ','.join([f":tn{i}" for i in range(len(task_numbers))])
+        params = {f"tn{i}": tn for i, tn in enumerate(task_numbers)}
+
+        with engine.connect() as conn:
+            result = conn.execute(
+                text(f"SELECT * FROM `{table_name}` WHERE `任务号` IN ({placeholders})"),
+                params
+            )
+            rows = result.fetchall()
+            old_records = [dict(zip(columns, row)) for row in rows]
+
+        # 批量删除
+        with engine.connect() as conn:
+            conn.execute(
+                text(f"DELETE FROM `{table_name}` WHERE `任务号` IN ({placeholders})"),
+                params
+            )
+            conn.commit()
+
+        # 记录操作日志
+        for record in old_records:
+            log = OperationLog(
+                user_id=request.user_id,
+                table_name=table_name,
+                operation_type='delete',
+                record_id=record.get('任务号', ''),
+                old_value=json.dumps(record, ensure_ascii=False, default=str),
+                new_value=None
+            )
+            session.add(log)
+        session.commit()
+
+        return jsonify({'message': f'成功删除 {len(task_numbers)} 条记录'}), 200
+
+    except Exception as e:
+        session.rollback()
+        print(f"Error in batch_delete_data_edit_records: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        session.close()
+
+@app.route('/api/data-edit/batch-update', methods=['POST'])
+@admin_required
+def batch_update_data_edit_records():
+    """批量修改记录"""
+    session = Session()
+    try:
+        data = request.get_json()
+        table_name = data.get('table_name')
+        task_numbers = data.get('task_numbers', [])
+        update_data = data.get('update_data', {})
+
+        if not table_name:
+            return jsonify({'error': '请选择数据表'}), 400
+        if not task_numbers:
+            return jsonify({'error': '请选择要修改的记录'}), 400
+        if not update_data:
+            return jsonify({'error': '请提供修改内容'}), 400
+
+        # 检查表是否存在
+        inspector = inspect(engine)
+        tables = inspector.get_table_names()
+        if table_name not in tables:
+            return jsonify({'error': '数据表不存在'}), 400
+
+        columns = [col['name'] for col in inspector.get_columns(table_name)]
+
+        # 构建更新SQL
+        set_clauses = []
+        for key, value in update_data.items():
+            if key in columns and key != '任务号':
+                set_clauses.append(f"`{key}` = :{key}")
+
+        if not set_clauses:
+            return jsonify({'error': '没有有效的更新字段'}), 400
+
+        placeholders = ','.join([f":tn{i}" for i in range(len(task_numbers))])
+        params = {f"tn{i}": tn for i, tn in enumerate(task_numbers)}
+        params.update(update_data)
+
+        # 查询原数据用于日志
+        with engine.connect() as conn:
+            result = conn.execute(
+                text(f"SELECT * FROM `{table_name}` WHERE `任务号` IN ({placeholders})"),
+                {f"tn{i}": tn for i, tn in enumerate(task_numbers)}
+            )
+            rows = result.fetchall()
+            old_records = [dict(zip(columns, row)) for row in rows]
+
+        # 执行更新
+        update_sql = f"UPDATE `{table_name}` SET {', '.join(set_clauses)} WHERE `任务号` IN ({placeholders})"
+        with engine.connect() as conn:
+            conn.execute(text(update_sql), params)
+            conn.commit()
+
+        # 记录操作日志
+        for record in old_records:
+            log = OperationLog(
+                user_id=request.user_id,
+                table_name=table_name,
+                operation_type='update',
+                record_id=record.get('任务号', ''),
+                old_value=json.dumps(record, ensure_ascii=False, default=str),
+                new_value=json.dumps(update_data, ensure_ascii=False)
+            )
+            session.add(log)
+        session.commit()
+
+        return jsonify({'message': f'成功修改 {len(task_numbers)} 条记录'}), 200
+
+    except Exception as e:
+        session.rollback()
+        print(f"Error in batch_update_data_edit_records: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        session.close()
+
+# ==================== 操作日志 API ====================
+
+@app.route('/api/operation-logs', methods=['GET'])
+@admin_required
+def get_operation_logs():
+    """获取操作日志列表"""
+    try:
+        table_name = request.args.get('table_name', '')
+        operation_type = request.args.get('operation_type', '')
+        page = int(request.args.get('page', 1))
+        page_size = int(request.args.get('page_size', 20))
+
+        session = Session()
+        query = session.query(OperationLog)
+
+        if table_name:
+            query = query.filter(OperationLog.table_name == table_name)
+        if operation_type:
+            query = query.filter(OperationLog.operation_type == operation_type)
+
+        total = query.count()
+        logs = query.order_by(OperationLog.created_at.desc()) \
+            .offset((page - 1) * page_size) \
+            .limit(page_size) \
+            .all()
+
+        # 获取用户名
+        user_ids = list(set([log.user_id for log in logs]))
+        users = session.query(User).filter(User.id.in_(user_ids)).all()
+        user_map = {u.id: u.username for u in users}
+
+        result = []
+        for log in logs:
+            result.append({
+                'id': log.id,
+                'user_id': log.user_id,
+                'username': user_map.get(log.user_id, '未知'),
+                'table_name': log.table_name,
+                'operation_type': log.operation_type,
+                'record_id': log.record_id,
+                'old_value': log.old_value,
+                'new_value': log.new_value,
+                'created_at': log.created_at.strftime('%Y-%m-%d %H:%M:%S') if log.created_at else None
+            })
+
+        return jsonify({
+            'logs': result,
+            'total': total,
+            'page': page,
+            'page_size': page_size
+        }), 200
+
+    except Exception as e:
+        print(f"Error in get_operation_logs: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        session.close()
 @app.route('/uploads/<path:filename>')
 def serve_upload(filename):
     upload_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')

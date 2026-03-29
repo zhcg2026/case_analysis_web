@@ -488,6 +488,166 @@
       </div>
     </div>
 
+    <!-- 数据编辑 -->
+    <div v-else-if="activeTab === 'dataEdit'" class="content-card">
+      <div class="card-header">
+        <h2 class="section-title">数据编辑</h2>
+      </div>
+
+      <!-- 筛选区域 -->
+      <div class="filter-section">
+        <div class="filter-row">
+          <div class="filter-group">
+            <div class="form-group">
+              <label class="form-label">选择数据表</label>
+              <select v-model="editTable" class="form-select" @change="onEditTableChange">
+                <option value="">请选择</option>
+                <option v-for="table in visibleTables" :key="table" :value="table">{{ table }}</option>
+              </select>
+            </div>
+            <div class="form-group" v-if="editAvailableMonths.length > 0">
+              <label class="form-label">选择月份</label>
+              <select v-model="editMonth" class="form-select" @change="fetchEditRecords">
+                <option value="">全部</option>
+                <option v-for="month in editAvailableMonths" :key="month" :value="month">{{ formatMonth(month) }}</option>
+              </select>
+            </div>
+          </div>
+          <div class="filter-group">
+            <div class="form-group">
+              <label class="form-label">查找字段</label>
+              <select v-model="searchField" class="form-select">
+                <option value="">请选择</option>
+                <option value="任务号">任务号（精确匹配）</option>
+                <option v-for="col in formFields.filter(c => c !== '任务号')" :key="col" :value="col">{{ col }}</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">查找值</label>
+              <input v-model="searchValue" type="text" class="form-input" placeholder="输入查找值" @keyup.enter="fetchEditRecords" />
+            </div>
+            <button class="btn btn-primary" @click="fetchEditRecords">查询</button>
+            <button class="btn btn-secondary" @click="resetEditFilters">重置</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 操作按钮 -->
+      <div class="action-bar">
+        <button class="btn btn-primary" @click="openAddRecordModal">+ 新增</button>
+        <button class="btn btn-secondary" :disabled="selectedRecords.length === 0" @click="openBatchEditModal">批量修改</button>
+        <button class="btn btn-danger" :disabled="selectedRecords.length === 0" @click="confirmBatchDelete">批量删除</button>
+        <span class="selection-info" v-if="selectedRecords.length > 0">已选择 {{ selectedRecords.length }} 条</span>
+      </div>
+
+      <!-- 数据列表 -->
+      <div v-if="editLoading" class="loading-state">
+        <div class="loading-spinner"></div>
+      </div>
+      <div v-else-if="editRecords.length > 0">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th><input type="checkbox" v-model="selectAll" @change="toggleSelectAll" /></th>
+              <th v-for="col in displayColumns" :key="col">{{ col }}</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="record in editRecords" :key="record['任务号']">
+              <td><input type="checkbox" :value="record['任务号']" v-model="selectedRecords" /></td>
+              <td v-for="col in displayColumns" :key="col">{{ record[col] || '-' }}</td>
+              <td>
+                <button class="btn-text" @click="openEditRecordModal(record)">编辑</button>
+                <button class="btn-text danger" @click="confirmDeleteRecord(record)">删除</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <!-- 分页 -->
+        <div class="pagination">
+          <button :disabled="editPage <= 1" @click="editPage--; fetchEditRecords()">上一页</button>
+          <span>第 {{ editPage }} / {{ editTotalPages }} 页，共 {{ editTotal }} 条</span>
+          <button :disabled="editPage >= editTotalPages" @click="editPage++; fetchEditRecords()">下一页</button>
+        </div>
+      </div>
+      <div v-else class="empty-state">
+        <p v-if="editTable">暂无数据</p>
+        <p v-else>请选择数据表</p>
+      </div>
+    </div>
+
+    <!-- 操作日志 -->
+    <div v-else-if="activeTab === 'logs'" class="content-card">
+      <div class="card-header">
+        <h2 class="section-title">操作日志</h2>
+      </div>
+
+      <!-- 筛选 -->
+      <div class="filter-section">
+        <div class="filter-row">
+          <div class="form-group">
+            <label class="form-label">数据表</label>
+            <select v-model="logTable" class="form-select">
+              <option value="">全部</option>
+              <option v-for="table in visibleTables" :key="table" :value="table">{{ table }}</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">操作类型</label>
+            <select v-model="logType" class="form-select">
+              <option value="">全部</option>
+              <option value="create">新增</option>
+              <option value="update">修改</option>
+              <option value="delete">删除</option>
+            </select>
+          </div>
+          <button class="btn btn-primary" @click="fetchLogs">查询</button>
+        </div>
+      </div>
+
+      <!-- 日志列表 -->
+      <div v-if="logsLoading" class="loading-state">
+        <div class="loading-spinner"></div>
+      </div>
+      <div v-else-if="logs.length > 0">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>时间</th>
+              <th>操作人</th>
+              <th>操作类型</th>
+              <th>数据表</th>
+              <th>记录ID</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="log in logs" :key="log.id">
+              <td>{{ log.created_at }}</td>
+              <td>{{ log.username }}</td>
+              <td>
+                <span :class="['op-type', log.operation_type]">
+                  {{ log.operation_type === 'create' ? '新增' : log.operation_type === 'update' ? '修改' : '删除' }}
+                </span>
+              </td>
+              <td>{{ log.table_name }}</td>
+              <td>{{ log.record_id }}</td>
+              <td><button class="btn-text" @click="viewLogDetail(log)">详情</button></td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="pagination">
+          <button :disabled="logPage <= 1" @click="logPage--; fetchLogs()">上一页</button>
+          <span>第 {{ logPage }} / {{ logTotalPages }} 页，共 {{ logTotal }} 条</span>
+          <button :disabled="logPage >= logTotalPages" @click="logPage++; fetchLogs()">下一页</button>
+        </div>
+      </div>
+      <div v-else class="empty-state">
+        <p>暂无操作日志</p>
+      </div>
+    </div>
+
     <!-- 业务平台 -->
     <div v-else-if="activeTab === 'business'" class="content-card">
       <div class="card-header">
@@ -709,6 +869,134 @@
         </div>
       </div>
     </div>
+
+    <!-- 新增/编辑记录弹窗 -->
+    <div class="modal-overlay" v-if="showRecordModal" @click.self="closeRecordModal">
+      <div class="modal-content modal-record">
+        <div class="modal-header">
+          <h3>{{ isAddRecord ? '新增记录' : '编辑记录' }}</h3>
+          <button class="close-btn" @click="closeRecordModal">&times;</button>
+        </div>
+        <div class="modal-body modal-body-scroll">
+          <div class="form-group" v-for="col in formFields" :key="col">
+            <label class="form-label">{{ col }}</label>
+            <template v-if="col === '任务号'">
+              <input v-model="recordForm[col]" type="text" class="form-input" :disabled="!isAddRecord" :placeholder="isAddRecord ? '请输入任务号' : '不可编辑'" />
+            </template>
+            <template v-else-if="col === '是否超时'">
+              <select v-model="recordForm[col]" class="form-select">
+                <option value="">请选择</option>
+                <option value="是">是</option>
+                <option value="否">否</option>
+              </select>
+            </template>
+            <template v-else-if="col.includes('次数')">
+              <input v-model.number="recordForm[col]" type="number" class="form-input" min="0" />
+            </template>
+            <template v-else>
+              <input v-model="recordForm[col]" type="text" class="form-input" />
+            </template>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" @click="closeRecordModal">取消</button>
+          <button class="btn btn-primary" @click="saveRecord" :disabled="recordSaving">{{ recordSaving ? '保存中...' : '确认' }}</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 批量修改弹窗 -->
+    <div class="modal-overlay" v-if="showBatchEditModal" @click.self="showBatchEditModal = false">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>批量修改</h3>
+          <button class="close-btn" @click="showBatchEditModal = false">&times;</button>
+        </div>
+        <div class="modal-body">
+          <p class="batch-info">将修改 {{ selectedRecords.length }} 条记录</p>
+          <div class="form-group">
+            <label class="form-label">选择修改字段</label>
+            <select v-model="batchEditField" class="form-select">
+              <option value="">请选择</option>
+              <option v-for="col in formFields.filter(c => c !== '任务号')" :key="col" :value="col">{{ col }}</option>
+            </select>
+          </div>
+          <div class="form-group" v-if="batchEditField">
+            <label class="form-label">新值</label>
+            <template v-if="batchEditField === '是否超时'">
+              <select v-model="batchEditValue" class="form-select">
+                <option value="">请选择</option>
+                <option value="是">是</option>
+                <option value="否">否</option>
+              </select>
+            </template>
+            <template v-else-if="batchEditField.includes('次数')">
+              <input v-model.number="batchEditValue" type="number" class="form-input" min="0" />
+            </template>
+            <template v-else>
+              <input v-model="batchEditValue" type="text" class="form-input" />
+            </template>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" @click="showBatchEditModal = false">取消</button>
+          <button class="btn btn-primary" @click="batchUpdateRecords" :disabled="batchEditSaving">{{ batchEditSaving ? '保存中...' : '确认修改' }}</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 日志详情弹窗 -->
+    <div class="modal-overlay" v-if="showLogDetailModal" @click.self="showLogDetailModal = false">
+      <div class="modal-content modal-large">
+        <div class="modal-header">
+          <h3>操作详情</h3>
+          <button class="close-btn" @click="showLogDetailModal = false">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="log-detail">
+            <p><strong>操作人：</strong>{{ logDetail?.username }}</p>
+            <p><strong>操作类型：</strong>{{ logDetail?.operation_type === 'create' ? '新增' : logDetail?.operation_type === 'update' ? '修改' : '删除' }}</p>
+            <p><strong>数据表：</strong>{{ logDetail?.table_name }}</p>
+            <p><strong>记录ID：</strong>{{ logDetail?.record_id }}</p>
+            <p><strong>操作时间：</strong>{{ logDetail?.created_at }}</p>
+            <div v-if="logDetail?.operation_type === 'update'">
+              <p><strong>修改前：</strong></p>
+              <pre class="json-display">{{ formatJson(logDetail?.old_value) }}</pre>
+              <p><strong>修改后：</strong></p>
+              <pre class="json-display">{{ formatJson(logDetail?.new_value) }}</pre>
+            </div>
+            <div v-else-if="logDetail?.operation_type === 'delete'">
+              <p><strong>删除的数据：</strong></p>
+              <pre class="json-display">{{ formatJson(logDetail?.old_value) }}</pre>
+            </div>
+            <div v-else>
+              <p><strong>新增的数据：</strong></p>
+              <pre class="json-display">{{ formatJson(logDetail?.new_value) }}</pre>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" @click="showLogDetailModal = false">关闭</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 删除确认弹窗 -->
+    <div class="modal-overlay" v-if="showDeleteConfirm" @click.self="showDeleteConfirm = false">
+      <div class="modal-content modal-small">
+        <div class="modal-header">
+          <h3>确认删除</h3>
+          <button class="close-btn" @click="showDeleteConfirm = false">&times;</button>
+        </div>
+        <div class="modal-body">
+          <p>{{ deleteConfirmMessage }}</p>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" @click="showDeleteConfirm = false">取消</button>
+          <button class="btn btn-danger" @click="executeDelete" :disabled="deleteSaving">{{ deleteSaving ? '删除中...' : '确认删除' }}</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -720,6 +1008,8 @@ const tabs = [
   { key: 'users', label: '用户管理' },
   { key: 'articles', label: '文章管理' },
   { key: 'data', label: '数据管理' },
+  { key: 'dataEdit', label: '数据编辑' },
+  { key: 'logs', label: '操作日志' },
   { key: 'business', label: '业务平台' },
   { key: 'assessment', label: '考核系数' },
   { key: 'tools', label: '小工具' },
@@ -748,6 +1038,10 @@ const roleMap = {
 // 数据管理
 const dataTables = ref([])
 const tableVisibility = ref({})
+const visibleTables = computed(() => {
+  // 只返回可见的表
+  return dataTables.value.filter(t => tableVisibility.value[t] !== false)
+})
 const uploadMode = ref('create')
 const targetTable = ref('')
 const dataMonth = ref('')
@@ -1492,6 +1786,300 @@ async function deleteCategory(category) {
   }
 }
 
+// ===== 数据编辑 =====
+const editTable = ref('')
+const editMonth = ref('')
+const editAvailableMonths = ref([])
+const editColumns = ref([])
+const displayColumns = ref([])
+const formFields = ref([])
+const editRecords = ref([])
+const editTotal = ref(0)
+const editPage = ref(1)
+const editTotalPages = ref(1)
+const editLoading = ref(false)
+const searchField = ref('')
+const searchValue = ref('')
+const selectedRecords = ref([])
+const selectAll = ref(false)
+
+// 记录弹窗
+const showRecordModal = ref(false)
+const isAddRecord = ref(true)
+const recordForm = ref({})
+const recordSaving = ref(false)
+
+// 批量修改弹窗
+const showBatchEditModal = ref(false)
+const batchEditField = ref('')
+const batchEditValue = ref('')
+const batchEditSaving = ref(false)
+
+// 删除确认
+const showDeleteConfirm = ref(false)
+const deleteConfirmMessage = ref('')
+const deleteTarget = ref(null)  // { type: 'single' | 'batch', taskNumber? }
+const deleteSaving = ref(false)
+
+// 操作日志
+const logs = ref([])
+const logTotal = ref(0)
+const logPage = ref(1)
+const logTotalPages = ref(1)
+const logsLoading = ref(false)
+const logTable = ref('')
+const logType = ref('')
+const showLogDetailModal = ref(false)
+const logDetail = ref(null)
+
+async function onEditTableChange() {
+  editMonth.value = ''
+  editAvailableMonths.value = []
+  editRecords.value = []
+  editColumns.value = []
+  displayColumns.value = []
+  formFields.value = []
+  selectedRecords.value = []
+  searchField.value = ''
+  searchValue.value = ''
+
+  if (editTable.value) {
+    // 获取可用月份
+    try {
+      const response = await axios.get(`/api/available-months?table_name=${editTable.value}`)
+      editAvailableMonths.value = response.data.months || []
+    } catch (error) {
+      console.error('获取月份失败:', error)
+    }
+
+    // 自动加载数据
+    await fetchEditRecords()
+  }
+}
+
+async function fetchEditRecords() {
+  if (!editTable.value) return
+  editLoading.value = true
+  try {
+    const params = new URLSearchParams({
+      table_name: editTable.value,
+      page: editPage.value,
+      page_size: 20
+    })
+    if (editMonth.value) params.append('month', editMonth.value)
+    if (searchField.value && searchValue.value) {
+      params.append('search_field', searchField.value)
+      params.append('search_value', searchValue.value)
+    }
+    const response = await axios.get(`/api/data-edit/records?${params}`)
+    editRecords.value = response.data.records || []
+    editTotal.value = response.data.total || 0
+    editColumns.value = response.data.columns || []
+    displayColumns.value = response.data.display_fields || []
+    formFields.value = response.data.edit_fields || []
+    editTotalPages.value = Math.ceil(editTotal.value / 20)
+    selectedRecords.value = []
+    selectAll.value = false
+  } catch (error) {
+    console.error('获取数据失败:', error)
+    alert(error.response?.data?.error || '获取数据失败')
+  } finally {
+    editLoading.value = false
+  }
+}
+
+function resetEditFilters() {
+  editMonth.value = ''
+  searchField.value = ''
+  searchValue.value = ''
+  editPage.value = 1
+  fetchEditRecords()
+}
+
+function toggleSelectAll() {
+  if (selectAll.value) {
+    selectedRecords.value = editRecords.value.map(r => r['任务号'])
+  } else {
+    selectedRecords.value = []
+  }
+}
+
+async function openAddRecordModal() {
+  if (!editTable.value) {
+    alert('请先选择数据表')
+    return
+  }
+
+  // 如果没有列信息，先获取
+  if (formFields.value.length === 0) {
+    await fetchEditRecords()
+  }
+
+  // 如果还是没有列信息，报错
+  if (formFields.value.length === 0) {
+    alert('无法获取表结构，请检查数据表')
+    return
+  }
+
+  isAddRecord.value = true
+  recordForm.value = {}
+  formFields.value.forEach(col => {
+    recordForm.value[col] = ''
+  })
+  showRecordModal.value = true
+}
+
+function openEditRecordModal(record) {
+  isAddRecord.value = false
+  recordForm.value = { ...record }
+  showRecordModal.value = true
+}
+
+function closeRecordModal() {
+  showRecordModal.value = false
+  recordForm.value = {}
+}
+
+async function saveRecord() {
+  if (!recordForm.value['任务号']) {
+    alert('任务号不能为空')
+    return
+  }
+  recordSaving.value = true
+  try {
+    if (isAddRecord.value) {
+      await axios.post('/api/data-edit/record', {
+        table_name: editTable.value,
+        record_data: recordForm.value
+      })
+      alert('新增成功')
+    } else {
+      await axios.put(`/api/data-edit/record/${recordForm.value['任务号']}`, {
+        table_name: editTable.value,
+        record_data: recordForm.value
+      })
+      alert('修改成功')
+    }
+    closeRecordModal()
+    fetchEditRecords()
+  } catch (error) {
+    alert(error.response?.data?.error || '保存失败')
+  } finally {
+    recordSaving.value = false
+  }
+}
+
+function confirmDeleteRecord(record) {
+  deleteTarget.value = { type: 'single', taskNumber: record['任务号'] }
+  deleteConfirmMessage.value = `确定删除记录「${record['任务号']}」？此操作不可恢复。`
+  showDeleteConfirm.value = true
+}
+
+function confirmBatchDelete() {
+  if (selectedRecords.value.length === 0) return
+  deleteTarget.value = { type: 'batch', taskNumbers: [...selectedRecords.value] }
+  deleteConfirmMessage.value = `确定删除选中的 ${selectedRecords.value.length} 条记录？此操作不可恢复。`
+  showDeleteConfirm.value = true
+}
+
+async function executeDelete() {
+  deleteSaving.value = true
+  try {
+    if (deleteTarget.value.type === 'single') {
+      await axios.delete(`/api/data-edit/record/${deleteTarget.value.taskNumber}?table_name=${editTable.value}`)
+      alert('删除成功')
+    } else {
+      await axios.post('/api/data-edit/batch-delete', {
+        table_name: editTable.value,
+        task_numbers: deleteTarget.value.taskNumbers
+      })
+      alert('批量删除成功')
+    }
+    showDeleteConfirm.value = false
+    selectedRecords.value = []
+    fetchEditRecords()
+  } catch (error) {
+    alert(error.response?.data?.error || '删除失败')
+  } finally {
+    deleteSaving.value = false
+  }
+}
+
+function openBatchEditModal() {
+  if (selectedRecords.value.length === 0) {
+    alert('请先选择要修改的记录')
+    return
+  }
+  batchEditField.value = ''
+  batchEditValue.value = ''
+  showBatchEditModal.value = true
+}
+
+async function batchUpdateRecords() {
+  if (!batchEditField.value) {
+    alert('请选择要修改的字段')
+    return
+  }
+  batchEditSaving.value = true
+  try {
+    await axios.post('/api/data-edit/batch-update', {
+      table_name: editTable.value,
+      task_numbers: selectedRecords.value,
+      update_data: { [batchEditField.value]: batchEditValue.value }
+    })
+    alert('批量修改成功')
+    showBatchEditModal.value = false
+    selectedRecords.value = []
+    fetchEditRecords()
+  } catch (error) {
+    alert(error.response?.data?.error || '批量修改失败')
+  } finally {
+    batchEditSaving.value = false
+  }
+}
+
+// ===== 操作日志 =====
+async function fetchLogs() {
+  logsLoading.value = true
+  try {
+    const params = new URLSearchParams({
+      page: logPage.value,
+      page_size: 20
+    })
+    if (logTable.value) params.append('table_name', logTable.value)
+    if (logType.value) params.append('operation_type', logType.value)
+    const response = await axios.get(`/api/operation-logs?${params}`)
+    logs.value = response.data.logs || []
+    logTotal.value = response.data.total || 0
+    logTotalPages.value = Math.ceil(logTotal.value / 20)
+  } catch (error) {
+    console.error('获取日志失败:', error)
+  } finally {
+    logsLoading.value = false
+  }
+}
+
+function viewLogDetail(log) {
+  logDetail.value = log
+  showLogDetailModal.value = true
+}
+
+function formatJson(str) {
+  if (!str) return ''
+  try {
+    return JSON.stringify(JSON.parse(str), null, 2)
+  } catch {
+    return str
+  }
+}
+
+function formatMonth(month) {
+  if (!month || month.length < 6) return month || ''
+  const year = month.substring(0, 4)
+  const m = month.substring(4, 6)
+  return `${year}年${m}月`
+}
+
 onMounted(() => {
   fetchUsers()
   fetchPlatforms()
@@ -1716,10 +2304,20 @@ watch(articlesCurrentPage, fetchArticles)
   background: var(--bg-card);
   border-radius: var(--radius-lg);
   width: 90%;
+  max-width: 600px;
   max-height: 90vh;
   display: flex;
   flex-direction: column;
   box-shadow: var(--shadow-xl);
+}
+
+.modal-record {
+  max-width: 500px;
+}
+
+.modal-body-scroll {
+  overflow-y: auto;
+  max-height: 60vh;
 }
 
 .platform-editor { max-width: 500px; }
@@ -2341,4 +2939,138 @@ watch(articlesCurrentPage, fetchArticles)
 }
 
 .btn-link:hover { color: var(--danger-dark); }
+
+/* 数据编辑样式 */
+.filter-section {
+  margin-bottom: var(--space-4);
+  padding: var(--space-4);
+  background: var(--fill-light);
+  border-radius: var(--radius-lg);
+}
+
+.filter-row {
+  display: flex;
+  gap: var(--space-3);
+  align-items: flex-end;
+  margin-bottom: var(--space-3);
+}
+
+.filter-row:last-child {
+  margin-bottom: 0;
+}
+
+.filter-group {
+  display: flex;
+  gap: var(--space-3);
+  align-items: flex-end;
+  padding: var(--space-3);
+  background: rgba(255, 255, 255, 0.5);
+  border-radius: var(--radius-md);
+}
+
+.filter-row .form-group {
+  margin-bottom: 0;
+  min-width: 150px;
+}
+
+.action-bar {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  margin-bottom: var(--space-4);
+}
+
+.selection-info {
+  margin-left: var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  background: var(--primary-100);
+  color: var(--primary-600);
+  border-radius: var(--radius-md);
+  font-size: 13px;
+}
+
+.pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: var(--space-4);
+  margin-top: var(--space-4);
+  padding: var(--space-4);
+}
+
+.pagination button {
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--border);
+  background: white;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+
+.pagination button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.pagination button:hover:not(:disabled) {
+  background: var(--fill-light);
+}
+
+.empty-state {
+  text-align: center;
+  padding: var(--space-8);
+  color: var(--text-secondary);
+}
+
+/* 操作日志样式 */
+.op-type {
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+}
+
+.op-type.create {
+  background: rgba(103, 194, 58, 0.1);
+  color: #67c23a;
+}
+
+.op-type.update {
+  background: rgba(230, 162, 60, 0.1);
+  color: #e6a23c;
+}
+
+.op-type.delete {
+  background: rgba(245, 108, 108, 0.1);
+  color: #f56c6c;
+}
+
+.log-detail p {
+  margin: var(--space-2) 0;
+}
+
+.json-display {
+  background: var(--fill-dark);
+  color: #e6e6e6;
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  overflow-x: auto;
+  font-size: 12px;
+  max-height: 300px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.modal-large {
+  max-width: 700px;
+}
+
+.modal-small {
+  max-width: 400px;
+}
+
+.batch-info {
+  padding: var(--space-3);
+  background: var(--fill-light);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-4);
+}
 </style>
