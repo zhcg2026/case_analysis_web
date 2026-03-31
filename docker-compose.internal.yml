@@ -1,3 +1,6 @@
+# 内网服务器部署配置
+# 复用现有 MySQL 数据库
+
 version: '3.8'
 
 services:
@@ -12,11 +15,19 @@ services:
     environment:
       - FLASK_ENV=production
       - PYTHONUNBUFFERED=1
+      # RAG 知识库配置 - 连接宿主机服务
+      - OLLAMA_HOST=http://192.168.101.3:11434
+      - OLLAMA_MODEL=qwen2.5:7b
+      - OLLAMA_EMBED_MODEL=nomic-embed-text
+      - MILVUS_HOST=192.168.101.3
+      - MILVUS_PORT=19530
+      - MILVUS_COLLECTION=knowledge_base
     volumes:
       - ./backend/uploads:/app/backend/uploads
       - ./backend/app.py:/app/backend/app.py
       - ./backend/cases_helpers.py:/app/backend/cases_helpers.py
       - ./backend/cases_routes.py:/app/backend/cases_routes.py
+      - ./backend/rag.py:/app/backend/rag.py
       - ./frontend/dist:/app/frontend/dist
     restart: unless-stopped
     healthcheck:
@@ -25,6 +36,8 @@ services:
       timeout: 3s
       retries: 3
       start_period: 5s
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
 networks:
   default:

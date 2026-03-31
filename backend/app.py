@@ -47,6 +47,28 @@ except ImportError:
 # 导入处理docx文件的库
 from docx import Document
 
+# 导入RAG模块
+try:
+    from backend.rag import (
+        init_rag,
+        insert_document,
+        search_similar,
+        delete_document,
+        ask_question,
+        list_documents,
+        get_collection_stats
+    )
+except ImportError:
+    from rag import (
+        init_rag,
+        insert_document,
+        search_similar,
+        delete_document,
+        ask_question,
+        list_documents,
+        get_collection_stats
+    )
+
 # JWT配置（支持环境变量，默认值保持兼容现有部署）
 SECRET_KEY = os.getenv('JWT_SECRET_KEY', 'your-secret-key-for-jwt-token')
 TOKEN_EXPIRATION = int(os.getenv('TOKEN_EXPIRATION_SECONDS', str(24 * 60 * 60)))  # 24小时
@@ -5743,6 +5765,174 @@ def get_operation_logs():
         return jsonify({'error': str(e)}), 500
     finally:
         session.close()
+
+# ==================== 知识库 RAG API ====================
+
+@app.route('/api/knowledge/stats', methods=['GET'])
+@protected
+def knowledge_stats():
+    """获取知识库统计信息"""
+    try:
+        stats = get_collection_stats()
+        return jsonify(stats), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/knowledge/documents', methods=['GET'])
+@protected
+def knowledge_list_documents():
+    """列出知识库中的所有文档"""
+    try:
+        docs = list_documents()
+        return jsonify({'documents': docs, 'total': len(docs)}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/knowledge/documents/<doc_id>', methods=['DELETE'])
+@protected
+def knowledge_delete_document(doc_id):
+    """删除指定文档"""
+    try:
+        result = delete_document(doc_id)
+        if result['success']:
+            return jsonify(result), 200
+        else:
+            return jsonify(result), 400
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/knowledge/upload', methods=['POST'])
+@protected
+def knowledge_upload_document():
+    """上传文档到知识库"""
+    try:
+        # 检查是否有文件
+        if 'file' not in request.files:
+            # 也支持直接上传文本内容
+            data = request.get_json()
+            if data and 'content' in data:
+                doc_id = data.get('doc_id', f'doc_{datetime.datetime.now().strftime("%Y%m%d%H%M%S")}')
+                source = data.get('source', '手动输入')
+                content = data['content']
+                metadata = data.get('metadata', {})
+
+                result = insert_document(doc_id, content, source, metadata)
+                if result['success']:
+                    return jsonify(result), 200
+                else:
+                    return jsonify(result), 400
+
+            return jsonify({'error': '没有文件或内容'}), 400
+
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({'error': '没有选择文件'}), 400
+
+        # 生成文档ID（限制长度不超过64字符）
+        timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+        # doc_前缀(4) + 时间戳(14) + _(1) = 19字符，filename最多44字符
+        truncated_name = file.filename[:44] if len(file.filename) > 44 else file.filename
+        doc_id = f'doc_{timestamp}_{truncated_name}'
+        source = file.filename
+        metadata = {
+            'filename': file.filename,
+            'uploaded_by': request.username,
+            'upload_time': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        }
+
+        # 读取文件内容
+        content = ''
+        filename_lower = file.filename.lower()
+
+        if filename_lower.endswith('.txt'):
+            content = file.read().decode('utf-8', errors='ignore')
+        elif filename_lower.endswith('.md'):
+            content = file.read().decode('utf-8', errors='ignore')
+        elif filename_lower.endswith('.docx'):
+            # 处理docx文件
+            doc = Document(file)
+            for para in doc.paragraphs:
+                content += para.text + '\n'
+            for table in doc.tables:
+                for row in table.rows:
+                    for cell in row.cells:
+                        content += cell.text + '\t'
+                    content += '\n'
+        elif filename_lower.endswith('.pdf'):
+            # PDF处理需要额外库，暂时返回错误提示
+            return jsonify({'error': 'PDF文件支持即将添加，请暂时使用txt或docx格式'}), 400
+        else:
+            # 尝试作为文本读取
+            content = file.read().decode('utf-8', errors='ignore')
+
+        if not content.strip():
+            return jsonify({'error': '文件内容为空'}), 400
+
+        # 插入到向量库
+        result = insert_document(doc_id, content, source, metadata)
+
+        if result['success']:
+            return jsonify({
+                'success': True,
+                'doc_id': doc_id,
+                'chunks': result['chunks'],
+                'message': result['message']
+            }), 200
+        else:
+            return jsonify(result), 400
+
+    except Exception as e:
+        print(f"Error in knowledge_upload_document: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/knowledge/search', methods=['POST'])
+@protected
+def knowledge_search():
+    """搜索知识库"""
+    try:
+        data = request.get_json()
+        query = data.get('query', '')
+        top_k = data.get('top_k', 5)
+
+        if not query:
+            return jsonify({'error': '请提供查询内容'}), 400
+
+        results = search_similar(query, top_k)
+        return jsonify({'results': results, 'total': len(results)}), 200
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/knowledge/ask', methods=['POST'])
+@protected
+def knowledge_ask():
+    """RAG问答"""
+    try:
+        data = request.get_json()
+        question = data.get('question', '')
+        top_k = data.get('top_k', 5)
+
+        if not question:
+            return jsonify({'error': '请提供问题'}), 400
+
+        result = ask_question(question, top_k)
+        return jsonify(result), 200
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/knowledge/init', methods=['POST'])
+@admin_required
+def knowledge_init():
+    """初始化RAG模块（管理员权限）"""
+    try:
+        init_rag()
+        return jsonify({'message': 'RAG模块初始化完成'}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/uploads/<path:filename>')
 def serve_upload(filename):
     upload_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')

@@ -13,6 +13,7 @@ const Tools = () => import('../views/Tools.vue')
 const Dashboard = () => import('../views/Dashboard.vue')
 const Admin = () => import('../views/Admin.vue')
 const Login = () => import('../views/Login.vue')
+const Knowledge = () => import('../views/Knowledge.vue')
 const ArticleDetail = () => import('../views/ArticleDetail.vue')
 const CategoryArticles = () => import('../views/CategoryArticles.vue')
 
@@ -82,6 +83,12 @@ const routes = [
     name: 'Admin',
     component: Admin,
     meta: { requiresAuth: true, title: '系统管理', requiresAdmin: true }
+  },
+  {
+    path: '/knowledge',
+    name: 'Knowledge',
+    component: Knowledge,
+    meta: { requiresAuth: true, title: '知识库' }
   },
   {
     path: '/article/:id',
