@@ -16,77 +16,27 @@
 
       <!-- 侧边信息面板 -->
       <div class="info-panel">
-        <h3 class="panel-title">案件分布</h3>
-
-        <div class="stats-list">
-          <div class="stat-item">
-            <span class="stat-label">总案件数</span>
-            <span class="stat-value">{{ stats.total }}</span>
-          </div>
-          <div class="stat-item">
-            <span class="stat-label">跟进中</span>
-            <span class="stat-value highlight">{{ stats.follow_up }}</span>
-          </div>
-          <div class="stat-item">
-            <span class="stat-label">已结案</span>
-            <span class="stat-value success">{{ stats.closed }}</span>
-          </div>
-        </div>
-
-        <div class="legend">
-          <h4 class="legend-title">图例</h4>
-          <div class="legend-item">
-            <span class="legend-color follow-up"></span>
-            <span>跟进中</span>
-          </div>
-          <div class="legend-item">
-            <span class="legend-color closed"></span>
-            <span>已结案</span>
-          </div>
-          <div class="legend-item">
-            <span class="legend-color pending"></span>
-            <span>挂账案件</span>
+        <!-- 管辖范围切换 -->
+        <div class="dept-switcher">
+          <h4 class="switcher-title">管辖范围</h4>
+          <div class="dept-buttons">
+            <button
+              v-for="dept in departments"
+              :key="dept.key"
+              class="dept-btn"
+              :class="{ active: activeDept === dept.key }"
+              :style="{ borderColor: dept.color }"
+              @click="toggleDept(dept.key)"
+            >
+              {{ dept.name }}
+            </button>
           </div>
         </div>
 
-        <!-- 案件列表 -->
-        <div class="cases-list" v-if="casesList.length > 0">
-          <h4 class="list-title">案件列表</h4>
-          <div v-for="caseItem in casesList" :key="caseItem.id" class="case-item" @click="selectCase(caseItem)">
-            <span class="case-status" :class="getStatusClass(caseItem.status)"></span>
-            <div class="case-info">
-              <div class="case-title">{{ caseItem.task_number }}</div>
-              <div class="case-address">{{ caseItem.problem_desc?.slice(0, 20) }}...</div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- 案件详情弹窗 -->
-    <div v-if="selectedCase" class="case-detail-popup">
-      <div class="popup-header">
-        <h3>案件详情</h3>
-        <button class="close-btn" @click="selectedCase = null">×</button>
-      </div>
-      <div class="popup-body">
-        <div class="detail-row">
-          <span class="label">任务号：</span>
-          <span>{{ selectedCase.task_number }}</span>
-        </div>
-        <div class="detail-row">
-          <span class="label">描述：</span>
-          <span>{{ selectedCase.problem_desc }}</span>
-        </div>
-        <div class="detail-row">
-          <span class="label">地址：</span>
-          <span>{{ selectedCase.address_desc }}</span>
-        </div>
-        <div class="detail-row">
-          <span class="label">状态：</span>
-          <span :class="['status-badge', getStatusClass(selectedCase.status)]">
-            {{ selectedCase.status || '跟进中' }}
-          </span>
+        <!-- 当前选中的片区信息 -->
+        <div v-if="activeDept" class="dept-info">
+          <h4 class="info-title">{{ activeDept }}片区</h4>
+          <p class="info-desc">点击地图上的片区查看详情</p>
         </div>
       </div>
     </div>
@@ -95,47 +45,25 @@
 
 <script setup>
 import { ref, onMounted, onUnmounted, nextTick } from 'vue'
-import axios from 'axios'
 
 const mapContainer = ref(null)
 let mapInstance = null
-let markers = []
+let geoJsonPolygons = [] // 存储管辖范围多边形
 
 const mapLoading = ref(false)
 const mapError = ref('')
-const stats = ref({ total: 0, follow_up: 0, closed: 0 })
-const casesList = ref([])
-const selectedCase = ref(null)
 
-function getStatusClass(status) {
-  if (status === '已结案') return 'closed'
-  if (status === '跟进中' || !status) return 'follow-up'
-  return 'follow-up'
-}
+// 管辖范围相关
+const activeDept = ref('')
+const geoJsonData = ref(null)
 
-async function fetchStats() {
-  try {
-    const response = await axios.get('/api/cases/stats')
-    stats.value = response.data || {}
-  } catch (error) {
-    console.error('获取统计失败:', error)
-  }
-}
-
-async function fetchCases() {
-  try {
-    const response = await axios.get('/api/cases', {
-      params: { per_page: 50 }
-    })
-    casesList.value = response.data.cases || []
-    // 在地图上标记案件
-    if (mapInstance && casesList.value.length > 0) {
-      markCasesOnMap()
-    }
-  } catch (error) {
-    console.error('获取案件失败:', error)
-  }
-}
+// 部门配置（颜色和名称）
+const departments = [
+  { key: '环卫', name: '环卫', color: '#22c55e' },
+  { key: '执法', name: '执法', color: '#ef4444' },
+  { key: '园林', name: '园林', color: '#10b981' },
+  { key: '市政', name: '市政', color: '#f59e0b' }
+]
 
 function initMap() {
   if (!window.AMap) {
@@ -155,26 +83,7 @@ function initMap() {
       mapStyle: 'amap://styles/normal'
     })
 
-    // 添加中心标记
-    const centerMarker = new window.AMap.Marker({
-      position: [110.976935, 35.06161],
-      title: '运城市',
-      map: mapInstance
-    })
-
-    const infoWindow = new window.AMap.InfoWindow({
-      content: '<div style="padding:10px;"><strong>运城市智慧城市管理平台</strong></div>',
-      offset: new window.AMap.Pixel(0, -30)
-    })
-
-    centerMarker.on('click', function() {
-      infoWindow.open(mapInstance, centerMarker.getPosition())
-    })
-
     mapLoading.value = false
-
-    // 加载案件数据并在地图上标记
-    fetchCases()
 
   } catch (error) {
     console.error('地图初始化失败:', error)
@@ -183,45 +92,84 @@ function initMap() {
   }
 }
 
-function markCasesOnMap() {
-  if (!mapInstance || !window.AMap) return
-
-  // 清除旧标记
-  markers.forEach(m => m.setMap(null))
-  markers = []
-
-  casesList.value.forEach((caseItem, index) => {
-    // 随机偏移位置（模拟案件位置）
-    const offsetLng = (Math.random() - 0.5) * 0.05
-    const offsetLat = (Math.random() - 0.5) * 0.05
-
-    const marker = new window.AMap.Marker({
-      position: [110.976935 + offsetLng, 35.06161 + offsetLat],
-      title: caseItem.task_number,
-      map: mapInstance,
-      icon: new window.AMap.Icon({
-        size: new window.AMap.Size(25, 34),
-        image: caseItem.status === '已结案'
-          ? 'https://webapi.amap.com/theme/v1.3/markers/n/mark_b.png'
-          : 'https://webapi.amap.com/theme/v1.3/markers/n/mark_r.png',
-        imageSize: new window.AMap.Size(25, 34)
-      })
-    })
-
-    marker.on('click', () => {
-      selectedCase.value = caseItem
-    })
-
-    markers.push(marker)
-  })
+// 加载GeoJSON管辖范围数据
+async function loadGeoJson() {
+  try {
+    const response = await fetch('/data/guanxia.geojson')
+    const data = await response.json()
+    geoJsonData.value = data
+    console.log('GeoJSON数据加载成功:', data.features?.length, '个片区')
+  } catch (error) {
+    console.error('加载GeoJSON失败:', error)
+  }
 }
 
-function selectCase(caseItem) {
-  selectedCase.value = caseItem
+// 切换部门显示
+function toggleDept(deptKey) {
+  if (activeDept.value === deptKey) {
+    // 再次点击则隐藏
+    clearPolygons()
+    activeDept.value = ''
+    return
+  }
+
+  // 清除现有图层，显示新选中的部门
+  clearPolygons()
+  activeDept.value = deptKey
+  showDeptPolygons(deptKey)
+}
+
+// 显示指定部门的多边形
+function showDeptPolygons(deptKey) {
+  if (!mapInstance || !geoJsonData.value) return
+
+  const deptConfig = departments.find(d => d.key === deptKey)
+  if (!deptConfig) return
+
+  const features = geoJsonData.value.features.filter(f => f.properties.dept === deptKey)
+
+  features.forEach(feature => {
+    if (feature.geometry.type === 'Polygon') {
+      const coordinates = feature.geometry.coordinates[0].map(coord => [coord[0], coord[1]])
+
+      const polygon = new window.AMap.Polygon({
+        path: coordinates,
+        strokeColor: deptConfig.color,
+        strokeWeight: 2,
+        strokeOpacity: 0.8,
+        fillColor: deptConfig.color,
+        fillOpacity: 0.3,
+        map: mapInstance
+      })
+
+      // 点击显示片区信息
+      polygon.on('click', () => {
+        const infoWindow = new window.AMap.InfoWindow({
+          content: `<div style="padding:10px;">
+            <strong>${feature.properties.dept} - ${feature.properties.name}</strong>
+          </div>`,
+          offset: new window.AMap.Pixel(0, -10)
+        })
+        infoWindow.open(mapInstance, polygon.getBounds().getCenter())
+      })
+
+      geoJsonPolygons.push(polygon)
+    }
+  })
+
+  console.log(`显示 ${deptKey} 的 ${features.length} 个片区`)
+}
+
+// 清除所有多边形
+function clearPolygons() {
+  geoJsonPolygons.forEach(polygon => {
+    polygon.setMap(null)
+  })
+  geoJsonPolygons = []
 }
 
 onMounted(() => {
-  fetchStats()
+  loadGeoJson() // 加载GeoJSON数据
   nextTick(() => {
     initMap()
   })
@@ -303,187 +251,64 @@ onUnmounted(() => {
   overflow-y: auto;
 }
 
-.panel-title {
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin: 0;
+.dept-switcher {
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--border-lighter);
 }
 
-.stats-list {
+.switcher-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 var(--space-2);
+}
+
+.dept-buttons {
   display: flex;
-  flex-direction: column;
+  flex-wrap: wrap;
   gap: var(--space-2);
 }
 
-.stat-item {
-  display: flex;
-  justify-content: space-between;
-  padding: var(--space-2) var(--space-3);
+.dept-btn {
+  padding: 4px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  background: var(--bg-secondary);
+  border: 2px solid var(--border-lighter);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.dept-btn:hover {
+  background: var(--fill-light);
+}
+
+.dept-btn.active {
+  background: var(--primary-50);
+  color: var(--primary-600);
+}
+
+.dept-info {
+  margin-top: var(--space-3);
+  padding: var(--space-3);
   background: var(--bg-secondary);
   border-radius: var(--radius-md);
 }
 
-.stat-label {
-  color: var(--text-tertiary);
-  font-size: 13px;
-}
-
-.stat-value {
+.info-title {
+  font-size: 14px;
   font-weight: 600;
   color: var(--text-primary);
+  margin: 0 0 var(--space-1);
 }
 
-.stat-value.highlight { color: var(--primary-500); }
-.stat-value.success { color: var(--success); }
-
-.legend {
-  padding-top: var(--space-3);
-  border-top: 1px solid var(--border-lighter);
-}
-
-.legend-title {
-  font-size: 14px;
-  font-weight: 500;
-  margin: 0 0 var(--space-2);
-  color: var(--text-primary);
-}
-
-.legend-item {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
+.info-desc {
   font-size: 13px;
-  color: var(--text-secondary);
-  margin-bottom: var(--space-1);
-}
-
-.legend-color {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-}
-
-.legend-color.follow-up { background: var(--danger); }
-.legend-color.closed { background: var(--success); }
-.legend-color.pending { background: var(--warning); }
-
-.cases-list {
-  padding-top: var(--space-3);
-  border-top: 1px solid var(--border-lighter);
-  max-height: 300px;
-  overflow-y: auto;
-}
-
-.list-title {
-  font-size: 14px;
-  font-weight: 500;
-  margin: 0 0 var(--space-2);
-  color: var(--text-primary);
-}
-
-.case-item {
-  display: flex;
-  gap: var(--space-2);
-  padding: var(--space-2);
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  transition: background var(--transition-fast);
-}
-
-.case-item:hover { background: var(--fill-light); }
-
-.case-status {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  margin-top: 6px;
-  flex-shrink: 0;
-}
-
-.case-status.follow-up { background: var(--danger); }
-.case-status.closed { background: var(--success); }
-
-.case-info { flex: 1; min-width: 0; }
-
-.case-title {
-  font-size: 13px;
-  color: var(--text-primary);
-  font-weight: 500;
-}
-
-.case-address {
-  font-size: 12px;
   color: var(--text-tertiary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.case-detail-popup {
-  position: fixed;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 400px;
-  background: var(--bg-card);
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--border-lighter);
-  box-shadow: var(--shadow-xl);
-  z-index: 1000;
-}
-
-.popup-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: var(--space-4);
-  border-bottom: 1px solid var(--border-lighter);
-}
-
-.popup-header h3 {
   margin: 0;
-  font-size: 16px;
-  color: var(--text-primary);
 }
-
-.close-btn {
-  width: 28px;
-  height: 28px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  background: transparent;
-  color: var(--text-tertiary);
-  cursor: pointer;
-  border-radius: var(--radius-md);
-  font-size: 20px;
-}
-
-.close-btn:hover { background: var(--fill-light); }
-
-.popup-body { padding: var(--space-4); }
-
-.detail-row {
-  display: flex;
-  margin-bottom: var(--space-3);
-}
-
-.detail-row .label {
-  width: 70px;
-  color: var(--text-tertiary);
-  flex-shrink: 0;
-}
-
-.status-badge {
-  padding: 2px 8px;
-  font-size: 12px;
-  border-radius: var(--radius-full);
-}
-
-.status-badge.follow-up { background: var(--primary-100); color: var(--primary-700); }
-.status-badge.closed { background: var(--success-light); color: var(--success-dark); }
 
 @media (max-width: 768px) {
   .map-wrapper { flex-direction: column; }
