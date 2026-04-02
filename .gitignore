@@ -70,3 +70,9 @@ Desktop.ini
 
 # Uploaded files
 backend/uploads/
+
+# Data analysis files (临时数据分析文件不提交)
+*.xlsx
+charts/
+*.md.bak
+generate_charts.py
