@@ -104,7 +104,7 @@ def get_embedding(text: str) -> Optional[List[float]]:
                 "model": OLLAMA_EMBED_MODEL,
                 "prompt": text
             },
-            timeout=30
+            timeout=60
         )
 
         if response.status_code == 200:
@@ -328,13 +328,14 @@ def delete_document(doc_id: str) -> Dict:
         return {"success": False, "message": str(e)}
 
 
-def ask_question(question: str, top_k: int = 5) -> Dict:
+def ask_question(question: str, top_k: int = 15, min_score: float = 0.45) -> Dict:
     """
     RAG问答：检索相关内容 + LLM生成回答
     返回: {"answer": str, "sources": list, "success": bool}
+    min_score: 相似度阈值，低于此值的结果将被过滤（标题匹配除外）
     """
     try:
-        # 检索相关内容
+        # 检索更多内容
         similar_docs = search_similar(question, top_k)
 
         if not similar_docs:
@@ -344,18 +345,71 @@ def ask_question(question: str, top_k: int = 5) -> Dict:
                 "success": True
             }
 
-        # 构建上下文
+        # 提取核心关键词（用于标题匹配）
+        # 常见无关词过滤
+        stop_words = ["职能", "中心", "服务中心", "运城市", "哪个", "部门", "管理", "负责", "是什么", "有哪些", "职责", "工作", "的", "是", "归", "属于"]
+        keywords_text = question
+        for w in stop_words:
+            keywords_text = keywords_text.replace(w, "")
+
+        # 生成多个关键词候选：原词、前2字、前4字等
+        keywords = []
+        if keywords_text.strip():
+            text = keywords_text.strip()
+            # 尝试多种长度匹配
+            if len(text) >= 2:
+                keywords.append(text[:2])  # 前2字，如"供热"
+            if len(text) >= 4:
+                keywords.append(text[:4])  # 前4字
+            keywords.append(text)  # 完整词
+
+        # 分两组：标题匹配的 + 相似度高的
+        title_matched = []
+        score_matched = []
+        for doc in similar_docs:
+            source = doc.get("source", "")
+            score = doc.get("score", 0)
+
+            # 标题包含任一关键词，强制包含（最多3个）
+            matched = False
+            for kw in keywords:
+                if kw and kw in source:
+                    matched = True
+                    break
+            if matched and len(title_matched) < 3:
+                title_matched.append(doc)
+            # 相似度达标
+            elif score >= min_score:
+                score_matched.append(doc)
+
+        # 合并结果，标题匹配优先，总共最多5个
+        filtered_docs = title_matched[:3] + score_matched[:5-len(title_matched)]
+
+        if not filtered_docs:
+            return {
+                "answer": "知识库中没有找到足够相关的信息。",
+                "sources": [],
+                "success": True
+            }
+
+        # 构建上下文，标注来源和相似度
         context_parts = []
         sources = []
-        for doc in similar_docs:
-            context_parts.append(doc["content"])
-            if doc["source"] not in sources:
-                sources.append(doc["source"])
+        for i, doc in enumerate(filtered_docs, 1):
+            score = doc.get("score", 0)
+            source = doc.get("source", "未知")
+            content = doc.get("content", "")
+            # 标注是否标题匹配
+            matched_kw = [kw for kw in keywords if kw and kw in source]
+            match_tag = "【标题匹配:" + ",".join(matched_kw) + "】" if matched_kw else ""
+            context_parts.append(f"[资料{i}] {match_tag}来源: {source} (相似度: {score:.2f})\n内容: {content}")
+            if source not in sources:
+                sources.append(source)
 
         context = "\n\n---\n\n".join(context_parts)
 
         # 调用Ollama生成回答
-        prompt = f"""基于以下参考资料回答问题。如果资料中没有相关信息，请说明。
+        prompt = f"""基于以下参考资料回答问题。注意：相似度越高表示资料越相关，请优先参考相似度高的资料。
 
 参考资料：
 {context}
@@ -371,7 +425,7 @@ def ask_question(question: str, top_k: int = 5) -> Dict:
                 "prompt": prompt,
                 "stream": False
             },
-            timeout=60
+            timeout=180  # RAG上下文较长，需要更长超时
         )
 
         if response.status_code == 200:

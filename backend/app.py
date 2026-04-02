@@ -6054,7 +6054,8 @@ def knowledge_ask():
     try:
         data = request.get_json()
         question = data.get('question', '')
-        top_k = data.get('top_k', 5)
+        # 强制使用足够大的top_k，确保标题匹配策略能生效
+        top_k = 15
 
         if not question:
             return jsonify({'error': '请提供问题'}), 400
