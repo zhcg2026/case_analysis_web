@@ -192,6 +192,8 @@
                   <th>排名</th>
                   <th>片区名称</th>
                   <th>案件总数</th>
+                  <th>办结数</th>
+                  <th>结案率</th>
                   <th>按期结案</th>
                   <th>超期结案</th>
                   <th>延期次数</th>
@@ -206,6 +208,8 @@
                   </td>
                   <td>{{ team.department }}</td>
                   <td>{{ team.total_cases }}</td>
+                  <td>{{ team.closed_cases }}</td>
+                  <td class="text-info">{{ team.closure_rate }}%</td>
                   <td class="text-success">{{ team.on_time_count }}</td>
                   <td class="text-danger">{{ team.overdue_count }}</td>
                   <td class="text-warning">{{ team.delay_count }}</td>
@@ -667,6 +671,7 @@ onMounted(() => {
 .text-danger { color: #f56c6c; font-weight: 600; }
 .text-warning { color: #e6a23c; }
 .text-purple { color: #909399; }
+.text-info { color: #409eff; font-weight: 600; }
 
 .score-badge {
   display: inline-block;
