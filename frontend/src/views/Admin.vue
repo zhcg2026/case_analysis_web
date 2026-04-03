@@ -750,7 +750,7 @@
       <div class="tools-tabs">
         <button class="tool-tab" :class="{ active: activeTool === 'huanwei' }" @click="activeTool = 'huanwei'">市容环卫案件分配</button>
         <button class="tool-tab" :class="{ active: activeTool === 'location' }" @click="activeTool = 'location'">地址信息提取</button>
-        <button class="tool-tab" :class="{ active: activeTool === 'cleaning' }" @click="activeTool = 'cleaning'">数据清洗</button>
+        <button class="tool-tab" :class="{ active: activeTool === 'desensitization' }" @click="activeTool = 'desensitization'">数据脱敏</button>
       </div>
 
       <!-- 市容环卫案件分配 -->
@@ -787,20 +787,43 @@
         <div v-if="toolErrors.location" class="message error">{{ toolErrors.location }}</div>
       </div>
 
-      <!-- 数据清洗 -->
-      <div v-if="activeTool === 'cleaning'" class="tool-section">
+      <!-- 数据脱敏 -->
+      <div v-if="activeTool === 'desensitization'" class="tool-section">
         <div class="tool-description">
-          <p>数据清洗操作，包括去除重复数据、填充缺失值等。</p>
+          <p>对Excel文件中的敏感数据进行脱敏处理，支持姓名、电话、地址等字段。</p>
+          <p class="hint">上传文件后选择需要脱敏的字段和类型</p>
         </div>
         <div class="tool-upload">
-          <input type="file" accept=".xlsx" @change="handleToolFileSelect('cleaning', $event)" ref="cleaningFileInput" />
-          <span>{{ toolFiles.cleaning ? toolFiles.cleaning.name : '未选择文件' }}</span>
-          <button class="btn btn-primary" @click="processCleaning" :disabled="toolLoading.cleaning || !toolFiles.cleaning">
-            {{ toolLoading.cleaning ? '处理中...' : '开始处理' }}
-          </button>
+          <input type="file" accept=".xlsx" @change="handleDesensitizationFileSelect($event)" ref="desensitizationFileInput" />
+          <span>{{ desensitizationFileName || '未选择文件' }}</span>
         </div>
-        <div v-if="toolMessages.cleaning" class="message success">{{ toolMessages.cleaning }}</div>
-        <div v-if="toolErrors.cleaning" class="message error">{{ toolErrors.cleaning }}</div>
+
+        <div v-if="desensitizationFields.length > 0" class="desensitization-fields">
+          <h4>选择脱敏字段和类型</h4>
+          <div class="field-list">
+            <div v-for="field in desensitizationFields" :key="field" class="field-row">
+              <span class="field-name">{{ field }}</span>
+              <select v-model="desensitizationConfig[field]" class="field-select">
+                <option value="">不处理</option>
+                <option value="name">姓名脱敏</option>
+                <option value="phone">手机号脱敏</option>
+                <option value="landline">座机号脱敏</option>
+                <option value="address">地址脱敏</option>
+                <option value="problem_description">问题描述清洗</option>
+              </select>
+            </div>
+          </div>
+          <div class="btn-group">
+            <button class="btn btn-primary" @click="processDesensitization" :disabled="toolLoading.desensitization">
+              {{ toolLoading.desensitization ? '处理中...' : '开始脱敏' }}
+            </button>
+            <button class="btn btn-secondary" @click="resetDesensitization">重置</button>
+          </div>
+        </div>
+
+        <div v-if="toolLoading.desensitization && desensitizationFields.length === 0" class="message info">读取文件字段中...</div>
+        <div v-if="toolMessages.desensitization" class="message success">{{ toolMessages.desensitization }}</div>
+        <div v-if="toolErrors.desensitization" class="message error">{{ toolErrors.desensitization }}</div>
       </div>
     </div>
 
@@ -1069,10 +1092,15 @@ const coefficientsError = ref('')
 
 // 小工具
 const activeTool = ref('huanwei')
-const toolFiles = ref({ huanwei: null, location: null, cleaning: null })
-const toolLoading = ref({ huanwei: false, location: false, cleaning: false })
-const toolMessages = ref({ huanwei: '', location: '', cleaning: '' })
-const toolErrors = ref({ huanwei: '', location: '', cleaning: '' })
+const toolFiles = ref({ huanwei: null, location: null, desensitization: null })
+const toolLoading = ref({ huanwei: false, location: false, desensitization: false })
+const toolMessages = ref({ huanwei: '', location: '', desensitization: '' })
+const toolErrors = ref({ huanwei: '', location: '', desensitization: '' })
+
+// 数据脱敏
+const desensitizationFileName = ref('')
+const desensitizationFields = ref([])
+const desensitizationConfig = ref({})
 
 // 业务管理
 const platforms = ref([])
@@ -1324,8 +1352,91 @@ function processLocation() {
   processToolFile('location', '/api/tools/extract-location')
 }
 
-function processCleaning() {
-  processToolFile('cleaning', '/api/tools/data-cleaning')
+// 数据脱敏处理
+async function handleDesensitizationFileSelect(e) {
+  const file = e.target.files[0]
+  if (!file) return
+
+  desensitizationFileName.value = file.name
+  toolFiles.value.desensitization = file
+  toolMessages.value.desensitization = ''
+  toolErrors.value.desensitization = ''
+  desensitizationFields.value = []
+  desensitizationConfig.value = {}
+
+  toolLoading.value.desensitization = true
+  const formData = new FormData()
+  formData.append('file', file)
+
+  try {
+    const response = await axios.post('/api/tools/data-desensitization/fields', formData)
+    desensitizationFields.value = response.data.fields || []
+    desensitizationFields.value.forEach(f => {
+      desensitizationConfig.value[f] = ''
+    })
+  } catch (error) {
+    toolErrors.value.desensitization = error.response?.data?.error || '读取字段失败'
+  } finally {
+    toolLoading.value.desensitization = false
+  }
+}
+
+async function processDesensitization() {
+  if (!toolFiles.value.desensitization) {
+    toolErrors.value.desensitization = '请先上传文件'
+    return
+  }
+
+  const selectedFields = {}
+  Object.keys(desensitizationConfig.value).forEach(field => {
+    if (desensitizationConfig.value[field]) {
+      selectedFields[field] = desensitizationConfig.value[field]
+    }
+  })
+
+  if (Object.keys(selectedFields).length === 0) {
+    toolErrors.value.desensitization = '请至少选择一个字段进行脱敏'
+    return
+  }
+
+  toolLoading.value.desensitization = true
+  toolMessages.value.desensitization = ''
+  toolErrors.value.desensitization = ''
+
+  const formData = new FormData()
+  formData.append('file', toolFiles.value.desensitization)
+  formData.append('fields', JSON.stringify(selectedFields))
+
+  try {
+    const response = await axios.post('/api/tools/data-desensitization', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      responseType: 'blob'
+    })
+    const url = window.URL.createObjectURL(new Blob([response.data]))
+    const link = document.createElement('a')
+    link.href = url
+    link.setAttribute('download', 'desensitized_data.xlsx')
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    toolMessages.value.desensitization = '脱敏完成，文件已下载'
+  } catch (error) {
+    toolErrors.value.desensitization = error.response?.data?.error || '处理失败'
+  } finally {
+    toolLoading.value.desensitization = false
+  }
+}
+
+function resetDesensitization() {
+  desensitizationFileName.value = ''
+  toolFiles.value.desensitization = null
+  desensitizationFields.value = []
+  desensitizationConfig.value = {}
+  toolMessages.value.desensitization = ''
+  toolErrors.value.desensitization = ''
+  if (desensitizationFileInput.value) {
+    desensitizationFileInput.value.value = ''
+  }
 }
 
 // ===== 用户管理方法 =====
@@ -2651,6 +2762,57 @@ watch(articlesCurrentPage, fetchArticles)
   display: flex;
   align-items: center;
   gap: var(--space-4);
+}
+
+/* 数据脱敏样式 */
+.desensitization-fields {
+  margin-top: var(--space-6);
+  padding: var(--space-4);
+  background: var(--bg-secondary);
+  border-radius: var(--radius-md);
+}
+
+.desensitization-fields h4 {
+  margin: 0 0 var(--space-4);
+  color: var(--text-primary);
+}
+
+.field-list {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.field-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--border-lighter);
+}
+
+.field-row:last-child {
+  border-bottom: none;
+}
+
+.field-name {
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+.field-select {
+  padding: var(--space-1) var(--space-3);
+  font-size: 13px;
+  min-width: 140px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+.btn-group {
+  display: flex;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
 }
 
 /* 权限编辑样式 */

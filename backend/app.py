@@ -14,6 +14,12 @@ import jwt
 import datetime
 from functools import wraps
 import bcrypt
+import base64
+from io import BytesIO
+import matplotlib
+matplotlib.use('Agg')  # 非交互式后端
+import matplotlib.pyplot as plt
+from jinja2 import Template
 
 # 加载环境变量
 from dotenv import load_dotenv
@@ -1731,40 +1737,33 @@ def get_table_columns():
         print(f"Error in get_table_columns: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
+# 获取数据表某列的唯一值
+@app.route('/api/column-values', methods=['GET'])
+@protected
+def get_column_values():
+    """获取指定数据表某列的唯一值"""
+    table_name = request.args.get('table_name')
+    column = request.args.get('column')
+
+    if not table_name or not column:
+        return jsonify({'error': 'Missing parameters'}), 400
+
+    if engine is None:
+        return jsonify({'values': []}), 200
+
+    session = Session()
     try:
-        # 检查表是否存在
-        inspector = inspect(engine)
-        tables = inspector.get_table_names()
-        if table_name not in tables:
-            return jsonify({'months': []}), 200
-
-        # 获取所有列名
-        columns = [col['name'] for col in inspector.get_columns(table_name)]
-
-        # 检查是否有月份列（支持多种命名）
-        month_column = None
-        month_column_names = ['data_month', '月份', 'month', 'Month', 'dataMonth', 'data_monthly', 'report_month']
-        for col in month_column_names:
-            if col in columns:
-                month_column = col
-                break
-
-        if not month_column:
-            print(f"表 {table_name} 未找到月份字段，现有字段: {columns}")
-            return jsonify({'months': [], 'available_columns': columns}), 200
-
-        # 查询月份值
-        from sqlalchemy import text
-        with engine.connect() as conn:
-            result = conn.execute(text(f"SELECT DISTINCT `{month_column}` FROM `{table_name}` WHERE `{month_column}` IS NOT NULL AND `{month_column}` != '' ORDER BY `{month_column}` DESC"))
-            months = [row[0] for row in result.fetchall()]
-
-        return jsonify({'months': months}), 200
+        # 查询该列的唯一值
+        query = text(f"SELECT DISTINCT `{column}` FROM `{table_name}` WHERE `{column}` IS NOT NULL LIMIT 100")
+        result = session.execute(query)
+        values = [row[0] for row in result.fetchall()]
+        return jsonify({'values': values}), 200
     except Exception as e:
-        print(f"Error in get_available_months: {str(e)}")
-        import traceback
-        traceback.print_exc()
+        session.rollback()
+        print(f"Error in get_column_values: {str(e)}")
         return jsonify({'error': str(e)}), 500
+    finally:
+        session.close()
 
 # 删除数据表接口
 @app.route('/api/tables/<table_name>', methods=['DELETE'])
@@ -4971,6 +4970,74 @@ def extract_location():
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
+# 小工具模块API - 数据脱敏获取字段
+@app.route('/api/tools/data-desensitization/fields', methods=['POST'])
+@protected
+def get_desensitization_fields():
+    """获取Excel文件的所有字段名"""
+    try:
+        if 'file' not in request.files:
+            return jsonify({'error': '没有文件'}), 400
+
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({'error': '未选择文件'}), 400
+
+        # 读取Excel文件
+        df = pd.read_excel(file)
+
+        # 获取所有字段名
+        fields = list(df.columns)
+
+        return jsonify({'fields': fields}), 200
+    except Exception as e:
+        print(f"Error in get_desensitization_fields: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+# 小工具模块API - 数据脱敏处理
+@app.route('/api/tools/data-desensitization', methods=['POST'])
+@protected
+def process_desensitization():
+    """处理数据脱敏并返回处理后的文件"""
+    try:
+        if 'file' not in request.files:
+            return jsonify({'error': '没有文件'}), 400
+
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({'error': '未选择文件'}), 400
+
+        # 读取字段配置
+        fields_config = {}
+        if 'fields' in request.form:
+            import json
+            fields_config = json.loads(request.form['fields'])
+
+        # 读取Excel文件
+        df = pd.read_excel(file)
+
+        # 执行数据脱敏
+        processed_df = clean_and_desensitize_data(df, fields_config)
+
+        # 保存处理后的文件
+        import tempfile
+        import os
+        with tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False) as temp:
+            output_file = temp.name
+
+        processed_df.to_excel(output_file, index=False)
+
+        # 返回文件
+        from flask import send_file
+        return send_file(output_file, as_attachment=True, download_name='desensitized_data.xlsx', mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    except Exception as e:
+        print(f"Error in process_desensitization: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/categories', methods=['POST'])
 @admin_required
 def create_category():
@@ -5943,6 +6010,52 @@ def knowledge_delete_document(doc_id):
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/knowledge/documents/batch-delete', methods=['POST'])
+@protected
+def knowledge_batch_delete():
+    """批量删除文档"""
+    try:
+        data = request.get_json()
+        doc_ids = data.get('doc_ids', [])
+
+        if not doc_ids:
+            return jsonify({'error': '请提供要删除的文档ID列表'}), 400
+
+        success_count = 0
+        failed_count = 0
+        results = []
+
+        for doc_id in doc_ids:
+            result = delete_document(doc_id)
+            if result['success']:
+                success_count += 1
+                results.append({'doc_id': doc_id, 'success': True})
+            else:
+                failed_count += 1
+                results.append({'doc_id': doc_id, 'success': False, 'error': result.get('message', '删除失败')})
+
+        return jsonify({
+            'success': True,
+            'message': f'成功删除 {success_count} 个文档，失败 {failed_count} 个',
+            'success_count': success_count,
+            'failed_count': failed_count,
+            'results': results
+        }), 200
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/knowledge/documents/delete-all', methods=['POST'])
+@protected
+def knowledge_delete_all():
+    """删除所有文档"""
+    try:
+        from rag import delete_all_documents
+        result = delete_all_documents()
+        return jsonify(result), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/knowledge/upload', methods=['POST'])
 @protected
 def knowledge_upload_document():
@@ -6003,6 +6116,50 @@ def knowledge_upload_document():
         elif filename_lower.endswith('.pdf'):
             # PDF处理需要额外库，暂时返回错误提示
             return jsonify({'error': 'PDF文件支持即将添加，请暂时使用txt或docx格式'}), 400
+        elif filename_lower.endswith('.xlsx') or filename_lower.endswith('.xls'):
+            # 处理Excel文件 - 使用pandas智能处理合并单元格
+            import pandas as pd
+            import io
+            file_bytes = file.read()
+            xlsx = pd.ExcelFile(io.BytesIO(file_bytes))
+
+            for sheet_name in xlsx.sheet_names:
+                df = pd.read_excel(xlsx, sheet_name=sheet_name)
+
+                # 跳过空表
+                if df.empty or len(df.columns) == 0:
+                    continue
+
+                # 智能识别表头：检查第一行是否为有效表头
+                # 如果第一行大部分是"Unnamed"，说明第一行是标题，需要跳过
+                unnamed_count = sum(1 for col in df.columns if 'Unnamed' in str(col) or pd.isna(col))
+                if unnamed_count > len(df.columns) * 0.5:
+                    # 第一行是标题，重新读取，跳过第一行作为表头
+                    df = pd.read_excel(xlsx, sheet_name=sheet_name, header=1)
+
+                # 再次检查空表
+                if df.empty:
+                    continue
+
+                # 向上填充合并单元格（关键步骤）
+                df_filled = df.ffill()
+
+                content += f'【工作表: {sheet_name}】\n'
+
+                # 每行生成完整描述
+                for idx, row in df_filled.iterrows():
+                    row_desc = []
+                    for col in df_filled.columns:
+                        val = row[col]
+                        if pd.notna(val) and str(val).strip():
+                            # 处理浮点数显示（如1.0显示为1）
+                            if isinstance(val, float) and val == int(val):
+                                val = int(val)
+                            row_desc.append(f'{col}: {val}')
+                    if row_desc:
+                        content += ' | '.join(row_desc) + '\n\n'
+
+                content += '\n'
         else:
             # 尝试作为文本读取
             content = file.read().decode('utf-8', errors='ignore')
@@ -6028,6 +6185,156 @@ def knowledge_upload_document():
         import traceback
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
+
+# 批量上传进度存储
+batch_upload_progress = {}
+
+@app.route('/api/knowledge/batch-upload', methods=['POST'])
+@protected
+def knowledge_batch_upload():
+    """批量上传知识库文档（支持zip包）- 异步处理"""
+    import zipfile
+    import tempfile
+    import shutil
+    import threading
+    import uuid
+
+    try:
+        if 'file' not in request.files:
+            return jsonify({'error': '没有文件'}), 400
+
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({'error': '没有选择文件'}), 400
+
+        if not file.filename.lower().endswith('.zip'):
+            return jsonify({'error': '只支持zip文件'}), 400
+
+        # 创建临时目录
+        temp_dir = tempfile.mkdtemp()
+
+        # 保存zip文件
+        zip_path = os.path.join(temp_dir, 'upload.zip')
+        file.save(zip_path)
+
+        # 解压
+        with zipfile.ZipFile(zip_path, 'r') as zf:
+            zf.extractall(temp_dir)
+
+        # 统计文件数
+        total_files = 0
+        for root, dirs, files in os.walk(temp_dir):
+            for filename in files:
+                if filename.lower().endswith('.txt') or filename.lower().endswith('.md'):
+                    total_files += 1
+
+        # 生成任务ID
+        task_id = str(uuid.uuid4())[:8]
+
+        # 在启动线程前捕获用户名（request对象在线程中不可用）
+        username = request.username
+
+        # 初始化进度
+        batch_upload_progress[task_id] = {
+            'status': 'processing',
+            'total': total_files,
+            'processed': 0,
+            'success': 0,
+            'failed': 0
+        }
+
+        def process_files():
+            success_count = 0
+            failed_count = 0
+            processed = 0
+
+            for root, dirs, files in os.walk(temp_dir):
+                for filename in files:
+                    if filename.lower().endswith('.txt') or filename.lower().endswith('.md'):
+                        filepath = os.path.join(root, filename)
+                        processed += 1
+
+                        try:
+                            with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
+                                content = f.read()
+
+                            if not content.strip():
+                                continue
+
+                            timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S%f")
+                            name_part = os.path.splitext(filename)[0][:40]
+                            doc_id = f'doc_{timestamp}_{name_part}'
+
+                            metadata = {
+                                'filename': filename,
+                                'uploaded_by': username,
+                                'upload_time': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                                'batch_upload': True
+                            }
+
+                            print(f"[批量上传] 处理 {processed}/{total_files}: {filename}")
+
+                            result = insert_document(doc_id, content, filename, metadata)
+
+                            if result['success']:
+                                success_count += 1
+                            else:
+                                failed_count += 1
+
+                            import time
+                            time.sleep(0.2)
+
+                        except Exception as e:
+                            failed_count += 1
+                            print(f"[批量上传] 处理失败: {filename}, {e}")
+
+                        # 更新进度
+                        batch_upload_progress[task_id] = {
+                            'status': 'processing',
+                            'total': total_files,
+                            'processed': processed,
+                            'success': success_count,
+                            'failed': failed_count
+                        }
+
+            # 完成
+            batch_upload_progress[task_id] = {
+                'status': 'completed',
+                'total': total_files,
+                'processed': processed,
+                'success': success_count,
+                'failed': failed_count
+            }
+
+            # 清理临时目录
+            shutil.rmtree(temp_dir, ignore_errors=True)
+            print(f"[批量上传] 任务完成: {task_id}, 成功={success_count}, 失败={failed_count}")
+
+        # 启动后台线程
+        thread = threading.Thread(target=process_files)
+        thread.daemon = True
+        thread.start()
+
+        return jsonify({
+            'success': True,
+            'message': f'已开始处理 {total_files} 个文件，请稍后刷新查看结果',
+            'task_id': task_id,
+            'total_files': total_files
+        }), 200
+
+    except Exception as e:
+        print(f"Error in knowledge_batch_upload: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/knowledge/batch-upload/progress/<task_id>', methods=['GET'])
+@protected
+def get_batch_upload_progress(task_id):
+    """获取批量上传进度"""
+    if task_id in batch_upload_progress:
+        return jsonify(batch_upload_progress[task_id]), 200
+    return jsonify({'error': '任务不存在'}), 404
 
 @app.route('/api/knowledge/search', methods=['POST'])
 @protected
@@ -6075,6 +6382,1014 @@ def knowledge_init():
         return jsonify({'message': 'RAG模块初始化完成'}), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+@app.route('/api/smart-report', methods=['POST'])
+@protected
+def smart_report():
+    """智能报告生成API"""
+    try:
+        import re
+
+        data = request.json
+        table_name = data.get('table_name')
+        template_type = data.get('template_type')  # monthly_comparison, yearly_summary, special_analysis, full_analysis
+        months = data.get('months', [])  # 月度对比：选中的月份列表
+        year = data.get('year', '')  # 年度总结：选中的年份
+        dimension = data.get('dimension', '')  # 专项分析：分析维度字段
+        dimension_values = data.get('dimension_values', [])  # 专项分析：选中的值列表
+
+        if not table_name or not template_type:
+            return jsonify({'error': 'Missing required parameters'}), 400
+
+        print(f"[智能报告] 开始生成报告, 表: {table_name}, 模板: {template_type}")
+
+        # 从数据库读取数据
+        df = pd.read_sql_table(table_name, engine)
+        original_count = len(df)
+
+        # 根据模板类型筛选数据
+        filter_desc = ""
+        if template_type == 'monthly_comparison' and months:
+            month_col = None
+            for col in ['月份', 'data_month']:
+                if col in df.columns:
+                    month_col = col
+                    break
+            if month_col:
+                df = df[df[month_col].isin(months)]
+                filter_desc = f"筛选月份: {', '.join(months)}"
+
+        elif template_type == 'yearly_summary' and year:
+            # 从时间字段提取年份
+            time_col = None
+            for col in ['上报时间', '捆绑处置截止时间', 'created_time']:
+                if col in df.columns:
+                    time_col = col
+                    break
+            if time_col:
+                df[time_col] = pd.to_datetime(df[time_col], errors='coerce')
+                df = df[df[time_col].dt.year == int(year)]
+                filter_desc = f"筛选年份: {year}年"
+
+        elif template_type == 'special_analysis' and dimension and dimension_values:
+            if dimension in df.columns:
+                df = df[df[dimension].isin(dimension_values)]
+                filter_desc = f"筛选{dimension}: {', '.join(dimension_values)}"
+
+        filtered_count = len(df)
+        print(f"[智能报告] 数据筛选: {original_count} -> {filtered_count} 条")
+
+        if filtered_count == 0:
+            return jsonify({'error': '筛选后无数据，请调整筛选条件'}), 400
+
+        # ===== 生成图表 =====
+        charts_base64 = generate_smart_report_charts(df, template_type, months, dimension, dimension_values)
+
+        # ===== 调用LLM生成分析洞察 =====
+        insights = generate_report_insights(df, template_type, months, year, dimension, dimension_values)
+
+        # ===== 生成HTML报告 =====
+        html_report = render_smart_report_html(
+            df=df,
+            template_type=template_type,
+            months=months,
+            year=year,
+            dimension=dimension,
+            dimension_values=dimension_values,
+            charts_base64=charts_base64,
+            insights=insights,
+            filter_desc=filter_desc,
+            original_count=original_count,
+            filtered_count=filtered_count
+        )
+
+        print(f"[智能报告] 报告生成完成")
+        return jsonify({'html': html_report}), 200
+
+    except Exception as e:
+        print(f"Error in smart_report: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e), 'details': traceback.format_exc()}), 500
+
+
+def generate_smart_report_charts(df, template_type, months, dimension, dimension_values):
+    """生成精美图表，返回base64编码列表"""
+    charts = []
+
+    # 设置中文字体
+    plt.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'SimSun']
+    plt.rcParams['axes.unicode_minus'] = False
+
+    # 配色方案
+    colors_palette = ['#4ECDC4', '#FF6B6B', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD', '#98D8C8', '#F7DC6F', '#BB8FCE', '#85C1E9']
+    color_m1 = '#4ECDC4'  # 第一个月颜色
+    color_m2 = '#FF6B6B'  # 第二个月颜色
+
+    # 获取月份列
+    month_col = None
+    for col in ['月份', 'data_month']:
+        if col in df.columns:
+            month_col = col
+            break
+
+    # 是否是月度对比模式
+    is_monthly_comparison = template_type == 'monthly_comparison' and months and len(months) >= 2 and month_col
+
+    try:
+        # ===== 图1: 案件总量对比 =====
+        if months and month_col:
+            fig, ax = plt.subplots(figsize=(10, 8))
+
+            month_counts = df[month_col].value_counts().reindex(months)
+            x = np.arange(len(months))
+            bars = ax.bar(x, month_counts.values, color=[color_m1, color_m2][:len(months)], width=0.5, edgecolor='white', linewidth=2)
+            ax.set_title('案件总量对比', fontsize=20, fontweight='bold', pad=20)
+            ax.set_ylabel('案件数量', fontsize=14)
+            ax.set_xticks(x)
+            ax.set_xticklabels(months, fontsize=14)
+            ax.tick_params(axis='y', labelsize=12)
+
+            for bar, val in zip(bars, month_counts.values):
+                if pd.notna(val):
+                    ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + max(month_counts.values)*0.02,
+                            f'{int(val):,}', ha='center', va='bottom', fontsize=16, fontweight='bold')
+
+            # 添加环比变化
+            if len(months) == 2 and month_counts.values[0] > 0:
+                change = month_counts.values[1] - month_counts.values[0]
+                change_pct = change / month_counts.values[0] * 100
+                color = '#e74c3c' if change > 0 else '#27ae60'
+                ax.text(0.5, 0.95, f'环比变化: {change:+,} ({change_pct:+.1f}%)',
+                        transform=ax.transAxes, ha='center', fontsize=14, color=color, fontweight='bold')
+
+            plt.tight_layout()
+            charts.append(('01_案件总量对比', fig_to_base64(fig)))
+            plt.close(fig)
+
+        # ===== 图2: 问题类型对比 =====
+        if '大类名称' in df.columns:
+            if is_monthly_comparison:
+                # 月度对比模式：分组柱状图
+                fig, ax = plt.subplots(figsize=(14, 8))
+
+                df1 = df[df[month_col] == months[0]]
+                df2 = df[df[month_col] == months[1]]
+
+                type_counts1 = df1['大类名称'].value_counts()
+                type_counts2 = df2['大类名称'].value_counts()
+
+                # 合并所有类型
+                all_types = list(set(type_counts1.index) | set(type_counts2.index))
+                all_types.sort(key=lambda x: type_counts2.get(x, 0) + type_counts1.get(x, 0), reverse=True)
+
+                x = np.arange(len(all_types))
+                width = 0.35
+
+                vals1 = [type_counts1.get(t, 0) for t in all_types]
+                vals2 = [type_counts2.get(t, 0) for t in all_types]
+
+                bars1 = ax.bar(x - width/2, vals1, width, label=months[0], color=color_m1, edgecolor='white')
+                bars2 = ax.bar(x + width/2, vals2, width, label=months[1], color=color_m2, edgecolor='white')
+
+                ax.set_xticks(x)
+                ax.set_xticklabels(all_types, rotation=45, ha='right', fontsize=10)
+                ax.set_ylabel('案件数量', fontsize=12)
+                ax.set_title('各类型案件数量对比', fontsize=16, fontweight='bold', pad=15)
+                ax.legend(fontsize=12)
+
+                plt.tight_layout()
+            else:
+                # 非对比模式：饼图
+                fig, ax = plt.subplots(figsize=(10, 8))
+                type_counts = df['大类名称'].value_counts()
+                colors = colors_palette[:len(type_counts)]
+                wedges, texts, autotexts = ax.pie(type_counts.values, labels=type_counts.index, autopct='%1.1f%%',
+                                                   colors=colors, startangle=90, textprops={'fontsize': 10})
+                ax.set_title('问题类型分布', fontsize=16, fontweight='bold', pad=15)
+            charts.append(('02_问题类型对比', fig_to_base64(fig)))
+            plt.close(fig)
+
+        # ===== 图3: TOP10小类问题对比 =====
+        if '小类名称' in df.columns:
+            if is_monthly_comparison:
+                fig, ax = plt.subplots(figsize=(14, 8))
+
+                df1 = df[df[month_col] == months[0]]
+                df2 = df[df[month_col] == months[1]]
+
+                # 获取两个月的TOP10并集
+                top10_1 = df1['小类名称'].value_counts().head(10)
+                top10_2 = df2['小类名称'].value_counts().head(10)
+                all_items = list(set(top10_1.index) | set(top10_2.index))
+                all_items.sort(key=lambda x: top10_2.get(x, 0) + top10_1.get(x, 0), reverse=True)
+                all_items = all_items[:10]  # 取TOP10
+
+                y = np.arange(len(all_items))
+                width = 0.35
+
+                vals1 = [top10_1.get(t, 0) for t in all_items]
+                vals2 = [top10_2.get(t, 0) for t in all_items]
+
+                bars1 = ax.barh(y - width/2, vals1, width, label=months[0], color=color_m1, edgecolor='white')
+                bars2 = ax.barh(y + width/2, vals2, width, label=months[1], color=color_m2, edgecolor='white')
+
+                ax.set_yticks(y)
+                ax.set_yticklabels(all_items, fontsize=10)
+                ax.set_xlabel('案件数量', fontsize=12)
+                ax.set_title('TOP10小类问题对比', fontsize=16, fontweight='bold', pad=15)
+                ax.legend(fontsize=12)
+
+                plt.tight_layout()
+            else:
+                fig, ax = plt.subplots(figsize=(12, 6))
+                top10 = df['小类名称'].value_counts().head(10)
+                colors = plt.cm.Blues(np.linspace(0.4, 0.9, len(top10)))[::-1]
+                bars = ax.barh(range(len(top10)), top10.values[::-1], color=colors)
+                ax.set_yticks(range(len(top10)))
+                ax.set_yticklabels(top10.index[::-1], fontsize=10)
+                ax.set_xlabel('案件数量', fontsize=12)
+                ax.set_title('TOP10小类问题', fontsize=16, fontweight='bold', pad=15)
+            charts.append(('03_TOP10小类问题对比', fig_to_base64(fig)))
+            plt.close(fig)
+
+        # ===== 图4: 片区案件对比 =====
+        if '所属片区' in df.columns:
+            if is_monthly_comparison:
+                fig, ax = plt.subplots(figsize=(12, 6))
+
+                df1 = df[df[month_col] == months[0]]
+                df2 = df[df[month_col] == months[1]]
+
+                district_counts1 = df1['所属片区'].value_counts()
+                district_counts2 = df2['所属片区'].value_counts()
+
+                all_districts = list(set(district_counts1.index) | set(district_counts2.index))
+                all_districts.sort(key=lambda x: district_counts2.get(x, 0) + district_counts1.get(x, 0), reverse=True)
+
+                x = np.arange(len(all_districts))
+                width = 0.35
+
+                vals1 = [district_counts1.get(d, 0) for d in all_districts]
+                vals2 = [district_counts2.get(d, 0) for d in all_districts]
+
+                bars1 = ax.bar(x - width/2, vals1, width, label=months[0], color=color_m1, edgecolor='white')
+                bars2 = ax.bar(x + width/2, vals2, width, label=months[1], color=color_m2, edgecolor='white')
+
+                ax.set_xticks(x)
+                ax.set_xticklabels(all_districts, fontsize=10)
+                ax.set_ylabel('案件数量', fontsize=12)
+                ax.set_title('各片区案件对比', fontsize=16, fontweight='bold', pad=15)
+                ax.legend(fontsize=12)
+
+                plt.tight_layout()
+            else:
+                fig, ax = plt.subplots(figsize=(10, 6))
+                district_counts = df['所属片区'].value_counts()
+                colors = colors_palette[:len(district_counts)]
+                bars = ax.bar(district_counts.index, district_counts.values, color=colors, edgecolor='white')
+                ax.set_ylabel('案件数量', fontsize=12)
+                ax.set_title('各片区案件分布', fontsize=16, fontweight='bold', pad=15)
+            charts.append(('04_片区案件对比', fig_to_base64(fig)))
+            plt.close(fig)
+
+        # ===== 图5: 问题来源对比 =====
+        if '问题来源' in df.columns:
+            if is_monthly_comparison:
+                fig, ax = plt.subplots(figsize=(12, 6))
+
+                df1 = df[df[month_col] == months[0]]
+                df2 = df[df[month_col] == months[1]]
+
+                source_counts1 = df1['问题来源'].value_counts()
+                source_counts2 = df2['问题来源'].value_counts()
+
+                all_sources = list(set(source_counts1.index) | set(source_counts2.index))
+                all_sources.sort(key=lambda x: source_counts2.get(x, 0) + source_counts1.get(x, 0), reverse=True)
+
+                x = np.arange(len(all_sources))
+                width = 0.35
+
+                vals1 = [source_counts1.get(s, 0) for s in all_sources]
+                vals2 = [source_counts2.get(s, 0) for s in all_sources]
+
+                bars1 = ax.bar(x - width/2, vals1, width, label=months[0], color=color_m1, edgecolor='white')
+                bars2 = ax.bar(x + width/2, vals2, width, label=months[1], color=color_m2, edgecolor='white')
+
+                ax.set_xticks(x)
+                ax.set_xticklabels(all_sources, rotation=45, ha='right', fontsize=10)
+                ax.set_ylabel('案件数量', fontsize=12)
+                ax.set_title('问题来源对比', fontsize=16, fontweight='bold', pad=15)
+                ax.legend(fontsize=12)
+
+                plt.tight_layout()
+            else:
+                fig, ax = plt.subplots(figsize=(10, 6))
+                source_counts = df['问题来源'].value_counts()
+                colors = colors_palette[:len(source_counts)]
+                wedges, texts, autotexts = ax.pie(source_counts.values, labels=source_counts.index, autopct='%1.1f%%',
+                                                   colors=colors, startangle=90, textprops={'fontsize': 10})
+                ax.set_title('问题来源分布', fontsize=16, fontweight='bold', pad=15)
+            charts.append(('05_问题来源对比', fig_to_base64(fig)))
+            plt.close(fig)
+
+        # ===== 图6: 街道案件对比 =====
+        if '所属街道' in df.columns:
+            if is_monthly_comparison:
+                fig, ax = plt.subplots(figsize=(14, 6))
+
+                df1 = df[df[month_col] == months[0]]
+                df2 = df[df[month_col] == months[1]]
+
+                street_counts1 = df1['所属街道'].value_counts()
+                street_counts2 = df2['所属街道'].value_counts()
+
+                all_streets = list(set(street_counts1.index) | set(street_counts2.index))
+                all_streets.sort(key=lambda x: street_counts2.get(x, 0) + street_counts1.get(x, 0), reverse=True)
+
+                x = np.arange(len(all_streets))
+                width = 0.35
+
+                vals1 = [street_counts1.get(s, 0) for s in all_streets]
+                vals2 = [street_counts2.get(s, 0) for s in all_streets]
+
+                bars1 = ax.bar(x - width/2, vals1, width, label=months[0], color=color_m1, edgecolor='white')
+                bars2 = ax.bar(x + width/2, vals2, width, label=months[1], color=color_m2, edgecolor='white')
+
+                ax.set_xticks(x)
+                ax.set_xticklabels(all_streets, rotation=45, ha='right', fontsize=10)
+                ax.set_ylabel('案件数量', fontsize=12)
+                ax.set_title('各街道案件对比', fontsize=16, fontweight='bold', pad=15)
+                ax.legend(fontsize=12)
+
+                plt.tight_layout()
+            else:
+                fig, ax = plt.subplots(figsize=(12, 6))
+                street_counts = df['所属街道'].value_counts()
+                colors = plt.cm.Blues(np.linspace(0.4, 0.9, len(street_counts)))[::-1]
+                bars = ax.bar(range(len(street_counts)), street_counts.values, color=colors)
+                ax.set_xticks(range(len(street_counts)))
+                ax.set_xticklabels(street_counts.index, rotation=45, ha='right', fontsize=10)
+                ax.set_ylabel('案件数量', fontsize=12)
+                ax.set_title('各街道案件分布', fontsize=16, fontweight='bold', pad=15)
+            charts.append(('06_街道案件对比', fig_to_base64(fig)))
+            plt.close(fig)
+
+        # ===== 图7: 处置部门TOP10对比 =====
+        if '处置部门' in df.columns:
+            if is_monthly_comparison:
+                fig, ax = plt.subplots(figsize=(14, 8))
+
+                df1 = df[df[month_col] == months[0]]
+                df2 = df[df[month_col] == months[1]]
+
+                dept_counts1 = df1['处置部门'].value_counts().head(10)
+                dept_counts2 = df2['处置部门'].value_counts().head(10)
+
+                all_depts = list(set(dept_counts1.index) | set(dept_counts2.index))
+                all_depts.sort(key=lambda x: dept_counts2.get(x, 0) + dept_counts1.get(x, 0), reverse=True)
+                all_depts = all_depts[:10]  # 取TOP10
+
+                y = np.arange(len(all_depts))
+                width = 0.35
+
+                vals1 = [dept_counts1.get(d, 0) for d in all_depts]
+                vals2 = [dept_counts2.get(d, 0) for d in all_depts]
+
+                bars1 = ax.barh(y - width/2, vals1, width, label=months[0], color=color_m1, edgecolor='white')
+                bars2 = ax.barh(y + width/2, vals2, width, label=months[1], color=color_m2, edgecolor='white')
+
+                ax.set_yticks(y)
+                ax.set_yticklabels(all_depts, fontsize=10)
+                ax.set_xlabel('案件数量', fontsize=12)
+                ax.set_title('处置部门TOP10对比', fontsize=16, fontweight='bold', pad=15)
+                ax.legend(fontsize=12)
+
+                plt.tight_layout()
+            else:
+                fig, ax = plt.subplots(figsize=(12, 6))
+                dept_counts = df['处置部门'].value_counts().head(10)
+                colors = plt.cm.Greens(np.linspace(0.4, 0.9, len(dept_counts)))[::-1]
+                bars = ax.barh(range(len(dept_counts)), dept_counts.values[::-1], color=colors)
+                ax.set_yticks(range(len(dept_counts)))
+                ax.set_yticklabels(dept_counts.index[::-1], fontsize=10)
+                ax.set_xlabel('案件数量', fontsize=12)
+                ax.set_title('处置部门TOP10', fontsize=16, fontweight='bold', pad=15)
+            charts.append(('07_处置部门对比', fig_to_base64(fig)))
+            plt.close(fig)
+
+        # ===== 图8: 案件状态对比 =====
+        if '当前阶段名称' in df.columns:
+            if is_monthly_comparison:
+                fig, ax = plt.subplots(figsize=(10, 6))
+
+                df1 = df[df[month_col] == months[0]]
+                df2 = df[df[month_col] == months[1]]
+
+                status_counts1 = df1['当前阶段名称'].value_counts()
+                status_counts2 = df2['当前阶段名称'].value_counts()
+
+                all_status = list(set(status_counts1.index) | set(status_counts2.index))
+
+                x = np.arange(len(all_status))
+                width = 0.35
+
+                vals1 = [status_counts1.get(s, 0) for s in all_status]
+                vals2 = [status_counts2.get(s, 0) for s in all_status]
+
+                bars1 = ax.bar(x - width/2, vals1, width, label=months[0], color=color_m1, edgecolor='white')
+                bars2 = ax.bar(x + width/2, vals2, width, label=months[1], color=color_m2, edgecolor='white')
+
+                ax.set_xticks(x)
+                ax.set_xticklabels(all_status, fontsize=10)
+                ax.set_ylabel('案件数量', fontsize=12)
+                ax.set_title('案件状态对比', fontsize=16, fontweight='bold', pad=15)
+                ax.legend(fontsize=12)
+
+                plt.tight_layout()
+            else:
+                fig, ax = plt.subplots(figsize=(8, 6))
+                status_counts = df['当前阶段名称'].value_counts()
+                colors = ['#27ae60', '#f39c12', '#e74c3c'][:len(status_counts)]
+                wedges, texts, autotexts = ax.pie(status_counts.values, labels=status_counts.index, autopct='%1.1f%%',
+                                                   colors=colors, startangle=90, textprops={'fontsize': 11})
+                ax.set_title('案件状态分布', fontsize=16, fontweight='bold', pad=15)
+            charts.append(('08_案件状态对比', fig_to_base64(fig)))
+            plt.close(fig)
+
+    except Exception as e:
+        print(f"[智能报告] 图表生成失败: {e}")
+        import traceback
+        traceback.print_exc()
+
+    return charts
+
+
+def fig_to_base64(fig):
+    """将matplotlib图表转换为base64字符串"""
+    buf = BytesIO()
+    fig.savefig(buf, format='png', dpi=150, bbox_inches='tight', facecolor='white')
+    buf.seek(0)
+    return base64.b64encode(buf.read()).decode('utf-8')
+
+
+def generate_report_insights(df, template_type, months, year, dimension, dimension_values):
+    """调用LLM生成分析洞察"""
+    try:
+        # 准备数据摘要
+        data_summary = f"""
+数据总量: {len(df)}
+字段数量: {len(df.columns)}
+主要字段:
+"""
+
+        # 月度对比时，添加详细的对比数据
+        if template_type == 'monthly_comparison' and months and len(months) >= 2:
+            month_col = None
+            for col in ['月份', 'data_month']:
+                if col in df.columns:
+                    month_col = col
+                    break
+
+            if month_col:
+                data_summary += f"\n对比月份: {months[0]} vs {months[1]}"
+                data_summary += f"\n各月数据量:"
+                for m in months:
+                    count = len(df[df[month_col] == m])
+                    data_summary += f"\n  - {m}: {count}件"
+
+                # 类型变化
+                if '大类名称' in df.columns:
+                    data_summary += f"\n各类型月度变化:"
+                    for m_idx in range(len(months)-1):
+                        m1, m2 = months[m_idx], months[m_idx+1]
+                        df1 = df[df[month_col] == m1]
+                        df2 = df[df[month_col] == m2]
+                        for cat in df['大类名称'].unique()[:5]:
+                            c1 = len(df1[df1['大类名称'] == cat])
+                            c2 = len(df2[df2['大类名称'] == cat])
+                            change = c2 - c1
+                            pct = (c2 - c1) / c1 * 100 if c1 > 0 else 0
+                            data_summary += f"\n  - {cat}: {c1}→{c2} ({change:+d}, {pct:+.1f}%)"
+
+        # 添加关键统计
+        for col in ['大类名称', '小类名称', '所属片区', '问题来源', '处置部门']:
+            if col in df.columns:
+                top3 = df[col].value_counts().head(3)
+                data_summary += f"\n{col} TOP3: {dict(top3)}"
+
+        # 构建提示词
+        if template_type == 'monthly_comparison':
+            prompt = f"""请分析以下案件数据的月度对比情况：
+
+{data_summary}
+
+对比月份: {months[0]} 与 {months[1]}
+
+请生成以下内容（以JSON格式返回），要求分析深入、具体，引用具体数据：
+{{
+    "summary": "数据概况，明确说明对比的是哪两个月，各有多少案件，环比变化百分比",
+    "key_findings": [
+        "发现1：具体说明哪个类型增长/下降最多，引用具体数字和百分比",
+        "发现2：哪个片区变化最显著，引用具体数据",
+        "发现3：其他重要变化趋势"
+    ],
+    "recommendations": [
+        "建议1：针对变化趋势的具体管理建议",
+        "建议2：资源配置建议",
+        "建议3：重点关注领域建议"
+    ]
+}}
+"""
+        elif template_type == 'yearly_summary':
+            prompt = f"""请分析以下案件数据的年度总结：
+
+{data_summary}
+
+分析年份: {year}年
+
+请生成以下内容（以JSON格式返回）：
+{{
+    "summary": "数据概况（2-3句话）",
+    "key_findings": ["发现1", "发现2", "发现3"],
+    "recommendations": ["建议1", "建议2", "建议3"]
+}}
+"""
+        elif template_type == 'special_analysis':
+            prompt = f"""请分析以下专项数据：
+
+{data_summary}
+
+分析维度: {dimension}
+分析范围: {', '.join(dimension_values) if dimension_values else '全部'}
+
+请生成以下内容（以JSON格式返回）：
+{{
+    "summary": "数据概况（2-3句话）",
+    "key_findings": ["发现1", "发现2", "发现3"],
+    "recommendations": ["建议1", "建议2", "建议3"]
+}}
+"""
+        else:
+            prompt = f"""请分析以下案件数据：
+
+{data_summary}
+
+请生成以下内容（以JSON格式返回）：
+{{
+    "summary": "数据概况（2-3句话）",
+    "key_findings": ["发现1", "发现2", "发现3"],
+    "recommendations": ["建议1", "建议2", "建议3"]
+}}
+"""
+
+        messages = [
+            {"role": "system", "content": "你是一个数据分析专家，擅长从数据中发现规律并给出建议。"},
+            {"role": "user", "content": prompt}
+        ]
+
+        # 调用LLM
+        success, result = call_llm_api(
+            API_URL, API_KEY, MODEL,
+            messages,
+            max_tokens=1500,
+            provider_name="火山引擎-智能报告"
+        )
+
+        if success:
+            # 解析JSON
+            json_match = re.search(r'\{[\s\S]*\}', result)
+            if json_match:
+                return json.loads(json_match.group())
+
+        return {"summary": "分析生成中...", "key_findings": [], "recommendations": []}
+
+    except Exception as e:
+        print(f"[智能报告] LLM调用失败: {e}")
+        return {"summary": "分析生成中...", "key_findings": [], "recommendations": []}
+
+
+def render_smart_report_html(df, template_type, months, year, dimension, dimension_values,
+                              charts_base64, insights, filter_desc, original_count, filtered_count):
+    """渲染精美HTML报告"""
+
+    # 获取模板名称
+    template_names = {
+        'monthly_comparison': '月度对比分析报告',
+        'yearly_summary': '年度总结报告',
+        'special_analysis': '专项分析报告',
+        'full_analysis': '全量分析报告'
+    }
+    report_title = template_names.get(template_type, '数据分析报告')
+
+    # 月度对比时，标题显示对比月份
+    if template_type == 'monthly_comparison' and months and len(months) >= 2:
+        report_title = f'{months[0]}与{months[1]}对比分析报告'
+
+    # 生成图表HTML
+    charts_html = ""
+    for title, img_base64 in charts_base64:
+        charts_html += f'''
+        <div class="chart-container">
+            <h3 class="chart-title">{title.replace('_', ' ')}</h3>
+            <img src="data:image/png;base64,{img_base64}" alt="{title}" class="chart-img">
+        </div>
+        '''
+
+    # 生成数据表格HTML
+    tables_html = ""
+
+    # 月度对比时，生成对比核心指标
+    if template_type == 'monthly_comparison' and months and len(months) >= 2:
+        month_col = None
+        for col in ['月份', 'data_month']:
+            if col in df.columns:
+                month_col = col
+                break
+
+        if month_col:
+            m1_count = len(df[df[month_col] == months[0]])
+            m2_count = len(df[df[month_col] == months[1]])
+            change = m2_count - m1_count
+            change_pct = (m2_count - m1_count) / m1_count * 100 if m1_count > 0 else 0
+            change_color = '#e74c3c' if change > 0 else '#27ae60'
+
+            tables_html += f'''
+            <div class="comparison-header">
+                <div class="month-box">
+                    <div class="month-label">{months[0]}</div>
+                    <div class="month-value">{m1_count:,}</div>
+                    <div class="month-unit">件</div>
+                </div>
+                <div class="comparison-arrow">
+                    <div class="arrow-text">环比变化</div>
+                    <div class="arrow-value" style="color: {change_color}">{change:+,}</div>
+                    <div class="arrow-pct" style="color: {change_color}">{change_pct:+.1f}%</div>
+                </div>
+                <div class="month-box">
+                    <div class="month-label">{months[1]}</div>
+                    <div class="month-value">{m2_count:,}</div>
+                    <div class="month-unit">件</div>
+                </div>
+            </div>
+            '''
+
+    # 核心指标
+    completion_rate = 0
+    if '当前阶段名称' in df.columns:
+        completion_rate = (df['当前阶段名称'] == '[办结]').sum() / len(df) * 100
+
+    tables_html += f'''
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-value">{filtered_count:,}</div>
+            <div class="stat-label">案件总数</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">{len(df["大类名称"].unique()) if "大类名称" in df.columns else 0}</div>
+            <div class="stat-label">问题类型</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">{completion_rate:.1f}%</div>
+            <div class="stat-label">结案率</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">{len(df["所属片区"].unique()) if "所属片区" in df.columns else 0}</div>
+            <div class="stat-label">涉及片区</div>
+        </div>
+    </div>
+    '''
+
+    # 月度对比时，生成类型变化对比表
+    if template_type == 'monthly_comparison' and '大类名称' in df.columns and months and len(months) >= 2:
+        month_col = None
+        for col in ['月份', 'data_month']:
+            if col in df.columns:
+                month_col = col
+                break
+
+        if month_col:
+            df1 = df[df[month_col] == months[0]]
+            df2 = df[df[month_col] == months[1]]
+
+            tables_html += f'''
+            <div class="data-table-section">
+                <h3 class="section-title">各类型案件对比</h3>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>类型名称</th>
+                            <th>{months[0]}</th>
+                            <th>{months[1]}</th>
+                            <th>变化</th>
+                            <th>变化率</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            '''
+
+            for cat in df['大类名称'].unique():
+                c1 = len(df1[df1['大类名称'] == cat])
+                c2 = len(df2[df2['大类名称'] == cat])
+                change = c2 - c1
+                pct = (c2 - c1) / c1 * 100 if c1 > 0 else (100 if c2 > 0 else 0)
+                change_color = 'color: #e74c3c' if change > 0 else ('color: #27ae60' if change < 0 else '')
+
+                tables_html += f'''
+                        <tr>
+                            <td>{cat}</td>
+                            <td>{c1:,}</td>
+                            <td>{c2:,}</td>
+                            <td style="{change_color}">{change:+,}</td>
+                            <td style="{change_color}">{pct:+.1f}%</td>
+                        </tr>
+                '''
+
+            tables_html += '''
+                    </tbody>
+                </table>
+            </div>
+            '''
+
+    # 类型统计表（非月度对比时显示）
+    elif '大类名称' in df.columns:
+        type_stats = df['大类名称'].value_counts().head(10)
+        tables_html += '''
+        <div class="data-table-section">
+            <h3 class="section-title">问题类型统计</h3>
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>类型名称</th>
+                        <th>案件数量</th>
+                        <th>占比</th>
+                    </tr>
+                </thead>
+                <tbody>
+        '''
+        for name, count in type_stats.items():
+            pct = count / filtered_count * 100
+            tables_html += f'''
+                    <tr>
+                        <td>{name}</td>
+                        <td>{count:,}</td>
+                        <td>{pct:.1f}%</td>
+                    </tr>
+            '''
+        tables_html += '''
+                </tbody>
+            </table>
+        </div>
+        '''
+
+    # 洞察建议
+    findings_html = ""
+    for finding in insights.get('key_findings', []):
+        findings_html += f'<li>{finding}</li>'
+
+    recommendations_html = ""
+    for rec in insights.get('recommendations', []):
+        recommendations_html += f'<li>{rec}</li>'
+
+    # HTML模板
+    html_template = f'''
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{report_title}</title>
+    <style>
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        body {{
+            font-family: 'Microsoft YaHei', 'PingFang SC', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }}
+        .container {{
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }}
+        .header {{
+            text-align: center;
+            padding-bottom: 30px;
+            border-bottom: 3px solid #667eea;
+            margin-bottom: 40px;
+        }}
+        .header h1 {{
+            font-size: 32px;
+            color: #333;
+            margin-bottom: 10px;
+        }}
+        .header .subtitle {{
+            font-size: 16px;
+            color: #666;
+        }}
+        .comparison-header {{
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 40px;
+            margin-bottom: 40px;
+            padding: 30px;
+            background: linear-gradient(135deg, #f5f7fa 0%, #e4e8ec 100%);
+            border-radius: 20px;
+        }}
+        .month-box {{
+            text-align: center;
+            padding: 20px 40px;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }}
+        .month-label {{
+            font-size: 18px;
+            color: #666;
+            margin-bottom: 10px;
+        }}
+        .month-value {{
+            font-size: 48px;
+            font-weight: bold;
+            color: #667eea;
+        }}
+        .month-unit {{
+            font-size: 14px;
+            color: #999;
+        }}
+        .comparison-arrow {{
+            text-align: center;
+        }}
+        .arrow-text {{
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 5px;
+        }}
+        .arrow-value {{
+            font-size: 28px;
+            font-weight: bold;
+        }}
+        .arrow-pct {{
+            font-size: 18px;
+            font-weight: bold;
+        }}
+        .stats-grid {{
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 20px;
+            margin-bottom: 40px;
+        }}
+        .stat-card {{
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            padding: 25px;
+            border-radius: 15px;
+            text-align: center;
+        }}
+        .stat-card .stat-value {{
+            font-size: 28px;
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 5px;
+        }}
+        .stat-card .stat-label {{
+            font-size: 14px;
+            color: #666;
+        }}
+        .charts-grid {{
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 30px;
+            margin-bottom: 40px;
+        }}
+        .chart-container {{
+            background: #f8f9fa;
+            border-radius: 15px;
+            padding: 20px;
+        }}
+        .chart-title {{
+            font-size: 16px;
+            color: #333;
+            margin-bottom: 15px;
+            text-align: center;
+        }}
+        .chart-img {{
+            width: 100%;
+            border-radius: 10px;
+        }}
+        .data-table-section {{
+            margin-bottom: 40px;
+        }}
+        .section-title {{
+            font-size: 20px;
+            color: #333;
+            margin-bottom: 20px;
+            padding-left: 15px;
+            border-left: 4px solid #667eea;
+        }}
+        .data-table {{
+            width: 100%;
+            border-collapse: collapse;
+        }}
+        .data-table th {{
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px;
+            text-align: center;
+        }}
+        .data-table td {{
+            padding: 12px;
+            text-align: center;
+            border-bottom: 1px solid #eee;
+        }}
+        .data-table tr:nth-child(even) {{
+            background: #f8f9fa;
+        }}
+        .insights-section {{
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 30px;
+            margin-bottom: 40px;
+        }}
+        .insight-card {{
+            background: linear-gradient(to right, #e3f2fd, #f3e5f5);
+            padding: 25px;
+            border-radius: 15px;
+            border-left: 4px solid #2196f3;
+        }}
+        .insight-card h4 {{
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 18px;
+        }}
+        .insight-card ul {{
+            list-style: none;
+            padding: 0;
+        }}
+        .insight-card li {{
+            padding: 8px 0;
+            color: #555;
+            font-size: 14px;
+            border-bottom: 1px dashed #ddd;
+        }}
+        .insight-card li:last-child {{
+            border-bottom: none;
+        }}
+        .footer {{
+            text-align: center;
+            padding-top: 30px;
+            border-top: 1px solid #eee;
+            color: #999;
+            font-size: 12px;
+        }}
+        @media (max-width: 768px) {{
+            .stats-grid, .charts-grid, .insights-section {{
+                grid-template-columns: 1fr;
+            }}
+        }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>{report_title}</h1>
+            <div class="subtitle">{filter_desc} | 生成时间: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}</div>
+        </div>
+
+        {tables_html}
+
+        <div class="charts-grid">
+            {charts_html}
+        </div>
+
+        <div class="insights-section">
+            <div class="insight-card">
+                <h4>关键发现</h4>
+                <ul>
+                    {findings_html}
+                </ul>
+            </div>
+            <div class="insight-card" style="border-left-color: #27ae60; background: linear-gradient(to right, #e8f5e9, #f1f8e9);">
+                <h4>管理建议</h4>
+                <ul>
+                    {recommendations_html}
+                </ul>
+            </div>
+        </div>
+
+        <div class="footer">
+            <p>智能报告 - 自动生成 | 数据来源: 案件管理系统</p>
+        </div>
+    </div>
+</body>
+</html>
+    '''
+
+    return html_template
+
 
 @app.route('/uploads/<path:filename>')
 def serve_upload(filename):

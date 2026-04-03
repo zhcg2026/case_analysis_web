@@ -31,7 +31,7 @@
 
         <div class="upload-area">
           <div class="file-upload">
-            <input type="file" ref="fileInput" @change="handleFileUpload" accept=".txt,.md,.docx" hidden />
+            <input type="file" ref="fileInput" @change="handleFileUpload" accept=".txt,.md,.docx,.xlsx" hidden />
             <button class="upload-btn" @click="$refs.fileInput.click()">
               <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
@@ -41,6 +41,17 @@
               选择文件
             </button>
             <span class="file-info" v-if="selectedFile">{{ selectedFile.name }}</span>
+          </div>
+
+          <div class="file-upload">
+            <input type="file" ref="zipInput" @change="handleZipUpload" accept=".zip" hidden />
+            <button class="upload-btn batch-btn" @click="$refs.zipInput.click()">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+              </svg>
+              批量上传(zip)
+            </button>
+            <span class="file-info" v-if="selectedZip">{{ selectedZip.name }}</span>
           </div>
 
           <div class="text-upload">
@@ -57,23 +68,47 @@
               {{ uploadResult.message }}
             </span>
           </div>
+
+          <!-- 批量上传进度 -->
+          <div class="batch-progress" v-if="batchProgress">
+            <div class="progress-bar">
+              <div class="progress-fill" :style="{ width: (batchProgress.processed / batchProgress.total * 100) + '%' }"></div>
+            </div>
+            <div class="progress-text">
+              处理中: {{ batchProgress.processed }} / {{ batchProgress.total }}
+              (成功: {{ batchProgress.success }}, 失败: {{ batchProgress.failed }})
+            </div>
+          </div>
         </div>
 
         <!-- 文档列表 -->
         <div class="documents-list">
           <div class="section-header">
             <h3>已上传文档</h3>
-            <button class="refresh-btn" @click="loadDocuments">
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/>
-                <path d="M21 3v5h-5"/>
-              </svg>
-              刷新
-            </button>
+            <div class="header-actions">
+              <button class="batch-delete-btn" @click="batchDeleteDocuments" v-if="selectedDocs.length > 0">
+                删除选中 ({{ selectedDocs.length }})
+              </button>
+              <button class="refresh-btn" @click="loadDocuments">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/>
+                  <path d="M21 3v5h-5"/>
+                </svg>
+                刷新
+              </button>
+            </div>
           </div>
 
           <div class="documents-table" v-if="documents.length">
+            <div class="doc-header">
+              <label class="select-all">
+                <input type="checkbox" :checked="selectedDocs.length === documents.length" @change="toggleSelectAll">
+                全选
+              </label>
+              <span class="doc-count">共 {{ documents.length }} 个文档</span>
+            </div>
             <div class="doc-item" v-for="doc in documents" :key="doc.doc_id">
+              <input type="checkbox" :value="doc.doc_id" v-model="selectedDocs" class="doc-checkbox">
               <div class="doc-info">
                 <span class="doc-id">{{ doc.doc_id }}</span>
                 <span class="doc-chunks">{{ doc.chunks }} 个片段</span>
@@ -166,7 +201,9 @@ const userStore = useUserStore()
 // 状态
 const stats = ref({ exists: false, count: 0 })
 const documents = ref([])
+const selectedDocs = ref([])
 const selectedFile = ref(null)
+const selectedZip = ref(null)
 const textContent = ref('')
 const textSource = ref('')
 const uploading = ref(false)
@@ -221,6 +258,89 @@ function handleFileUpload(e) {
   selectedFile.value = e.target.files[0]
   textContent.value = ''
   uploadResult.value = null
+}
+
+// 处理zip文件选择
+function handleZipUpload(e) {
+  selectedZip.value = e.target.files[0]
+  uploadResult.value = null
+  if (selectedZip.value) {
+    uploadZip()
+  }
+}
+
+// 批量上传进度
+const batchProgress = ref(null)
+
+// 批量上传zip
+async function uploadZip() {
+  if (!selectedZip.value) {
+    return
+  }
+
+  uploading.value = true
+  uploadResult.value = null
+  batchProgress.value = null
+
+  try {
+    const formData = new FormData()
+    formData.append('file', selectedZip.value)
+
+    const res = await fetch(`${apiBase}/batch-upload`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${localStorage.getItem('token')}`
+      },
+      body: formData
+    })
+    const data = await res.json()
+    uploadResult.value = data
+
+    if (data.success && data.task_id) {
+      selectedZip.value = null
+      // 开始轮询进度
+      pollProgress(data.task_id, data.total_files)
+    }
+  } catch (e) {
+    uploadResult.value = { success: false, message: '批量上传失败: ' + e.message }
+    uploading.value = false
+  }
+}
+
+// 轮询上传进度
+async function pollProgress(taskId, totalFiles) {
+  batchProgress.value = { total: totalFiles, processed: 0, success: 0, failed: 0 }
+
+  const poll = async () => {
+    try {
+      const res = await fetch(`${apiBase}/batch-upload/progress/${taskId}`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      })
+      const data = await res.json()
+
+      if (data.status === 'completed') {
+        batchProgress.value = data
+        uploading.value = false
+        uploadResult.value = {
+          success: true,
+          message: `处理完成！成功 ${data.success} 个，失败 ${data.failed} 个`
+        }
+        loadStats()
+        loadDocuments()
+      } else {
+        batchProgress.value = data
+        // 继续轮询
+        setTimeout(poll, 2000)
+      }
+    } catch (e) {
+      console.error('获取进度失败:', e)
+      setTimeout(poll, 2000)
+    }
+  }
+
+  poll()
 }
 
 // 上传文档
@@ -278,6 +398,40 @@ async function uploadDocument() {
     uploadResult.value = { success: false, message: '上传失败: ' + e.message }
   } finally {
     uploading.value = false
+  }
+}
+
+// 全选/取消全选
+function toggleSelectAll() {
+  if (selectedDocs.value.length === documents.value.length) {
+    selectedDocs.value = []
+  } else {
+    selectedDocs.value = documents.value.map(d => d.doc_id)
+  }
+}
+
+// 批量删除
+async function batchDeleteDocuments() {
+  if (selectedDocs.value.length === 0) return
+  if (!confirm(`确定删除选中的 ${selectedDocs.value.length} 个文档？`)) return
+
+  try {
+    const res = await fetch(`${apiBase}/documents/batch-delete`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ doc_ids: selectedDocs.value })
+    })
+    const data = await res.json()
+    if (data.success) {
+      alert(data.message)
+      selectedDocs.value = []
+      loadStats()
+      loadDocuments()
+    } else {
+      alert('删除失败: ' + data.error)
+    }
+  } catch (e) {
+    alert('删除失败: ' + e.message)
   }
 }
 
@@ -459,6 +613,14 @@ onMounted(() => {
   background: var(--primary-600);
 }
 
+.upload-btn.batch-btn {
+  background: var(--success, #10b981);
+}
+
+.upload-btn.batch-btn:hover {
+  background: var(--success-dark, #059669);
+}
+
 .file-info {
   color: var(--text-secondary);
   font-size: 13px;
@@ -520,10 +682,40 @@ onMounted(() => {
   color: var(--danger);
 }
 
+.batch-progress {
+  margin-top: var(--space-3);
+}
+
+.batch-progress .progress-bar {
+  width: 100%;
+  height: 8px;
+  background: var(--fill-light);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.batch-progress .progress-fill {
+  height: 100%;
+  background: var(--primary-500);
+  transition: width 0.3s ease;
+}
+
+.batch-progress .progress-text {
+  margin-top: var(--space-1);
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
 .documents-list {
   margin-top: var(--space-6);
   padding-top: var(--space-4);
   border-top: 1px solid var(--border-lighter);
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
 }
 
 .refresh-btn {
@@ -539,10 +731,51 @@ onMounted(() => {
   cursor: pointer;
 }
 
+.batch-delete-btn {
+  padding: var(--space-1) var(--space-3);
+  background: var(--danger, #ef4444);
+  color: white;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.batch-delete-btn:hover {
+  opacity: 0.9;
+}
+
 .documents-table {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
+}
+
+.doc-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-2);
+  background: var(--fill-light);
+  border-radius: var(--radius-sm);
+}
+
+.select-all {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.doc-count {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.doc-checkbox {
+  margin-right: var(--space-2);
+  cursor: pointer;
 }
 
 .doc-item {

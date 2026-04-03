@@ -167,6 +167,94 @@
       </div>
     </div>
 
+    <!-- 智能报告 -->
+    <div v-else-if="activeTab === 'smart-report'" class="content-card">
+      <div class="config-section">
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">选择数据表</label>
+            <select v-model="reportTable" class="form-select" :disabled="reportLoading">
+              <option value="">请选择</option>
+              <option v-for="table in tables" :key="table" :value="table">{{ table }}</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">分析模板</label>
+            <select v-model="reportTemplate" class="form-select" :disabled="reportLoading">
+              <option v-for="t in reportTemplates" :key="t.value" :value="t.value">{{ t.label }}</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- 月度对比参数 -->
+        <div v-if="reportTemplate === 'monthly_comparison'" class="param-section">
+          <label class="form-label">选择对比月份（可多选）</label>
+          <div class="checkbox-group">
+            <label v-for="month in reportAvailableMonths" :key="month" class="checkbox-item">
+              <input type="checkbox" :value="month" v-model="reportMonths" :disabled="reportLoading">
+              <span>{{ formatMonth(month) }}</span>
+            </label>
+          </div>
+          <div v-if="reportMonths.length > 0" class="selected-info">
+            已选择: {{ reportMonths.map(m => formatMonth(m)).join('、') }}
+          </div>
+        </div>
+
+        <!-- 年度总结参数 -->
+        <div v-else-if="reportTemplate === 'yearly_summary'" class="param-section">
+          <label class="form-label">选择年份</label>
+          <select v-model="reportYear" class="form-select" :disabled="reportLoading">
+            <option value="">请选择</option>
+            <option value="2026">2026年</option>
+            <option value="2025">2025年</option>
+          </select>
+        </div>
+
+        <!-- 专项分析参数 -->
+        <div v-else-if="reportTemplate === 'special_analysis'" class="param-section">
+          <div class="form-group">
+            <label class="form-label">分析维度</label>
+            <select v-model="reportDimension" class="form-select" :disabled="reportLoading">
+              <option value="">请选择维度</option>
+              <option v-for="opt in reportDimensionOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+            </select>
+          </div>
+          <div v-if="reportDimension" class="form-group">
+            <label class="form-label">选择类型（可多选）</label>
+            <div class="checkbox-group scrollable">
+              <label v-for="opt in reportDimensionValueOptions" :key="opt.value" class="checkbox-item">
+                <input type="checkbox" :value="opt.value" v-model="reportDimensionValues" :disabled="reportLoading">
+                <span>{{ opt.label }}</span>
+              </label>
+            </div>
+            <div v-if="reportDimensionValues.length > 0" class="selected-info">
+              已选择: {{ reportDimensionValues.join('、') }}
+            </div>
+          </div>
+        </div>
+
+        <button class="btn btn-primary btn-block" @click="generateSmartReport" :disabled="reportLoading || !reportTable">
+          {{ reportLoading ? '生成中...' : '一键生成精美报告' }}
+        </button>
+
+        <!-- 报告展示区域 -->
+        <div v-if="reportHtml" class="report-section">
+          <div class="report-header">
+            <h3>分析报告</h3>
+            <button class="btn btn-secondary btn-sm" @click="downloadReport">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/>
+                <line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+              下载报告
+            </button>
+          </div>
+          <iframe :srcdoc="reportHtml" class="report-iframe"></iframe>
+        </div>
+      </div>
+    </div>
+
     <!-- 图表分析 -->
     <div v-else-if="activeTab === 'chart'" class="content-card">
       <div class="config-section">
@@ -254,6 +342,7 @@ import * as echarts from 'echarts'
 const tabs = [
   { key: 'analysis', label: '数据分析' },
   { key: 'analysis-v2', label: '数据分析V2' },
+  { key: 'smart-report', label: '智能报告' },
   { key: 'chart', label: '图表分析' },
   { key: 'spotcheck', label: '案件抽查' }
 ]
@@ -337,6 +426,27 @@ const spotcheckFile = ref(null)
 const spotcheckFileName = ref('')
 const spotcheckLoading = ref(false)
 const spotcheckResult = ref(null)
+
+// ===== 智能报告 =====
+const reportTable = ref('')
+const reportTemplate = ref('monthly_comparison')
+const reportMonths = ref([])
+const reportYear = ref('')
+const reportDimension = ref('')
+const reportDimensionValues = ref([])
+const reportLoading = ref(false)
+const reportHtml = ref('')
+const reportAvailableMonths = ref([])
+const reportAvailableYears = ref([])
+const reportDimensionOptions = ref([])
+const reportDimensionValueOptions = ref([])
+
+const reportTemplates = [
+  { value: 'monthly_comparison', label: '月度对比' },
+  { value: 'yearly_summary', label: '年度总结' },
+  { value: 'special_analysis', label: '专项分析' },
+  { value: 'full_analysis', label: '全量分析' }
+]
 
 // ===== 方法定义 =====
 
@@ -829,6 +939,87 @@ watch(chartTable, async (table) => {
   }
 })
 
+// ===== 智能报告方法 =====
+async function onReportTableChange() {
+  if (!reportTable.value) return
+
+  // 获取月份列表
+  reportAvailableMonths.value = await fetchAvailableMonths(reportTable.value)
+
+  // 获取年份列表（从数据中提取）
+  try {
+    const response = await axios.get(`/api/table-columns?table_name=${reportTable.value}`)
+    const columns = response.data.columns || []
+
+    // 查找维度字段
+    reportDimensionOptions.value = columns.filter(col =>
+      ['大类名称', '小类名称', '所属片区', '问题来源', '处置部门', '所属街道'].includes(col)
+    ).map(col => ({ value: col, label: col }))
+  } catch (error) {
+    console.error('获取表字段失败:', error)
+  }
+}
+
+async function onReportDimensionChange() {
+  if (!reportTable.value || !reportDimension.value) {
+    reportDimensionValueOptions.value = []
+    return
+  }
+
+  try {
+    const response = await axios.get(`/api/column-values?table_name=${reportTable.value}&column=${reportDimension.value}`)
+    reportDimensionValueOptions.value = (response.data.values || []).map(v => ({ value: v, label: v }))
+  } catch (error) {
+    console.error('获取字段值失败:', error)
+    reportDimensionValueOptions.value = []
+  }
+}
+
+async function generateSmartReport() {
+  if (!reportTable.value) {
+    alert('请选择数据表')
+    return
+  }
+
+  reportLoading.value = true
+  reportHtml.value = ''
+
+  try {
+    const response = await axios.post('/api/smart-report', {
+      table_name: reportTable.value,
+      template_type: reportTemplate.value,
+      months: reportMonths.value,
+      year: reportYear.value,
+      dimension: reportDimension.value,
+      dimension_values: reportDimensionValues.value
+    })
+
+    reportHtml.value = response.data.html
+  } catch (error) {
+    console.error('生成报告失败:', error)
+    alert('生成报告失败: ' + (error.response?.data?.error || error.message))
+  } finally {
+    reportLoading.value = false
+  }
+}
+
+function downloadReport() {
+  if (!reportHtml.value) return
+
+  const blob = new Blob([reportHtml.value], { type: 'text/html' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `智能报告_${new Date().toISOString().slice(0, 10)}.html`
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
+
+watch(reportTable, onReportTableChange)
+watch(reportDimension, onReportDimensionChange)
+
 onMounted(() => {
   fetchTables()
 })
@@ -1273,6 +1464,87 @@ onMounted(() => {
   font-weight: 600;
   color: var(--text-primary);
   margin: 0 0 var(--space-4);
+}
+
+/* 智能报告样式 */
+.param-section {
+  margin-top: var(--space-4);
+  margin-bottom: var(--space-4);
+  padding: var(--space-4);
+  background: var(--bg-secondary);
+  border-radius: var(--radius-md);
+}
+
+.checkbox-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.checkbox-group.scrollable {
+  max-height: 200px;
+  overflow-y: auto;
+  padding: var(--space-2);
+  border: 1px solid var(--border-lighter);
+  border-radius: var(--radius-sm);
+}
+
+.checkbox-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-lighter);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 13px;
+  transition: all var(--transition-fast);
+}
+
+.checkbox-item:hover {
+  border-color: var(--primary-400);
+  background: var(--primary-50);
+}
+
+.checkbox-item input {
+  accent-color: var(--primary-500);
+}
+
+.selected-info {
+  margin-top: var(--space-2);
+  font-size: 13px;
+  color: var(--primary-500);
+  font-weight: 500;
+}
+
+.report-section {
+  margin-top: var(--space-6);
+  border-top: 1px solid var(--border-lighter);
+  padding-top: var(--space-6);
+}
+
+.report-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-4);
+}
+
+.report-header h3 {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.report-iframe {
+  width: 100%;
+  height: 800px;
+  border: 1px solid var(--border-lighter);
+  border-radius: var(--radius-md);
+  background: white;
 }
 
 @media (max-width: 768px) {

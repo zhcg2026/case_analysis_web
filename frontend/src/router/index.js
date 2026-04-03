@@ -9,7 +9,6 @@ const Huiwentai = () => import('../views/Huiwentai.vue')
 const Assessment = () => import('../views/Assessment.vue')
 const Cases = () => import('../views/Cases.vue')
 const Map = () => import('../views/Map.vue')
-const Tools = () => import('../views/Tools.vue')
 const Dashboard = () => import('../views/Dashboard.vue')
 const Admin = () => import('../views/Admin.vue')
 const Login = () => import('../views/Login.vue')
@@ -65,12 +64,6 @@ const routes = [
     name: 'Map',
     component: Map,
     meta: { requiresAuth: true, title: '地图服务', permission: 'map' }
-  },
-  {
-    path: '/tools',
-    name: 'Tools',
-    component: Tools,
-    meta: { requiresAuth: true, title: '小工具' }
   },
   {
     path: '/dashboard',

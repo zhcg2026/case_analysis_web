@@ -94,42 +94,70 @@ def create_collection(dim: int = 768) -> Collection:
     return collection
 
 
-def get_embedding(text: str) -> Optional[List[float]]:
+def get_embedding(text: str, max_retries: int = 3) -> Optional[List[float]]:
     """使用Ollama生成文本嵌入向量"""
-    try:
-        # 首先尝试使用embedding模型
-        response = requests.post(
-            f"{OLLAMA_HOST}/api/embeddings",
-            json={
-                "model": OLLAMA_EMBED_MODEL,
-                "prompt": text
-            },
-            timeout=60
-        )
+    import time
 
-        if response.status_code == 200:
-            return response.json().get("embedding")
+    for attempt in range(max_retries):
+        try:
+            # 尝试新版API (/api/embed)
+            response = requests.post(
+                f"{OLLAMA_HOST}/api/embed",
+                json={
+                    "model": OLLAMA_EMBED_MODEL,
+                    "input": text
+                },
+                timeout=60
+            )
 
-        # 如果embedding模型不存在，尝试使用主模型的embedding功能
-        print(f"[RAG] Embedding模型不可用，尝试使用 {OLLAMA_MODEL}")
-        response = requests.post(
-            f"{OLLAMA_HOST}/api/embeddings",
-            json={
-                "model": OLLAMA_MODEL,
-                "prompt": text
-            },
-            timeout=30
-        )
+            if response.status_code == 200:
+                data = response.json()
+                # 新版API返回格式: {"embeddings": [[...]]}
+                embeddings = data.get("embeddings", [])
+                if embeddings and len(embeddings) > 0:
+                    emb = embeddings[0]
+                    # 确保是单维列表
+                    if isinstance(emb, list) and all(isinstance(x, (int, float)) for x in emb):
+                        return emb
 
-        if response.status_code == 200:
-            return response.json().get("embedding")
+            # 尝试旧版API (/api/embeddings)
+            response = requests.post(
+                f"{OLLAMA_HOST}/api/embeddings",
+                json={
+                    "model": OLLAMA_EMBED_MODEL,
+                    "prompt": text
+                },
+                timeout=60
+            )
 
-        print(f"[RAG] Embedding失败: {response.status_code}")
-        return None
+            if response.status_code == 200:
+                emb = response.json().get("embedding")
+                if emb and isinstance(emb, list):
+                    # 检查是否是嵌套数组，需要flatten
+                    if isinstance(emb[0], list):
+                        # flatten嵌套数组
+                        flat = []
+                        for item in emb:
+                            if isinstance(item, list):
+                                flat.extend(item)
+                            else:
+                                flat.append(item)
+                        return flat
+                    elif all(isinstance(x, (int, float)) for x in emb):
+                        return emb
 
-    except Exception as e:
-        print(f"[RAG] Embedding异常: {e}")
-        return None
+            # 失败时打印详细信息并重试
+            print(f"[RAG] Embedding失败: {response.status_code}, 尝试 {attempt + 1}/{max_retries}")
+            if attempt < max_retries - 1:
+                time.sleep(1)  # 等待1秒后重试
+
+        except Exception as e:
+            print(f"[RAG] Embedding异常: {e}, 尝试 {attempt + 1}/{max_retries}")
+            if attempt < max_retries - 1:
+                time.sleep(1)
+
+    print(f"[RAG] Embedding最终失败，文本长度: {len(text)}")
+    return None
 
 
 def get_embedding_dim() -> int:
@@ -142,7 +170,7 @@ def get_embedding_dim() -> int:
     return 768
 
 
-def chunk_text(text: str, chunk_size: int = 500, overlap: int = 50) -> List[Tuple[int, str]]:
+def chunk_text(text: str, chunk_size: int = 1500, overlap: int = 100) -> List[Tuple[int, str]]:
     """
     文本分块
     返回: [(chunk_id, chunk_text), ...]
@@ -325,6 +353,28 @@ def delete_document(doc_id: str) -> Dict:
 
     except Exception as e:
         print(f"[RAG] 删除失败: {e}")
+        return {"success": False, "message": str(e)}
+
+
+def delete_all_documents() -> Dict:
+    """删除所有文档"""
+    try:
+        connect_milvus()
+
+        if not utility.has_collection(COLLECTION_NAME):
+            return {"success": True, "message": "集合不存在，无需删除"}
+
+        # 删除整个集合
+        utility.drop_collection(COLLECTION_NAME)
+        print(f"[RAG] 已删除集合: {COLLECTION_NAME}")
+
+        return {
+            "success": True,
+            "message": "已删除所有文档"
+        }
+
+    except Exception as e:
+        print(f"[RAG] 删除所有文档失败: {e}")
         return {"success": False, "message": str(e)}
 
 
