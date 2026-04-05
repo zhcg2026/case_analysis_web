@@ -17,6 +17,31 @@
 
     <!-- 数据分析 -->
     <div v-if="activeTab === 'analysis'" class="content-card">
+      <!-- 模块说明 -->
+      <div class="module-guide">
+        <div class="guide-header" @click="guideExpanded.analysis = !guideExpanded.analysis">
+          <span class="guide-icon">📋</span>
+          <span class="guide-title">功能说明</span>
+          <span class="guide-toggle">{{ guideExpanded.analysis ? '收起' : '展开' }}</span>
+        </div>
+        <div v-if="guideExpanded.analysis" class="guide-content">
+          <p><strong>数据分析</strong>模块提供预设的分析类型，快速生成专业分析报告。</p>
+          <div class="guide-steps">
+            <div class="guide-step"><span class="step-num">1</span>选择要分析的数据表</div>
+            <div class="guide-step"><span class="step-num">2</span>选择分析类型（时间/空间/来源/类型/重复案件）</div>
+            <div class="guide-step"><span class="step-num">3</span>点击开始分析，等待AI生成报告</div>
+          </div>
+          <div class="guide-tips">
+            <strong>分析类型说明：</strong>
+            <span>时间分析-案件时间趋势</span>
+            <span>空间分析-区域分布</span>
+            <span>来源分析-来源渠道</span>
+            <span>类型分析-案件类型分布</span>
+            <span>重复案件-重复投诉识别</span>
+          </div>
+        </div>
+      </div>
+
       <div class="config-section">
         <div class="form-row">
           <div class="form-group">
@@ -100,6 +125,30 @@
 
     <!-- 数据分析V2 -->
     <div v-else-if="activeTab === 'analysis-v2'" class="content-card">
+      <!-- 模块说明 -->
+      <div class="module-guide">
+        <div class="guide-header" @click="guideExpanded.analysisV2 = !guideExpanded.analysisV2">
+          <span class="guide-icon">🤖</span>
+          <span class="guide-title">功能说明</span>
+          <span class="guide-toggle">{{ guideExpanded.analysisV2 ? '收起' : '展开' }}</span>
+        </div>
+        <div v-if="guideExpanded.analysisV2" class="guide-content">
+          <p><strong>数据分析V2</strong>支持自由输入分析需求，AI将根据您的提示词进行智能分析。</p>
+          <div class="guide-steps">
+            <div class="guide-step"><span class="step-num">1</span>选择数据表</div>
+            <div class="guide-step"><span class="step-num">2</span>选择大模型（豆包/通义千问）</div>
+            <div class="guide-step"><span class="step-num">3</span>输入分析需求，如"分析案件来源分布情况"</div>
+            <div class="guide-step"><span class="step-num">4</span>点击开始分析</div>
+          </div>
+          <div class="guide-tips">
+            <strong>提示词示例：</strong>
+            <span>"分析各街道案件数量排名"</span>
+            <span>"统计各类型案件的平均处理时长"</span>
+            <span>"找出重复投诉次数最多的地址"</span>
+          </div>
+        </div>
+      </div>
+
       <div class="config-section">
         <div class="form-row">
           <div class="form-group">
@@ -169,6 +218,31 @@
 
     <!-- 智能报告 -->
     <div v-else-if="activeTab === 'smart-report'" class="content-card">
+      <!-- 模块说明 -->
+      <div class="module-guide">
+        <div class="guide-header" @click="guideExpanded.smartReport = !guideExpanded.smartReport">
+          <span class="guide-icon">📊</span>
+          <span class="guide-title">功能说明</span>
+          <span class="guide-toggle">{{ guideExpanded.smartReport ? '收起' : '展开' }}</span>
+        </div>
+        <div v-if="guideExpanded.smartReport" class="guide-content">
+          <p><strong>智能报告</strong>模块根据模板生成可视化分析报告，支持导出为视频报告。</p>
+          <div class="guide-steps">
+            <div class="guide-step"><span class="step-num">1</span>选择数据表和分析模板</div>
+            <div class="guide-step"><span class="step-num">2</span>设置筛选条件（月份/年份/维度）</div>
+            <div class="guide-step"><span class="step-num">3</span>点击"生成报告"查看HTML报告</div>
+            <div class="guide-step"><span class="step-num">4</span>点击"生成视频报告"下载MP4视频</div>
+          </div>
+          <div class="guide-tips">
+            <strong>模板类型：</strong>
+            <span>月度对比-对比两个月数据变化</span>
+            <span>年度总结-年度数据汇总分析</span>
+            <span>专项分析-特定维度深入分析</span>
+            <span>全量分析-全部数据综合分析</span>
+          </div>
+        </div>
+      </div>
+
       <div class="config-section">
         <div class="form-row">
           <div class="form-group">
@@ -237,26 +311,45 @@
           {{ reportLoading ? '生成中...' : '一键生成精美报告' }}
         </button>
 
-        <!-- 报告展示区域 -->
-        <div v-if="reportHtml" class="report-section">
-          <div class="report-header">
-            <h3>分析报告</h3>
-            <button class="btn btn-secondary btn-sm" @click="downloadReport">
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                <polyline points="7 10 12 15 17 10"/>
-                <line x1="12" y1="15" x2="12" y2="3"/>
-              </svg>
-              下载报告
-            </button>
-          </div>
-          <iframe :srcdoc="reportHtml" class="report-iframe"></iframe>
+        <!-- 报告生成成功后显示操作按钮 -->
+        <div v-if="reportDataUrl" class="report-actions">
+          <button class="btn btn-success" @click="openReport">
+            查看报告
+          </button>
+          <button class="btn btn-info" @click="generateVideoReport" :disabled="videoLoading">
+            {{ videoLoading ? '生成中...' : '生成视频报告' }}
+          </button>
         </div>
       </div>
     </div>
 
     <!-- 图表分析 -->
     <div v-else-if="activeTab === 'chart'" class="content-card">
+      <!-- 模块说明 -->
+      <div class="module-guide">
+        <div class="guide-header" @click="guideExpanded.chart = !guideExpanded.chart">
+          <span class="guide-icon">📈</span>
+          <span class="guide-title">功能说明</span>
+          <span class="guide-toggle">{{ guideExpanded.chart ? '收起' : '展开' }}</span>
+        </div>
+        <div v-if="guideExpanded.chart" class="guide-content">
+          <p><strong>图表分析</strong>模块快速生成数据可视化仪表盘，直观展示数据分布。</p>
+          <div class="guide-steps">
+            <div class="guide-step"><span class="step-num">1</span>选择数据表</div>
+            <div class="guide-step"><span class="step-num">2</span>可选择特定月份或全部月份</div>
+            <div class="guide-step"><span class="step-num">3</span>点击"生成仪表盘"查看可视化图表</div>
+          </div>
+          <div class="guide-tips">
+            <strong>生成内容：</strong>
+            <span>案件总量统计</span>
+            <span>结案率分析</span>
+            <span>问题类型分布</span>
+            <span>片区/街道分布</span>
+            <span>问题来源分析</span>
+          </div>
+        </div>
+      </div>
+
       <div class="config-section">
         <div class="form-row">
           <div class="form-group">
@@ -298,6 +391,31 @@
 
     <!-- 案件抽查 -->
     <div v-else-if="activeTab === 'spotcheck'" class="content-card">
+      <!-- 模块说明 -->
+      <div class="module-guide">
+        <div class="guide-header" @click="guideExpanded.spotcheck = !guideExpanded.spotcheck">
+          <span class="guide-icon">🔍</span>
+          <span class="guide-title">功能说明</span>
+          <span class="guide-toggle">{{ guideExpanded.spotcheck ? '收起' : '展开' }}</span>
+        </div>
+        <div v-if="guideExpanded.spotcheck" class="guide-content">
+          <p><strong>案件抽查</strong>模块对案件全流程质量进行分析，评估处置规范性并给出评价意见。</p>
+          <div class="guide-steps">
+            <div class="guide-step"><span class="step-num">1</span>上传案件文件（支持.docx、.xlsx格式）</div>
+            <div class="guide-step"><span class="step-num">2</span>点击"开始分析"</div>
+            <div class="guide-step"><span class="step-num">3</span>查看全流程质量评价和改进建议</div>
+          </div>
+          <div class="guide-tips">
+            <strong>评估内容：</strong>
+            <span>案件受理规范性</span>
+            <span>处置流程合规性</span>
+            <span>办理时效评价</span>
+            <span>结果满意度分析</span>
+            <span>改进建议</span>
+          </div>
+        </div>
+      </div>
+
       <div class="config-section">
         <div class="form-group">
           <label class="form-label">上传案件文件</label>
@@ -350,6 +468,15 @@ const tabs = [
 const activeTab = ref('analysis')
 const tables = ref([])
 
+// 模块说明展开状态
+const guideExpanded = ref({
+  analysis: false,
+  analysisV2: false,
+  smartReport: true,  // 智能报告默认展开
+  chart: false,
+  spotcheck: false
+})
+
 // ===== 数据分析 =====
 const selectedTable = ref('')
 const selectedAnalysisType = ref('')
@@ -364,8 +491,7 @@ const analysisTypes = [
   { value: 'space_analysis', label: '空间分析' },
   { value: 'source_analysis', label: '来源分析' },
   { value: 'type_analysis', label: '类型分析' },
-  { value: 'duplicate_analysis', label: '重复案件分析' },
-  { value: 'monthly_comparison', label: '对比上月' }
+  { value: 'duplicate_analysis', label: '重复案件分析' }
 ]
 
 const analysisSteps = ref([
@@ -399,8 +525,6 @@ const chartConfigs = computed(() => {
   } else if (type === 'duplicate_analysis') {
     if (data.problem_duplicates) configs.problem = { title: '问题描述重复TOP10', data: data.problem_duplicates, type: 'bar' }
     if (data.address_duplicates) configs.address = { title: '地址描述重复TOP10', data: data.address_duplicates, type: 'bar' }
-  } else if (type === 'monthly_comparison') {
-    if (data.monthly_comparison) configs.monthly = { title: '上月vs本月案件量对比', data: data.monthly_comparison, type: 'bar' }
   }
   return configs
 })
@@ -435,11 +559,12 @@ const reportYear = ref('')
 const reportDimension = ref('')
 const reportDimensionValues = ref([])
 const reportLoading = ref(false)
-const reportHtml = ref('')
+const reportDataUrl = ref('')  // 存储生成的报告URL
 const reportAvailableMonths = ref([])
 const reportAvailableYears = ref([])
 const reportDimensionOptions = ref([])
 const reportDimensionValueOptions = ref([])
+const videoLoading = ref(false)  // 视频报告生成状态
 
 const reportTemplates = [
   { value: 'monthly_comparison', label: '月度对比' },
@@ -489,8 +614,7 @@ function getAnalysisTypeName(type) {
     space_analysis: '空间分析',
     source_analysis: '来源分析',
     type_analysis: '类型分析',
-    duplicate_analysis: '重复案件分析',
-    monthly_comparison: '对比上月'
+    duplicate_analysis: '重复案件分析'
   }
   return map[type] || type
 }
@@ -982,7 +1106,7 @@ async function generateSmartReport() {
   }
 
   reportLoading.value = true
-  reportHtml.value = ''
+  reportDataUrl.value = ''
 
   try {
     const response = await axios.post('/api/smart-report', {
@@ -994,7 +1118,9 @@ async function generateSmartReport() {
       dimension_values: reportDimensionValues.value
     })
 
-    reportHtml.value = response.data.html
+    // 存储报告HTML，显示查看按钮
+    const blob = new Blob([response.data.html], { type: 'text/html' })
+    reportDataUrl.value = URL.createObjectURL(blob)
   } catch (error) {
     console.error('生成报告失败:', error)
     alert('生成报告失败: ' + (error.response?.data?.error || error.message))
@@ -1003,22 +1129,69 @@ async function generateSmartReport() {
   }
 }
 
-function downloadReport() {
-  if (!reportHtml.value) return
+function openReport() {
+  if (reportDataUrl.value) {
+    window.open(reportDataUrl.value, '_blank')
+  }
+}
 
-  const blob = new Blob([reportHtml.value], { type: 'text/html' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `智能报告_${new Date().toISOString().slice(0, 10)}.html`
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
-  URL.revokeObjectURL(url)
+async function generateVideoReport() {
+  if (!reportTable.value) {
+    alert('请先选择数据表')
+    return
+  }
+
+  videoLoading.value = true
+
+  try {
+    const response = await axios.post('/api/video-report', {
+      table_name: reportTable.value,
+      template_type: reportTemplate.value,
+      months: reportMonths.value,
+      year: reportYear.value,
+      dimension: reportDimension.value,
+      dimension_values: reportDimensionValues.value
+    }, { responseType: 'blob' })
+
+    // 下载视频文件
+    const url = URL.createObjectURL(response.data)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'report_video.mp4'
+    a.click()
+    URL.revokeObjectURL(url)
+
+    alert('视频报告已生成并开始下载')
+  } catch (error) {
+    console.error('生成视频报告失败:', error)
+    // 尝试读取错误详情
+    if (error.response?.data) {
+      try {
+        const text = await error.response.data.text()
+        const errData = JSON.parse(text)
+        alert('生成视频报告失败: ' + (errData.error || errData.traceback?.split('\n')[0] || error.message))
+      } catch {
+        alert('生成视频报告失败: ' + error.message)
+      }
+    } else {
+      alert('生成视频报告失败: ' + error.message)
+    }
+  } finally {
+    videoLoading.value = false
+  }
 }
 
 watch(reportTable, onReportTableChange)
 watch(reportDimension, onReportDimensionChange)
+
+// 切换模板类型时清空已生成的报告
+watch(reportTemplate, () => {
+  reportDataUrl.value = ''
+  reportMonths.value = []
+  reportYear.value = ''
+  reportDimension.value = ''
+  reportDimensionValues.value = []
+})
 
 onMounted(() => {
   fetchTables()
@@ -1519,6 +1692,30 @@ onMounted(() => {
   font-weight: 500;
 }
 
+.report-actions {
+  display: flex;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+
+.btn-success {
+  background: #27ae60;
+  color: white;
+}
+
+.btn-success:hover:not(:disabled) {
+  background: #219a52;
+}
+
+.btn-info {
+  background: #3498db;
+  color: white;
+}
+
+.btn-info:hover:not(:disabled) {
+  background: #2980b9;
+}
+
 .report-section {
   margin-top: var(--space-6);
   border-top: 1px solid var(--border-lighter);
@@ -1556,5 +1753,110 @@ onMounted(() => {
   .dashboard-charts {
     grid-template-columns: 1fr;
   }
+}
+
+/* 模块说明样式 */
+.module-guide {
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  border: 1px solid #e2e8f0;
+  border-radius: var(--radius-lg);
+  margin-bottom: var(--space-6);
+  overflow: hidden;
+}
+
+.guide-header {
+  display: flex;
+  align-items: center;
+  padding: var(--space-4) var(--space-5);
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.guide-header:hover {
+  background: rgba(59, 130, 246, 0.05);
+}
+
+.guide-icon {
+  font-size: 20px;
+  margin-right: var(--space-3);
+}
+
+.guide-title {
+  font-weight: 600;
+  color: var(--text-primary);
+  flex: 1;
+}
+
+.guide-toggle {
+  font-size: 13px;
+  color: var(--primary-500);
+  padding: 2px 8px;
+  background: rgba(59, 130, 246, 0.1);
+  border-radius: 4px;
+}
+
+.guide-content {
+  padding: var(--space-4) var(--space-5);
+  border-top: 1px solid #e2e8f0;
+  background: white;
+}
+
+.guide-content p {
+  margin: 0 0 var(--space-4);
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.guide-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.guide-step {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 13px;
+  color: var(--text-secondary);
+  background: #f8fafc;
+  padding: 6px 12px;
+  border-radius: 6px;
+}
+
+.step-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  background: var(--primary-500);
+  color: white;
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.guide-tips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: 1px dashed #e2e8f0;
+}
+
+.guide-tips strong {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-right: var(--space-2);
+}
+
+.guide-tips span {
+  font-size: 12px;
+  color: #64748b;
+  background: #f1f5f9;
+  padding: 3px 10px;
+  border-radius: 12px;
 }
 </style>
