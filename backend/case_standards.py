@@ -19,13 +19,20 @@ import json
 import hashlib
 import requests
 from typing import List, Dict, Optional, Tuple
+from dotenv import load_dotenv
+
+# 加载环境变量（优先加载 .env.local）
+if os.path.exists('.env.local'):
+    load_dotenv('.env.local')
+elif os.path.exists('../.env.local'):
+    load_dotenv('../.env.local')
 
 # 设置离线模式，防止模型尝试联网下载
 os.environ['HF_DATASETS_OFFLINE'] = '1'
 os.environ['TRANSFORMERS_OFFLINE'] = '1'
 os.environ['HF_HUB_OFFLINE'] = '1'
 
-# 本地模式配置
+# 本地模式配置（在加载dotenv之后读取）
 USE_LOCAL_MODE = os.getenv('USE_LOCAL_MODE', 'false').lower() == 'true'
 
 # 服务器模式配置
@@ -666,37 +673,13 @@ def search_case_standards_chroma(query: str, top_k: int = 5) -> List[Dict]:
         if not query_embedding:
             return []
 
-        # 提取关键词（用于文本匹配增强）
-        # 预定义案件类型关键词（核心匹配词）
-        case_type_keywords = [
-            # 市容环境类
-            '建筑垃圾', '道路遗撒', '积存垃圾', '垃圾渣土', '装修垃圾', '废弃渣土',
-            '生活垃圾', '暴露垃圾', '垃圾堆积', '乱倒垃圾', '卫生死角',
-            '占道经营', '店外经营', '流动摊贩', '乱摆摊', '露天烧烤',
-            '乱贴乱画', '非法广告', '小广告', '张贴广告', '涂写广告',
-            '私搭乱建', '违章建筑', '临时建筑', '违法建设',
-            # 公用设施类
-            '井盖', '破损', '缺失', '移位', '下沉', '塌陷', '变形', '锈蚀',
-            '天桥', '裂缝', '路灯', '护栏', '标志', '信号灯', '交通标志',
-            '高架', '立交', '桥梁', '跨河', '栈桥', '过街',
-            '上水', '下水', '供水', '排水', '燃气', '供热', '供电',
-            '道牙', '路牙', '人行道', '路面', '道路破损',
-            # 其他常见类型
-            '绿化', '树木', '草坪', '花坛', '裸露绿地',
-            '油烟', '噪声', '异味', '扬尘', '粉尘',
-            '违章停车', '乱停乱放', '停车占道',
-        ]
-        # 从查询中提取匹配的案件类型关键词（核心词优先）
-        keywords = []
-        for kw in case_type_keywords:
-            if kw in query and kw not in keywords:
-                keywords.append(kw)
-
-        # 提取单字重要词（如破损中的"破"、"损"）
-        important_chars = ['井', '盖', '破', '损', '缺', '失', '移', '位', '裂', '陷', '桥', '灯', '牌', '栏', '杆', '漏', '堵', '锈']
-        for c in query:
-            if c in important_chars and c not in keywords:
-                keywords.append(c)
+        # 自动提取关键词：从查询中提取2-4字的中文词组
+        import re
+        # 提取所有中文词组（2-4字）
+        chinese_words = re.findall(r'[\u4e00-\u9fa5]{2,4}', query)
+        # 过滤掉常见停用词
+        stopwords = {'处置', '时限', '条件', '标准', '问题', '情况', '应该', '需要', '请问', '查询', '搜索', '多久', '什么', '怎么', '如何', '是否', '可以', '能够', '关于', '相关', '根据', '要求', '规定', '以及', '或者', '并且', '但是', '如果', '因为', '所以', '时候', '时间', '地点', '人员', '单位', '部门', '进行', '处理', '整改', '结案', '立案', '监管', '责任', '主体'}
+        keywords = [w for w in chinese_words if w not in stopwords]
 
         # 1. 向量搜索（获取更多候选）
         vec_results = child_coll.query(

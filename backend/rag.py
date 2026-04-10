@@ -18,6 +18,14 @@ import re
 import json
 import requests
 from typing import List, Dict, Optional, Tuple
+from dotenv import load_dotenv
+
+# 加载环境变量（优先加载 .env.local）
+if os.path.exists('.env.local'):
+    load_dotenv('.env.local')
+elif os.path.exists('../.env.local'):
+    load_dotenv('../.env.local')
+
 from pymilvus import (
     connections,
     Collection,
@@ -28,7 +36,7 @@ from pymilvus import (
     MilvusClient  # Milvus Lite支持
 )
 
-# 本地模式配置
+# 本地模式配置（在加载dotenv之后读取）
 USE_LOCAL_MODE = os.getenv('USE_LOCAL_MODE', 'false').lower() == 'true'
 
 # 配置

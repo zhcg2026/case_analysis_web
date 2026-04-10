@@ -6228,6 +6228,9 @@ def case_standards_clear():
 def case_standards_search():
     """搜索立结案标准"""
     try:
+        # 强制设置本地模式
+        os.environ['USE_LOCAL_MODE'] = 'true'
+
         data = request.get_json()
         query = data.get('query', '')
         top_k = data.get('top_k', 5)
@@ -6311,6 +6314,9 @@ def case_standards_debug_ask():
 def case_standards_ask():
     """立结案标准问答"""
     try:
+        # 强制设置本地模式
+        os.environ['USE_LOCAL_MODE'] = 'true'
+
         data = request.get_json()
         question = data.get('question', '')
         top_k = data.get('top_k', 5)
