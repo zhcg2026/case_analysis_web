@@ -3106,8 +3106,9 @@ watch(articlesCurrentPage, fetchArticles)
 .filter-section {
   margin-bottom: var(--space-4);
   padding: var(--space-4);
-  background: var(--fill-light);
+  background: var(--bg-secondary);
   border-radius: var(--radius-lg);
+  border: 1px solid var(--border-lighter);
 }
 
 .filter-row {
@@ -3126,8 +3127,9 @@ watch(articlesCurrentPage, fetchArticles)
   gap: var(--space-3);
   align-items: flex-end;
   padding: var(--space-3);
-  background: rgba(255, 255, 255, 0.5);
+  background: var(--bg-primary);
   border-radius: var(--radius-md);
+  border: 1px solid var(--border-lighter);
 }
 
 .filter-row .form-group {

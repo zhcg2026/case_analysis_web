@@ -59,6 +59,11 @@ logs/
 *.sqlite
 *.sqlite3
 
+# Vector database (ChromaDB)
+chroma_db/
+backend/chroma_db/
+local_milvus.db
+
 # Backup files
 *.bak
 *.backup

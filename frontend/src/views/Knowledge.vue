@@ -5,21 +5,33 @@
       <p class="page-desc">上传文档到向量库，支持智能问答和知识检索</p>
     </div>
 
-    <!-- 统计卡片 -->
-    <div class="stats-card" v-if="stats.exists">
-      <div class="stat-item">
-        <span class="stat-label">向量数量</span>
-        <span class="stat-value">{{ stats.count }}</span>
-      </div>
-      <div class="stat-item">
-        <span class="stat-label">文档数</span>
-        <span class="stat-value">{{ documents.length }}</span>
-      </div>
-      <div class="stat-item">
-        <span class="stat-label">模型</span>
-        <span class="stat-value">{{ stats.ollama_model }}</span>
-      </div>
+    <!-- Tab切换 -->
+    <div class="tab-nav">
+      <button class="tab-btn" :class="{ active: activeTab === 'general' }" @click="activeTab = 'general'">
+        通用知识库
+      </button>
+      <button class="tab-btn" :class="{ active: activeTab === 'standards' }" @click="activeTab = 'standards'">
+        立结案标准库
+      </button>
     </div>
+
+    <!-- 通用知识库 -->
+    <div v-show="activeTab === 'general'">
+      <!-- 统计卡片 -->
+      <div class="stats-card" v-if="stats.exists">
+        <div class="stat-item">
+          <span class="stat-label">向量数量</span>
+          <span class="stat-value">{{ stats.count }}</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">文档数</span>
+          <span class="stat-value">{{ documents.length }}</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">模型</span>
+          <span class="stat-value">{{ stats.ollama_model }}</span>
+        </div>
+      </div>
 
     <!-- 两个主要功能区 -->
     <div class="main-content">
@@ -190,6 +202,113 @@
       </div>
     </div>
   </div>
+
+    <!-- 立结案标准库 -->
+    <div v-show="activeTab === 'standards'" class="standards-section">
+      <!-- 统计卡片 -->
+      <div class="stats-card" v-if="standardsStats.exists">
+        <div class="stat-item">
+          <span class="stat-label">父文档</span>
+          <span class="stat-value">{{ standardsStats.parents || 0 }}</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">子文档</span>
+          <span class="stat-value">{{ standardsStats.children || 0 }}</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">模式</span>
+          <span class="stat-value">{{ standardsStats.mode || '未知' }}</span>
+        </div>
+      </div>
+
+      <!-- 索引管理 -->
+      <div class="index-section">
+        <div class="section-header">
+          <h3>索引管理</h3>
+        </div>
+        <div class="index-actions">
+          <div class="index-input-row">
+            <input v-model="standardsDirectory" placeholder="标准文件目录（如：D:/常用/立案结案标准）" class="directory-input" />
+            <button class="index-btn" @click="indexStandards" :disabled="indexingStandards">
+              {{ indexingStandards ? '索引中...' : '开始索引' }}
+            </button>
+          </div>
+          <div class="index-result" v-if="indexResult">
+            <div class="index-summary">
+              成功: {{ indexResult.success }} | 失败: {{ indexResult.failed }} | 子文档: {{ indexResult.total_children }}
+            </div>
+            <div class="index-details" v-if="indexResult.details">
+              <div class="detail-item" v-for="(d, i) in indexResult.details.slice(0, 10)" :key="i">
+                <span :class="d.success ? 'success' : 'failed'">{{ d.file }}</span>
+                <span class="detail-msg">{{ d.message }}</span>
+              </div>
+              <div class="more-details" v-if="indexResult.details.length > 10">
+                ...共 {{ indexResult.details.length }} 个文件
+              </div>
+            </div>
+          </div>
+          <button class="clear-btn" @click="clearStandards" v-if="standardsStats.exists">
+            清空标准库
+          </button>
+        </div>
+      </div>
+
+      <!-- 标准问答 -->
+      <div class="standards-qa">
+        <div class="section-header">
+          <h3>立结案标准问答</h3>
+        </div>
+        <div class="qa-input">
+          <textarea v-model="standardsQuestion" placeholder="输入问题，如：井盖破损的处置时限是多少？" rows="3"></textarea>
+          <button class="ask-btn" @click="askStandards" :disabled="askingStandards || !standardsQuestion.trim()">
+            {{ askingStandards ? '查询中...' : '提问' }}
+          </button>
+        </div>
+        <div class="qa-result" v-if="standardsAnswer">
+          <div class="answer-box">
+            <div class="answer-header">
+              <span class="answer-label">回答</span>
+              <span class="answer-status" :class="standardsAnswer.success ? 'success' : 'error'">
+                {{ standardsAnswer.success ? '成功' : '失败' }}
+              </span>
+            </div>
+            <div class="answer-content">{{ standardsAnswer.answer }}</div>
+          </div>
+          <div class="sources-box" v-if="standardsAnswer.sources && standardsAnswer.sources.length">
+            <div class="sources-header">参考案件类型</div>
+            <div class="sources-list">
+              <span class="source-tag" v-for="s in standardsAnswer.sources" :key="s">{{ s }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 标准搜索 -->
+      <div class="standards-search">
+        <div class="section-header">
+          <h3>标准检索</h3>
+        </div>
+        <div class="search-input">
+          <input v-model="standardsSearchQuery" placeholder="搜索关键词..." />
+          <button class="search-btn" @click="searchStandards" :disabled="searchingStandards">
+            {{ searchingStandards ? '搜索中...' : '搜索' }}
+          </button>
+        </div>
+        <div class="search-results" v-if="standardsSearchResults.length">
+          <div class="result-item" v-for="(r, i) in standardsSearchResults" :key="i">
+            <div class="result-header">
+              <span class="result-type">{{ r.case_type }}</span>
+              <span class="result-score">相似度: {{ ((r.score || 0) * 100).toFixed(1) }}%</span>
+            </div>
+            <div class="result-child">{{ r.child_text }}</div>
+            <div class="result-meta" v-if="r.meta_info">
+              <span v-if="r.meta_info.time_limit">处置时限: {{ r.meta_info.time_limit }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
 </template>
 
 <script setup>
@@ -214,6 +333,21 @@ const answer = ref(null)
 const searchQuery = ref('')
 const searching = ref(false)
 const searchResults = ref([])
+
+// Tab切换
+const activeTab = ref('general')
+
+// 立结案标准相关状态
+const standardsStats = ref({ exists: false })
+const standardsDirectory = ref('D:/常用/立案结案标准')
+const indexingStandards = ref(false)
+const indexResult = ref(null)
+const standardsQuestion = ref('')
+const askingStandards = ref(false)
+const standardsAnswer = ref(null)
+const standardsSearchQuery = ref('')
+const searchingStandards = ref(false)
+const standardsSearchResults = ref([])
 
 // API基础URL
 const apiBase = '/api/knowledge'
@@ -500,10 +634,118 @@ async function searchKnowledge() {
   }
 }
 
+// ================= 立结案标准相关方法 =================
+
+// 加载立结案标准统计
+async function loadStandardsStats() {
+  try {
+    const res = await fetch('/api/case-standards/stats', {
+      headers: getAuthHeaders()
+    })
+    const data = await res.json()
+    standardsStats.value = data
+  } catch (e) {
+    console.error('加载标准统计失败:', e)
+  }
+}
+
+// 索引立结案标准
+async function indexStandards() {
+  if (!standardsDirectory.value.trim()) {
+    alert('请输入标准文件目录')
+    return
+  }
+
+  indexingStandards.value = true
+  indexResult.value = null
+
+  try {
+    const res = await fetch('/api/case-standards/index', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ directory: standardsDirectory.value })
+    })
+    const data = await res.json()
+    indexResult.value = data
+    loadStandardsStats()
+  } catch (e) {
+    indexResult.value = { success: 0, failed: 1, total_children: 0, details: [{ file: '错误', message: e.message }] }
+  } finally {
+    indexingStandards.value = false
+  }
+}
+
+// 清空立结案标准库
+async function clearStandards() {
+  if (!confirm('确定清空立结案标准库？')) return
+
+  try {
+    const res = await fetch('/api/case-standards/clear', {
+      method: 'POST',
+      headers: getAuthHeaders()
+    })
+    const data = await res.json()
+    if (data.success) {
+      alert(data.message)
+      standardsStats.value = { exists: false }
+      indexResult.value = null
+    } else {
+      alert('清空失败: ' + data.message)
+    }
+  } catch (e) {
+    alert('清空失败: ' + e.message)
+  }
+}
+
+// 立结案标准问答
+async function askStandards() {
+  if (!standardsQuestion.value.trim()) return
+
+  askingStandards.value = true
+  standardsAnswer.value = null
+
+  try {
+    const res = await fetch('/api/case-standards/ask', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ question: standardsQuestion.value })
+    })
+    const data = await res.json()
+    standardsAnswer.value = data
+  } catch (e) {
+    standardsAnswer.value = { success: false, answer: '查询失败: ' + e.message }
+  } finally {
+    askingStandards.value = false
+  }
+}
+
+// 搜索立结案标准
+async function searchStandards() {
+  if (!standardsSearchQuery.value.trim()) return
+
+  searchingStandards.value = true
+  standardsSearchResults.value = []
+
+  try {
+    const res = await fetch('/api/case-standards/search', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ query: standardsSearchQuery.value })
+    })
+    const data = await res.json()
+    standardsSearchResults.value = data.results || []
+  } catch (e) {
+    console.error('标准搜索失败:', e)
+  } finally {
+    searchingStandards.value = false
+  }
+}
+
 // 初始化
 onMounted(() => {
   loadStats()
   loadDocuments()
+  loadStandardsStats()
 })
 </script>
 
@@ -1008,9 +1250,175 @@ onMounted(() => {
   line-height: 1.5;
 }
 
+/* Tab导航样式 */
+.tab-nav {
+  display: flex;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+
+.tab-btn {
+  padding: var(--space-2) var(--space-4);
+  background: var(--fill-light);
+  border: 1px solid var(--border-lighter);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  font-size: 14px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.tab-btn.active {
+  background: var(--primary-500);
+  color: white;
+  border-color: var(--primary-500);
+}
+
+.tab-btn:hover:not(.active) {
+  background: var(--fill-dark);
+}
+
+/* 立结案标准模块样式 */
+.standards-section {
+  background: var(--bg-card);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-lighter);
+  padding: var(--space-4);
+}
+
+.index-section {
+  margin-bottom: var(--space-6);
+}
+
+.index-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.index-input-row {
+  display: flex;
+  gap: var(--space-3);
+}
+
+.directory-input {
+  flex: 1;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  font-size: 14px;
+  background: var(--bg-base);
+  color: var(--text-primary);
+}
+
+.index-btn {
+  padding: var(--space-2) var(--space-4);
+  background: var(--primary-500);
+  color: white;
+  border: none;
+  border-radius: var(--radius-md);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.index-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.index-result {
+  padding: var(--space-3);
+  background: var(--fill-light);
+  border-radius: var(--radius-md);
+}
+
+.index-summary {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+  margin-bottom: var(--space-2);
+}
+
+.index-details {
+  font-size: 12px;
+}
+
+.detail-item {
+  display: flex;
+  gap: var(--space-2);
+  padding: var(--space-1) 0;
+}
+
+.detail-item .success {
+  color: var(--success);
+}
+
+.detail-item .failed {
+  color: var(--danger);
+}
+
+.detail-msg {
+  color: var(--text-secondary);
+}
+
+.more-details {
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+
+.clear-btn {
+  padding: var(--space-2) var(--space-3);
+  background: var(--danger-light);
+  color: var(--danger);
+  border: none;
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.standards-qa {
+  margin-bottom: var(--space-6);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border-lighter);
+}
+
+.standards-search {
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border-lighter);
+}
+
+.source-tag {
+  padding: var(--space-1) var(--space-2);
+  background: var(--primary-50);
+  color: var(--primary-500);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+}
+
+.result-type {
+  font-size: 12px;
+  color: var(--primary-500);
+  font-weight: 500;
+}
+
+.result-child {
+  font-size: 13px;
+  color: var(--text-primary);
+  margin: var(--space-1) 0;
+}
+
+.result-meta {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
 @media (max-width: 900px) {
   .main-content {
     grid-template-columns: 1fr;
+  }
+
+  .index-input-row {
+    flex-direction: column;
   }
 }
 </style>

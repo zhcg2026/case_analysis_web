@@ -1,6 +1,16 @@
 """
 RAG (Retrieval-Augmented Generation) 核心模块
 支持：文档上传、向量化、存储、检索、问答
+
+本地调试模式（USE_LOCAL_MODE=true）：
+- Milvus Lite（文件存储）
+- sentence-transformers 本地embedding
+- LLM使用豆包API
+
+服务器模式（USE_LOCAL_MODE=false或不设置）：
+- Docker Milvus
+- Ollama nomic-embed-text
+- LLM使用Qwen2.5-7B
 """
 
 import os
@@ -14,8 +24,12 @@ from pymilvus import (
     CollectionSchema,
     FieldSchema,
     DataType,
-    utility
+    utility,
+    MilvusClient  # Milvus Lite支持
 )
+
+# 本地模式配置
+USE_LOCAL_MODE = os.getenv('USE_LOCAL_MODE', 'false').lower() == 'true'
 
 # 配置
 OLLAMA_HOST = os.getenv('OLLAMA_HOST', 'http://localhost:11434')
@@ -25,8 +39,18 @@ MILVUS_HOST = os.getenv('MILVUS_HOST', 'localhost')
 MILVUS_PORT = os.getenv('MILVUS_PORT', '19530')
 COLLECTION_NAME = os.getenv('MILVUS_COLLECTION', 'knowledge_base')
 
-# 全局连接状态
+# 本地模式特定配置
+LOCAL_MILVUS_FILE = os.getenv('LOCAL_MILVUS_FILE', './local_milvus.db')
+LOCAL_EMBED_MODEL = os.getenv('LOCAL_EMBED_MODEL', 'paraphrase-multilingual-MiniLM-L12-v2')
+
+# 豆包API配置（本地模式使用）
+DOUBAO_API_KEY = os.getenv('DOUBAO_API_KEY', '58a51ac5-3b75-4c5e-85ac-1fb4ef652bd0')
+DOUBAO_API_URL = os.getenv('DOUBAO_API_URL', 'https://ark.cn-beijing.volces.com/api/v3/chat/completions')
+DOUBAO_MODEL = os.getenv('DOUBAO_MODEL', 'doubao-seed-1-8-251228')
+
+# 全局连接状态和本地embedding模型
 _milvus_connected = False
+_local_embed_model = None
 
 
 def connect_milvus():
@@ -35,29 +59,51 @@ def connect_milvus():
     if _milvus_connected:
         return True
 
-    try:
-        connections.connect(
-            alias="default",
-            host=MILVUS_HOST,
-            port=MILVUS_PORT
-        )
-        _milvus_connected = True
-        print(f"[RAG] 已连接Milvus: {MILVUS_HOST}:{MILVUS_PORT}")
-        return True
-    except Exception as e:
-        print(f"[RAG] Milvus连接失败: {e}")
-        return False
+    if USE_LOCAL_MODE:
+        # 本地模式：使用 Milvus Lite
+        try:
+            client = MilvusClient(LOCAL_MILVUS_FILE)
+            # Milvus Lite 通过 client 操作，不需要单独 connect
+            _milvus_connected = True
+            _milvus_client = client
+            print(f"[RAG] 本地模式：已连接 Milvus Lite，文件: {LOCAL_MILVUS_FILE}")
+            return True
+        except Exception as e:
+            print(f"[RAG] Milvus Lite 连接失败: {e}")
+            return False
+    else:
+        # 服务器模式：连接 Docker Milvus
+        try:
+            connections.connect(
+                alias="default",
+                host=MILVUS_HOST,
+                port=MILVUS_PORT
+            )
+            _milvus_connected = True
+            print(f"[RAG] 已连接Milvus: {MILVUS_HOST}:{MILVUS_PORT}")
+            return True
+        except Exception as e:
+            print(f"[RAG] Milvus连接失败: {e}")
+            return False
 
 
 def disconnect_milvus():
     """断开Milvus连接"""
-    global _milvus_connected
+    global _milvus_connected, _milvus_client
     if _milvus_connected:
         try:
-            connections.disconnect("default")
+            if USE_LOCAL_MODE and _milvus_client:
+                # Milvus Lite 不需要显式断开
+                pass
+            else:
+                connections.disconnect("default")
             _milvus_connected = False
+            _milvus_client = None
         except:
             pass
+
+# Milvus Lite client 全局变量
+_milvus_client = None
 
 
 def create_collection(dim: int = 768) -> Collection:
@@ -94,70 +140,96 @@ def create_collection(dim: int = 768) -> Collection:
     return collection
 
 
-def get_embedding(text: str, max_retries: int = 3) -> Optional[List[float]]:
-    """使用Ollama生成文本嵌入向量"""
-    import time
-
-    for attempt in range(max_retries):
+def get_local_embed_model():
+    """获取本地embedding模型（延迟加载）"""
+    global _local_embed_model
+    if _local_embed_model is None:
         try:
-            # 尝试新版API (/api/embed)
-            response = requests.post(
-                f"{OLLAMA_HOST}/api/embed",
-                json={
-                    "model": OLLAMA_EMBED_MODEL,
-                    "input": text
-                },
-                timeout=60
-            )
-
-            if response.status_code == 200:
-                data = response.json()
-                # 新版API返回格式: {"embeddings": [[...]]}
-                embeddings = data.get("embeddings", [])
-                if embeddings and len(embeddings) > 0:
-                    emb = embeddings[0]
-                    # 确保是单维列表
-                    if isinstance(emb, list) and all(isinstance(x, (int, float)) for x in emb):
-                        return emb
-
-            # 尝试旧版API (/api/embeddings)
-            response = requests.post(
-                f"{OLLAMA_HOST}/api/embeddings",
-                json={
-                    "model": OLLAMA_EMBED_MODEL,
-                    "prompt": text
-                },
-                timeout=60
-            )
-
-            if response.status_code == 200:
-                emb = response.json().get("embedding")
-                if emb and isinstance(emb, list):
-                    # 检查是否是嵌套数组，需要flatten
-                    if isinstance(emb[0], list):
-                        # flatten嵌套数组
-                        flat = []
-                        for item in emb:
-                            if isinstance(item, list):
-                                flat.extend(item)
-                            else:
-                                flat.append(item)
-                        return flat
-                    elif all(isinstance(x, (int, float)) for x in emb):
-                        return emb
-
-            # 失败时打印详细信息并重试
-            print(f"[RAG] Embedding失败: {response.status_code}, 尝试 {attempt + 1}/{max_retries}")
-            if attempt < max_retries - 1:
-                time.sleep(1)  # 等待1秒后重试
-
+            from sentence_transformers import SentenceTransformer
+            print(f"[RAG] 加载本地embedding模型: {LOCAL_EMBED_MODEL}")
+            _local_embed_model = SentenceTransformer(LOCAL_EMBED_MODEL)
+            print(f"[RAG] 本地embedding模型加载完成")
+        except ImportError:
+            print("[RAG] sentence-transformers 未安装，请运行: pip install sentence-transformers")
+            return None
         except Exception as e:
-            print(f"[RAG] Embedding异常: {e}, 尝试 {attempt + 1}/{max_retries}")
-            if attempt < max_retries - 1:
-                time.sleep(1)
+            print(f"[RAG] 本地embedding模型加载失败: {e}")
+            return None
+    return _local_embed_model
 
-    print(f"[RAG] Embedding最终失败，文本长度: {len(text)}")
-    return None
+
+def get_embedding(text: str, max_retries: int = 3) -> Optional[List[float]]:
+    """生成文本嵌入向量"""
+    if USE_LOCAL_MODE:
+        # 本地模式：使用 sentence-transformers
+        model = get_local_embed_model()
+        if model is None:
+            return None
+        try:
+            embedding = model.encode(text, convert_to_numpy=True)
+            return embedding.tolist()
+        except Exception as e:
+            print(f"[RAG] 本地embedding失败: {e}")
+            return None
+    else:
+        # 服务器模式：使用 Ollama
+        import time
+
+        for attempt in range(max_retries):
+            try:
+                # 尝试新版API (/api/embed)
+                response = requests.post(
+                    f"{OLLAMA_HOST}/api/embed",
+                    json={
+                        "model": OLLAMA_EMBED_MODEL,
+                        "input": text
+                    },
+                    timeout=60
+                )
+
+                if response.status_code == 200:
+                    data = response.json()
+                    embeddings = data.get("embeddings", [])
+                    if embeddings and len(embeddings) > 0:
+                        emb = embeddings[0]
+                        if isinstance(emb, list) and all(isinstance(x, (int, float)) for x in emb):
+                            return emb
+
+                # 尝试旧版API (/api/embeddings)
+                response = requests.post(
+                    f"{OLLAMA_HOST}/api/embeddings",
+                    json={
+                        "model": OLLAMA_EMBED_MODEL,
+                        "prompt": text
+                    },
+                    timeout=60
+                )
+
+                if response.status_code == 200:
+                    emb = response.json().get("embedding")
+                    if emb and isinstance(emb, list):
+                        if isinstance(emb[0], list):
+                            flat = []
+                            for item in emb:
+                                if isinstance(item, list):
+                                    flat.extend(item)
+                                else:
+                                    flat.append(item)
+                            return flat
+                        elif all(isinstance(x, (int, float)) for x in emb):
+                            return emb
+
+                print(f"[RAG] Embedding失败: {response.status_code}, 尝试 {attempt + 1}/{max_retries}")
+                if attempt < max_retries - 1:
+                    time.sleep(1)
+
+            except Exception as e:
+                print(f"[RAG] Embedding异常: {e}, 尝试 {attempt + 1}/{max_retries}")
+                if attempt < max_retries - 1:
+                    time.sleep(1)
+
+        print(f"[RAG] Embedding最终失败，文本长度: {len(text)}")
+        return None
 
 
 def get_embedding_dim() -> int:
@@ -458,7 +530,7 @@ def ask_question(question: str, top_k: int = 15, min_score: float = 0.45) -> Dic
 
         context = "\n\n---\n\n".join(context_parts)
 
-        # 调用Ollama生成回答
+        # 调用LLM生成回答
         prompt = f"""基于以下参考资料回答问题。注意：相似度越高表示资料越相关，请优先参考相似度高的资料。
 
 参考资料：
@@ -468,29 +540,62 @@ def ask_question(question: str, top_k: int = 15, min_score: float = 0.45) -> Dic
 
 请给出准确、简洁的回答："""
 
-        response = requests.post(
-            f"{OLLAMA_HOST}/api/generate",
-            json={
-                "model": OLLAMA_MODEL,
-                "prompt": prompt,
-                "stream": False
-            },
-            timeout=180  # RAG上下文较长，需要更长超时
-        )
+        if USE_LOCAL_MODE:
+            # 本地模式：调用豆包API
+            response = requests.post(
+                DOUBAO_API_URL,
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {DOUBAO_API_KEY}"
+                },
+                json={
+                    "model": DOUBAO_MODEL,
+                    "messages": [
+                        {"role": "user", "content": prompt}
+                    ]
+                },
+                timeout=180
+            )
 
-        if response.status_code == 200:
-            answer = response.json().get("response", "")
-            return {
-                "answer": answer,
-                "sources": sources,
-                "success": True
-            }
+            if response.status_code == 200:
+                data = response.json()
+                answer = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+                return {
+                    "answer": answer,
+                    "sources": sources,
+                    "success": True
+                }
+            else:
+                return {
+                    "answer": f"豆包API调用失败: {response.status_code}",
+                    "sources": sources,
+                    "success": False
+                }
         else:
-            return {
-                "answer": f"LLM调用失败: {response.status_code}",
-                "sources": sources,
-                "success": False
-            }
+            # 服务器模式：调用Ollama
+            response = requests.post(
+                f"{OLLAMA_HOST}/api/generate",
+                json={
+                    "model": OLLAMA_MODEL,
+                    "prompt": prompt,
+                    "stream": False
+                },
+                timeout=180
+            )
+
+            if response.status_code == 200:
+                answer = response.json().get("response", "")
+                return {
+                    "answer": answer,
+                    "sources": sources,
+                    "success": True
+                }
+            else:
+                return {
+                    "answer": f"LLM调用失败: {response.status_code}",
+                    "sources": sources,
+                    "success": False
+                }
 
     except Exception as e:
         print(f"[RAG] 问答失败: {e}")
@@ -548,20 +653,40 @@ def get_collection_stats() -> Dict:
     try:
         connect_milvus()
 
-        if not utility.has_collection(COLLECTION_NAME):
-            return {"exists": False, "count": 0}
+        if USE_LOCAL_MODE:
+            # Milvus Lite 模式
+            client = MilvusClient(LOCAL_MILVUS_FILE)
+            collections = client.list_collections()
+            if COLLECTION_NAME in collections:
+                # 获取统计信息
+                stats = client.get_collection_stats(COLLECTION_NAME)
+                return {
+                    "exists": True,
+                    "name": COLLECTION_NAME,
+                    "count": stats.get('row_count', 0),
+                    "mode": "local (Milvus Lite)",
+                    "embed_model": LOCAL_EMBED_MODEL,
+                    "llm": f"豆包API ({DOUBAO_MODEL})"
+                }
+            else:
+                return {"exists": False, "count": 0, "mode": "local"}
+        else:
+            # 服务器模式
+            if not utility.has_collection(COLLECTION_NAME):
+                return {"exists": False, "count": 0}
 
-        collection = Collection(COLLECTION_NAME)
-        collection.load()
+            collection = Collection(COLLECTION_NAME)
+            collection.load()
 
-        return {
-            "exists": True,
-            "name": COLLECTION_NAME,
-            "count": collection.num_entities,
-            "ollama_host": OLLAMA_HOST,
-            "ollama_model": OLLAMA_MODEL,
-            "milvus_host": MILVUS_HOST
-        }
+            return {
+                "exists": True,
+                "name": COLLECTION_NAME,
+                "count": collection.num_entities,
+                "mode": "server",
+                "ollama_host": OLLAMA_HOST,
+                "ollama_model": OLLAMA_MODEL,
+                "milvus_host": MILVUS_HOST
+            }
 
     except Exception as e:
         return {"exists": False, "error": str(e)}
@@ -572,22 +697,38 @@ def init_rag():
     """初始化RAG模块"""
     print("[RAG] 初始化...")
 
-    # 测试Ollama连接
-    try:
-        response = requests.get(f"{OLLAMA_HOST}/api/tags", timeout=5)
-        if response.status_code == 200:
-            models = response.json().get("models", [])
-            print(f"[RAG] Ollama可用，模型: {[m['name'] for m in models]}")
-        else:
-            print("[RAG] Ollama连接异常")
-    except Exception as e:
-        print(f"[RAG] Ollama连接失败: {e}")
+    if USE_LOCAL_MODE:
+        # 本地模式
+        print("[RAG] 本地模式：使用 Milvus Lite + sentence-transformers + 豆包API")
 
-    # 测试Milvus连接
-    if connect_milvus():
-        print("[RAG] Milvus连接成功")
-        if utility.has_collection(COLLECTION_NAME):
-            collection = Collection(COLLECTION_NAME)
-            print(f"[RAG] 集合 '{COLLECTION_NAME}' 存在，向量数: {collection.num_entities}")
+        # 测试本地embedding模型
+        model = get_local_embed_model()
+        if model:
+            print("[RAG] 本地embedding模型加载成功")
+
+        # 测试Milvus Lite
+        if connect_milvus():
+            print("[RAG] Milvus Lite连接成功")
+    else:
+        # 服务器模式
+        print("[RAG] 服务器模式：使用 Docker Milvus + Ollama")
+
+        # 测试Ollama连接
+        try:
+            response = requests.get(f"{OLLAMA_HOST}/api/tags", timeout=5)
+            if response.status_code == 200:
+                models = response.json().get("models", [])
+                print(f"[RAG] Ollama可用，模型: {[m['name'] for m in models]}")
+            else:
+                print("[RAG] Ollama连接异常")
+        except Exception as e:
+            print(f"[RAG] Ollama连接失败: {e}")
+
+        # 测试Milvus连接
+        if connect_milvus():
+            print("[RAG] Milvus连接成功")
+            if utility.has_collection(COLLECTION_NAME):
+                collection = Collection(COLLECTION_NAME)
+                print(f"[RAG] 集合 '{COLLECTION_NAME}' 存在，向量数: {collection.num_entities}")
 
     print("[RAG] 初始化完成")

@@ -1755,10 +1755,10 @@ onMounted(() => {
   }
 }
 
-/* 模块说明样式 */
+/* 模块说明样式 - 支持深色模式 */
 .module-guide {
-  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
-  border: 1px solid #e2e8f0;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-lighter);
   border-radius: var(--radius-lg);
   margin-bottom: var(--space-6);
   overflow: hidden;
@@ -1773,7 +1773,7 @@ onMounted(() => {
 }
 
 .guide-header:hover {
-  background: rgba(59, 130, 246, 0.05);
+  background: var(--fill-light);
 }
 
 .guide-icon {
@@ -1791,14 +1791,14 @@ onMounted(() => {
   font-size: 13px;
   color: var(--primary-500);
   padding: 2px 8px;
-  background: rgba(59, 130, 246, 0.1);
+  background: var(--primary-50);
   border-radius: 4px;
 }
 
 .guide-content {
   padding: var(--space-4) var(--space-5);
-  border-top: 1px solid #e2e8f0;
-  background: white;
+  border-top: 1px solid var(--border-lighter);
+  background: var(--bg-primary);
 }
 
 .guide-content p {
@@ -1820,7 +1820,7 @@ onMounted(() => {
   gap: var(--space-2);
   font-size: 13px;
   color: var(--text-secondary);
-  background: #f8fafc;
+  background: var(--bg-secondary);
   padding: 6px 12px;
   border-radius: 6px;
 }
@@ -1843,7 +1843,7 @@ onMounted(() => {
   flex-wrap: wrap;
   gap: var(--space-2);
   padding-top: var(--space-3);
-  border-top: 1px dashed #e2e8f0;
+  border-top: 1px dashed var(--border-lighter);
 }
 
 .guide-tips strong {
@@ -1854,8 +1854,8 @@ onMounted(() => {
 
 .guide-tips span {
   font-size: 12px;
-  color: #64748b;
-  background: #f1f5f9;
+  color: var(--text-tertiary);
+  background: var(--fill-light);
   padding: 3px 10px;
   border-radius: 12px;
 }

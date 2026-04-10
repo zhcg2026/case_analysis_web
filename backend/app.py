@@ -6170,6 +6170,159 @@ def knowledge_init():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+# ==================== 立结案标准父子索引 API ====================
+try:
+    from backend.case_standards import (
+        index_all_standards,
+        index_standard_file,
+        search_case_standards,
+        ask_case_standard,
+        get_case_standards_stats,
+        clear_case_standards
+    )
+except ImportError:
+    from case_standards import (
+        index_all_standards,
+        index_standard_file,
+        search_case_standards,
+        ask_case_standard,
+        get_case_standards_stats,
+        clear_case_standards
+    )
+
+@app.route('/api/case-standards/stats', methods=['GET'])
+@admin_required
+def case_standards_stats():
+    """获取立结案标准库统计信息"""
+    try:
+        stats = get_case_standards_stats()
+        return jsonify(stats), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/case-standards/index', methods=['POST'])
+@admin_required
+def case_standards_index():
+    """索引立结案标准文件目录"""
+    try:
+        data = request.get_json() or {}
+        directory = data.get('directory', 'D:/常用/立案结案标准')
+
+        result = index_all_standards(directory)
+        return jsonify(result), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/case-standards/clear', methods=['POST'])
+@admin_required
+def case_standards_clear():
+    """清空立结案标准库"""
+    try:
+        result = clear_case_standards()
+        return jsonify(result), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/case-standards/search', methods=['POST'])
+@protected
+def case_standards_search():
+    """搜索立结案标准"""
+    try:
+        data = request.get_json()
+        query = data.get('query', '')
+        top_k = data.get('top_k', 5)
+
+        if not query:
+            return jsonify({'error': '请提供查询内容'}), 400
+
+        results = search_case_standards(query, top_k)
+        return jsonify({'results': results, 'total': len(results)}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/case-standards-debug/search', methods=['POST'])
+def case_standards_debug_search():
+    """调试端点：搜索立结案标准（无需认证）"""
+    try:
+        import os
+        # 强制设置本地模式
+        os.environ['USE_LOCAL_MODE'] = 'true'
+        os.environ['HF_DATASETS_OFFLINE'] = '1'
+        os.environ['TRANSFORMERS_OFFLINE'] = '1'
+        os.environ['HF_HUB_OFFLINE'] = '1'
+
+        data = request.get_json()
+        query = data.get('query', '')
+        top_k = data.get('top_k', 5)
+
+        if not query:
+            return jsonify({'error': '请提供查询内容'}), 400
+
+        # 直接导入
+        try:
+            from backend.case_standards import search_case_standards_chroma
+        except ImportError:
+            from case_standards import search_case_standards_chroma
+
+        # 执行搜索
+        results = search_case_standards_chroma(query, top_k)
+
+        return jsonify({
+            'results': results,
+            'total': len(results)
+        }), 200
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e), 'traceback': traceback.format_exc()}), 500
+
+@app.route('/api/case-standards-debug/ask', methods=['POST'])
+def case_standards_debug_ask():
+    """调试端点：立结案标准问答（无需认证）"""
+    try:
+        import os
+        os.environ['USE_LOCAL_MODE'] = 'true'
+        os.environ['HF_DATASETS_OFFLINE'] = '1'
+        os.environ['TRANSFORMERS_OFFLINE'] = '1'
+        os.environ['HF_HUB_OFFLINE'] = '1'
+
+        data = request.get_json()
+        question = data.get('question', '')
+        top_k = data.get('top_k', 5)
+
+        if not question:
+            return jsonify({'error': '请提供问题'}), 400
+
+        # 直接导入
+        try:
+            from backend.case_standards import ask_case_standard
+        except ImportError:
+            from case_standards import ask_case_standard
+
+        result = ask_case_standard(question, top_k)
+        return jsonify(result), 200
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e), 'traceback': traceback.format_exc()}), 500
+
+@app.route('/api/case-standards/ask', methods=['POST'])
+@protected
+def case_standards_ask():
+    """立结案标准问答"""
+    try:
+        data = request.get_json()
+        question = data.get('question', '')
+        top_k = data.get('top_k', 5)
+
+        if not question:
+            return jsonify({'error': '请提供问题'}), 400
+
+        result = ask_case_standard(question, top_k)
+        return jsonify(result), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/smart-report', methods=['POST'])
 @protected
 def smart_report():
