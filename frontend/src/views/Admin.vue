@@ -741,6 +741,198 @@
       </div>
     </div>
 
+    <!-- 知识库管理 -->
+    <div v-else-if="activeTab === 'knowledge'" class="content-card">
+      <div class="card-header">
+        <h2 class="section-title">知识库管理</h2>
+      </div>
+
+      <!-- 子标签导航 -->
+      <div class="knowledge-sub-tabs">
+        <button class="sub-tab" :class="{ active: knowledgeSubTab === 'general' }" @click="knowledgeSubTab = 'general'">
+          通用知识库
+        </button>
+        <button class="sub-tab" :class="{ active: knowledgeSubTab === 'standards' }" @click="knowledgeSubTab = 'standards'">
+          立结案标准库
+        </button>
+      </div>
+
+      <!-- 通用知识库管理 -->
+      <div v-show="knowledgeSubTab === 'general'">
+        <!-- 统计信息 -->
+        <div class="stats-card">
+          <div class="stat-item">
+            <span class="stat-value">{{ generalKnowledgeStats.count || 0 }}</span>
+            <span class="stat-label">向量数</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-value">{{ generalKnowledgeDocs.length || 0 }}</span>
+            <span class="stat-label">文档数</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-value">{{ generalKnowledgeStats.exists ? (generalKnowledgeStats.mode === 'server' ? '服务器' : '本地') : '未初始化' }}</span>
+            <span class="stat-label">运行模式</span>
+          </div>
+        </div>
+
+        <!-- 文档上传 -->
+        <div class="knowledge-upload-section">
+          <h3 class="subsection-title">上传文档</h3>
+          <div class="upload-row">
+            <input ref="knowledgeFileInput" type="file" accept=".txt,.md,.docx,.xlsx" @change="onKnowledgeFileSelect" hidden />
+            <button class="btn btn-secondary" @click="$refs.knowledgeFileInput.click()">
+              选择文件
+            </button>
+            <span class="file-name">{{ knowledgeSelectedFile?.name || '未选择' }}</span>
+          </div>
+          <div class="upload-row">
+            <input ref="knowledgeZipInput" type="file" accept=".zip" @change="onKnowledgeZipSelect" hidden />
+            <button class="btn btn-info" @click="$refs.knowledgeZipInput.click()">
+              批量上传(zip)
+            </button>
+            <span class="file-name">{{ knowledgeSelectedZip?.name || '未选择' }}</span>
+          </div>
+          <div class="upload-row">
+            <textarea v-model="knowledgeTextContent" placeholder="或直接输入文本内容..." rows="4" class="form-textarea"></textarea>
+            <input v-model="knowledgeTextSource" placeholder="来源名称（可选）" class="form-input" />
+          </div>
+          <button class="btn btn-primary" @click="uploadKnowledgeDoc" :disabled="knowledgeUploading">
+            {{ knowledgeUploading ? '上传中...' : '提交到知识库' }}
+          </button>
+
+          <!-- 上传结果 -->
+          <div v-if="knowledgeUploadResult" class="message" :class="knowledgeUploadResult.success ? 'success' : 'error'">
+            {{ knowledgeUploadResult.message }}
+          </div>
+
+          <!-- 批量上传进度 -->
+          <div v-if="knowledgeBatchProgress" class="standards-progress">
+            <div class="progress-text">处理中: {{ knowledgeBatchProgress.processed }} / {{ knowledgeBatchProgress.total }}</div>
+            <div class="progress-bar">
+              <div class="progress-fill" :style="{ width: (knowledgeBatchProgress.processed / knowledgeBatchProgress.total * 100) + '%' }"></div>
+            </div>
+            <div class="progress-summary">成功: {{ knowledgeBatchProgress.success }}，失败: {{ knowledgeBatchProgress.failed }}</div>
+          </div>
+        </div>
+
+        <!-- 已上传文档列表 -->
+        <div class="knowledge-docs-section">
+          <div class="section-header">
+            <h3 class="subsection-title">已上传文档</h3>
+            <div class="section-actions">
+              <button class="btn btn-secondary" @click="loadKnowledgeDocs">刷新</button>
+              <button v-if="knowledgeSelectedDocs.length > 0" class="btn btn-danger" @click="batchDeleteKnowledgeDocs">
+                删除选中 ({{ knowledgeSelectedDocs.length }})
+              </button>
+            </div>
+          </div>
+
+          <div v-if="generalKnowledgeDocs.length" class="docs-list">
+            <div class="docs-header">
+              <label class="checkbox-label">
+                <input type="checkbox" :checked="knowledgeSelectedDocs.length === generalKnowledgeDocs.length" @change="toggleKnowledgeSelectAll">
+                全选
+              </label>
+              <span class="docs-count">共 {{ generalKnowledgeDocs.length }} 个文档</span>
+            </div>
+            <div v-for="doc in generalKnowledgeDocs" :key="doc.doc_id" class="doc-row">
+              <input type="checkbox" :value="doc.doc_id" v-model="knowledgeSelectedDocs">
+              <span class="doc-id">{{ doc.doc_id }}</span>
+              <span class="doc-chunks">{{ doc.chunks }} 个片段</span>
+              <span class="doc-source">{{ doc.sources?.join(', ') }}</span>
+              <button class="btn-text danger" @click="deleteKnowledgeDoc(doc.doc_id)">删除</button>
+            </div>
+          </div>
+          <div v-else class="empty-state">暂无文档</div>
+        </div>
+      </div>
+
+      <!-- 立结案标准库管理 -->
+      <div v-show="knowledgeSubTab === 'standards'">
+        <!-- 统计信息 -->
+        <div class="stats-card">
+          <div class="stat-item">
+            <span class="stat-value">{{ standardsStats?.parents || 0 }}</span>
+            <span class="stat-label">父文档数</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-value">{{ standardsStats?.children || 0 }}</span>
+            <span class="stat-label">子文档数</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-value">{{ (standardsStats?.exists) ? (standardsStats?.mode || '本地') : '未初始化' }}</span>
+            <span class="stat-label">运行模式</span>
+          </div>
+        </div>
+
+        <!-- 操作区域 -->
+        <div class="standards-actions">
+          <button class="btn btn-primary" @click="fetchStandardsList" :disabled="standardsLoading">
+            {{ standardsLoading ? '加载中...' : '刷新列表' }}
+          </button>
+          <button class="btn btn-info" @click="startIncrementalIndex" :disabled="incrementalLoading">
+            {{ incrementalLoading ? '索引中...' : '增量索引' }}
+          </button>
+          <input ref="singleStandardsFileInput" type="file" accept=".txt" @change="onSingleStandardsFileSelect" hidden />
+          <button class="btn btn-secondary" @click="$refs.singleStandardsFileInput.click()">
+            上传单文件
+          </button>
+        </div>
+
+        <!-- 增量索引进度 -->
+        <div v-if="incrementalProgress.active" class="standards-progress">
+          <div class="progress-text">处理中: {{ incrementalProgress.filename }}</div>
+          <div class="progress-bar">
+            <div class="progress-fill" :style="{ width: (incrementalProgress.current / incrementalProgress.total * 100) + '%' }"></div>
+          </div>
+          <div class="progress-summary">已处理: {{ incrementalProgress.current }} / {{ incrementalProgress.total }}</div>
+        </div>
+
+        <!-- 增量索引结果 -->
+        <div v-if="incrementalResult" class="standards-result">
+          <p>新增 {{ incrementalResult.success }} 个，跳过 {{ incrementalResult.skipped }} 个，失败 {{ incrementalResult.failed }} 个</p>
+        </div>
+
+        <!-- 已索引标准列表 -->
+        <div v-if="standardsList.length" class="standards-table">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>文件名</th>
+                <th>案件类型</th>
+                <th>大类/小类</th>
+                <th>子文档数</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="std in standardsList" :key="std.parent_id">
+                <td>{{ std.filename || '-' }}</td>
+                <td>{{ std.case_type || '-' }}</td>
+                <td>{{ std.big_category }} / {{ std.small_category }}</td>
+                <td>{{ std.child_count }}</td>
+                <td>
+                  <button class="btn-text danger" @click="deleteStandard(std.parent_id)" :disabled="standardsDeleteLoading">
+                    删除
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- 空状态 -->
+        <div v-else-if="!standardsLoading && standardsListFetched" class="empty-state">
+          <p>暂无已索引的标准，请执行增量索引或上传单个文件</p>
+        </div>
+
+        <!-- 单文件上传结果 -->
+        <div v-if="singleStandardsFileResult" class="standards-result">
+          <p :class="singleStandardsFileResult.success ? 'success' : 'error'">{{ singleStandardsFileResult.message }}</p>
+        </div>
+      </div>
+    </div>
+
     <!-- 小工具 -->
     <div v-else-if="activeTab === 'tools'" class="content-card">
       <div class="card-header">
@@ -1035,6 +1227,7 @@ const tabs = [
   { key: 'logs', label: '操作日志' },
   { key: 'business', label: '业务平台' },
   { key: 'assessment', label: '考核系数' },
+  { key: 'knowledge', label: '知识库管理' },
   { key: 'tools', label: '小工具' },
   { key: 'system', label: '系统设置' }
 ]
@@ -1089,6 +1282,32 @@ const coefficients = ref({})
 const coefficientsLoading = ref(false)
 const coefficientsMessage = ref('')
 const coefficientsError = ref('')
+
+// 知识库管理
+const knowledgeSubTab = ref('general')
+
+// 通用知识库管理
+const generalKnowledgeStats = ref({ exists: false, count: 0 })
+const generalKnowledgeDocs = ref([])
+const knowledgeSelectedDocs = ref([])
+const knowledgeSelectedFile = ref(null)
+const knowledgeSelectedZip = ref(null)
+const knowledgeTextContent = ref('')
+const knowledgeTextSource = ref('')
+const knowledgeUploading = ref(false)
+const knowledgeUploadResult = ref(null)
+const knowledgeBatchProgress = ref(null)
+
+// 立结案标准库管理
+const standardsStats = ref(null)
+const standardsList = ref([])
+const standardsLoading = ref(false)
+const standardsListFetched = ref(false)
+const standardsDeleteLoading = ref(false)
+const incrementalLoading = ref(false)
+const incrementalProgress = ref({ active: false, current: 0, total: 0, filename: '', status: '' })
+const incrementalResult = ref(null)
+const singleStandardsFileResult = ref(null)
 
 // 小工具
 const activeTool = ref('huanwei')
@@ -1303,6 +1522,258 @@ function resetCoefficients() {
     closure_weight: 0.8,
     delay_weight: 0.1,
     rework_weight: 0.1
+  }
+}
+
+// ===== 通用知识库管理方法 =====
+async function loadKnowledgeStats() {
+  try {
+    const res = await axios.get('/api/knowledge/stats')
+    generalKnowledgeStats.value = res.data
+  } catch (error) {
+    console.error('加载知识库统计失败:', error)
+  }
+}
+
+async function loadKnowledgeDocs() {
+  try {
+    const res = await axios.get('/api/knowledge/documents')
+    generalKnowledgeDocs.value = res.data.documents || []
+  } catch (error) {
+    console.error('加载文档列表失败:', error)
+  }
+}
+
+function onKnowledgeFileSelect(e) {
+  knowledgeSelectedFile.value = e.target.files[0] || null
+  knowledgeTextContent.value = ''
+  knowledgeUploadResult.value = null
+}
+
+function onKnowledgeZipSelect(e) {
+  knowledgeSelectedZip.value = e.target.files[0] || null
+  knowledgeUploadResult.value = null
+  if (knowledgeSelectedZip.value) {
+    uploadKnowledgeZip()
+  }
+}
+
+async function uploadKnowledgeZip() {
+  if (!knowledgeSelectedZip.value) return
+  knowledgeUploading.value = true
+  knowledgeUploadResult.value = null
+  knowledgeBatchProgress.value = null
+
+  try {
+    const formData = new FormData()
+    formData.append('file', knowledgeSelectedZip.value)
+    const res = await axios.post('/api/knowledge/batch-upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
+    knowledgeUploadResult.value = res.data
+    if (res.data.success && res.data.task_id) {
+      knowledgeSelectedZip.value = null
+      pollKnowledgeProgress(res.data.task_id, res.data.total_files)
+    }
+  } catch (error) {
+    knowledgeUploadResult.value = { success: false, message: '批量上传失败: ' + (error.response?.data?.error || error.message) }
+    knowledgeUploading.value = false
+  }
+}
+
+async function pollKnowledgeProgress(taskId, totalFiles) {
+  knowledgeBatchProgress.value = { total: totalFiles, processed: 0, success: 0, failed: 0 }
+
+  const poll = async () => {
+    try {
+      const res = await axios.get(`/api/knowledge/batch-upload/progress/${taskId}`)
+      if (res.data.status === 'completed') {
+        knowledgeBatchProgress.value = res.data
+        knowledgeUploading.value = false
+        knowledgeUploadResult.value = {
+          success: true,
+          message: `处理完成！成功 ${res.data.success} 个，失败 ${res.data.failed} 个`
+        }
+        loadKnowledgeStats()
+        loadKnowledgeDocs()
+      } else {
+        knowledgeBatchProgress.value = res.data
+        setTimeout(poll, 2000)
+      }
+    } catch (error) {
+      setTimeout(poll, 2000)
+    }
+  }
+  poll()
+}
+
+async function uploadKnowledgeDoc() {
+  if (!knowledgeSelectedFile.value && !knowledgeTextContent.value.trim()) {
+    knowledgeUploadResult.value = { success: false, message: '请选择文件或输入内容' }
+    return
+  }
+
+  knowledgeUploading.value = true
+  knowledgeUploadResult.value = null
+
+  try {
+    if (knowledgeSelectedFile.value) {
+      const formData = new FormData()
+      formData.append('file', knowledgeSelectedFile.value)
+      const res = await axios.post('/api/knowledge/upload', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      })
+      knowledgeUploadResult.value = res.data
+      if (res.data.success) {
+        knowledgeSelectedFile.value = null
+        loadKnowledgeStats()
+        loadKnowledgeDocs()
+      }
+    } else {
+      const res = await axios.post('/api/knowledge/upload', {
+        content: knowledgeTextContent.value,
+        source: knowledgeTextSource.value || '手动输入'
+      })
+      knowledgeUploadResult.value = res.data
+      if (res.data.success) {
+        knowledgeTextContent.value = ''
+        knowledgeTextSource.value = ''
+        loadKnowledgeStats()
+        loadKnowledgeDocs()
+      }
+    }
+  } catch (error) {
+    knowledgeUploadResult.value = { success: false, message: '上传失败: ' + (error.response?.data?.error || error.message) }
+  } finally {
+    knowledgeUploading.value = false
+  }
+}
+
+function toggleKnowledgeSelectAll() {
+  if (knowledgeSelectedDocs.value.length === generalKnowledgeDocs.value.length) {
+    knowledgeSelectedDocs.value = []
+  } else {
+    knowledgeSelectedDocs.value = generalKnowledgeDocs.value.map(d => d.doc_id)
+  }
+}
+
+async function batchDeleteKnowledgeDocs() {
+  if (knowledgeSelectedDocs.value.length === 0) return
+  if (!confirm(`确定删除选中的 ${knowledgeSelectedDocs.value.length} 个文档？`)) return
+
+  try {
+    const res = await axios.post('/api/knowledge/documents/batch-delete', { doc_ids: knowledgeSelectedDocs.value })
+    if (res.data.success) {
+      alert(res.data.message)
+      knowledgeSelectedDocs.value = []
+      loadKnowledgeStats()
+      loadKnowledgeDocs()
+    } else {
+      alert('删除失败: ' + res.data.error)
+    }
+  } catch (error) {
+    alert('删除失败: ' + (error.response?.data?.error || error.message))
+  }
+}
+
+async function deleteKnowledgeDoc(docId) {
+  if (!confirm('确定删除该文档？')) return
+
+  try {
+    const res = await axios.delete(`/api/knowledge/documents/${docId}`)
+    if (res.data.success) {
+      loadKnowledgeStats()
+      loadKnowledgeDocs()
+    } else {
+      alert('删除失败: ' + res.data.message)
+    }
+  } catch (error) {
+    alert('删除失败: ' + (error.response?.data?.error || error.message))
+  }
+}
+
+// ===== 立结案标准库管理方法 =====
+async function fetchStandardsList() {
+  standardsLoading.value = true
+  standardsListFetched.value = false
+  try {
+    const statsRes = await axios.get('/api/case-standards/stats')
+    standardsStats.value = statsRes.data
+    const listRes = await axios.get('/api/case-standards/list')
+    standardsList.value = listRes.data.standards || []
+    standardsListFetched.value = true
+  } catch (error) {
+    console.error('获取标准列表失败:', error)
+    alert('获取标准列表失败: ' + (error.response?.data?.error || error.message))
+  } finally {
+    standardsLoading.value = false
+  }
+}
+
+async function deleteStandard(parentId) {
+  if (!confirm('确认删除该标准？此操作不可恢复！')) return
+  standardsDeleteLoading.value = true
+  try {
+    const response = await axios.delete(`/api/case-standards/delete/${parentId}`)
+    if (response.data.success) {
+      await fetchStandardsList()
+      alert('删除成功')
+    } else {
+      alert('删除失败: ' + response.data.message)
+    }
+  } catch (error) {
+    alert('删除失败: ' + (error.response?.data?.error || error.message))
+  } finally {
+    standardsDeleteLoading.value = false
+  }
+}
+
+async function startIncrementalIndex() {
+  incrementalLoading.value = true
+  incrementalProgress.value = { active: true, current: 0, total: 0, filename: '准备开始...', status: '' }
+  incrementalResult.value = null
+  try {
+    const response = await axios.post('/api/case-standards/incremental', {
+      directory: 'D:/常用/立案结案标准'
+    })
+    incrementalResult.value = response.data
+    incrementalProgress.value.active = false
+    await fetchStandardsList()
+  } catch (error) {
+    incrementalProgress.value.active = false
+    alert('增量索引失败: ' + (error.response?.data?.error || error.message))
+  } finally {
+    incrementalLoading.value = false
+  }
+}
+
+function onSingleStandardsFileSelect(e) {
+  const file = e.target.files[0]
+  if (!file) return
+  if (!file.name.endsWith('.txt')) {
+    alert('只支持.txt文件')
+    return
+  }
+  uploadSingleStandardsFile(file)
+}
+
+async function uploadSingleStandardsFile(file) {
+  standardsLoading.value = true
+  singleStandardsFileResult.value = null
+  const formData = new FormData()
+  formData.append('file', file)
+  try {
+    const response = await axios.post('/api/case-standards/index-single', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
+    singleStandardsFileResult.value = response.data
+    if (response.data.success) {
+      await fetchStandardsList()
+    }
+  } catch (error) {
+    singleStandardsFileResult.value = { success: false, message: error.response?.data?.error || error.message }
+  } finally {
+    standardsLoading.value = false
   }
 }
 
@@ -2201,6 +2672,30 @@ onMounted(() => {
   fetchArticles()
 })
 
+// 切换到知识库管理tab时自动加载列表
+watch(activeTab, (newTab) => {
+  if (newTab === 'knowledge') {
+    if (knowledgeSubTab.value === 'general') {
+      loadKnowledgeStats()
+      loadKnowledgeDocs()
+    } else if (knowledgeSubTab.value === 'standards' && !standardsListFetched.value) {
+      fetchStandardsList()
+    }
+  }
+})
+
+// 切换知识库子标签时加载对应数据
+watch(knowledgeSubTab, (newSubTab) => {
+  if (activeTab.value === 'knowledge') {
+    if (newSubTab === 'general') {
+      loadKnowledgeStats()
+      loadKnowledgeDocs()
+    } else if (newSubTab === 'standards' && !standardsListFetched.value) {
+      fetchStandardsList()
+    }
+  }
+})
+
 watch(articlesCurrentPage, fetchArticles)
 </script>
 
@@ -2297,6 +2792,14 @@ watch(articlesCurrentPage, fetchArticles)
 }
 
 .btn-secondary:hover { border-color: var(--primary-300); }
+
+.btn-danger {
+  background: var(--danger);
+  color: white;
+  border-color: var(--danger);
+}
+
+.btn-danger:hover:not(:disabled) { background: var(--danger-dark); }
 
 .btn-icon {
   width: 32px;
@@ -3236,5 +3739,240 @@ watch(articlesCurrentPage, fetchArticles)
   background: var(--fill-light);
   border-radius: var(--radius-md);
   margin-bottom: var(--space-4);
+}
+
+/* 标准库管理样式 */
+.stats-card {
+  display: flex;
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+  padding: var(--space-4);
+  background: var(--fill-light);
+  border-radius: var(--radius-md);
+}
+
+.stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: var(--space-3) var(--space-5);
+  background: var(--bg-primary);
+  border-radius: var(--radius-sm);
+}
+
+.stat-value {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--primary-500);
+}
+
+.stat-label {
+  font-size: 13px;
+  color: var(--text-tertiary);
+  margin-top: var(--space-1);
+}
+
+.standards-actions {
+  display: flex;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.btn-info {
+  background: #3498db;
+  color: white;
+}
+
+.btn-info:hover:not(:disabled) {
+  background: #2980b9;
+}
+
+.standards-progress {
+  padding: var(--space-4);
+  background: var(--fill-light);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-4);
+}
+
+.standards-progress .progress-text {
+  font-size: 14px;
+  color: var(--text-primary);
+  margin-bottom: var(--space-2);
+}
+
+.standards-progress .progress-bar {
+  height: 8px;
+  background: var(--border-lighter);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.standards-progress .progress-fill {
+  height: 100%;
+  background: var(--primary-500);
+  transition: width 0.3s;
+}
+
+.standards-progress .progress-summary {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  margin-top: var(--space-2);
+}
+
+.standards-result {
+  padding: var(--space-3);
+  background: var(--fill-light);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-4);
+}
+
+.standards-result p {
+  margin: 0;
+  font-size: 14px;
+}
+
+.standards-result p.success {
+  color: #67c23a;
+}
+
+.standards-result p.error {
+  color: #f56c6c;
+}
+
+.standards-table {
+  margin-top: var(--space-4);
+}
+
+/* 知识库子标签样式 */
+.knowledge-sub-tabs {
+  display: flex;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+  border-bottom: 1px solid var(--border-lighter);
+}
+
+.sub-tab {
+  padding: var(--space-2) var(--space-4);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-tertiary);
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.sub-tab:hover { color: var(--primary-500); }
+.sub-tab.active { color: var(--primary-500); border-bottom-color: var(--primary-500); }
+
+/* 通用知识库上传区域样式 */
+.knowledge-upload-section {
+  padding: var(--space-4);
+  background: var(--bg-secondary);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-4);
+}
+
+.upload-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.upload-row:last-child {
+  margin-bottom: 0;
+}
+
+.upload-row .form-textarea {
+  flex: 1;
+}
+
+.upload-row .form-input {
+  width: 200px;
+}
+
+/* 已上传文档列表样式 */
+.knowledge-docs-section {
+  margin-top: var(--space-4);
+}
+
+.docs-list {
+  border: 1px solid var(--border-lighter);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.docs-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-2) var(--space-3);
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-lighter);
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.docs-count {
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.doc-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border-lighter);
+}
+
+.doc-row:last-child {
+  border-bottom: none;
+}
+
+.doc-row:hover {
+  background: var(--fill-light);
+}
+
+.doc-row input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+}
+
+.doc-id {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+  min-width: 100px;
+}
+
+.doc-chunks {
+  font-size: 12px;
+  color: var(--primary-500);
+  background: var(--primary-50);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+}
+
+.doc-source {
+  font-size: 13px;
+  color: var(--text-tertiary);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.doc-row .btn-text {
+  margin-left: auto;
 }
 </style>

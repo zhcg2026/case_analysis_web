@@ -12,68 +12,8 @@
       </div>
     </div>
 
-    <!-- 核心数据卡片 -->
-    <div class="stats-section">
-      <div class="stats-card">
-        <div class="stats-icon primary">
-          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/>
-            <path d="M14 2v4a2 2 0 0 0 2 2h4"/>
-            <path d="M10 9H8"/>
-            <path d="M16 13H8"/>
-            <path d="M16 17H8"/>
-          </svg>
-        </div>
-        <div class="stats-content">
-          <div class="stats-value">{{ stats.totalCases }}</div>
-          <div class="stats-label">案件总数</div>
-        </div>
-      </div>
-
-      <div class="stats-card">
-        <div class="stats-icon success">
-          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
-            <polyline points="22 4 12 14.01 9 11.01"/>
-          </svg>
-        </div>
-        <div class="stats-content">
-          <div class="stats-value">{{ stats.completedCases }}</div>
-          <div class="stats-label">已结案</div>
-        </div>
-      </div>
-
-      <div class="stats-card">
-        <div class="stats-icon warning">
-          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="10"/>
-            <polyline points="12 6 12 12 16 14"/>
-          </svg>
-        </div>
-        <div class="stats-content">
-          <div class="stats-value">{{ stats.pendingCases }}</div>
-          <div class="stats-label">跟进中</div>
-        </div>
-      </div>
-
-      <div class="stats-card">
-        <div class="stats-icon danger">
-          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-            <line x1="12" y1="9" x2="12" y2="13"/>
-            <line x1="12" y1="17" x2="12.01" y2="17"/>
-          </svg>
-        </div>
-        <div class="stats-content">
-          <div class="stats-value">{{ stats.expiringCases }}</div>
-          <div class="stats-label">即将到期</div>
-        </div>
-      </div>
-    </div>
-
     <!-- 快捷操作 -->
     <div class="quick-actions">
-      <h2 class="section-title">快捷操作</h2>
       <div class="actions-grid">
         <router-link to="/cases" class="action-card">
           <span class="action-icon cases">
@@ -191,14 +131,6 @@ const currentTime = ref('')
 const currentDate = ref('')
 let timeInterval = null
 
-// 统计数据
-const stats = ref({
-  totalCases: 0,
-  completedCases: 0,
-  pendingCases: 0,
-  expiringCases: 0
-})
-
 // 栏目文章
 const columns = ref([])
 
@@ -207,23 +139,6 @@ function updateTime() {
   const now = new Date()
   currentTime.value = now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
   currentDate.value = now.toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' })
-}
-
-// 获取统计数据
-async function fetchStats() {
-  try {
-    const response = await axios.get('/api/cases/stats')
-    const data = response.data || {}
-    // 映射后端字段到前端
-    stats.value = {
-      totalCases: data.total || 0,
-      completedCases: data.closed || 0,
-      pendingCases: data.follow_up || 0,
-      expiringCases: data.expiring_soon || 0
-    }
-  } catch (error) {
-    console.error('获取统计数据失败:', error)
-  }
 }
 
 // 获取栏目文章
@@ -257,7 +172,6 @@ onMounted(() => {
   updateTime()
   timeInterval = setInterval(updateTime, 1000)
 
-  fetchStats()
   fetchColumns()
 })
 
@@ -317,80 +231,9 @@ onUnmounted(() => {
   margin-top: var(--space-1);
 }
 
-/* 统计卡片 */
-.stats-section {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: var(--space-4);
-  margin-bottom: var(--space-6);
-}
-
-.stats-card {
-  display: flex;
-  align-items: center;
-  gap: var(--space-4);
-  padding: var(--space-4);
-  background: var(--bg-card);
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--border-lighter);
-  transition: all var(--transition-fast);
-}
-
-.stats-card:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-lg);
-}
-
-.stats-icon {
-  width: 48px;
-  height: 48px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--radius-md);
-}
-
-.stats-icon.primary {
-  background: rgba(64, 158, 255, 0.1);
-  color: var(--primary-500);
-}
-
-.stats-icon.success {
-  background: rgba(103, 194, 58, 0.1);
-  color: #67c23a;
-}
-
-.stats-icon.warning {
-  background: rgba(230, 162, 60, 0.1);
-  color: #e6a23c;
-}
-
-.stats-icon.danger {
-  background: rgba(245, 108, 108, 0.1);
-  color: #f56c6c;
-}
-
-.stats-value {
-  font-size: 28px;
-  font-weight: 700;
-  color: var(--text-primary);
-}
-
-.stats-label {
-  font-size: 14px;
-  color: var(--text-tertiary);
-}
-
 /* 快捷操作 */
 .quick-actions {
   margin-bottom: var(--space-6);
-}
-
-.section-title {
-  font-size: 18px;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin: 0 0 var(--space-4);
 }
 
 .actions-grid {
@@ -567,10 +410,6 @@ onUnmounted(() => {
 
   .welcome-time {
     text-align: center;
-  }
-
-  .stats-section {
-    grid-template-columns: repeat(2, 1fr);
   }
 
   .actions-grid {

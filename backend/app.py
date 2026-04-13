@@ -6178,7 +6178,11 @@ try:
         search_case_standards,
         ask_case_standard,
         get_case_standards_stats,
-        clear_case_standards
+        clear_case_standards,
+        list_indexed_standards,
+        delete_single_standard,
+        incremental_index,
+        index_single_file_upload
     )
 except ImportError:
     from case_standards import (
@@ -6187,7 +6191,11 @@ except ImportError:
         search_case_standards,
         ask_case_standard,
         get_case_standards_stats,
-        clear_case_standards
+        clear_case_standards,
+        list_indexed_standards,
+        delete_single_standard,
+        incremental_index,
+        index_single_file_upload
     )
 
 @app.route('/api/case-standards/stats', methods=['GET'])
@@ -6327,6 +6335,96 @@ def case_standards_ask():
         result = ask_case_standard(question, top_k)
         return jsonify(result), 200
     except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# ==================== 立结案标准索引管理 API ====================
+
+@app.route('/api/case-standards/list', methods=['GET'])
+@admin_required
+def case_standards_list():
+    """获取已索引的标准列表"""
+    try:
+        # 强制设置本地模式
+        os.environ['USE_LOCAL_MODE'] = 'true'
+
+        standards = list_indexed_standards()
+        return jsonify({
+            'standards': standards,
+            'total': len(standards)
+        }), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/case-standards/delete/<parent_id>', methods=['DELETE'])
+@admin_required
+def case_standards_delete_single(parent_id):
+    """删除单个已索引的标准"""
+    try:
+        # 强制设置本地模式
+        os.environ['USE_LOCAL_MODE'] = 'true'
+
+        result = delete_single_standard(parent_id)
+        return jsonify(result), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/case-standards/incremental', methods=['POST'])
+@admin_required
+def case_standards_incremental_index():
+    """增量索引立结案标准"""
+    try:
+        # 强制设置本地模式
+        os.environ['USE_LOCAL_MODE'] = 'true'
+        os.environ['HF_DATASETS_OFFLINE'] = '1'
+        os.environ['TRANSFORMERS_OFFLINE'] = '1'
+        os.environ['HF_HUB_OFFLINE'] = '1'
+
+        data = request.get_json() or {}
+        directory = data.get('directory', 'D:/常用/立案结案标准')
+
+        result = incremental_index(directory)
+        return jsonify(result), 200
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/case-standards/index-single', methods=['POST'])
+@admin_required
+def case_standards_index_single():
+    """上传并索引单个标准文件"""
+    try:
+        # 强制设置本地模式
+        os.environ['USE_LOCAL_MODE'] = 'true'
+        os.environ['HF_DATASETS_OFFLINE'] = '1'
+        os.environ['TRANSFORMERS_OFFLINE'] = '1'
+        os.environ['HF_HUB_OFFLINE'] = '1'
+
+        # 检查是否有文件上传
+        if 'file' not in request.files:
+            # 也支持通过JSON内容上传
+            data = request.get_json()
+            if data and 'content' in data and 'filename' in data:
+                result = index_single_file_upload(data['content'], data['filename'])
+                return jsonify(result), 200
+            return jsonify({'error': '请上传文件或提供文件内容'}), 400
+
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({'error': '未选择文件'}), 400
+
+        if not file.filename.endswith('.txt'):
+            return jsonify({'error': '只支持.txt文件'}), 400
+
+        # 读取文件内容
+        content = file.read().decode('utf-8')
+        filename = file.filename
+
+        result = index_single_file_upload(content, filename)
+        return jsonify(result), 200
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/smart-report', methods=['POST'])

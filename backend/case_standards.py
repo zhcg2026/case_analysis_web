@@ -1098,6 +1098,458 @@ def test_parse_file():
         print(f"测试文件不存在: {test_file}")
 
 
+# ==================== 索引管理功能 ====================
+
+def list_indexed_standards_chroma() -> List[Dict]:
+    """列出已索引的立结案标准（ChromaDB本地模式）"""
+    try:
+        client = get_chroma_client()
+        if client is None:
+            return []
+
+        # 获取父文档集合
+        parent_coll = client.get_or_create_collection(name=PARENT_COLLECTION)
+        child_coll = client.get_or_create_collection(name=CHILD_COLLECTION)
+
+        # 获取所有父文档
+        parent_docs = parent_coll.get(include=['metadatas', 'documents'])
+
+        results = []
+        for i, parent_id in enumerate(parent_docs['ids']):
+            meta = parent_docs['metadatas'][i] if parent_docs['metadatas'] else {}
+            doc = parent_docs['documents'][i] if parent_docs['documents'] else ''
+
+            # 统计子文档数量
+            child_count = 0
+            try:
+                # 通过metadata中的parent_id筛选
+                all_children = child_coll.get(include=['metadatas'])
+                child_count = sum(1 for m in all_children['metadatas']
+                                 if m and m.get('parent_id') == parent_id)
+            except:
+                pass
+
+            results.append({
+                'parent_id': parent_id,
+                'filename': meta.get('filename', ''),
+                'case_type': meta.get('case_type', ''),
+                'big_category': meta.get('big_category', ''),
+                'small_category': meta.get('small_category', ''),
+                'child_count': child_count,
+                'supervision_subject': meta.get('supervision_subject', ''),
+                'responsibility_subject': meta.get('responsibility_subject', '')
+            })
+
+        # 按大类、小类排序
+        results.sort(key=lambda x: (x.get('big_category', ''), x.get('small_category', '')))
+
+        return results
+
+    except Exception as e:
+        print(f"[CaseStandards] 列出标准失败: {e}")
+        import traceback
+        traceback.print_exc()
+        return []
+
+
+def list_indexed_standards_milvus() -> List[Dict]:
+    """列出已索引的立结案标准（Milvus服务器模式）"""
+    try:
+        from pymilvus import Collection, utility
+
+        if not connect_milvus():
+            return []
+
+        if not utility.has_collection(CASE_STANDARDS_COLLECTION):
+            return []
+
+        collection = Collection(CASE_STANDARDS_COLLECTION)
+        collection.load()
+
+        # 查询父文档（level == 1）
+        parent_results = collection.query(
+            expr="level == 1",
+            output_fields=["id", "parent_id", "text_content", "case_type", "meta_info"]
+        )
+
+        # 查询子文档数量
+        child_results = collection.query(
+            expr="level == 0",
+            output_fields=["parent_id"]
+        )
+
+        # 统计每个父文档的子文档数量
+        child_count_map = {}
+        for cr in child_results:
+            pid = cr.get('parent_id')
+            if pid:
+                child_count_map[pid] = child_count_map.get(pid, 0) + 1
+
+        results = []
+        for pr in parent_results:
+            parent_id = pr.get('id')
+            meta = pr.get('meta_info', {})
+            if isinstance(meta, str):
+                meta = json.loads(meta)
+
+            results.append({
+                'parent_id': parent_id,
+                'filename': meta.get('filename', ''),
+                'case_type': pr.get('case_type', '') or meta.get('case_type', ''),
+                'big_category': meta.get('big_category', ''),
+                'small_category': meta.get('small_category', ''),
+                'child_count': child_count_map.get(parent_id, 0),
+                'supervision_subject': meta.get('supervision_subject', ''),
+                'responsibility_subject': meta.get('responsibility_subject', '')
+            })
+
+        # 按大类、小类排序
+        results.sort(key=lambda x: (x.get('big_category', ''), x.get('small_category', '')))
+
+        return results
+
+    except Exception as e:
+        print(f"[CaseStandards] 列出标准失败: {e}")
+        import traceback
+        traceback.print_exc()
+        return []
+
+
+def list_indexed_standards() -> List[Dict]:
+    """列出已索引的立结案标准（自动选择模式）"""
+    use_local = os.getenv('USE_LOCAL_MODE', 'false').lower() == 'true'
+    if use_local:
+        return list_indexed_standards_chroma()
+    else:
+        return list_indexed_standards_milvus()
+
+
+def delete_single_standard_chroma(parent_id: str) -> Dict:
+    """删除单个立结案标准（ChromaDB本地模式）"""
+    try:
+        client = get_chroma_client()
+        if client is None:
+            return {"success": False, "message": "ChromaDB连接失败"}
+
+        parent_coll = client.get_or_create_collection(name=PARENT_COLLECTION)
+        child_coll = client.get_or_create_collection(name=CHILD_COLLECTION)
+
+        # 获取所有子文档，找出属于该父文档的
+        all_children = child_coll.get(include=['metadatas'])
+        child_ids_to_delete = []
+        for i, cid in enumerate(all_children['ids']):
+            meta = all_children['metadatas'][i] if all_children['metadatas'] else {}
+            if meta.get('parent_id') == parent_id:
+                child_ids_to_delete.append(cid)
+
+        # 删除子文档
+        if child_ids_to_delete:
+            child_coll.delete(ids=child_ids_to_delete)
+            print(f"[CaseStandards] 删除了 {len(child_ids_to_delete)} 个子文档")
+
+        # 删除父文档
+        try:
+            parent_coll.delete(ids=[parent_id])
+            print(f"[CaseStandards] 删除了父文档: {parent_id}")
+        except:
+            pass
+
+        return {
+            "success": True,
+            "deleted_children": len(child_ids_to_delete),
+            "message": f"成功删除标准，共删除 {len(child_ids_to_delete)} 个子文档"
+        }
+
+    except Exception as e:
+        print(f"[CaseStandards] 删除失败: {e}")
+        import traceback
+        traceback.print_exc()
+        return {"success": False, "message": str(e)}
+
+
+def delete_single_standard_milvus(parent_id: str) -> Dict:
+    """删除单个立结案标准（Milvus服务器模式）"""
+    try:
+        from pymilvus import Collection, utility
+
+        if not connect_milvus():
+            return {"success": False, "message": "Milvus连接失败"}
+
+        if not utility.has_collection(CASE_STANDARDS_COLLECTION):
+            return {"success": True, "message": "集合不存在"}
+
+        collection = Collection(CASE_STANDARDS_COLLECTION)
+
+        # 查询该标准的子文档数量
+        child_results = collection.query(
+            expr=f'level == 0 and parent_id == "{parent_id}"',
+            output_fields=["id"]
+        )
+        child_count = len(child_results)
+
+        # 删除该父文档和所有子文档
+        collection.delete(expr=f'parent_id == "{parent_id}"')
+        collection.flush()
+
+        return {
+            "success": True,
+            "deleted_children": child_count,
+            "message": f"成功删除标准，共删除 {child_count} 个子文档"
+        }
+
+    except Exception as e:
+        print(f"[CaseStandards] 删除失败: {e}")
+        import traceback
+        traceback.print_exc()
+        return {"success": False, "message": str(e)}
+
+
+def delete_single_standard(parent_id: str) -> Dict:
+    """删除单个立结案标准（自动选择模式）"""
+    use_local = os.getenv('USE_LOCAL_MODE', 'false').lower() == 'true'
+    if use_local:
+        return delete_single_standard_chroma(parent_id)
+    else:
+        return delete_single_standard_milvus(parent_id)
+
+
+def incremental_index_chroma(directory: str, progress_callback=None) -> Dict:
+    """
+    增量索引（ChromaDB本地模式）
+    只索引新增或修改的文件
+    progress_callback: 进度回调函数 callback(current, total, filename, status)
+    """
+    try:
+        client = get_chroma_client()
+        if client is None:
+            return {"success": 0, "failed": 0, "skipped": 0, "message": "ChromaDB连接失败"}
+
+        parent_coll = client.get_or_create_collection(name=PARENT_COLLECTION)
+
+        # 获取已索引的文件名列表
+        existing_docs = parent_coll.get(include=['metadatas'])
+        indexed_filenames = set()
+        indexed_hashes = {}  # filename -> doc_id
+
+        for i, doc_id in enumerate(existing_docs['ids']):
+            meta = existing_docs['metadatas'][i] if existing_docs['metadatas'] else {}
+            filename = meta.get('filename', '')
+            if filename:
+                indexed_filenames.add(filename)
+                indexed_hashes[filename] = doc_id
+
+        # 获取目录中的所有txt文件
+        if not os.path.isdir(directory):
+            return {"success": 0, "failed": 0, "skipped": 0, "message": f"目录不存在: {directory}"}
+
+        txt_files = [f for f in os.listdir(directory) if f.endswith('.txt')]
+        total_files = len(txt_files)
+
+        results = {
+            "success": 0,
+            "failed": 0,
+            "skipped": 0,
+            "total_children": 0,
+            "details": []
+        }
+
+        print(f"[CaseStandards] 增量索引开始，已有 {len(indexed_filenames)} 个标准，发现 {total_files} 个文件")
+
+        for i, filename in enumerate(txt_files, 1):
+            file_path = os.path.join(directory, filename)
+            status = "processing"
+
+            if progress_callback:
+                progress_callback(i, total_files, filename, status)
+
+            # 检查是否已索引
+            if filename in indexed_filenames:
+                # 可选：检查文件是否被修改（通过文件大小或修改时间）
+                # 这里简单跳过已索引的文件
+                status = "skipped"
+                results['skipped'] += 1
+                results['details'].append({
+                    'file': filename,
+                    'status': 'skipped',
+                    'message': '已存在，跳过'
+                })
+                print(f"[CaseStandards] [{i}/{total_files}] 跳过: {filename}")
+
+                if progress_callback:
+                    progress_callback(i, total_files, filename, status)
+                continue
+
+            # 索引新文件
+            print(f"[CaseStandards] [{i}/{total_files}] 新文件: {filename}")
+            result = index_standard_file(file_path)
+
+            if result['success']:
+                results['success'] += 1
+                results['total_children'] += result['children']
+                status = "success"
+            else:
+                results['failed'] += 1
+                status = "failed"
+
+            results['details'].append({
+                'file': filename,
+                'status': status,
+                'children': result['children'],
+                'message': result['message']
+            })
+
+            if progress_callback:
+                progress_callback(i, total_files, filename, status)
+
+        print(f"[CaseStandards] 增量索引完成: 新增 {results['success']}, 失败 {results['failed']}, 跳过 {results['skipped']}")
+        return results
+
+    except Exception as e:
+        print(f"[CaseStandards] 增量索引失败: {e}")
+        import traceback
+        traceback.print_exc()
+        return {"success": 0, "failed": 0, "skipped": 0, "message": str(e)}
+
+
+def incremental_index_milvus(directory: str, progress_callback=None) -> Dict:
+    """
+    增量索引（Milvus服务器模式）
+    只索引新增或修改的文件
+    """
+    try:
+        from pymilvus import Collection, utility
+
+        if not connect_milvus():
+            return {"success": 0, "failed": 0, "skipped": 0, "message": "Milvus连接失败"}
+
+        # 获取已索引的文件名列表
+        indexed_filenames = set()
+        indexed_hashes = {}
+
+        if utility.has_collection(CASE_STANDARDS_COLLECTION):
+            collection = Collection(CASE_STANDARDS_COLLECTION)
+            collection.load()
+
+            parent_results = collection.query(
+                expr="level == 1",
+                output_fields=["id", "meta_info"]
+            )
+
+            for pr in parent_results:
+                meta = pr.get('meta_info', {})
+                if isinstance(meta, str):
+                    meta = json.loads(meta)
+                filename = meta.get('filename', '')
+                if filename:
+                    indexed_filenames.add(filename)
+                    indexed_hashes[filename] = pr['id']
+
+        # 获取目录中的所有txt文件
+        if not os.path.isdir(directory):
+            return {"success": 0, "failed": 0, "skipped": 0, "message": f"目录不存在: {directory}"}
+
+        txt_files = [f for f in os.listdir(directory) if f.endswith('.txt')]
+        total_files = len(txt_files)
+
+        results = {
+            "success": 0,
+            "failed": 0,
+            "skipped": 0,
+            "total_children": 0,
+            "details": []
+        }
+
+        print(f"[CaseStandards] 增量索引开始，已有 {len(indexed_filenames)} 个标准")
+
+        for i, filename in enumerate(txt_files, 1):
+            file_path = os.path.join(directory, filename)
+            status = "processing"
+
+            if progress_callback:
+                progress_callback(i, total_files, filename, status)
+
+            if filename in indexed_filenames:
+                status = "skipped"
+                results['skipped'] += 1
+                results['details'].append({
+                    'file': filename,
+                    'status': 'skipped',
+                    'message': '已存在，跳过'
+                })
+                if progress_callback:
+                    progress_callback(i, total_files, filename, status)
+                continue
+
+            result = index_standard_file(file_path)
+
+            if result['success']:
+                results['success'] += 1
+                results['total_children'] += result['children']
+                status = "success"
+            else:
+                results['failed'] += 1
+                status = "failed"
+
+            results['details'].append({
+                'file': filename,
+                'status': status,
+                'children': result['children'],
+                'message': result['message']
+            })
+
+            if progress_callback:
+                progress_callback(i, total_files, filename, status)
+
+        return results
+
+    except Exception as e:
+        print(f"[CaseStandards] 增量索引失败: {e}")
+        import traceback
+        traceback.print_exc()
+        return {"success": 0, "failed": 0, "skipped": 0, "message": str(e)}
+
+
+def incremental_index(directory: str, progress_callback=None) -> Dict:
+    """增量索引（自动选择模式）"""
+    use_local = os.getenv('USE_LOCAL_MODE', 'false').lower() == 'true'
+    if use_local:
+        return incremental_index_chroma(directory, progress_callback)
+    else:
+        return incremental_index_milvus(directory, progress_callback)
+
+
+def index_single_file_upload(file_content: str, filename: str) -> Dict:
+    """
+    索引单个上传的文件（通过内容而非文件路径）
+    用于前端上传单个txt文件直接索引
+    """
+    try:
+        # 临时保存文件
+        import tempfile
+        temp_dir = tempfile.gettempdir()
+        temp_path = os.path.join(temp_dir, filename)
+
+        with open(temp_path, 'w', encoding='utf-8') as f:
+            f.write(file_content)
+
+        # 索引文件
+        result = index_standard_file(temp_path)
+
+        # 删除临时文件
+        try:
+            os.remove(temp_path)
+        except:
+            pass
+
+        return result
+
+    except Exception as e:
+        print(f"[CaseStandards] 单文件索引失败: {e}")
+        import traceback
+        traceback.print_exc()
+        return {"success": False, "message": str(e)}
+
+
 if __name__ == "__main__":
     # 测试解析
     test_parse_file()

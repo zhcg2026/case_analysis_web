@@ -20,7 +20,15 @@
       <!-- 模块说明 -->
       <div class="module-guide">
         <div class="guide-header" @click="guideExpanded.analysis = !guideExpanded.analysis">
-          <span class="guide-icon">📋</span>
+          <span class="guide-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/>
+              <path d="M14 2v4a2 2 0 0 0 2 2h4"/>
+              <path d="M10 9H8"/>
+              <path d="M16 13H8"/>
+              <path d="M16 17H8"/>
+            </svg>
+          </span>
           <span class="guide-title">功能说明</span>
           <span class="guide-toggle">{{ guideExpanded.analysis ? '收起' : '展开' }}</span>
         </div>
@@ -128,7 +136,16 @@
       <!-- 模块说明 -->
       <div class="module-guide">
         <div class="guide-header" @click="guideExpanded.analysisV2 = !guideExpanded.analysisV2">
-          <span class="guide-icon">🤖</span>
+          <span class="guide-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 8V4H8"/>
+              <rect width="16" height="12" x="4" y="8" rx="2"/>
+              <path d="M2 14h2"/>
+              <path d="M20 14h2"/>
+              <path d="M15 13v2"/>
+              <path d="M9 13v2"/>
+            </svg>
+          </span>
           <span class="guide-title">功能说明</span>
           <span class="guide-toggle">{{ guideExpanded.analysisV2 ? '收起' : '展开' }}</span>
         </div>
@@ -221,7 +238,12 @@
       <!-- 模块说明 -->
       <div class="module-guide">
         <div class="guide-header" @click="guideExpanded.smartReport = !guideExpanded.smartReport">
-          <span class="guide-icon">📊</span>
+          <span class="guide-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 3v18h18"/>
+              <path d="m19 9-5 5-4-4-3 3"/>
+            </svg>
+          </span>
           <span class="guide-title">功能说明</span>
           <span class="guide-toggle">{{ guideExpanded.smartReport ? '收起' : '展开' }}</span>
         </div>
@@ -328,7 +350,13 @@
       <!-- 模块说明 -->
       <div class="module-guide">
         <div class="guide-header" @click="guideExpanded.chart = !guideExpanded.chart">
-          <span class="guide-icon">📈</span>
+          <span class="guide-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="12" y1="20" x2="12" y2="10"/>
+              <line x1="18" y1="20" x2="18" y2="4"/>
+              <line x1="6" y1="20" x2="6" y2="16"/>
+            </svg>
+          </span>
           <span class="guide-title">功能说明</span>
           <span class="guide-toggle">{{ guideExpanded.chart ? '收起' : '展开' }}</span>
         </div>
@@ -394,7 +422,12 @@
       <!-- 模块说明 -->
       <div class="module-guide">
         <div class="guide-header" @click="guideExpanded.spotcheck = !guideExpanded.spotcheck">
-          <span class="guide-icon">🔍</span>
+          <span class="guide-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="8"/>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+          </span>
           <span class="guide-title">功能说明</span>
           <span class="guide-toggle">{{ guideExpanded.spotcheck ? '收起' : '展开' }}</span>
         </div>
@@ -1777,8 +1810,11 @@ onMounted(() => {
 }
 
 .guide-icon {
-  font-size: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   margin-right: var(--space-3);
+  color: var(--primary-500);
 }
 
 .guide-title {

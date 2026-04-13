@@ -2,6 +2,35 @@
   <div class="page-container">
     <h1 class="page-title">地图服务</h1>
 
+    <!-- 顶部控制面板 -->
+    <div class="top-panel">
+      <!-- 管辖范围切换 -->
+      <div class="dept-switcher">
+        <span class="switcher-label">管辖范围：</span>
+        <div class="dept-buttons">
+          <button
+            v-for="dept in departments"
+            :key="dept.key"
+            class="dept-btn"
+            :style="{
+              '--dept-color': dept.color,
+              borderColor: dept.color,
+              backgroundColor: activeDept === dept.key ? dept.color : '#fff',
+              color: activeDept === dept.key ? '#fff' : dept.color
+            }"
+            @click="toggleDept(dept.key)"
+          >
+            {{ dept.name }}
+          </button>
+        </div>
+      </div>
+
+      <!-- 当前选中的片区信息 -->
+      <div v-if="activeDept" class="dept-info">
+        <span class="info-text">{{ activeDept }}片区 - 点击地图查看详情</span>
+      </div>
+    </div>
+
     <!-- 地图容器 -->
     <div class="map-wrapper">
       <div v-if="mapLoading" class="map-loading">
@@ -13,32 +42,6 @@
         <span>{{ mapError }}</span>
       </div>
       <div v-else ref="mapContainer" id="map-container" class="map-container"></div>
-
-      <!-- 侧边信息面板 -->
-      <div class="info-panel">
-        <!-- 管辖范围切换 -->
-        <div class="dept-switcher">
-          <h4 class="switcher-title">管辖范围</h4>
-          <div class="dept-buttons">
-            <button
-              v-for="dept in departments"
-              :key="dept.key"
-              class="dept-btn"
-              :class="{ active: activeDept === dept.key }"
-              :style="{ borderColor: dept.color }"
-              @click="toggleDept(dept.key)"
-            >
-              {{ dept.name }}
-            </button>
-          </div>
-        </div>
-
-        <!-- 当前选中的片区信息 -->
-        <div v-if="activeDept" class="dept-info">
-          <h4 class="info-title">{{ activeDept }}片区</h4>
-          <p class="info-desc">点击地图上的片区查看详情</p>
-        </div>
-      </div>
     </div>
   </div>
 </template>
@@ -49,6 +52,7 @@ import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 const mapContainer = ref(null)
 let mapInstance = null
 let geoJsonPolygons = [] // 存储管辖范围多边形
+let roadPolylines = [] // 存储市政道路线
 
 const mapLoading = ref(false)
 const mapError = ref('')
@@ -104,19 +108,38 @@ async function loadGeoJson() {
   }
 }
 
+// 加载市政道路GeoJSON数据
+let roadData = null
+async function loadRoadData() {
+  try {
+    const response = await fetch('/data/市政管辖道路.geojson')
+    roadData = await response.json()
+    console.log('市政道路数据加载成功:', roadData.features?.length, '条道路')
+  } catch (error) {
+    console.error('加载市政道路数据失败:', error)
+  }
+}
+
 // 切换部门显示
 function toggleDept(deptKey) {
   if (activeDept.value === deptKey) {
     // 再次点击则隐藏
     clearPolygons()
+    clearRoads()
     activeDept.value = ''
     return
   }
 
   // 清除现有图层，显示新选中的部门
   clearPolygons()
+  clearRoads()
   activeDept.value = deptKey
   showDeptPolygons(deptKey)
+
+  // 如果是市政部门，显示道路
+  if (deptKey === '市政') {
+    showRoads()
+  }
 }
 
 // 显示指定部门的多边形
@@ -145,8 +168,8 @@ function showDeptPolygons(deptKey) {
       // 点击显示片区信息
       polygon.on('click', () => {
         const infoWindow = new window.AMap.InfoWindow({
-          content: `<div style="padding:10px;">
-            <strong>${feature.properties.dept} - ${feature.properties.name}</strong>
+          content: `<div style="padding:12px 16px;background:#fff;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.15);min-width:120px;">
+            <div style="font-size:14px;font-weight:600;color:#333;margin-bottom:4px;">${feature.properties.dept} - ${feature.properties.name}</div>
           </div>`,
           offset: new window.AMap.Pixel(0, -10)
         })
@@ -168,8 +191,65 @@ function clearPolygons() {
   geoJsonPolygons = []
 }
 
+// 显示市政道路
+function showRoads() {
+  if (!mapInstance || !roadData) return
+
+  // 根据road_type设置不同宽度
+  const roadWidths = {
+    1: 8,  // 主干道
+    2: 5,  // 次干道
+    3: 3   // 支路
+  }
+
+  roadData.features.forEach(feature => {
+    if (feature.geometry.type === 'LineString') {
+      const coordinates = feature.geometry.coordinates.map(coord => [coord[0], coord[1]])
+      const roadType = feature.properties.road_type || 2
+      const strokeWidth = roadWidths[roadType] || 5
+
+      const polyline = new window.AMap.Polyline({
+        path: coordinates,
+        strokeColor: '#f59e0b', // 市政部门颜色
+        strokeWeight: strokeWidth,
+        strokeOpacity: 0.9,
+        map: mapInstance
+      })
+
+      // 点击显示道路信息
+      polyline.on('click', () => {
+        const infoWindow = new window.AMap.InfoWindow({
+          content: `<div style="padding:12px 16px;background:#fff;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.15);min-width:150px;">
+            <div style="font-size:15px;font-weight:600;color:#333;margin-bottom:8px;border-bottom:1px solid #eee;padding-bottom:6px;">市政管辖道路</div>
+            <div style="font-size:13px;color:#333;line-height:1.8;">
+              <span style="color:#666;">道路名称：</span><span style="color:#f59e0b;font-weight:500;">${feature.properties.道路名称 || '未命名'}</span><br/>
+              <span style="color:#666;">道路编号：</span><span>${feature.properties.编号 || '-'}</span><br/>
+              <span style="color:#666;">道路类型：</span><span>${roadType === 1 ? '主干道' : roadType === 2 ? '次干道' : '支路'}</span>
+            </div>
+          </div>`,
+          offset: new window.AMap.Pixel(0, -10)
+        })
+        infoWindow.open(mapInstance, polyline.getBounds().getCenter())
+      })
+
+      roadPolylines.push(polyline)
+    }
+  })
+
+  console.log(`显示 ${roadPolylines.length} 条市政道路`)
+}
+
+// 清除道路线
+function clearRoads() {
+  roadPolylines.forEach(polyline => {
+    polyline.setMap(null)
+  })
+  roadPolylines = []
+}
+
 onMounted(() => {
   loadGeoJson() // 加载GeoJSON数据
+  loadRoadData() // 加载市政道路数据
   nextTick(() => {
     initMap()
   })
@@ -184,25 +264,85 @@ onUnmounted(() => {
 
 <style scoped>
 .page-container {
-  padding: var(--space-6);
+  padding: var(--space-4);
   max-width: 100%;
-  height: calc(100vh - 80px);
+  height: calc(100vh - 60px);
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+  box-sizing: border-box;
 }
 
 .page-title {
-  font-size: 24px;
+  font-size: 20px;
   font-weight: 600;
   color: var(--text-primary);
-  margin: 0 0 var(--space-4);
+  margin: 0 0 var(--space-2);
+  flex-shrink: 0;
+}
+
+.top-panel {
+  background: var(--bg-card);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-lighter);
+  padding: var(--space-2) var(--space-3);
+  margin-bottom: var(--space-3);
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+
+.dept-switcher {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.switcher-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.dept-buttons {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.dept-btn {
+  padding: 6px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: 2px solid var(--dept-color);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.dept-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+}
+
+.dept-info {
+  padding: 3px 10px;
+  background: var(--primary-50);
+  border-radius: var(--radius-md);
+}
+
+.info-text {
+  font-size: 12px;
+  color: var(--primary-600);
 }
 
 .map-wrapper {
   flex: 1;
+  min-height: 0;
+  width: 100%;
   display: flex;
-  gap: var(--space-4);
-  min-height: 500px;
 }
 
 .map-container {
@@ -239,79 +379,8 @@ onUnmounted(() => {
 
 .error-icon { font-size: 48px; }
 
-.info-panel {
-  width: 280px;
-  background: var(--bg-card);
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--border-lighter);
-  padding: var(--space-4);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-  overflow-y: auto;
-}
-
-.dept-switcher {
-  padding-bottom: var(--space-4);
-  border-bottom: 1px solid var(--border-lighter);
-}
-
-.switcher-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin: 0 0 var(--space-2);
-}
-
-.dept-buttons {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-}
-
-.dept-btn {
-  padding: 4px 12px;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text-primary);
-  background: var(--bg-secondary);
-  border: 2px solid var(--border-lighter);
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.dept-btn:hover {
-  background: var(--fill-light);
-}
-
-.dept-btn.active {
-  background: var(--primary-50);
-  color: var(--primary-600);
-}
-
-.dept-info {
-  margin-top: var(--space-3);
-  padding: var(--space-3);
-  background: var(--bg-secondary);
-  border-radius: var(--radius-md);
-}
-
-.info-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin: 0 0 var(--space-1);
-}
-
-.info-desc {
-  font-size: 13px;
-  color: var(--text-tertiary);
-  margin: 0;
-}
-
 @media (max-width: 768px) {
-  .map-wrapper { flex-direction: column; }
-  .info-panel { width: 100%; max-height: 300px; }
+  .top-panel { flex-direction: column; align-items: flex-start; }
+  .dept-buttons { flex-wrap: wrap; }
 }
 </style>
