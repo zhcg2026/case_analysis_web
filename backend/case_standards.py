@@ -16,6 +16,7 @@
 import os
 import re
 import json
+import math
 import hashlib
 import requests
 from typing import List, Dict, Optional, Tuple, Any
@@ -683,12 +684,293 @@ NOISE_WORDS = {
     "怎么办", "如何", "怎么", "可以", "是否", "需要", "根据"
 }
 
+DISPATCH_INTENT_WORDS = [
+    "处置部门", "归哪个部门", "归谁", "谁负责", "哪个单位", "由谁处置", "负责部门"
+]
+
+DEPARTMENT_KEYWORDS = {
+    "市容环卫中心": ["环卫", "垃圾", "保洁", "清扫", "污物", "脏污", "果皮箱", "清运"],
+    "园林绿化中心": ["园林", "绿化", "树木", "草坪", "花坛", "绿化带", "公园", "行道树", "绿化垃圾"],
+    "综合行政执法队": ["执法", "占道", "违建", "商贩", "广告牌", "渣土车", "门头牌匾", "无照经营"],
+    "市政公用服务中心": ["市政", "路灯", "灯杆", "道路", "路面", "井盖", "护栏", "交通设施"],
+    "排水服务中心": ["排水", "雨水", "污水", "积水", "下水道", "雨污", "管网", "窨井"],
+    "节水服务中心": ["节水", "用水", "漏水", "节约用水", "非常规水", "水资源"],
+    "供热供气服务中心": ["供热", "供气", "燃气", "热力", "暖气", "管道燃气", "供暖"],
+    "建筑资源化服务中心": ["建筑垃圾", "资源化", "装修垃圾", "再生利用", "渣土处置", "消纳场"],
+}
+
+PARK_NAMES = ["人民公园", "航天公园", "禹都公园", "圣惠公园", "体育公园", "天逸公园", "南风广场"]
+
+MAP_DATA_DIR = os.path.normpath(
+    os.path.join(os.path.dirname(__file__), "..", "frontend", "public", "data")
+)
+
+DEPARTMENT_GEO_RULES = {
+    "市容环卫中心": {
+        "ready": True,
+        "file": "guanxia.geojson",
+        "geometry_mode": "polygon",
+        "unit_type": "片区",
+    },
+    "园林绿化中心": {
+        "ready": False,
+        "file": "园林片区.geojson",
+        "geometry_mode": "polygon",
+        "unit_type": "片区",
+    },
+    "综合行政执法队": {"ready": False, "file": None, "geometry_mode": "polygon", "unit_type": "分队"},
+    "市政公用服务中心": {
+        "ready": True,
+        "file": "市政管辖道路.geojson",
+        "geometry_mode": "line",
+        "unit_type": "部门",
+        "line_buffer_m": 80.0,
+    },
+    "排水服务中心": {"ready": False, "file": None, "geometry_mode": "polygon", "unit_type": "部门"},
+    "节水服务中心": {"ready": False, "file": None, "geometry_mode": "polygon", "unit_type": "部门"},
+    "供热供气服务中心": {"ready": False, "file": None, "geometry_mode": "polygon", "unit_type": "部门"},
+    "建筑资源化服务中心": {"ready": False, "file": None, "geometry_mode": "polygon", "unit_type": "部门"},
+}
+
+_department_geojson_cache: Dict[str, Dict[str, Any]] = {}
+
 
 def normalize_cn_text(text: str) -> str:
     """中文归一化：移除空白和常见标点，提升匹配稳定性"""
     if not text:
         return ''
     return re.sub(r'[\s，。；：、,.!?！？()（）【】\[\]{}"\'“”‘’\-—_/\\]+', '', text)
+
+
+def _is_dispatch_question(question: str) -> bool:
+    normalized = normalize_cn_text(question)
+    return any(normalize_cn_text(w) in normalized for w in DISPATCH_INTENT_WORDS)
+
+
+def _classify_department(question: str) -> Optional[str]:
+    normalized = normalize_cn_text(question)
+    best_dept = None
+    best_score = 0
+    for dept, words in DEPARTMENT_KEYWORDS.items():
+        score = sum(1 for w in words if normalize_cn_text(w) in normalized)
+        if score > best_score:
+            best_score = score
+            best_dept = dept
+    return best_dept if best_score > 0 else None
+
+
+def _extract_location_point(location: Any) -> Optional[Tuple[float, float]]:
+    if isinstance(location, dict):
+        lng = location.get("lng", location.get("lon", location.get("longitude")))
+        lat = location.get("lat", location.get("latitude"))
+    elif isinstance(location, (list, tuple)) and len(location) >= 2:
+        lng, lat = location[0], location[1]
+    else:
+        return None
+    try:
+        return float(lng), float(lat)
+    except (TypeError, ValueError):
+        return None
+
+
+def _load_department_geojson(file_name: Optional[str]) -> Optional[Dict[str, Any]]:
+    if not file_name:
+        return None
+    if file_name in _department_geojson_cache:
+        return _department_geojson_cache[file_name]
+    file_path = os.path.join(MAP_DATA_DIR, file_name)
+    if not os.path.exists(file_path):
+        return None
+    try:
+        with open(file_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            _department_geojson_cache[file_name] = data
+            return data
+    except Exception as e:
+        print(f"[CaseStandards] 读取地图文件失败 {file_name}: {e}")
+        return None
+
+
+def _point_in_ring(lng: float, lat: float, ring: List[List[float]]) -> bool:
+    inside = False
+    n = len(ring)
+    if n < 3:
+        return False
+    j = n - 1
+    for i in range(n):
+        xi, yi = ring[i][0], ring[i][1]
+        xj, yj = ring[j][0], ring[j][1]
+        intersect = ((yi > lat) != (yj > lat)) and (
+            lng < (xj - xi) * (lat - yi) / ((yj - yi) + 1e-15) + xi
+        )
+        if intersect:
+            inside = not inside
+        j = i
+    return inside
+
+
+def _point_in_polygon(lng: float, lat: float, polygon_coords: List[List[List[float]]]) -> bool:
+    if not polygon_coords:
+        return False
+    if not _point_in_ring(lng, lat, polygon_coords[0]):
+        return False
+    for hole in polygon_coords[1:]:
+        if _point_in_ring(lng, lat, hole):
+            return False
+    return True
+
+
+def _point_segment_distance_m(lng: float, lat: float, a: List[float], b: List[float]) -> float:
+    lon_scale = 111320.0 * math.cos(math.radians(lat))
+    lat_scale = 110540.0
+    px, py = lng * lon_scale, lat * lat_scale
+    ax, ay = a[0] * lon_scale, a[1] * lat_scale
+    bx, by = b[0] * lon_scale, b[1] * lat_scale
+    abx, aby = bx - ax, by - ay
+    ab_len2 = abx * abx + aby * aby
+    if ab_len2 <= 1e-9:
+        return math.hypot(px - ax, py - ay)
+    t = ((px - ax) * abx + (py - ay) * aby) / ab_len2
+    t = max(0.0, min(1.0, t))
+    proj_x = ax + t * abx
+    proj_y = ay + t * aby
+    return math.hypot(px - proj_x, py - proj_y)
+
+
+def _point_near_line_m(lng: float, lat: float, line_coords: List[List[float]], threshold_m: float) -> bool:
+    if not line_coords or len(line_coords) < 2:
+        return False
+    for idx in range(len(line_coords) - 1):
+        if _point_segment_distance_m(lng, lat, line_coords[idx], line_coords[idx + 1]) <= threshold_m:
+            return True
+    return False
+
+
+def _extract_unit_name(department: str, props: Dict[str, Any]) -> str:
+    if department == "市容环卫中心":
+        area = props.get("name") or props.get("zone_name")
+        if area:
+            return f"环卫{str(area).replace('环卫', '').replace('片区', '')}片区"
+    if department == "园林绿化中心":
+        zone_name = props.get("zone_name") or props.get("name") or props.get("manager_org")
+        if zone_name:
+            return zone_name
+    if department == "综合行政执法队":
+        return props.get("zone_name") or props.get("name") or "综合行政执法队"
+    if department == "市政公用服务中心":
+        return "市政公用服务中心"
+    return department
+
+
+def _is_park_feature(props: Dict[str, Any]) -> bool:
+    joined = " ".join([str(props.get(k, "")) for k in ["name", "zone_name", "manager_org", "remark"]])
+    return any(p in joined for p in PARK_NAMES) or ("公园" in joined) or ("广场" in joined)
+
+
+def match_department_dispatch(question: str, location: Any, force_dispatch: bool = False) -> Optional[Dict[str, Any]]:
+    if not force_dispatch and not _is_dispatch_question(question):
+        return None
+    point = _extract_location_point(location)
+    if not point:
+        return {
+            "success": True,
+            "department": _classify_department(question),
+            "unit": None,
+            "in_jurisdiction": False,
+            "layer_status": "missing_location",
+            "answer": "请先在地图上定位后再查询处置部门。",
+        }
+
+    department = _classify_department(question)
+    if not department:
+        return {
+            "success": True,
+            "department": None,
+            "unit": None,
+            "in_jurisdiction": False,
+            "layer_status": "unknown_department",
+            "answer": "未能识别处置部门，请补充更具体的问题描述。",
+        }
+
+    rule = DEPARTMENT_GEO_RULES.get(department, {})
+    if not rule.get("ready"):
+        return {
+            "success": True,
+            "department": department,
+            "unit": None,
+            "in_jurisdiction": False,
+            "layer_status": "not_ready",
+            "answer": f"{department}范围数据未完善（暂按人工研判）。",
+        }
+
+    geojson_data = _load_department_geojson(rule.get("file"))
+    if not geojson_data:
+        return {
+            "success": True,
+            "department": department,
+            "unit": None,
+            "in_jurisdiction": False,
+            "layer_status": "missing_layer_file",
+            "answer": f"{department}范围数据文件缺失，暂无法自动判定。",
+        }
+
+    lng, lat = point
+    polygon_hits = []
+    normal_hits = []
+    mode = rule.get("geometry_mode", "polygon")
+    line_buffer_m = float(rule.get("line_buffer_m", 80.0))
+
+    for feature in geojson_data.get("features", []):
+        geometry = feature.get("geometry", {}) or {}
+        props = feature.get("properties", {}) or {}
+        geo_type = geometry.get("type")
+        coords = geometry.get("coordinates", [])
+        matched = False
+
+        if mode == "polygon":
+            if geo_type == "Polygon":
+                matched = _point_in_polygon(lng, lat, coords)
+            elif geo_type == "MultiPolygon":
+                matched = any(_point_in_polygon(lng, lat, poly) for poly in coords)
+        elif mode == "line":
+            if geo_type == "LineString":
+                matched = _point_near_line_m(lng, lat, coords, line_buffer_m)
+            elif geo_type == "MultiLineString":
+                matched = any(_point_near_line_m(lng, lat, line, line_buffer_m) for line in coords)
+
+        if matched:
+            unit_name = _extract_unit_name(department, props)
+            hit = {"unit": unit_name, "properties": props}
+            if department == "园林绿化中心" and _is_park_feature(props):
+                polygon_hits.append(hit)
+            else:
+                normal_hits.append(hit)
+
+    selected = None
+    if polygon_hits:
+        selected = polygon_hits[0]
+    elif normal_hits:
+        selected = normal_hits[0]
+
+    if not selected:
+        return {
+            "success": True,
+            "department": department,
+            "unit": None,
+            "in_jurisdiction": False,
+            "layer_status": "ready",
+            "answer": "不属于我局管辖范围",
+        }
+
+    unit = selected["unit"]
+    return {
+        "success": True,
+        "department": department,
+        "unit": unit,
+        "in_jurisdiction": True,
+        "layer_status": "ready",
+        "answer": unit,
+    }
 
 
 def detect_query_intent(query: str) -> Dict[str, Any]:
@@ -1251,12 +1533,21 @@ def build_structured_intent_answer(question: str, results: List[Dict]) -> Option
     return None
 
 
-def ask_case_standard(question: str, top_k: int = 5) -> Dict:
+def ask_case_standard(question: str, top_k: int = 5, location: Any = None) -> Dict:
     """
     基于立结案标准回答问题（父子索引RAG）
     返回: {"answer": str, "sources": list, "success": bool}
     """
     try:
+        # 只要前端传了定位参数，就优先走处置部门+空间匹配链路，
+        # 避免因坐标格式细节回退到标准库检索导致异常。
+        force_dispatch = location is not None
+        dispatch_result = match_department_dispatch(question, location, force_dispatch=force_dispatch)
+        if dispatch_result is not None:
+            dispatch_result["sources"] = []
+            dispatch_result["matches"] = []
+            return dispatch_result
+
         results = search_case_standards(question, top_k)
 
         if not results:

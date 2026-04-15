@@ -50,6 +50,7 @@ const mapContainer = ref(null)
 let mapInstance = null
 let geoJsonPolygons = [] // 存储管辖范围多边形
 let roadPolylines = [] // 存储市政道路线
+let selectedPointMarker = null // 存储用户定位点标记
 
 const mapLoading = ref(false)
 const mapError = ref('')
@@ -115,6 +116,19 @@ function initMap() {
       mapStyle: 'amap://styles/normal'
     })
 
+    // 记录用户点击的定位点，供知识库问答页面复用
+    mapInstance.on('click', (event) => {
+      const lng = event?.lnglat?.getLng?.()
+      const lat = event?.lnglat?.getLat?.()
+      if (typeof lng !== 'number' || typeof lat !== 'number') {
+        return
+      }
+      saveSelectedLocation(lng, lat)
+      renderSelectedPointMarker([lng, lat])
+    })
+
+    restoreSelectedLocationMarker()
+
     mapLoading.value = false
 
   } catch (error) {
@@ -122,6 +136,50 @@ function initMap() {
     mapError.value = '地图初始化失败: ' + error.message
     mapLoading.value = false
   }
+}
+
+function saveSelectedLocation(lng, lat) {
+  const payload = {
+    lng: Number(lng.toFixed(6)),
+    lat: Number(lat.toFixed(6)),
+    timestamp: Date.now()
+  }
+  localStorage.setItem('selected_map_location', JSON.stringify(payload))
+  window.dispatchEvent(new CustomEvent('map-location-updated', { detail: payload }))
+}
+
+function getSavedLocation() {
+  try {
+    const raw = localStorage.getItem('selected_map_location')
+    if (!raw) return null
+    const location = JSON.parse(raw)
+    if (typeof location?.lng !== 'number' || typeof location?.lat !== 'number') {
+      return null
+    }
+    return location
+  } catch (error) {
+    console.error('读取定位点失败:', error)
+    return null
+  }
+}
+
+function renderSelectedPointMarker(position) {
+  if (!mapInstance) return
+  if (!selectedPointMarker) {
+    selectedPointMarker = new window.AMap.Marker({
+      map: mapInstance,
+      anchor: 'bottom-center',
+      offset: new window.AMap.Pixel(0, -2)
+    })
+  }
+  selectedPointMarker.setPosition(position)
+  selectedPointMarker.setTitle('已选定位点')
+}
+
+function restoreSelectedLocationMarker() {
+  const location = getSavedLocation()
+  if (!location) return
+  renderSelectedPointMarker([location.lng, location.lat])
 }
 
 // 加载GeoJSON管辖范围数据
@@ -315,6 +373,8 @@ onUnmounted(() => {
   if (mapInstance) {
     mapInstance.destroy()
   }
+  mapInstance = null
+  selectedPointMarker = null
 })
 </script>
 

@@ -6297,9 +6297,10 @@ def case_standards_debug_ask():
         os.environ['TRANSFORMERS_OFFLINE'] = '1'
         os.environ['HF_HUB_OFFLINE'] = '1'
 
-        data = request.get_json()
+        data = request.get_json(silent=True) or {}
         question = data.get('question', '')
         top_k = data.get('top_k', 5)
+        location = data.get('location')
 
         if not question:
             return jsonify({'error': '请提供问题'}), 400
@@ -6310,7 +6311,9 @@ def case_standards_debug_ask():
         except ImportError:
             from case_standards import ask_case_standard
 
-        result = ask_case_standard(question, top_k)
+        result = ask_case_standard(question, top_k, location)
+        if isinstance(result, dict) and 'matches' in result:
+            result.pop('matches', None)
         return jsonify(result), 200
     except Exception as e:
         import traceback
@@ -6325,17 +6328,22 @@ def case_standards_ask():
         # 强制设置本地模式
         os.environ['USE_LOCAL_MODE'] = 'true'
 
-        data = request.get_json()
+        data = request.get_json(silent=True) or {}
         question = data.get('question', '')
         top_k = data.get('top_k', 5)
+        location = data.get('location')
 
         if not question:
             return jsonify({'error': '请提供问题'}), 400
 
-        result = ask_case_standard(question, top_k)
+        result = ask_case_standard(question, top_k, location)
+        if isinstance(result, dict) and 'matches' in result:
+            result.pop('matches', None)
         return jsonify(result), 200
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e), 'traceback': traceback.format_exc()}), 500
 
 # ==================== 立结案标准索引管理 API ====================
 
