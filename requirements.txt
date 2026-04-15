@@ -18,3 +18,5 @@ python-dotenv>=1.0.0
 
 # RAG 知识库依赖
 pymilvus>=2.3.0
+chromadb>=1.5.7
+sentence-transformers>=5.3.0

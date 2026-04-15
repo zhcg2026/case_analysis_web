@@ -18,7 +18,7 @@ import re
 import json
 import hashlib
 import requests
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional, Tuple, Any
 from dotenv import load_dotenv
 
 # 加载环境变量（优先加载 .env.local）
@@ -658,8 +658,280 @@ def index_all_standards(directory: str) -> Dict:
     return results
 
 
+INTENT_KEYWORDS = {
+    "time_limit": ["处置时限", "时限", "多久", "多长时间", "几小时", "几天", "限时", "完成时间"],
+    "close_condition": ["结案条件", "结案", "如何结案", "达到什么算结案"],
+    "responsibility_subject": ["责任主体", "谁负责", "哪个单位负责", "责任单位"],
+    "supervision_subject": ["监管主体", "谁监管", "哪个部门监管", "监管单位"],
+    "collection_requirement": ["采集要求", "采集标准", "采集口径", "如何采集", "取证要求"],
+}
+
+ENTITY_SYNONYMS = {
+    "井盖": ["井盖", "窨井盖", "上水井盖", "雨水井盖", "污水井盖", "检查井盖"],
+    "破损": ["破损", "损坏", "破裂", "破碎", "裂开", "缺损", "坏了"],
+    "塌陷": ["塌陷", "塌方", "下陷", "沉降", "凹陷"],
+    "垃圾": ["垃圾", "渣土", "建筑垃圾", "装修垃圾", "生活垃圾"],
+    "立交桥": ["立交桥", "高架桥", "栈桥", "天桥", "桥梁", "立交"],
+    "护栏": ["护栏", "栏杆", "防护栏", "隔离栏"],
+    "脏污": ["脏污", "污损", "污染", "污渍", "积尘", "不洁"],
+    "路灯": ["路灯", "灯杆", "照明灯", "灯具", "道路照明"],
+}
+
+NOISE_WORDS = {
+    "请问", "帮我", "咨询", "一下", "一个", "这个", "那个", "相关", "情况", "问题",
+    "标准", "规定", "要求", "处理", "处置", "立案", "结案", "查询", "搜索", "是什么", "案件",
+    "怎么办", "如何", "怎么", "可以", "是否", "需要", "根据"
+}
+
+
+def normalize_cn_text(text: str) -> str:
+    """中文归一化：移除空白和常见标点，提升匹配稳定性"""
+    if not text:
+        return ''
+    return re.sub(r'[\s，。；：、,.!?！？()（）【】\[\]{}"\'“”‘’\-—_/\\]+', '', text)
+
+
+def detect_query_intent(query: str) -> Dict[str, Any]:
+    """识别用户问题意图与目标字段"""
+    normalized = normalize_cn_text(query)
+    target_fields = []
+    intent_name = "general"
+
+    for field, words in INTENT_KEYWORDS.items():
+        if any(normalize_cn_text(w) in normalized for w in words):
+            target_fields.append(field)
+
+    if target_fields:
+        intent_name = target_fields[0]
+
+    return {
+        "intent": intent_name,
+        "target_fields": target_fields,
+    }
+
+
+def extract_entities_and_terms(query: str) -> Dict[str, Any]:
+    """
+    提取实体词并做同义词扩展，返回用于检索重排的关键词集合
+    """
+    chinese_blocks = re.findall(r'[\u4e00-\u9fa5]+', query)
+    terms = set()
+    entities = set()
+    core_terms = set()
+
+    # 先剥离意图词/噪声词，提取“核心实体短语”
+    noise_pool = set(NOISE_WORDS)
+    for words in INTENT_KEYWORDS.values():
+        noise_pool.update(words)
+    cleaned_query = query
+    for w in sorted(noise_pool, key=len, reverse=True):
+        if w:
+            cleaned_query = cleaned_query.replace(w, " ")
+    for block in re.findall(r'[\u4e00-\u9fa5]{2,12}', cleaned_query):
+        if block and block not in NOISE_WORDS:
+            core_terms.add(block)
+
+    for block in chinese_blocks:
+        text = block.strip()
+        if not text:
+            continue
+
+        # 先做同义词实体识别
+        norm_text = normalize_cn_text(text)
+        for canonical, syns in ENTITY_SYNONYMS.items():
+            if any(normalize_cn_text(s) in norm_text for s in syns):
+                entities.add(canonical)
+                terms.update(syns)
+                core_terms.add(canonical)
+
+        # 按长度切分，提取潜在关键词
+        for win_size in range(2, 7):
+            if len(text) < win_size:
+                continue
+            for i in range(0, len(text) - win_size + 1):
+                piece = text[i:i + win_size].strip()
+                if not piece or piece in NOISE_WORDS:
+                    continue
+                terms.add(piece)
+
+        if 2 <= len(text) <= 12 and text not in NOISE_WORDS:
+            terms.add(text)
+
+    # 将规范实体也加入检索词，增强稳定召回
+    terms.update(entities)
+
+    # 长词优先，便于打分
+    sorted_terms = sorted(terms, key=len, reverse=True)
+    return {
+        "entities": sorted(entities, key=len, reverse=True),
+        "terms": sorted_terms,
+        "core_terms": sorted(core_terms, key=len, reverse=True)
+    }
+
+
+def build_query_profile(query: str) -> Dict[str, Any]:
+    """构建查询画像：意图 + 实体 + 扩展词 + 改写查询"""
+    intent_info = detect_query_intent(query)
+    term_info = extract_entities_and_terms(query)
+    rewritten_query = " ".join([query] + term_info["entities"][:3])
+    return {
+        "raw_query": query,
+        "rewritten_query": rewritten_query.strip(),
+        "intent": intent_info["intent"],
+        "target_fields": intent_info["target_fields"],
+        "entities": term_info["entities"],
+        "terms": term_info["terms"],
+        "core_terms": term_info["core_terms"],
+    }
+
+
+def compute_keyword_field_score(
+    query_profile: Dict[str, Any],
+    doc_text: str,
+    meta: Dict[str, Any]
+) -> Tuple[float, float, float, int, List[str]]:
+    """
+    计算关键词得分与字段意图得分
+    返回: (keyword_score, field_score, reasons)
+    """
+    reasons = []
+    norm_doc = normalize_cn_text(doc_text)
+    terms = query_profile.get("terms", [])
+    hit_terms = []
+
+    for term in terms:
+        norm_term = normalize_cn_text(term)
+        if not norm_term:
+            continue
+        if norm_term in norm_doc:
+            hit_terms.append(term)
+
+    query_len = max(1, len(normalize_cn_text(query_profile.get("raw_query", ""))))
+    hit_len = sum(len(t) for t in set(hit_terms))
+    keyword_score = min(1.0, hit_len / query_len) if hit_terms else 0.0
+    if hit_terms:
+        reasons.append(f"关键词命中: {','.join(list(dict.fromkeys(hit_terms))[:4])}")
+
+    # 核心词命中：用于强约束结果相关性，避免被“时限”等泛词带偏
+    core_terms = query_profile.get("core_terms", [])
+    core_hits = []
+    for c in core_terms:
+        nc = normalize_cn_text(c)
+        if nc and nc in norm_doc:
+            core_hits.append(c)
+    core_total_len = max(1, sum(len(c) for c in core_terms[:6]))
+    core_hit_len = sum(len(c) for c in set(core_hits))
+    core_score = min(1.0, core_hit_len / core_total_len) if core_terms else 0.0
+    if core_hits:
+        reasons.append(f"核心词命中: {','.join(list(dict.fromkeys(core_hits))[:4])}")
+
+    # 意图字段加权：用户问时限/结案时，把对应字段命中显著提权
+    field_score = 0.0
+    target_fields = query_profile.get("target_fields", [])
+    if "time_limit" in target_fields and meta.get("time_limit"):
+        field_score += 0.35
+        reasons.append("匹配处置时限意图")
+    if "close_condition" in target_fields and meta.get("close_condition"):
+        field_score += 0.35
+        reasons.append("匹配结案条件意图")
+    if "responsibility_subject" in target_fields:
+        if meta.get("responsibility_subject") or "责任主体" in doc_text:
+            field_score += 0.25
+            reasons.append("匹配责任主体意图")
+    if "supervision_subject" in target_fields:
+        if meta.get("supervision_subject") or "监管主体" in doc_text:
+            field_score += 0.25
+            reasons.append("匹配监管主体意图")
+    if "collection_requirement" in target_fields:
+        if "采集要求" in doc_text:
+            field_score += 0.35
+            reasons.append("匹配采集要求意图")
+
+    return keyword_score, min(field_score, 0.6), core_score, len(set(core_hits)), reasons
+
+
+def search_collection_requirement_chroma(
+    query_profile: Dict[str, Any],
+    parent_coll,
+    top_k: int
+) -> List[Dict]:
+    """
+    采集要求专用检索：直接检索父文档，避免子文档(立案条件)漏召回
+    """
+    parent_docs = parent_coll.get(include=['documents', 'metadatas'])
+    results = []
+    terms = query_profile.get("terms", [])
+    core_terms = [t for t in query_profile.get("core_terms", []) if len(t) >= 2]
+    query_len = max(1, len(normalize_cn_text(query_profile.get("raw_query", ""))))
+
+    for i, pid in enumerate(parent_docs.get('ids', [])):
+        doc = parent_docs['documents'][i] if parent_docs.get('documents') else ''
+        meta = parent_docs['metadatas'][i] if parent_docs.get('metadatas') else {}
+        if not doc:
+            continue
+
+        norm_doc = normalize_cn_text(doc)
+        hit_terms = []
+        for t in terms:
+            nt = normalize_cn_text(t)
+            if nt and nt in norm_doc:
+                hit_terms.append(t)
+
+        core_hits = []
+        for ct in core_terms:
+            nct = normalize_cn_text(ct)
+            if nct and nct in norm_doc:
+                core_hits.append(ct)
+
+        if not hit_terms and not core_hits:
+            continue
+
+        keyword_score = min(1.0, sum(len(t) for t in set(hit_terms)) / query_len) if hit_terms else 0.0
+        core_score = min(1.0, sum(len(t) for t in set(core_hits)) / max(1, sum(len(t) for t in core_terms[:6]))) if core_terms else 0.0
+
+        # 采集要求字段存在时加权
+        collection_match = re.search(r'【采集要求】(.+?)(?=\n【|$)', doc, re.DOTALL)
+        field_score = 0.25 if collection_match and collection_match.group(1).strip() else 0.0
+
+        score = round(min(1.0, core_score * 0.5 + keyword_score * 0.3 + field_score * 0.2), 4)
+        case_type = meta.get('case_type', '')
+        reasons = []
+        if core_hits:
+            reasons.append(f"核心词命中: {','.join(list(dict.fromkeys(core_hits))[:4])}")
+        if hit_terms:
+            reasons.append(f"关键词命中: {','.join(list(dict.fromkeys(hit_terms))[:4])}")
+        if field_score > 0:
+            reasons.append("匹配采集要求意图")
+        case_type_norm = normalize_cn_text(case_type)
+        for entity in query_profile.get("entities", []):
+            if normalize_cn_text(entity) and normalize_cn_text(entity) in case_type_norm:
+                score = min(1.0, score + 0.2)
+                reasons.append(f"案件类型命中实体: {entity}")
+                break
+
+        results.append({
+            "child_id": f"{pid}_parent",
+            "parent_id": pid,
+            "child_text": f"{case_type} 采集要求检索命中",
+            "case_type": case_type,
+            "meta_info": meta,
+            "parent_text": doc,
+            "parent_meta": meta,
+            "score": score,
+            "keyword_score": keyword_score,
+            "core_score": core_score,
+            "field_score": field_score,
+            "core_hit_count": len(set(core_hits)),
+            "match_type": "parent_keyword",
+            "match_reasons": reasons
+        })
+
+    results.sort(key=lambda x: (x.get("core_hit_count", 0), x.get("score", 0)), reverse=True)
+    return results[:top_k]
+
+
 def search_case_standards_chroma(query: str, top_k: int = 5) -> List[Dict]:
-    """搜索立结案标准（ChromaDB 本地模式）- 混合检索：向量+关键词"""
+    """搜索立结案标准（ChromaDB 本地模式）- 意图识别 + 混合召回 + 重排"""
     try:
         client = get_chroma_client()
         if client is None:
@@ -668,81 +940,139 @@ def search_case_standards_chroma(query: str, top_k: int = 5) -> List[Dict]:
         child_coll = client.get_or_create_collection(name=CHILD_COLLECTION)
         parent_coll = client.get_or_create_collection(name=PARENT_COLLECTION)
 
-        # 获取查询向量
-        query_embedding = get_embedding(query)
+        query_profile = build_query_profile(query)
+
+        # 采集要求类问题直接走父文档检索，避免子文档缺字段导致漏检
+        if query_profile.get("intent") == "collection_requirement":
+            return search_collection_requirement_chroma(query_profile, parent_coll, top_k)
+
+        # 获取查询向量（使用改写查询提升语义召回稳定性）
+        query_embedding = get_embedding(query_profile["rewritten_query"])
         if not query_embedding:
             return []
-
-        # 自动提取关键词：从查询中提取2-4字的中文词组
-        import re
-        # 提取所有中文词组（2-4字）
-        chinese_words = re.findall(r'[\u4e00-\u9fa5]{2,4}', query)
-        # 过滤掉常见停用词
-        stopwords = {'处置', '时限', '条件', '标准', '问题', '情况', '应该', '需要', '请问', '查询', '搜索', '多久', '什么', '怎么', '如何', '是否', '可以', '能够', '关于', '相关', '根据', '要求', '规定', '以及', '或者', '并且', '但是', '如果', '因为', '所以', '时候', '时间', '地点', '人员', '单位', '部门', '进行', '处理', '整改', '结案', '立案', '监管', '责任', '主体'}
-        keywords = [w for w in chinese_words if w not in stopwords]
 
         # 1. 向量搜索（获取更多候选）
         vec_results = child_coll.query(
             query_embeddings=[query_embedding],
-            n_results=top_k * 3  # 获取更多候选
+            n_results=max(top_k * 8, 20)  # 获取更多候选用于重排
         )
 
-        # 2. 关键词搜索（如果有关键词）
-        keyword_matches = []
-        if keywords:
-            all_docs = child_coll.get(include=['documents', 'metadatas'])
-            for i, doc in enumerate(all_docs['documents']):
-                match_count = sum(1 for kw in keywords if kw in doc)
-                if match_count > 0:
-                    keyword_matches.append({
-                        'id': all_docs['ids'][i],
-                        'doc': doc,
-                        'meta': all_docs['metadatas'][i] if all_docs['metadatas'] else {},
-                        'keyword_score': match_count / len(keywords)
-                    })
-            # 按关键词匹配度排序
-            keyword_matches.sort(key=lambda x: x['keyword_score'], reverse=True)
+        # 2. 关键词召回（全量扫描 child 文档）
+        all_docs = child_coll.get(include=['documents', 'metadatas'])
+        keyword_candidates = []
+        for i, doc in enumerate(all_docs.get('documents', [])):
+            meta = all_docs['metadatas'][i] if all_docs.get('metadatas') else {}
+            keyword_score, field_score, core_score, core_hit_count, reasons = compute_keyword_field_score(query_profile, doc, meta)
+            if keyword_score > 0 or field_score > 0 or core_score > 0:
+                keyword_candidates.append({
+                    "id": all_docs['ids'][i],
+                    "doc": doc,
+                    "meta": meta,
+                    "keyword_score": keyword_score,
+                    "field_score": field_score,
+                    "core_score": core_score,
+                    "core_hit_count": core_hit_count,
+                    "reasons": reasons
+                })
+        keyword_candidates.sort(
+            key=lambda x: (x["core_score"], x["keyword_score"] + x["field_score"], x["keyword_score"]),
+            reverse=True
+        )
 
-        # 3. 合并结果：关键词匹配优先
-        combined_ids = set()
+        # 3. 融合召回结果
+        candidates = {}
         parent_ids = set()
-        child_results = []
+        for km in keyword_candidates[:max(top_k * 8, 30)]:
+            parent_id = km['meta'].get('parent_id', '')
+            if parent_id:
+                parent_ids.add(parent_id)
+            candidates[km['id']] = {
+                "child_id": km['id'],
+                "parent_id": parent_id,
+                "child_text": km['doc'],
+                "case_type": km['meta'].get('case_type', ''),
+                "meta_info": km['meta'],
+                "keyword_score": km["keyword_score"],
+                "field_score": km["field_score"],
+                "core_score": km["core_score"],
+                "core_hit_count": km["core_hit_count"],
+                "vector_score": 0.0,
+                "match_reasons": km["reasons"],
+                "match_type": "keyword"
+            }
 
-        # 先添加关键词匹配的（最多top_k个）
-        for km in keyword_matches[:top_k]:
-            if km['id'] not in combined_ids:
-                combined_ids.add(km['id'])
-                parent_id = km['meta'].get('parent_id', '')
+        if vec_results.get('ids') and vec_results['ids'][0]:
+            for i, child_id in enumerate(vec_results['ids'][0]):
+                meta = vec_results['metadatas'][0][i] if vec_results.get('metadatas') else {}
+                parent_id = meta.get('parent_id', '')
                 if parent_id:
                     parent_ids.add(parent_id)
-                child_results.append({
-                    "child_id": km['id'],
-                    "parent_id": parent_id,
-                    "child_text": km['doc'],
-                    "case_type": km['meta'].get('case_type', ''),
-                    "meta_info": km['meta'],
-                    "score": 0.8 + km['keyword_score'] * 0.2,  # 关键词匹配给予高分
-                    "match_type": "keyword"
-                })
+                vector_score = max(0.0, 1.0 - (vec_results['distances'][0][i] / 10.0)) if vec_results.get('distances') else 0.0
 
-        # 再添加向量搜索的（补充未匹配的）
-        if vec_results['ids'] and vec_results['ids'][0]:
-            for i, child_id in enumerate(vec_results['ids'][0]):
-                if child_id not in combined_ids and len(child_results) < top_k:
-                    combined_ids.add(child_id)
-                    meta = vec_results['metadatas'][0][i] if vec_results['metadatas'] else {}
-                    parent_id = meta.get('parent_id', '')
-                    if parent_id:
-                        parent_ids.add(parent_id)
-                    child_results.append({
+                if child_id not in candidates:
+                    candidates[child_id] = {
                         "child_id": child_id,
                         "parent_id": parent_id,
-                        "child_text": vec_results['documents'][0][i] if vec_results['documents'] else '',
+                        "child_text": vec_results['documents'][0][i] if vec_results.get('documents') else '',
                         "case_type": meta.get('case_type', ''),
                         "meta_info": meta,
-                        "score": max(0, 1 - vec_results['distances'][0][i] / 10) if vec_results['distances'] else 0,
+                        "keyword_score": 0.0,
+                        "field_score": 0.0,
+                        "core_score": 0.0,
+                        "core_hit_count": 0,
+                        "vector_score": vector_score,
+                        "match_reasons": ["向量语义召回"],
                         "match_type": "vector"
-                    })
+                    }
+                else:
+                    candidates[child_id]["vector_score"] = max(candidates[child_id]["vector_score"], vector_score)
+                    if "向量语义召回" not in candidates[child_id]["match_reasons"]:
+                        candidates[child_id]["match_reasons"].append("向量语义召回")
+                    if candidates[child_id]["match_type"] == "keyword":
+                        candidates[child_id]["match_type"] = "hybrid"
+
+        # 4. 重排打分：关键词 + 向量 + 意图字段
+        child_results = []
+        for _, item in candidates.items():
+            final_score = (
+                item["core_score"] * 0.45 +
+                item["keyword_score"] * 0.25 +
+                item["vector_score"] * 0.20 +
+                item["field_score"] * 0.10
+            )
+            item["score"] = round(min(1.0, final_score), 4)
+            child_results.append(item)
+
+        # 核心词强约束：存在核心词时，优先保留核心词命中结果
+        if query_profile.get("core_terms"):
+            non_trivial_core_terms = [t for t in query_profile.get("core_terms", []) if len(t) >= 2]
+            required_core_hits = 2 if len(non_trivial_core_terms) >= 3 else 1
+            core_matched = [r for r in child_results if r.get("core_hit_count", 0) >= required_core_hits]
+            if core_matched:
+                child_results = core_matched
+            else:
+                # 有明确实体但没有足够核心命中时，宁缺毋滥，避免返回错误标准
+                child_results = []
+
+        # 意图字段兜底：如果问时限/结案，优先保留有对应字段值的结果
+        target_fields = set(query_profile.get("target_fields", []))
+        if target_fields:
+            def has_target_field(r: Dict[str, Any]) -> int:
+                meta = r.get("meta_info", {}) or {}
+                if "time_limit" in target_fields and meta.get("time_limit"):
+                    return 1
+                if "close_condition" in target_fields and meta.get("close_condition"):
+                    return 1
+                return 0
+
+            child_results.sort(
+                key=lambda x: (has_target_field(x), x.get("score", 0), x.get("keyword_score", 0)),
+                reverse=True
+            )
+        else:
+            child_results.sort(key=lambda x: x.get("score", 0), reverse=True)
+
+        child_results = child_results[:top_k]
 
         # 回表查询父文档
         if parent_ids:
@@ -759,6 +1089,11 @@ def search_case_standards_chroma(query: str, top_k: int = 5) -> List[Dict]:
                 parent_info = parent_map.get(cr['parent_id'], {})
                 cr['parent_text'] = parent_info.get('text', '')
                 cr['parent_meta'] = parent_info.get('meta', {})
+                # 补充从父文档可拿到的字段，便于意图匹配
+                if not cr["meta_info"].get("responsibility_subject"):
+                    cr["meta_info"]["responsibility_subject"] = cr["parent_meta"].get("responsibility_subject", "")
+                if not cr["meta_info"].get("supervision_subject"):
+                    cr["meta_info"]["supervision_subject"] = cr["parent_meta"].get("supervision_subject", "")
 
         return child_results
 
@@ -848,6 +1183,74 @@ def search_case_standards(query: str, top_k: int = 5) -> List[Dict]:
         return search_case_standards_milvus(query, top_k)
 
 
+def build_structured_intent_answer(question: str, results: List[Dict]) -> Optional[str]:
+    """
+    对强意图问题直接结构化回答，减少LLM误判“未找到”
+    """
+    if not results:
+        return None
+
+    profile = build_query_profile(question)
+    intent = profile.get("intent")
+    top = results[0]
+    case_type = top.get("case_type", "未识别案件类型")
+    meta = top.get("meta_info", {}) or {}
+
+    if intent == "time_limit":
+        time_limit = meta.get("time_limit", "")
+        close_condition = meta.get("close_condition", "")
+        if not time_limit:
+            return None
+        answer = [f"【案件类型】{case_type}", f"【处置时限】{time_limit}"]
+        if close_condition:
+            answer.append(f"【结案条件】{close_condition}")
+        return "\n".join(answer)
+
+    if intent == "close_condition":
+        close_condition = meta.get("close_condition", "")
+        time_limit = meta.get("time_limit", "")
+        if not close_condition:
+            return None
+        answer = [f"【案件类型】{case_type}", f"【结案条件】{close_condition}"]
+        if time_limit:
+            answer.append(f"【处置时限】{time_limit}")
+        return "\n".join(answer)
+
+    if intent == "responsibility_subject":
+        responsibility = meta.get("responsibility_subject") or top.get("parent_meta", {}).get("responsibility_subject", "")
+        supervision = meta.get("supervision_subject") or top.get("parent_meta", {}).get("supervision_subject", "")
+        if not responsibility:
+            return None
+        answer = [f"【案件类型】{case_type}", f"【责任主体】{responsibility}"]
+        if supervision:
+            answer.append(f"【监管主体】{supervision}")
+        return "\n".join(answer)
+
+    if intent == "supervision_subject":
+        supervision = meta.get("supervision_subject") or top.get("parent_meta", {}).get("supervision_subject", "")
+        responsibility = meta.get("responsibility_subject") or top.get("parent_meta", {}).get("responsibility_subject", "")
+        if not supervision:
+            return None
+        answer = [f"【案件类型】{case_type}", f"【监管主体】{supervision}"]
+        if responsibility:
+            answer.append(f"【责任主体】{responsibility}")
+        return "\n".join(answer)
+
+    if intent == "collection_requirement":
+        parent_text = top.get("parent_text", "")
+        if not parent_text:
+            return None
+        match = re.search(r'【采集要求】(.+?)(?=\n【|$)', parent_text, re.DOTALL)
+        if not match:
+            return None
+        collection_requirement = match.group(1).strip()
+        if not collection_requirement:
+            return None
+        return f"【案件类型】{case_type}\n【采集要求】{collection_requirement}"
+
+    return None
+
+
 def ask_case_standard(question: str, top_k: int = 5) -> Dict:
     """
     基于立结案标准回答问题（父子索引RAG）
@@ -861,6 +1264,17 @@ def ask_case_standard(question: str, top_k: int = 5) -> Dict:
                 "answer": "立结案标准库中没有找到相关信息。",
                 "sources": [],
                 "success": True
+            }
+
+        # 强意图问题优先走结构化回答，避免LLM生成偏差
+        structured_answer = build_structured_intent_answer(question, results)
+        if structured_answer:
+            sources = [r.get("case_type", "") for r in results[:3] if r.get("case_type")]
+            return {
+                "answer": structured_answer,
+                "sources": list(dict.fromkeys(sources)),
+                "success": True,
+                "matches": results
             }
 
         # 构建上下文（使用父文档的完整内容）

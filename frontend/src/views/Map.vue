@@ -12,14 +12,11 @@
             v-for="dept in departments"
             :key="dept.key"
             class="dept-btn"
-            :style="{
-              '--dept-color': dept.color,
-              borderColor: dept.color,
-              backgroundColor: activeDept === dept.key ? dept.color : '#fff',
-              color: activeDept === dept.key ? '#fff' : dept.color
-            }"
+            :class="{ active: activeDept === dept.key }"
+            :style="{ '--dept-color': dept.color }"
             @click="toggleDept(dept.key)"
           >
+            <span class="dept-dot"></span>
             {{ dept.name }}
           </button>
         </div>
@@ -27,7 +24,7 @@
 
       <!-- 当前选中的片区信息 -->
       <div v-if="activeDept" class="dept-info">
-        <span class="info-text">{{ activeDept }}片区 - 点击地图查看详情</span>
+        <span class="info-text">{{ activeDept }}片区 · 点击地图查看详情</span>
       </div>
     </div>
 
@@ -60,6 +57,7 @@ const mapError = ref('')
 // 管辖范围相关
 const activeDept = ref('')
 const geoJsonData = ref(null)
+const gardenGeoJsonData = ref(null)
 
 // 部门配置（颜色和名称）
 const departments = [
@@ -68,6 +66,36 @@ const departments = [
   { key: '园林', name: '园林', color: '#10b981' },
   { key: '市政', name: '市政', color: '#f59e0b' }
 ]
+
+const propertyLabelMap = {
+  id: '编号',
+  zone_code: '片区编码',
+  zone_name: '片区名称',
+  dept: '部门',
+  manager_org: '责任单位',
+  manager_person: '责任人',
+  manager_phone: '联系电话',
+  remark: '备注',
+  area_m2: '面积(㎡)',
+  created_at: '创建时间',
+  updated_at: '更新时间',
+  name: '名称'
+}
+
+function buildInfoRows(properties = {}) {
+  return Object.entries(properties)
+    .filter(([, value]) => value !== null && value !== undefined && value !== '')
+    .map(([key, value]) => {
+      const label = propertyLabelMap[key] || key
+      return `
+        <div style="display:flex;align-items:flex-start;gap:8px;padding:6px 8px;border-radius:8px;background:#f8fafc;">
+          <span style="flex:0 0 78px;font-size:12px;color:#64748b;line-height:1.5;">${label}</span>
+          <span style="flex:1;font-size:13px;color:#1e293b;line-height:1.5;font-weight:500;word-break:break-all;">${value}</span>
+        </div>
+      `
+    })
+    .join('')
+}
 
 function initMap() {
   if (!window.AMap) {
@@ -108,6 +136,18 @@ async function loadGeoJson() {
   }
 }
 
+// 加载园林片区GeoJSON数据
+async function loadGardenGeoJson() {
+  try {
+    const response = await fetch('/data/园林片区.geojson')
+    const data = await response.json()
+    gardenGeoJsonData.value = data
+    console.log('园林片区数据加载成功:', data.features?.length, '个片区')
+  } catch (error) {
+    console.error('加载园林片区GeoJSON失败:', error)
+  }
+}
+
 // 加载市政道路GeoJSON数据
 let roadData = null
 async function loadRoadData() {
@@ -144,12 +184,18 @@ function toggleDept(deptKey) {
 
 // 显示指定部门的多边形
 function showDeptPolygons(deptKey) {
-  if (!mapInstance || !geoJsonData.value) return
+  if (!mapInstance) return
 
   const deptConfig = departments.find(d => d.key === deptKey)
   if (!deptConfig) return
 
-  const features = geoJsonData.value.features.filter(f => f.properties.dept === deptKey)
+  const sourceData = deptKey === '园林' && gardenGeoJsonData.value
+    ? gardenGeoJsonData.value
+    : geoJsonData.value
+
+  if (!sourceData) return
+
+  const features = sourceData.features.filter(f => f.properties.dept === deptKey)
 
   features.forEach(feature => {
     if (feature.geometry.type === 'Polygon') {
@@ -167,9 +213,17 @@ function showDeptPolygons(deptKey) {
 
       // 点击显示片区信息
       polygon.on('click', () => {
+        const zoneLabel = feature.properties.zone_name || feature.properties.name || '未命名片区'
+        const detailRows = buildInfoRows(feature.properties)
         const infoWindow = new window.AMap.InfoWindow({
-          content: `<div style="padding:12px 16px;background:#fff;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.15);min-width:120px;">
-            <div style="font-size:14px;font-weight:600;color:#333;margin-bottom:4px;">${feature.properties.dept} - ${feature.properties.name}</div>
+          content: `<div style="width:300px;max-width:90vw;padding:12px;background:#ffffff;border-radius:12px;box-shadow:0 10px 28px rgba(15,23,42,0.18);border:1px solid #e2e8f0;">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid #e5e7eb;">
+              <div style="font-size:15px;font-weight:700;color:#0f172a;line-height:1.4;">${zoneLabel}</div>
+              <span style="padding:3px 10px;border-radius:999px;background:#ecfeff;color:#0f766e;font-size:12px;font-weight:600;">${feature.properties.dept || '园林'}</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:6px;max-height:220px;overflow:auto;padding-right:2px;">
+              ${detailRows || '<div style="font-size:13px;color:#64748b;padding:8px;">暂无属性信息</div>'}
+            </div>
           </div>`,
           offset: new window.AMap.Pixel(0, -10)
         })
@@ -216,8 +270,8 @@ function showRoads() {
         map: mapInstance
       })
 
-      // 点击显示道路信息
-      polyline.on('click', () => {
+      // 点击显示道路信息（使用点击点坐标，避免长道路中心点偏移）
+      polyline.on('click', (event) => {
         const infoWindow = new window.AMap.InfoWindow({
           content: `<div style="padding:12px 16px;background:#fff;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.15);min-width:150px;">
             <div style="font-size:15px;font-weight:600;color:#333;margin-bottom:8px;border-bottom:1px solid #eee;padding-bottom:6px;">市政管辖道路</div>
@@ -229,7 +283,8 @@ function showRoads() {
           </div>`,
           offset: new window.AMap.Pixel(0, -10)
         })
-        infoWindow.open(mapInstance, polyline.getBounds().getCenter())
+        const clickPosition = event?.lnglat || polyline.getBounds().getCenter()
+        infoWindow.open(mapInstance, clickPosition)
       })
 
       roadPolylines.push(polyline)
@@ -249,6 +304,7 @@ function clearRoads() {
 
 onMounted(() => {
   loadGeoJson() // 加载GeoJSON数据
+  loadGardenGeoJson() // 加载园林片区数据
   loadRoadData() // 加载市政道路数据
   nextTick(() => {
     initMap()
@@ -312,29 +368,51 @@ onUnmounted(() => {
 }
 
 .dept-btn {
-  padding: 6px 16px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
   font-size: 13px;
-  font-weight: 600;
-  border-radius: 6px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-lighter);
+  border-radius: var(--radius-md);
   cursor: pointer;
-  transition: all 0.2s ease;
-  border: 2px solid var(--dept-color);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  transition: all var(--transition-fast);
 }
 
 .dept-btn:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+  color: var(--text-primary);
+  border-color: var(--primary-300);
+  background: var(--fill-light);
+}
+
+.dept-btn.active {
+  color: var(--primary-600);
+  background: var(--primary-50);
+  border-color: var(--primary-300);
+  box-shadow: 0 0 0 1px rgba(64, 158, 255, 0.1) inset;
+}
+
+.dept-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--dept-color);
+  flex-shrink: 0;
 }
 
 .dept-info {
-  padding: 3px 10px;
+  padding: 6px 12px;
   background: var(--primary-50);
-  border-radius: var(--radius-md);
+  border: 1px solid var(--primary-100);
+  border-radius: 999px;
 }
 
 .info-text {
   font-size: 12px;
+  font-weight: 500;
   color: var(--primary-600);
 }
 
