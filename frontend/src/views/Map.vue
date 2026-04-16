@@ -1,35 +1,6 @@
 <template>
-  <div class="page-container">
-    <h1 class="page-title">地图服务</h1>
-
-    <!-- 顶部控制面板 -->
-    <div class="top-panel">
-      <!-- 管辖范围切换 -->
-      <div class="dept-switcher">
-        <span class="switcher-label">管辖范围：</span>
-        <div class="dept-buttons">
-          <button
-            v-for="dept in departments"
-            :key="dept.key"
-            class="dept-btn"
-            :class="{ active: activeDept === dept.key }"
-            :style="{ '--dept-color': dept.color }"
-            @click="toggleDept(dept.key)"
-          >
-            <span class="dept-dot"></span>
-            {{ dept.name }}
-          </button>
-        </div>
-      </div>
-
-      <!-- 当前选中的片区信息 -->
-      <div v-if="activeDept" class="dept-info">
-        <span class="info-text">{{ activeDept }}片区 · 点击地图查看详情</span>
-      </div>
-    </div>
-
-    <!-- 地图容器 -->
-    <div class="map-wrapper">
+  <div class="page-container map-page">
+    <div class="map-wrapper map-wrapper-full">
       <div v-if="mapLoading" class="map-loading">
         <div class="loading-spinner"></div>
         <span>地图加载中...</span>
@@ -38,7 +9,41 @@
         <span class="error-icon">⚠️</span>
         <span>{{ mapError }}</span>
       </div>
-      <div v-else ref="mapContainer" id="map-container" class="map-container"></div>
+      <div v-else ref="mapContainer" id="map-container" class="map-container map-container-full">
+        <!-- 悬浮控制面板：不占用地图视野 -->
+        <div class="map-overlay">
+          <div class="overlay-card card">
+            <div class="overlay-title">管辖范围</div>
+
+            <div class="dept-buttons overlay-buttons">
+              <button
+                v-for="dept in departments"
+                :key="dept.key"
+                class="dept-btn overlay-btn"
+                :class="{ active: activeDept === dept.key }"
+                :style="{ '--dept-color': dept.color }"
+                @click="toggleDept(dept.key)"
+              >
+                <span class="dept-dot"></span>
+                {{ dept.name }}
+              </button>
+            </div>
+
+            <div class="overlay-actions">
+              <button class="overlay-action-btn" type="button" @click="clearSelectedLocation">
+                清除定位点
+              </button>
+            </div>
+
+            <div v-if="activeDept" class="overlay-hint">
+              {{ activeDept }} · 点击地图查看详情
+            </div>
+            <div v-else class="overlay-hint overlay-hint-muted">
+              选择部门后显示管辖范围
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -148,6 +153,19 @@ function saveSelectedLocation(lng, lat) {
   window.dispatchEvent(new CustomEvent('map-location-updated', { detail: payload }))
 }
 
+function clearSelectedLocation() {
+  try {
+    localStorage.removeItem('selected_map_location')
+  } catch (error) {
+    console.error('清除定位点缓存失败:', error)
+  }
+  if (selectedPointMarker) {
+    selectedPointMarker.setMap(null)
+    selectedPointMarker = null
+  }
+  window.dispatchEvent(new CustomEvent('map-location-updated', { detail: null }))
+}
+
 function getSavedLocation() {
   try {
     const raw = localStorage.getItem('selected_map_location')
@@ -178,7 +196,14 @@ function renderSelectedPointMarker(position) {
 
 function restoreSelectedLocationMarker() {
   const location = getSavedLocation()
-  if (!location) return
+  if (!location) {
+    // 确保没有“残留点”
+    if (selectedPointMarker) {
+      selectedPointMarker.setMap(null)
+      selectedPointMarker = null
+    }
+    return
+  }
   renderSelectedPointMarker([location.lng, location.lat])
 }
 
@@ -389,6 +414,10 @@ onUnmounted(() => {
   box-sizing: border-box;
 }
 
+.map-page {
+  padding: 0; /* 地图页尽可能大视野 */
+}
+
 .page-title {
   font-size: 20px;
   font-weight: 600;
@@ -483,12 +512,102 @@ onUnmounted(() => {
   display: flex;
 }
 
+.map-wrapper-full {
+  height: 100%;
+  width: 100%;
+}
+
 .map-container {
   flex: 1;
   background: var(--bg-card);
   border-radius: var(--radius-lg);
   border: 1px solid var(--border-lighter);
   overflow: hidden;
+  position: relative; /* 让悬浮控件相对地图定位 */
+}
+
+.map-container-full {
+  border-radius: 0;
+  border-left: 1px solid var(--border-lighter);
+  border-right: 0;
+  border-top: 0;
+  border-bottom: 0;
+}
+
+.map-overlay {
+  position: absolute;
+  left: 12px;
+  top: 12px;
+  z-index: 10;
+  pointer-events: none; /* 让地图仍可拖拽缩放 */
+}
+
+.overlay-card {
+  pointer-events: auto; /* 卡片本身可点击 */
+  width: min(360px, calc(100vw - 24px));
+  background: var(--bg-card);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-lighter);
+  box-shadow: var(--card-shadow);
+  padding: var(--space-3);
+}
+
+.overlay-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: 0.2px;
+  padding: 2px 2px var(--space-2);
+}
+
+.overlay-buttons {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.overlay-actions {
+  margin-top: var(--space-2);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.overlay-action-btn {
+  height: 32px;
+  padding: 0 var(--space-3);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.overlay-action-btn:hover {
+  color: var(--primary-500);
+  border-color: var(--primary-400);
+  background: var(--fill-light);
+}
+
+.overlay-btn {
+  padding: 7px 12px;
+}
+
+.overlay-hint {
+  margin-top: var(--space-2);
+  font-size: 12px;
+  color: var(--text-secondary);
+  background: var(--fill-light);
+  border: 1px solid var(--border-lighter);
+  border-radius: 999px;
+  padding: 6px 10px;
+  line-height: 1.2;
+}
+
+.overlay-hint-muted {
+  color: var(--text-tertiary);
 }
 
 .map-loading, .map-error {
@@ -518,7 +637,9 @@ onUnmounted(() => {
 .error-icon { font-size: 48px; }
 
 @media (max-width: 768px) {
-  .top-panel { flex-direction: column; align-items: flex-start; }
-  .dept-buttons { flex-wrap: wrap; }
+  .map-overlay {
+    left: 10px;
+    top: 10px;
+  }
 }
 </style>

@@ -689,7 +689,8 @@ DISPATCH_INTENT_WORDS = [
 ]
 
 DEPARTMENT_KEYWORDS = {
-    "市容环卫中心": ["环卫", "垃圾", "保洁", "清扫", "污物", "脏污", "果皮箱", "清运"],
+    # 环卫类关键词：包含“遗撒/抛洒/洒落”，用于覆盖“道路遗撒/路面抛洒”等提问
+    "市容环卫中心": ["环卫", "垃圾", "保洁", "清扫", "污物", "脏污", "果皮箱", "清运", "遗撒", "抛洒", "洒落"],
     "园林绿化中心": ["园林", "绿化", "树木", "草坪", "花坛", "绿化带", "公园", "行道树", "绿化垃圾"],
     "综合行政执法队": ["执法", "占道", "违建", "商贩", "广告牌", "渣土车", "门头牌匾", "无照经营"],
     "市政公用服务中心": ["市政", "路灯", "灯杆", "道路", "路面", "井盖", "护栏", "交通设施"],
@@ -713,10 +714,13 @@ DEPARTMENT_GEO_RULES = {
         "unit_type": "片区",
     },
     "园林绿化中心": {
-        "ready": False,
+        "ready": True,
         "file": "园林片区.geojson",
         "geometry_mode": "polygon",
         "unit_type": "片区",
+        # 公园范围图层（你提到“公园的还没画”）：先预留配置位，未就绪时走片区兜底
+        "park_ready": False,
+        "park_file": None,
     },
     "综合行政执法队": {"ready": False, "file": None, "geometry_mode": "polygon", "unit_type": "分队"},
     "市政公用服务中心": {
@@ -749,6 +753,11 @@ def _is_dispatch_question(question: str) -> bool:
 
 def _classify_department(question: str) -> Optional[str]:
     normalized = normalize_cn_text(question)
+    # 对“遗撒/抛洒/洒落”这类典型环卫问题，直接优先归类到环卫中心，
+    # 避免“道路/路面”等市政关键词抢占最高分。
+    if "遗撒" in normalized or "抛洒" in normalized or "洒落" in normalized:
+        return "市容环卫中心"
+
     best_dept = None
     best_score = 0
     for dept, words in DEPARTMENT_KEYWORDS.items():
@@ -867,6 +876,16 @@ def _is_park_feature(props: Dict[str, Any]) -> bool:
     return any(p in joined for p in PARK_NAMES) or ("公园" in joined) or ("广场" in joined)
 
 
+def _question_mentions_park(question: str) -> bool:
+    """判断用户是否在问某个公园的责任单位/管辖"""
+    normalized = normalize_cn_text(question)
+    if not normalized:
+        return False
+    if "公园" in normalized or "广场" in normalized:
+        return True
+    return any(normalize_cn_text(p) in normalized for p in PARK_NAMES)
+
+
 def match_department_dispatch(question: str, location: Any, force_dispatch: bool = False) -> Optional[Dict[str, Any]]:
     if not force_dispatch and not _is_dispatch_question(question):
         return None
@@ -903,7 +922,16 @@ def match_department_dispatch(question: str, location: Any, force_dispatch: bool
             "answer": f"{department}范围数据未完善（暂按人工研判）。",
         }
 
-    geojson_data = _load_department_geojson(rule.get("file"))
+    # 园林：分“片区”与“公园”两类。公园图层未就绪时，先按片区兜底，并给出提示。
+    ask_park = (department == "园林绿化中心") and _question_mentions_park(question)
+    geojson_data = None
+    using_park_layer = False
+    if ask_park and rule.get("park_ready") and rule.get("park_file"):
+        geojson_data = _load_department_geojson(rule.get("park_file"))
+        using_park_layer = geojson_data is not None
+    if geojson_data is None:
+        geojson_data = _load_department_geojson(rule.get("file"))
+
     if not geojson_data:
         return {
             "success": True,
@@ -963,6 +991,17 @@ def match_department_dispatch(question: str, location: Any, force_dispatch: bool
         }
 
     unit = selected["unit"]
+    # 园林问公园但公园图层未画：用片区结果兜底，并明确提示（避免用户误以为是精确到公园管理方）
+    if ask_park and not using_park_layer:
+        return {
+            "success": True,
+            "department": department,
+            "unit": unit,
+            "in_jurisdiction": True,
+            "layer_status": "park_not_ready_fallback_zone",
+            "answer": f"{unit}（公园范围图层未完善，当前按园林片区兜底）",
+        }
+
     return {
         "success": True,
         "department": department,
@@ -1325,7 +1364,9 @@ def search_case_standards_chroma(query: str, top_k: int = 5) -> List[Dict]:
             item["score"] = round(min(1.0, final_score), 4)
             child_results.append(item)
 
-        # 核心词强约束：存在核心词时，优先保留核心词命中结果
+        # 核心词强约束：
+        # 旧逻辑：达不到阈值就直接清空候选，容易在“核心词抽取过长/不完全匹配”时把正确答案误杀。
+        # 新逻辑：如果候选里完全没有核心词命中，则不做强约束；如果命中过，但不满足阈值，则放宽到 >=1 命中。
         if query_profile.get("core_terms"):
             non_trivial_core_terms = [t for t in query_profile.get("core_terms", []) if len(t) >= 2]
             required_core_hits = 2 if len(non_trivial_core_terms) >= 3 else 1
@@ -1333,8 +1374,11 @@ def search_case_standards_chroma(query: str, top_k: int = 5) -> List[Dict]:
             if core_matched:
                 child_results = core_matched
             else:
-                # 有明确实体但没有足够核心命中时，宁缺毋滥，避免返回错误标准
-                child_results = []
+                has_any_core_hit = any(r.get("core_hit_count", 0) > 0 for r in child_results)
+                if has_any_core_hit:
+                    # 放宽：至少保留命中过一个核心词的结果
+                    child_results = [r for r in child_results if r.get("core_hit_count", 0) > 0]
+                # else：完全没有核心词命中时，不清空，交给 keyword/vector 排序兜底
 
         # 意图字段兜底：如果问时限/结案，优先保留有对应字段值的结果
         target_fields = set(query_profile.get("target_fields", []))
