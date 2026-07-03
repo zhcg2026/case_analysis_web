@@ -162,6 +162,10 @@ else:
     origins_list = [origin.strip() for origin in CORS_ORIGINS.split(',')]
     CORS(app, resources={r"/*": {"origins": origins_list, "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"], "allow_headers": ["Content-Type", "Authorization"]}})
 
+@app.route('/health')
+def health_check():
+    return jsonify({'status': 'ok'}), 200
+
 # JWT令牌生成
 def generate_token(user_id, username, role):
     payload = {
@@ -416,7 +420,14 @@ try:
 
     # 创建数据库表
     # 只创建不存在的表，保留现有数据
-    Base.metadata.create_all(engine)
+    try:
+        Base.metadata.create_all(engine)
+    except Exception as e:
+        # 忽略"表已存在"的错误
+        if "already exists" in str(e).lower():
+            print("数据库表已存在，跳过创建")
+        else:
+            raise
 
     # 数据库迁移：添加 dashboard 列
     try:
@@ -428,6 +439,18 @@ try:
                 print("数据库迁移：已添加 dashboard 列")
     except Exception as e:
         print(f"数据库迁移检查: {e}")
+
+    # 数据库迁移：确保 data_management 和 spotcheck 列存在
+    try:
+        with engine.connect() as conn:
+            for col_name in ['data_management', 'spotcheck']:
+                result = conn.execute(text(f"SHOW COLUMNS FROM permissions LIKE '{col_name}'"))
+                if result.fetchone() is None:
+                    conn.execute(text(f"ALTER TABLE permissions ADD COLUMN {col_name} INT NOT NULL DEFAULT 0"))
+                    conn.commit()
+                    print(f"数据库迁移：已添加 {col_name} 列")
+    except Exception as e:
+        print(f"数据库迁移检查(data_management/spotcheck): {e}")
 
     # 创建会话工厂
     Session = sessionmaker(bind=engine)
@@ -1080,11 +1103,13 @@ def login():
         token = generate_token(user.id, user.username, user.role)
 
         # 获取用户权限
-        permission = session.execute(text("SELECT dashboard, assessment, data_analysis, cases, map, huiwentai, business FROM permissions WHERE user_id = :user_id"), {'user_id': user.id}).fetchone()
+        permission = session.execute(text("SELECT dashboard, data_management, assessment, data_analysis, spotcheck, cases, map, huiwentai, business FROM permissions WHERE user_id = :user_id"), {'user_id': user.id}).fetchone()
         permissions = {
             'dashboard': False,
+            'data_management': False,
             'assessment': False,
             'data_analysis': False,
+            'spotcheck': False,
             'cases': False,
             'map': False,
             'huiwentai': False,
@@ -1093,12 +1118,14 @@ def login():
         if permission:
             permissions = {
                 'dashboard': permission[0],
-                'assessment': permission[1],
-                'data_analysis': permission[2],
-                'cases': permission[3],
-                'map': permission[4],
-                'huiwentai': permission[5],
-                'business': permission[6]
+                'data_management': permission[1],
+                'assessment': permission[2],
+                'data_analysis': permission[3],
+                'spotcheck': permission[4],
+                'cases': permission[5],
+                'map': permission[6],
+                'huiwentai': permission[7],
+                'business': permission[8]
             }
 
         session.commit()
@@ -1126,8 +1153,10 @@ def get_current_user():
     if engine is None:
         permissions = {
                 'dashboard': True,
+                'data_management': True,
                 'assessment': True,
                 'data_analysis': True,
+                'spotcheck': True,
                 'cases': True,
                 'map': True,
                 'huiwentai': True,
@@ -1143,12 +1172,14 @@ def get_current_user():
     session = Session()
     try:
         # 获取用户权限
-        permission = session.execute(text("SELECT dashboard, assessment, data_analysis, cases, map, huiwentai, business FROM permissions WHERE user_id = :user_id"), {'user_id': request.user_id}).fetchone()
+        permission = session.execute(text("SELECT dashboard, data_management, assessment, data_analysis, spotcheck, cases, map, huiwentai, business FROM permissions WHERE user_id = :user_id"), {'user_id': request.user_id}).fetchone()
 
         permissions = {
             'dashboard': False,
+            'data_management': False,
             'assessment': False,
             'data_analysis': False,
+            'spotcheck': False,
             'cases': False,
             'map': False,
             'huiwentai': False,
@@ -1158,12 +1189,14 @@ def get_current_user():
         if permission:
             permissions = {
                 'dashboard': permission[0],
-                'assessment': permission[1],
-                'data_analysis': permission[2],
-                'cases': permission[3],
-                'map': permission[4],
-                'huiwentai': permission[5],
-                'business': permission[6]
+                'data_management': permission[1],
+                'assessment': permission[2],
+                'data_analysis': permission[3],
+                'spotcheck': permission[4],
+                'cases': permission[5],
+                'map': permission[6],
+                'huiwentai': permission[7],
+                'business': permission[8]
             }
         
         session.commit()
@@ -1190,8 +1223,10 @@ def get_users():
     if engine is None:
         permissions = {
             'dashboard': True,
+            'data_management': True,
             'assessment': True,
             'data_analysis': True,
+            'spotcheck': True,
             'cases': True,
             'map': True,
             'huiwentai': True,
@@ -1212,11 +1247,13 @@ def get_users():
         user_list = []
         for user in users:
             # 获取用户权限
-            permission = session.execute(text("SELECT dashboard, assessment, data_analysis, cases, map, huiwentai, business FROM permissions WHERE user_id = :user_id"), {'user_id': user.id}).fetchone()
+            permission = session.execute(text("SELECT dashboard, data_management, assessment, data_analysis, spotcheck, cases, map, huiwentai, business FROM permissions WHERE user_id = :user_id"), {'user_id': user.id}).fetchone()
             permissions = {
                 'dashboard': False,
+                'data_management': False,
                 'assessment': False,
                 'data_analysis': False,
+                'spotcheck': False,
                 'cases': False,
                 'map': False,
                 'huiwentai': False,
@@ -1225,12 +1262,14 @@ def get_users():
             if permission:
                 permissions = {
                     'dashboard': permission[0],
-                    'assessment': permission[1],
-                    'data_analysis': permission[2],
-                    'cases': permission[3],
-                    'map': permission[4],
-                    'huiwentai': permission[5],
-                    'business': permission[6]
+                    'data_management': permission[1],
+                    'assessment': permission[2],
+                    'data_analysis': permission[3],
+                    'spotcheck': permission[4],
+                    'cases': permission[5],
+                    'map': permission[6],
+                    'huiwentai': permission[7],
+                    'business': permission[8]
                 }
             user_list.append({
                 'id': user.id,
@@ -1286,14 +1325,16 @@ def create_user():
             role=role
         )
         session.add(new_user)
-        session.commit()
+        session.flush()  # 获取 new_user.id 但不提交事务
         
-        # 为新用户添加默认权限
-        session.execute(text("INSERT INTO permissions (user_id, dashboard, assessment, data_analysis, cases, map, huiwentai, business) VALUES (:user_id, :dashboard, :assessment, :data_analysis, :cases, :map, :huiwentai, :business)"), {
+        # 为新用户添加默认权限（包含所有权限列）
+        session.execute(text("INSERT INTO permissions (user_id, dashboard, data_management, assessment, data_analysis, spotcheck, cases, map, huiwentai, business) VALUES (:user_id, :dashboard, :data_management, :assessment, :data_analysis, :spotcheck, :cases, :map, :huiwentai, :business)"), {
             'user_id': new_user.id,
             'dashboard': False,
+            'data_management': False,
             'assessment': False,
             'data_analysis': False,
+            'spotcheck': False,
             'cases': False,
             'map': False,
             'huiwentai': False,
@@ -1307,8 +1348,10 @@ def create_user():
             'role': new_user.role,
             'permissions': {
                 'dashboard': False,
+                'data_management': False,
                 'assessment': False,
                 'data_analysis': False,
+                'spotcheck': False,
                 'cases': False,
                 'map': False,
                 'huiwentai': False,
@@ -1386,11 +1429,13 @@ def update_user_permissions(user_id):
             return jsonify({'error': 'User not found'}), 404
         
         # 更新用户权限
-        session.execute(text("UPDATE permissions SET dashboard = :dashboard, assessment = :assessment, data_analysis = :data_analysis, cases = :cases, map = :map, huiwentai = :huiwentai, business = :business WHERE user_id = :user_id"), {
+        session.execute(text("UPDATE permissions SET dashboard = :dashboard, data_management = :data_management, assessment = :assessment, data_analysis = :data_analysis, spotcheck = :spotcheck, cases = :cases, map = :map, huiwentai = :huiwentai, business = :business WHERE user_id = :user_id"), {
             'user_id': user_id,
             'dashboard': data.get('dashboard', False),
+            'data_management': data.get('data_management', False),
             'assessment': data.get('assessment', False),
             'data_analysis': data.get('data_analysis', False),
+            'spotcheck': data.get('spotcheck', False),
             'cases': data.get('cases', False),
             'map': data.get('map', False),
             'huiwentai': data.get('huiwentai', False),
@@ -1399,11 +1444,13 @@ def update_user_permissions(user_id):
         session.commit()
 
         # 返回更新后的权限
-        permission = session.execute(text("SELECT dashboard, assessment, data_analysis, cases, map, huiwentai, business FROM permissions WHERE user_id = :user_id"), {'user_id': user_id}).fetchone()
+        permission = session.execute(text("SELECT dashboard, data_management, assessment, data_analysis, spotcheck, cases, map, huiwentai, business FROM permissions WHERE user_id = :user_id"), {'user_id': user_id}).fetchone()
         permissions = {
             'dashboard': False,
+            'data_management': False,
             'assessment': False,
             'data_analysis': False,
+            'spotcheck': False,
             'cases': False,
             'map': False,
             'huiwentai': False,
@@ -1412,12 +1459,14 @@ def update_user_permissions(user_id):
         if permission:
             permissions = {
                 'dashboard': permission[0],
-                'assessment': permission[1],
-                'data_analysis': permission[2],
-                'cases': permission[3],
-                'map': permission[4],
-                'huiwentai': permission[5],
-                'business': permission[6]
+                'data_management': permission[1],
+                'assessment': permission[2],
+                'data_analysis': permission[3],
+                'spotcheck': permission[4],
+                'cases': permission[5],
+                'map': permission[6],
+                'huiwentai': permission[7],
+                'business': permission[8]
             }
         
         return jsonify({
@@ -6149,7 +6198,7 @@ def knowledge_ask():
         data = request.get_json()
         question = data.get('question', '')
         # 强制使用足够大的top_k，确保标题匹配策略能生效
-        top_k = 15
+        top_k = 8
 
         if not question:
             return jsonify({'error': '请提供问题'}), 400
@@ -6236,8 +6285,6 @@ def case_standards_clear():
 def case_standards_search():
     """搜索立结案标准"""
     try:
-        # 强制设置本地模式
-        os.environ['USE_LOCAL_MODE'] = 'true'
 
         data = request.get_json()
         query = data.get('query', '')
@@ -6255,13 +6302,6 @@ def case_standards_search():
 def case_standards_debug_search():
     """调试端点：搜索立结案标准（无需认证）"""
     try:
-        import os
-        # 强制设置本地模式
-        os.environ['USE_LOCAL_MODE'] = 'true'
-        os.environ['HF_DATASETS_OFFLINE'] = '1'
-        os.environ['TRANSFORMERS_OFFLINE'] = '1'
-        os.environ['HF_HUB_OFFLINE'] = '1'
-
         data = request.get_json()
         query = data.get('query', '')
         top_k = data.get('top_k', 5)
@@ -6269,14 +6309,12 @@ def case_standards_debug_search():
         if not query:
             return jsonify({'error': '请提供查询内容'}), 400
 
-        # 直接导入
         try:
-            from backend.case_standards import search_case_standards_chroma
+            from backend.case_standards import search_case_standards
         except ImportError:
-            from case_standards import search_case_standards_chroma
+            from case_standards import search_case_standards
 
-        # 执行搜索
-        results = search_case_standards_chroma(query, top_k)
+        results = search_case_standards(query, top_k)
 
         return jsonify({
             'results': results,
@@ -6292,10 +6330,6 @@ def case_standards_debug_ask():
     """调试端点：立结案标准问答（无需认证）"""
     try:
         import os
-        os.environ['USE_LOCAL_MODE'] = 'true'
-        os.environ['HF_DATASETS_OFFLINE'] = '1'
-        os.environ['TRANSFORMERS_OFFLINE'] = '1'
-        os.environ['HF_HUB_OFFLINE'] = '1'
 
         data = request.get_json(silent=True) or {}
         question = data.get('question', '')
@@ -6325,18 +6359,17 @@ def case_standards_debug_ask():
 def case_standards_ask():
     """立结案标准问答"""
     try:
-        # 强制设置本地模式
-        os.environ['USE_LOCAL_MODE'] = 'true'
 
         data = request.get_json(silent=True) or {}
         question = data.get('question', '')
         top_k = data.get('top_k', 5)
         location = data.get('location')
+        history = data.get('history', None)
 
         if not question:
             return jsonify({'error': '请提供问题'}), 400
 
-        result = ask_case_standard(question, top_k, location)
+        result = ask_case_standard(question, top_k, location, history)
         if isinstance(result, dict) and 'matches' in result:
             result.pop('matches', None)
         return jsonify(result), 200
@@ -6352,8 +6385,6 @@ def case_standards_ask():
 def case_standards_list():
     """获取已索引的标准列表"""
     try:
-        # 强制设置本地模式
-        os.environ['USE_LOCAL_MODE'] = 'true'
 
         standards = list_indexed_standards()
         return jsonify({
@@ -6368,8 +6399,6 @@ def case_standards_list():
 def case_standards_delete_single(parent_id):
     """删除单个已索引的标准"""
     try:
-        # 强制设置本地模式
-        os.environ['USE_LOCAL_MODE'] = 'true'
 
         result = delete_single_standard(parent_id)
         return jsonify(result), 200
@@ -6381,11 +6410,6 @@ def case_standards_delete_single(parent_id):
 def case_standards_incremental_index():
     """增量索引立结案标准"""
     try:
-        # 强制设置本地模式
-        os.environ['USE_LOCAL_MODE'] = 'true'
-        os.environ['HF_DATASETS_OFFLINE'] = '1'
-        os.environ['TRANSFORMERS_OFFLINE'] = '1'
-        os.environ['HF_HUB_OFFLINE'] = '1'
 
         data = request.get_json() or {}
         directory = data.get('directory', 'D:/常用/立案结案标准')
@@ -6402,11 +6426,6 @@ def case_standards_incremental_index():
 def case_standards_index_single():
     """上传并索引单个标准文件"""
     try:
-        # 强制设置本地模式
-        os.environ['USE_LOCAL_MODE'] = 'true'
-        os.environ['HF_DATASETS_OFFLINE'] = '1'
-        os.environ['TRANSFORMERS_OFFLINE'] = '1'
-        os.environ['HF_HUB_OFFLINE'] = '1'
 
         # 检查是否有文件上传
         if 'file' not in request.files:
@@ -6433,6 +6452,97 @@ def case_standards_index_single():
     except Exception as e:
         import traceback
         traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+# ==================== 统一知识库 API ====================
+
+try:
+    from backend.kb_unified import (
+        unified_ask,
+        unified_search,
+        get_unified_stats,
+        migrate_general_to_unified,
+        get_migration_status,
+    )
+except ImportError:
+    from kb_unified import (
+        unified_ask,
+        unified_search,
+        get_unified_stats,
+        migrate_general_to_unified,
+        get_migration_status,
+    )
+
+@app.route('/api/kb/ask', methods=['POST'])
+@protected
+def kb_unified_ask():
+    """统一知识库问答"""
+    try:
+        data = request.get_json(silent=True) or {}
+        question = data.get('question', '')
+        location = data.get('location')
+        history = data.get('history', [])
+        top_k = data.get('top_k', 5)
+
+        if not question:
+            return jsonify({'error': '请提供问题'}), 400
+
+        result = unified_ask(question, location, history, top_k)
+        return jsonify(result), 200
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/kb/search', methods=['POST'])
+@protected
+def kb_unified_search():
+    """统一知识库检索"""
+    try:
+        data = request.get_json(silent=True) or {}
+        query = data.get('query', '')
+        top_k = data.get('top_k', 10)
+
+        if not query:
+            return jsonify({'error': '请提供搜索内容'}), 400
+
+        results = unified_search(query, top_k)
+        return jsonify({'results': results, 'total': len(results)}), 200
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/kb/stats', methods=['GET'])
+@protected
+def kb_unified_stats():
+    """获取统一知识库统计信息"""
+    try:
+        stats = get_unified_stats()
+        return jsonify(stats), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/kb/migrate', methods=['POST'])
+@admin_required
+def kb_unified_migrate():
+    """迁移通用知识库到统一库"""
+    try:
+        result = migrate_general_to_unified()
+        return jsonify(result), 200
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/kb/migration-status', methods=['GET'])
+@admin_required
+def kb_migration_status():
+    """获取迁移状态"""
+    try:
+        status = get_migration_status()
+        return jsonify(status), 200
+    except Exception as e:
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/smart-report', methods=['POST'])

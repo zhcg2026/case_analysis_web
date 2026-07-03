@@ -1,190 +1,143 @@
 <template>
   <div class="knowledge-page">
     <div class="page-header">
-      <h1 class="page-title">知识库</h1>
-      <p class="page-desc">智能问答和知识检索功能，文档管理请前往系统管理</p>
+      <h1 class="page-title">城市管理知识库</h1>
+      <p class="page-desc">智能问答与知识检索，理解问题、提取重点、精准回答</p>
     </div>
 
-    <!-- Tab切换 -->
-    <div class="tab-nav">
-      <button class="tab-btn" :class="{ active: activeTab === 'general' }" @click="activeTab = 'general'">
-        通用知识库
-      </button>
-      <button class="tab-btn" :class="{ active: activeTab === 'standards' }" @click="activeTab = 'standards'">
-        立结案标准库
-      </button>
-    </div>
-
-    <!-- 通用知识库 -->
-    <div v-show="activeTab === 'general'">
-      <!-- 统计卡片 -->
-      <div class="stats-card">
-        <div class="stat-item">
-          <span class="stat-label">向量数量</span>
-          <span class="stat-value">{{ stats.count || 0 }}</span>
-        </div>
-        <div class="stat-item">
-          <span class="stat-label">文档数</span>
-          <span class="stat-value">{{ stats.doc_count || 0 }}</span>
-        </div>
-        <div class="stat-item">
-          <span class="stat-label">运行模式</span>
-          <span class="stat-value">{{ stats.exists ? (stats.mode === 'server' ? '服务器' : '本地') : '未初始化' }}</span>
-        </div>
+    <!-- 统计卡片 -->
+    <div class="stats-card">
+      <div class="stat-item">
+        <span class="stat-label">总向量数</span>
+        <span class="stat-value">{{ unifiedStats.total_vectors || 0 }}</span>
       </div>
+      <div class="stat-item">
+        <span class="stat-label">通用文档</span>
+        <span class="stat-value">{{ unifiedStats.general?.doc_count || 0 }}</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-label">立结案标准</span>
+        <span class="stat-value">{{ unifiedStats.standards?.parents || 0 }}</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-label">运行模式</span>
+        <span class="stat-value">{{ unifiedStats.general?.mode === 'server' ? '服务器' : '本地' }}</span>
+      </div>
+    </div>
 
-      <!-- 智能问答 -->
-      <div class="qa-section single-section">
-        <div class="section-header">
-          <h3>智能问答</h3>
-        </div>
-
-        <div class="qa-input">
-          <textarea v-model="question" placeholder="输入问题，从知识库中检索答案..." rows="3"></textarea>
-          <button class="ask-btn" @click="askQuestion" :disabled="asking || !question.trim()">
-            {{ asking ? '思考中...' : '提问' }}
-          </button>
-        </div>
-
-        <!-- 回答结果 -->
-        <div class="qa-result" v-if="answer">
-          <div class="answer-box">
-            <div class="answer-header">
-              <span class="answer-label">回答</span>
-              <span class="answer-status" :class="answer.success ? 'success' : 'error'">
-                {{ answer.success ? '成功' : '失败' }}
-              </span>
-            </div>
-            <div class="answer-content">{{ answer.answer }}</div>
+    <!-- 主内容区：问答 + 地图 -->
+    <div class="main-grid">
+      <!-- 左列：问答区 -->
+      <div class="qa-column">
+        <div class="section-card">
+          <div class="section-header">
+            <h3>智能问答</h3>
+            <button v-if="chatHistory.length" class="clear-btn" @click="clearChat">清空对话</button>
           </div>
 
-          <div class="sources-box" v-if="answer.sources && answer.sources.length">
-            <div class="sources-header">
-              <span class="sources-label">参考来源</span>
+          <!-- 对话消息列表 -->
+          <div class="chat-messages" v-if="chatHistory.length">
+            <div v-for="(msg, i) in chatHistory" :key="i" class="chat-msg" :class="msg.role">
+              <div class="chat-bubble">
+                <div class="chat-text">{{ msg.content }}</div>
+                <div class="chat-sources" v-if="msg.sources && msg.sources.length">
+                  <span class="source-tag" v-for="s in msg.sources" :key="s">{{ s }}</span>
+                </div>
+              </div>
             </div>
-            <div class="sources-list">
-              <div class="source-item" v-for="source in answer.sources" :key="source">
-                {{ source }}
+            <div v-if="asking" class="chat-msg assistant">
+              <div class="chat-bubble typing">
+                <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 输入区域 -->
+          <div class="qa-input">
+            <textarea 
+              v-model="question" 
+              placeholder="请输入城市管理相关问题，如：井盖破损的处置时限是多少？这个问题归哪个部门管？" 
+              rows="3"
+              @keydown.enter.exact.prevent="askQuestion"
+            ></textarea>
+            <button class="ask-btn" @click="askQuestion" :disabled="asking || !question.trim()">
+              {{ asking ? '思考中...' : '提问' }}
+            </button>
+          </div>
+
+          <!-- 需要位置提示 -->
+          <div class="location-hint" v-if="needLocation && !hasLocation">
+            <div class="hint-icon">📍</div>
+            <div class="hint-content">
+              <p class="hint-title">需要定位位置</p>
+              <p class="hint-desc">您的问题涉及区域判定，请在右侧地图上点选具体位置</p>
+              <button class="hint-btn" @click="showMap = true">点选位置</button>
+            </div>
+          </div>
+
+          <!-- 已定位提示 -->
+          <div class="location-selected" v-if="hasLocation">
+            <span class="location-text">已定位: {{ selectedLng }}, {{ selectedLat }}</span>
+            <button class="clear-location-btn" @click="clearLocation">清除</button>
+          </div>
+        </div>
+
+        <!-- 知识检索 -->
+        <div class="section-card">
+          <div class="section-header">
+            <h3>知识检索</h3>
+          </div>
+          <div class="search-input">
+            <input v-model="searchQuery" placeholder="搜索关键词..." @keydown.enter="searchKnowledge" />
+            <button class="search-btn" @click="searchKnowledge" :disabled="searching">
+              {{ searching ? '搜索中...' : '搜索' }}
+            </button>
+          </div>
+          <div class="search-results" v-if="searchResults.length">
+            <div class="result-item" v-for="(result, index) in searchResults" :key="index">
+              <div class="result-header">
+                <span class="result-type" v-if="result.source_type === 'standards'">立结案标准</span>
+                <span class="result-type general" v-else>通用知识</span>
+                <span class="result-score">相似度: {{ ((result.score || 0) * 100).toFixed(1) }}%</span>
+              </div>
+              <div class="result-content">{{ result.content || result.child_text || result.parent_text }}</div>
+              <div class="result-meta" v-if="result.case_type">
+                <span class="meta-tag">{{ result.case_type }}</span>
+                <span v-if="result.meta_info?.time_limit" class="meta-info">处置时限: {{ result.meta_info.time_limit }}</span>
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      <!-- 知识检索 -->
-      <div class="search-section single-section">
-        <div class="section-header">
-          <h3>知识检索</h3>
-        </div>
+      <!-- 右列：地图区 -->
+      <div class="map-column" :class="{ expanded: showMap }">
+        <div class="section-card">
+          <div class="section-header">
+            <h3>地图定位</h3>
+            <button class="toggle-map-btn" @click="showMap = !showMap">
+              {{ showMap ? '收起' : '展开' }}
+            </button>
+          </div>
+          
+          <div v-show="showMap" class="map-container">
+            <div ref="mapRef" class="amap"></div>
+            <div class="map-footer">
+              <span v-if="mapInitError" class="map-error">{{ mapInitError }}</span>
+              <span v-else class="map-help">点击地图任意位置自动定位</span>
+            </div>
+          </div>
 
-        <div class="search-input">
-          <input v-model="searchQuery" placeholder="搜索关键词..." />
-          <button class="search-btn" @click="searchKnowledge" :disabled="searching">
-            {{ searching ? '搜索中...' : '搜索' }}
-          </button>
-        </div>
+          <div v-show="showMap" class="location-row">
+            <input v-model="selectedLng" placeholder="经度" />
+            <input v-model="selectedLat" placeholder="纬度" />
+          </div>
 
-        <div class="search-results" v-if="searchResults.length">
-          <div class="result-item" v-for="(result, index) in searchResults" :key="index">
-            <div class="result-header">
-              <span class="result-source">{{ result.source }}</span>
-              <span class="result-score">相似度: {{ (result.score * 100).toFixed(1) }}%</span>
-            </div>
-            <div class="result-content">{{ result.content }}</div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- 立结案标准库 -->
-    <div v-show="activeTab === 'standards'" class="standards-section">
-      <!-- 统计卡片 -->
-      <div class="stats-card" v-if="standardsStats.exists">
-        <div class="stat-item">
-          <span class="stat-label">父文档</span>
-          <span class="stat-value">{{ standardsStats.parents || 0 }}</span>
-        </div>
-        <div class="stat-item">
-          <span class="stat-label">子文档</span>
-          <span class="stat-value">{{ standardsStats.children || 0 }}</span>
-        </div>
-        <div class="stat-item">
-          <span class="stat-label">模式</span>
-          <span class="stat-value">{{ standardsStats.mode || '未知' }}</span>
-        </div>
-      </div>
-
-      <!-- 标准问答 -->
-      <div class="standards-qa">
-        <div class="section-header">
-          <h3>立结案标准问答</h3>
-        </div>
-        <div class="qa-input">
-          <textarea v-model="standardsQuestion" placeholder="输入问题，如：井盖破损的处置时限是多少？" rows="3"></textarea>
-          <div class="standards-map-panel">
-            <div class="map-panel-header">
-              <span>地图定位（点击地图选择位置）</span>
-            </div>
-            <div ref="standardsMapRef" class="standards-map"></div>
-            <div class="map-panel-footer">
-              <span v-if="mapInitError" class="map-error-text">{{ mapInitError }}</span>
-              <span v-else class="map-help-text">点击地图任意位置即可自动定位并填充经纬度</span>
-            </div>
-          </div>
-          <div class="location-row">
-            <input v-model="standardsLng" placeholder="经度（如 111.00）" />
-            <input v-model="standardsLat" placeholder="纬度（如 35.03）" />
-          </div>
-          <div class="location-actions">
-            <button class="location-btn" type="button" @click="loadLocationFromMap">读取地图点位</button>
-            <span class="location-tip" v-if="standardsLng && standardsLat">
-              当前点位：{{ standardsLng }}, {{ standardsLat }}<span v-if="mapLocationTime">（{{ mapLocationTime }}）</span>
-            </span>
-          </div>
-          <button class="ask-btn" @click="askStandards" :disabled="askingStandards || !standardsQuestion.trim()">
-            {{ askingStandards ? '查询中...' : '提问' }}
-          </button>
-        </div>
-        <div class="qa-result" v-if="standardsAnswer">
-          <div class="answer-box">
-            <div class="answer-header">
-              <span class="answer-label">回答</span>
-              <span class="answer-status" :class="standardsAnswer.success ? 'success' : 'error'">
-                {{ standardsAnswer.success ? '成功' : '失败' }}
-              </span>
-            </div>
-            <div class="answer-content">{{ standardsAnswer.answer }}</div>
-          </div>
-          <div class="sources-box" v-if="standardsAnswer.sources && standardsAnswer.sources.length">
-            <div class="sources-header">参考案件类型</div>
-            <div class="sources-list">
-              <span class="source-tag" v-for="s in standardsAnswer.sources" :key="s">{{ s }}</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- 标准搜索 -->
-      <div class="standards-search">
-        <div class="section-header">
-          <h3>标准检索</h3>
-        </div>
-        <div class="search-input">
-          <input v-model="standardsSearchQuery" placeholder="搜索关键词..." />
-          <button class="search-btn" @click="searchStandards" :disabled="searchingStandards">
-            {{ searchingStandards ? '搜索中...' : '搜索' }}
-          </button>
-        </div>
-        <div class="search-results" v-if="standardsSearchResults.length">
-          <div class="result-item" v-for="(r, i) in standardsSearchResults" :key="i">
-            <div class="result-header">
-              <span class="result-type">{{ r.case_type }}</span>
-              <span class="result-score">相似度: {{ ((r.score || 0) * 100).toFixed(1) }}%</span>
-            </div>
-            <div class="result-child">{{ r.child_text }}</div>
-            <div class="result-meta" v-if="r.meta_info">
-              <span v-if="r.meta_info.time_limit">处置时限: {{ r.meta_info.time_limit }}</span>
-            </div>
+          <div v-show="showMap" class="location-actions">
+            <button class="location-btn" @click="loadLocationFromMap">读取点位</button>
+            <button class="location-btn primary" @click="useLocation" v-if="selectedLng && selectedLat">
+              使用此位置
+            </button>
           </div>
         </div>
       </div>
@@ -193,42 +146,37 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
-import { useUserStore } from '../stores/user'
+import { ref, onMounted, onUnmounted, watch, nextTick, computed } from 'vue'
 
-const userStore = useUserStore()
+// 统一统计
+const unifiedStats = ref({ total_vectors: 0, general: {}, standards: {} })
 
-// Tab切换
-const activeTab = ref('general')
-
-// 通用知识库状态
-const stats = ref({ exists: false, count: 0 })
+// 问答状态
 const question = ref('')
 const asking = ref(false)
-const answer = ref(null)
+const chatHistory = ref([])
+
+// 搜索状态
 const searchQuery = ref('')
 const searching = ref(false)
 const searchResults = ref([])
 
-// 立结案标准相关状态
-const standardsStats = ref({ exists: false })
-const standardsQuestion = ref('')
-const standardsLng = ref('')
-const standardsLat = ref('')
-const mapLocationTime = ref('')
-const standardsMapRef = ref(null)
+// 地图状态
+const showMap = ref(false)
+const mapRef = ref(null)
 const mapInitError = ref('')
-const askingStandards = ref(false)
-const standardsAnswer = ref(null)
-const standardsSearchQuery = ref('')
-const searchingStandards = ref(false)
-const standardsSearchResults = ref([])
+const selectedLng = ref('')
+const selectedLat = ref('')
+const needLocation = ref(false)
 
-let standardsMapInstance = null
-let standardsPointMarker = null
+let mapInstance = null
+let pointMarker = null
 
-// API基础URL
-const apiBase = '/api/knowledge'
+// 计算属性
+const hasLocation = computed(() => {
+  return selectedLng.value !== '' && selectedLat.value !== '' && 
+         !isNaN(Number(selectedLng.value)) && !isNaN(Number(selectedLat.value))
+})
 
 // 获取token
 function getAuthHeaders() {
@@ -239,50 +187,50 @@ function getAuthHeaders() {
   }
 }
 
-// 加载统计信息
+// 加载统一统计
 async function loadStats() {
   try {
-    const res = await fetch(`${apiBase}/stats`, {
+    const res = await fetch('/api/kb/stats', {
       headers: getAuthHeaders()
     })
     const data = await res.json()
-    stats.value = data
+    unifiedStats.value = data
   } catch (e) {
     console.error('加载统计失败:', e)
   }
 }
 
-// ================= 立结案标准相关方法 =================
-
-// 加载立结案标准统计
-async function loadStandardsStats() {
-  try {
-    const res = await fetch('/api/case-standards/stats', {
-      headers: getAuthHeaders()
-    })
-    const data = await res.json()
-    standardsStats.value = data
-  } catch (e) {
-    console.error('加载标准统计失败:', e)
-  }
-}
-
-// 立结案标准问答
-async function askStandards() {
-  if (!standardsQuestion.value.trim()) return
-
-  askingStandards.value = true
-  standardsAnswer.value = null
+// 统一问答
+async function askQuestion() {
+  if (!question.value.trim()) return
+  
+  asking.value = true
+  const currentQuestion = question.value.trim()
+  
+  // 追加用户消息到对话历史
+  chatHistory.value.push({ role: 'user', content: currentQuestion })
+  question.value = ''
 
   try {
-    const location = (standardsLng.value !== '' && standardsLat.value !== '')
-      ? { lng: Number(standardsLng.value), lat: Number(standardsLat.value) }
+    const location = hasLocation.value 
+      ? { lng: Number(selectedLng.value), lat: Number(selectedLat.value) }
       : null
-    const res = await fetch('/api/case-standards/ask', {
+
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 90000)
+
+    const res = await fetch('/api/kb/ask', {
       method: 'POST',
       headers: getAuthHeaders(),
-      body: JSON.stringify({ question: standardsQuestion.value, location })
+      body: JSON.stringify({
+        question: currentQuestion,
+        location,
+        history: chatHistory.value.slice(0, -1)
+      }),
+      signal: controller.signal
     })
+    clearTimeout(timeoutId)
+
     const rawText = await res.text()
     let data = null
     if (rawText) {
@@ -301,13 +249,60 @@ async function askStandards() {
     if (!data) {
       throw new Error(`接口返回为空（状态码 ${res.status}）`)
     }
-    standardsAnswer.value = data
+
+    // 检查是否需要位置信息
+    if (data.need_location) {
+      needLocation.value = true
+      chatHistory.value.push({ 
+        role: 'assistant', 
+        content: data.message || '请在地图上点选具体位置' 
+      })
+      showMap.value = true
+      return
+    }
+
+    // 追加AI回答到对话历史
+    chatHistory.value.push({ 
+      role: 'assistant', 
+      content: data.answer, 
+      sources: data.sources 
+    })
   } catch (e) {
-    standardsAnswer.value = { success: false, answer: '查询失败: ' + e.message }
+    const errMsg = e.name === 'AbortError' ? '请求超时，请稍后重试' : '查询失败: ' + e.message
+    chatHistory.value.push({ role: 'assistant', content: errMsg })
   } finally {
-    askingStandards.value = false
+    asking.value = false
   }
 }
+
+// 清空对话
+function clearChat() {
+  chatHistory.value = []
+  needLocation.value = false
+}
+
+// 统一检索
+async function searchKnowledge() {
+  if (!searchQuery.value.trim()) return
+  searching.value = true
+  searchResults.value = []
+  try {
+    const res = await fetch('/api/kb/search', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ query: searchQuery.value })
+    })
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.error || '请求失败')
+    searchResults.value = data.results || []
+  } catch (e) {
+    console.error('知识检索失败:', e)
+  } finally {
+    searching.value = false
+  }
+}
+
+// ================= 地图相关 =================
 
 function formatTime(ts) {
   if (!ts) return ''
@@ -322,9 +317,8 @@ function loadLocationFromMap() {
     if (!raw) return
     const location = JSON.parse(raw)
     if (typeof location?.lng === 'number' && typeof location?.lat === 'number') {
-      standardsLng.value = String(location.lng)
-      standardsLat.value = String(location.lat)
-      mapLocationTime.value = formatTime(location.timestamp)
+      selectedLng.value = String(location.lng)
+      selectedLat.value = String(location.lat)
     }
   } catch (e) {
     console.error('读取地图定位点失败:', e)
@@ -334,9 +328,8 @@ function loadLocationFromMap() {
 function handleMapLocationUpdated(event) {
   const detail = event?.detail
   if (typeof detail?.lng === 'number' && typeof detail?.lat === 'number') {
-    standardsLng.value = String(detail.lng)
-    standardsLat.value = String(detail.lat)
-    mapLocationTime.value = formatTime(detail.timestamp)
+    selectedLng.value = String(detail.lng)
+    selectedLat.value = String(detail.lat)
   }
 }
 
@@ -347,21 +340,20 @@ function saveSelectedLocation(lng, lat) {
     timestamp: Date.now()
   }
   localStorage.setItem('selected_map_location', JSON.stringify(payload))
-  standardsLng.value = String(payload.lng)
-  standardsLat.value = String(payload.lat)
-  mapLocationTime.value = formatTime(payload.timestamp)
+  selectedLng.value = String(payload.lng)
+  selectedLat.value = String(payload.lat)
 }
 
 function setMapPointMarker(lng, lat) {
-  if (!standardsMapInstance || !window.AMap) return
-  if (!standardsPointMarker) {
-    standardsPointMarker = new window.AMap.Marker({
-      map: standardsMapInstance,
+  if (!mapInstance || !window.AMap) return
+  if (!pointMarker) {
+    pointMarker = new window.AMap.Marker({
+      map: mapInstance,
       anchor: 'bottom-center',
       offset: new window.AMap.Pixel(0, -2)
     })
   }
-  standardsPointMarker.setPosition([lng, lat])
+  pointMarker.setPosition([lng, lat])
 }
 
 async function ensureAmapReady(timeoutMs = 8000) {
@@ -372,8 +364,8 @@ async function ensureAmapReady(timeoutMs = 8000) {
   return Boolean(window.AMap)
 }
 
-async function initStandardsMap() {
-  if (standardsMapInstance || !standardsMapRef.value) return
+async function initMap() {
+  if (mapInstance || !mapRef.value) return
   const amapReady = await ensureAmapReady()
   if (!amapReady || !window.AMap) {
     mapInitError.value = '地图加载失败，请刷新后重试'
@@ -381,14 +373,14 @@ async function initStandardsMap() {
     return
   }
   mapInitError.value = ''
-  standardsMapInstance = new window.AMap.Map(standardsMapRef.value, {
+  mapInstance = new window.AMap.Map(mapRef.value, {
     zoom: 12,
     center: [110.976935, 35.06161],
     resizeEnable: true,
     mapStyle: 'amap://styles/normal'
   })
 
-  standardsMapInstance.on('click', (event) => {
+  mapInstance.on('click', (event) => {
     const lng = event?.lnglat?.getLng?.()
     const lat = event?.lnglat?.getLat?.()
     if (typeof lng !== 'number' || typeof lat !== 'number') return
@@ -396,58 +388,55 @@ async function initStandardsMap() {
     setMapPointMarker(lng, lat)
   })
 
-  loadLocationFromMap()
-  if (standardsLng.value && standardsLat.value) {
-    setMapPointMarker(Number(standardsLng.value), Number(standardsLat.value))
+  // 恢复之前选中的位置
+  if (selectedLng.value && selectedLat.value) {
+    setMapPointMarker(Number(selectedLng.value), Number(selectedLat.value))
   }
 }
 
-// 搜索立结案标准
-async function searchStandards() {
-  if (!standardsSearchQuery.value.trim()) return
+function useLocation() {
+  if (!hasLocation.value) return
+  needLocation.value = false
+  // 如果有未发送的问题，自动发送
+  if (question.value.trim()) {
+    askQuestion()
+  }
+}
 
-  searchingStandards.value = true
-  standardsSearchResults.value = []
-
-  try {
-    const res = await fetch('/api/case-standards/search', {
-      method: 'POST',
-      headers: getAuthHeaders(),
-      body: JSON.stringify({ query: standardsSearchQuery.value })
-    })
-    const data = await res.json()
-    standardsSearchResults.value = data.results || []
-  } catch (e) {
-    console.error('标准搜索失败:', e)
-  } finally {
-    searchingStandards.value = false
+function clearLocation() {
+  selectedLng.value = ''
+  selectedLat.value = ''
+  if (pointMarker) {
+    pointMarker.setPosition([0, 0])
+    pointMarker = null
   }
 }
 
 // 初始化
 onMounted(() => {
   loadStats()
-  loadStandardsStats()
   loadLocationFromMap()
   window.addEventListener('map-location-updated', handleMapLocationUpdated)
 })
 
-watch(activeTab, async (tab) => {
-  if (tab !== 'standards') return
-  await nextTick()
-  await initStandardsMap()
-  setTimeout(() => {
-    standardsMapInstance?.resize?.()
-  }, 0)
+// 监听地图展开
+watch(showMap, async (show) => {
+  if (show) {
+    await nextTick()
+    await initMap()
+    setTimeout(() => {
+      mapInstance?.resize?.()
+    }, 0)
+  }
 })
 
 onUnmounted(() => {
   window.removeEventListener('map-location-updated', handleMapLocationUpdated)
-  if (standardsMapInstance) {
-    standardsMapInstance.destroy()
+  if (mapInstance) {
+    mapInstance.destroy()
   }
-  standardsMapInstance = null
-  standardsPointMarker = null
+  mapInstance = null
+  pointMarker = null
 })
 </script>
 
@@ -473,9 +462,10 @@ onUnmounted(() => {
   font-size: 14px;
 }
 
+/* 统计卡片 */
 .stats-card {
   display: flex;
-  gap: var(--space-4);
+  gap: var(--space-6);
   padding: var(--space-4);
   background: var(--bg-card);
   border-radius: var(--radius-lg);
@@ -495,13 +485,30 @@ onUnmounted(() => {
 }
 
 .stat-value {
-  font-size: 18px;
+  font-size: 20px;
   font-weight: 600;
   color: var(--primary-500);
 }
 
-/* 单独区块样式 */
-.single-section {
+/* 主内容网格 */
+.main-grid {
+  display: grid;
+  grid-template-columns: 1fr 400px;
+  gap: var(--space-4);
+  align-items: start;
+}
+
+@media (max-width: 1024px) {
+  .main-grid {
+    grid-template-columns: 1fr;
+  }
+  .map-column {
+    order: -1;
+  }
+}
+
+/* 区块卡片 */
+.section-card {
   background: var(--bg-card);
   border-radius: var(--radius-lg);
   border: 1px solid var(--border-lighter);
@@ -522,7 +529,86 @@ onUnmounted(() => {
   color: var(--text-primary);
 }
 
-/* 问答区样式 */
+.clear-btn {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  background: none;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+.clear-btn:hover {
+  color: var(--danger-500, #ef4444);
+  border-color: var(--danger-500, #ef4444);
+}
+
+/* 对话样式 */
+.chat-messages {
+  background: var(--bg-base);
+  border: 1px solid var(--border-lighter);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  margin-bottom: var(--space-4);
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.chat-msg {
+  display: flex;
+  margin-bottom: var(--space-3);
+}
+
+.chat-msg.user {
+  justify-content: flex-end;
+}
+
+.chat-msg.assistant {
+  justify-content: flex-start;
+}
+
+.chat-bubble {
+  max-width: 80%;
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  line-height: 1.6;
+  font-size: 14px;
+  white-space: pre-wrap;
+}
+
+.chat-msg.user .chat-bubble {
+  background: var(--primary-500, #3b82f6);
+  color: white;
+  border-bottom-right-radius: 4px;
+}
+
+.chat-msg.assistant .chat-bubble {
+  background: var(--fill-light, #f3f4f6);
+  color: var(--text-primary);
+  border-bottom-left-radius: 4px;
+}
+
+.chat-sources {
+  margin-top: var(--space-2);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.source-tag {
+  font-size: 11px;
+  padding: 2px 8px;
+  background: rgba(255,255,255,0.2);
+  color: var(--primary-500);
+  border-radius: var(--radius-sm);
+}
+
+.chat-msg.assistant .source-tag {
+  background: var(--primary-50);
+}
+
+/* 输入区 */
 .qa-input textarea {
   width: 100%;
   padding: var(--space-3);
@@ -532,88 +618,7 @@ onUnmounted(() => {
   resize: vertical;
   background: var(--bg-base);
   color: var(--text-primary);
-}
-
-.standards-map-panel {
-  margin-top: var(--space-3);
-  border: 1px solid var(--border-light);
-  border-radius: var(--radius-md);
-  overflow: hidden;
-  background: var(--bg-card);
-}
-
-.map-panel-header {
-  padding: var(--space-2) var(--space-3);
-  font-size: 12px;
-  color: var(--text-secondary);
-  border-bottom: 1px solid var(--border-lighter);
-  background: var(--fill-light);
-}
-
-.standards-map {
-  height: 280px;
-  width: 100%;
-  cursor: crosshair;
-}
-
-.map-panel-footer {
-  padding: 6px 10px;
-  border-top: 1px solid var(--border-lighter);
-  background: var(--bg-card);
-}
-
-.map-help-text {
-  font-size: 12px;
-  color: var(--text-secondary);
-}
-
-.map-error-text {
-  font-size: 12px;
-  color: var(--danger);
-}
-
-.location-row {
-  margin-top: var(--space-2);
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--space-2);
-}
-
-.location-row input {
-  width: 100%;
-  padding: var(--space-2);
-  border: 1px solid var(--border-light);
-  border-radius: var(--radius-md);
-  font-size: 14px;
-  background: var(--bg-base);
-  color: var(--text-primary);
-}
-
-.location-actions {
-  margin-top: var(--space-2);
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  flex-wrap: wrap;
-}
-
-.location-btn {
-  padding: 6px 12px;
-  background: var(--fill-light);
-  border: 1px solid var(--border-light);
-  border-radius: var(--radius-md);
-  font-size: 12px;
-  color: var(--text-secondary);
-  cursor: pointer;
-}
-
-.location-btn:hover {
-  background: var(--fill-dark);
-}
-
-.location-tip {
-  font-size: 12px;
-  color: var(--text-secondary);
+  box-sizing: border-box;
 }
 
 .ask-btn {
@@ -632,87 +637,91 @@ onUnmounted(() => {
   cursor: not-allowed;
 }
 
-.qa-result {
-  margin-top: var(--space-4);
-}
-
-.answer-box {
-  padding: var(--space-3);
-  background: var(--primary-50);
-  border-radius: var(--radius-md);
-  margin-bottom: var(--space-3);
-}
-
-[data-theme="dark"] .answer-box {
-  background: rgba(64, 158, 255, 0.1);
-}
-
-.answer-header {
+/* 位置提示 */
+.location-hint {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  border-radius: var(--radius-md);
+  margin-top: var(--space-3);
+}
+
+[data-theme="dark"] .location-hint {
+  background: rgba(251, 146, 60, 0.1);
+  border-color: rgba(251, 146, 60, 0.3);
+}
+
+.hint-icon {
+  font-size: 20px;
+}
+
+.hint-content {
+  flex: 1;
+}
+
+.hint-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #c2410c;
+  margin-bottom: 4px;
+}
+
+[data-theme="dark"] .hint-title {
+  color: #fb923c;
+}
+
+.hint-desc {
+  font-size: 13px;
+  color: #9a3412;
   margin-bottom: var(--space-2);
 }
 
-.answer-label {
+[data-theme="dark"] .hint-desc {
+  color: #fdba74;
+}
+
+.hint-btn {
+  padding: 4px 12px;
+  background: #ea580c;
+  color: white;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.hint-btn:hover {
+  background: #c2410c;
+}
+
+.location-selected {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  background: var(--primary-50);
+  border-radius: var(--radius-sm);
+  margin-top: var(--space-2);
+}
+
+.location-text {
   font-size: 12px;
-  font-weight: 600;
   color: var(--primary-500);
 }
 
-.answer-status {
-  font-size: 12px;
-  padding: 2px 8px;
-  border-radius: var(--radius-sm);
+.clear-location-btn {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-decoration: underline;
 }
 
-.answer-status.success {
-  background: var(--success-light);
-  color: var(--success);
-}
-
-.answer-status.error {
-  background: var(--danger-light);
-  color: var(--danger);
-}
-
-.answer-content {
-  font-size: 14px;
-  color: var(--text-primary);
-  line-height: 1.6;
-}
-
-.sources-box {
-  padding: var(--space-3);
-  background: var(--fill-light);
-  border-radius: var(--radius-md);
-}
-
-.sources-header {
-  margin-bottom: var(--space-2);
-}
-
-.sources-label {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-secondary);
-}
-
-.sources-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-}
-
-.source-item {
-  padding: var(--space-1) var(--space-2);
-  background: var(--bg-card);
-  border-radius: var(--radius-sm);
-  font-size: 12px;
-  color: var(--text-secondary);
-}
-
-/* 搜索区样式 */
+/* 搜索区 */
 .search-input {
   display: flex;
   gap: var(--space-2);
@@ -761,8 +770,13 @@ onUnmounted(() => {
   margin-bottom: var(--space-2);
 }
 
-.result-source {
+.result-type {
   font-size: 12px;
+  color: var(--primary-500);
+  font-weight: 500;
+}
+
+.result-type.general {
   color: var(--text-secondary);
 }
 
@@ -777,83 +791,135 @@ onUnmounted(() => {
   line-height: 1.5;
 }
 
-/* Tab导航样式 */
-.tab-nav {
+.result-meta {
+  margin-top: var(--space-2);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.meta-tag {
+  font-size: 11px;
+  padding: 2px 6px;
+  background: var(--primary-50);
+  color: var(--primary-500);
+  border-radius: var(--radius-sm);
+}
+
+.meta-info {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+/* 地图区 */
+.map-column {
+  position: sticky;
+  top: var(--space-4);
+}
+
+.toggle-map-btn {
+  font-size: 12px;
+  color: var(--text-secondary);
+  background: none;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+.toggle-map-btn:hover {
+  background: var(--fill-light);
+}
+
+.map-container {
+  border: 1px solid var(--border-lighter);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  margin-bottom: var(--space-3);
+}
+
+.amap {
+  height: 300px;
+  width: 100%;
+  cursor: crosshair;
+}
+
+.map-footer {
+  padding: var(--space-2) var(--space-3);
+  font-size: 12px;
+  color: var(--text-secondary);
+  border-top: 1px solid var(--border-lighter);
+  background: var(--fill-light);
+}
+
+.map-error {
+  color: var(--danger-500, #ef4444);
+}
+
+.location-row {
   display: flex;
   gap: var(--space-2);
-  margin-bottom: var(--space-4);
+  margin-bottom: var(--space-2);
 }
 
-.tab-btn {
-  padding: var(--space-2) var(--space-4);
-  background: var(--fill-light);
-  border: 1px solid var(--border-lighter);
+.location-row input {
+  flex: 1;
+  padding: var(--space-2);
+  border: 1px solid var(--border-light);
   border-radius: var(--radius-md);
-  color: var(--text-secondary);
-  font-size: 14px;
-  cursor: pointer;
-  transition: all var(--transition-fast);
+  font-size: 13px;
+  background: var(--bg-base);
+  color: var(--text-primary);
 }
 
-.tab-btn.active {
+.location-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.location-btn {
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  font-size: 12px;
+  background: var(--bg-card);
+  color: var(--text-primary);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.location-btn.primary {
   background: var(--primary-500);
   color: white;
   border-color: var(--primary-500);
 }
 
-.tab-btn:hover:not(.active) {
-  background: var(--fill-dark);
+.location-btn:hover {
+  opacity: 0.9;
 }
 
-/* 立结案标准模块样式 */
-.standards-section {
-  background: var(--bg-card);
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--border-lighter);
-  padding: var(--space-4);
+/* 加载动画 */
+.chat-bubble.typing {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: var(--space-2) var(--space-3);
 }
 
-.standards-qa {
-  margin-bottom: var(--space-6);
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-tertiary);
+  animation: bounce 1.2s infinite;
 }
 
-.standards-search {
-  padding-top: var(--space-4);
-  border-top: 1px solid var(--border-lighter);
-}
+.dot:nth-child(2) { animation-delay: 0.2s; }
+.dot:nth-child(3) { animation-delay: 0.4s; }
 
-.source-tag {
-  padding: var(--space-1) var(--space-2);
-  background: var(--primary-50);
-  color: var(--primary-500);
-  border-radius: var(--radius-sm);
-  font-size: 12px;
-}
-
-.result-type {
-  font-size: 12px;
-  color: var(--primary-500);
-  font-weight: 500;
-}
-
-.result-child {
-  font-size: 13px;
-  color: var(--text-primary);
-  margin: var(--space-1) 0;
-}
-
-.result-meta {
-  font-size: 12px;
-  color: var(--text-secondary);
-}
-
-@media (max-width: 900px) {
-  .main-content {
-    grid-template-columns: 1fr;
-  }
-
-  .standards-map {
-    height: 220px;
-  }
+@keyframes bounce {
+  0%, 60%, 100% { transform: translateY(0); }
+  30% { transform: translateY(-4px); }
 }
 </style>
