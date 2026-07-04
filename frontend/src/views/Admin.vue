@@ -329,12 +329,20 @@
               <span>数据大屏</span>
             </label>
             <label class="permission-item">
+              <input type="checkbox" v-model="editingPermissions.data_management" />
+              <span>数据管理</span>
+            </label>
+            <label class="permission-item">
               <input type="checkbox" v-model="editingPermissions.assessment" />
               <span>考核计分</span>
             </label>
             <label class="permission-item">
               <input type="checkbox" v-model="editingPermissions.data_analysis" />
               <span>AI应用</span>
+            </label>
+            <label class="permission-item">
+              <input type="checkbox" v-model="editingPermissions.spotcheck" />
+              <span>案件抽查</span>
             </label>
             <label class="permission-item">
               <input type="checkbox" v-model="editingPermissions.cases" />
@@ -351,6 +359,10 @@
             <label class="permission-item">
               <input type="checkbox" v-model="editingPermissions.business" />
               <span>业务平台</span>
+            </label>
+            <label class="permission-item">
+              <input type="checkbox" v-model="editingPermissions.flood_monitor" />
+              <span>汛情值守</span>
             </label>
           </div>
         </div>
@@ -1997,12 +2009,15 @@ function openPermissionsEditor(user) {
   const perms = user.permissions || {}
   editingPermissions.value = {
     dashboard: Boolean(perms.dashboard),
+    data_management: Boolean(perms.data_management),
     assessment: Boolean(perms.assessment),
     data_analysis: Boolean(perms.data_analysis),
+    spotcheck: Boolean(perms.spotcheck),
     cases: Boolean(perms.cases),
     map: Boolean(perms.map),
     huiwentai: Boolean(perms.huiwentai),
-    business: Boolean(perms.business)
+    business: Boolean(perms.business),
+    flood_monitor: Boolean(perms.flood_monitor)
   }
   showPermissionsEditor.value = true
 }
@@ -2019,12 +2034,15 @@ async function savePermissions() {
     // 确保发送布尔值
     const dataToSend = {
       dashboard: Boolean(editingPermissions.value.dashboard),
+      data_management: Boolean(editingPermissions.value.data_management),
       assessment: Boolean(editingPermissions.value.assessment),
       data_analysis: Boolean(editingPermissions.value.data_analysis),
+      spotcheck: Boolean(editingPermissions.value.spotcheck),
       cases: Boolean(editingPermissions.value.cases),
       map: Boolean(editingPermissions.value.map),
       huiwentai: Boolean(editingPermissions.value.huiwentai),
-      business: Boolean(editingPermissions.value.business)
+      business: Boolean(editingPermissions.value.business),
+      flood_monitor: Boolean(editingPermissions.value.flood_monitor)
     }
     await axios.put(`/api/users/${editingPermissionsUser.value.id}/permissions`, dataToSend)
     closePermissionsEditor()

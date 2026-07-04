@@ -15,6 +15,7 @@ const Login = () => import('../views/Login.vue')
 const Knowledge = () => import('../views/Knowledge.vue')
 const ArticleDetail = () => import('../views/ArticleDetail.vue')
 const CategoryArticles = () => import('../views/CategoryArticles.vue')
+const FloodMonitor = () => import('../views/FloodMonitor.vue')
 
 const routes = [
   {
@@ -70,6 +71,12 @@ const routes = [
     name: 'Dashboard',
     component: Dashboard,
     meta: { requiresAuth: true, title: '数据大屏' }
+  },
+  {
+    path: '/flood-monitor',
+    name: 'FloodMonitor',
+    component: FloodMonitor,
+    meta: { requiresAuth: true, title: '汛情值守', permission: 'flood_monitor' }
   },
   {
     path: '/admin',

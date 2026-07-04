@@ -50,6 +50,11 @@ try:
 except ImportError:
     from cases_routes import register_case_management_routes
 
+try:
+    from backend.flood_routes import register_flood_monitor_routes
+except ImportError:
+    from flood_routes import register_flood_monitor_routes
+
 # 导入处理docx文件的库
 from docx import Document
 
@@ -418,6 +423,92 @@ try:
         new_value = Column(Text)              # JSON格式，修改后的值
         created_at = Column(DateTime, default=datetime.datetime.now)
 
+    # ======== 汛情值守模块模型 ========
+
+    # 天气记录模型
+    class FloodWeatherRecord(Base):
+        __tablename__ = 'flood_weather_records'
+        id = Column(Integer, primary_key=True, autoincrement=True)
+        city_code = Column(String(20))
+        weather_data = Column(Text)          # JSON: 完整天气数据快照
+        temperature = Column(String(20))
+        humidity = Column(String(20))
+        wind_direction = Column(String(20))
+        wind_power = Column(String(20))
+        weather_text = Column(String(50))
+        rainfall_1h = Column(String(20))
+        recorded_at = Column(DateTime)
+        created_at = Column(DateTime, server_default=func.now())
+
+    # 降雨事件模型
+    class FloodRainEvent(Base):
+        __tablename__ = 'flood_rain_events'
+        id = Column(Integer, primary_key=True, autoincrement=True)
+        start_time = Column(DateTime)
+        end_time = Column(DateTime)
+        max_rainfall_1h = Column(String(20))
+        total_rainfall = Column(String(20))
+        intensity = Column(String(20))
+        status = Column(String(20), default='active')
+        created_at = Column(DateTime, server_default=func.now())
+
+    # 积水点模型
+    class FloodWaterloggingPoint(Base):
+        __tablename__ = 'flood_waterlogging_points'
+        id = Column(Integer, primary_key=True, autoincrement=True)
+        name = Column(String(100), nullable=False)
+        longitude = Column(String(50))
+        latitude = Column(String(50))
+        duty_person = Column(String(50))
+        duty_phone = Column(String(20))
+        water_level = Column(String(20), default='normal')
+        water_depth = Column(String(20))
+        last_updated = Column(DateTime)
+        created_at = Column(DateTime, server_default=func.now())
+        updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    # 调度台账模型
+    class FloodDispatchRecord(Base):
+        __tablename__ = 'flood_dispatch_records'
+        id = Column(Integer, primary_key=True, autoincrement=True)
+        record_type = Column(String(50))
+        title = Column(String(200))
+        content = Column(Text)
+        event_time = Column(DateTime)
+        weather_snapshot = Column(Text)      # JSON: 当时天气快照
+        location = Column(String(200))
+        images = Column(Text)                # JSON: 图片路径数组
+        operator = Column(String(50))
+        status = Column(String(20), default='active')
+        created_at = Column(DateTime, server_default=func.now())
+
+    # 值班排班模型
+    class FloodDutyShift(Base):
+        __tablename__ = 'flood_duty_shifts'
+        id = Column(Integer, primary_key=True, autoincrement=True)
+        shift_date = Column(DateTime, nullable=False)
+        shift_name = Column(String(50))
+        person1 = Column(String(50))
+        person1_phone = Column(String(20))
+        person2 = Column(String(50))
+        person2_phone = Column(String(20))
+        created_at = Column(DateTime, server_default=func.now())
+        updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    # 应急物资存放点模型
+    class FloodEmergencySupply(Base):
+        __tablename__ = 'flood_emergency_supplies'
+        id = Column(Integer, primary_key=True, autoincrement=True)
+        name = Column(String(100), nullable=False)
+        longitude = Column(String(50))
+        latitude = Column(String(50))
+        supplies_list = Column(Text)          # JSON: 物资清单
+        contact_person = Column(String(50))
+        contact_phone = Column(String(20))
+        remark = Column(Text)
+        created_at = Column(DateTime, server_default=func.now())
+        updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
     # 创建数据库表
     # 只创建不存在的表，保留现有数据
     try:
@@ -452,6 +543,17 @@ try:
     except Exception as e:
         print(f"数据库迁移检查(data_management/spotcheck): {e}")
 
+    # 数据库迁移：添加 flood_monitor 权限列
+    try:
+        with engine.connect() as conn:
+            result = conn.execute(text("SHOW COLUMNS FROM permissions LIKE 'flood_monitor'"))
+            if result.fetchone() is None:
+                conn.execute(text("ALTER TABLE permissions ADD COLUMN flood_monitor INT NOT NULL DEFAULT 0"))
+                conn.commit()
+                print("数据库迁移：已添加 flood_monitor 列")
+    except Exception as e:
+        print(f"数据库迁移检查(flood_monitor): {e}")
+
     # 创建会话工厂
     Session = sessionmaker(bind=engine)
 
@@ -470,6 +572,19 @@ try:
         parse_pending_deadline=parse_pending_deadline,
     )
     print("案件管理路由注册成功")
+
+    # 注册汛情值守路由
+    register_flood_monitor_routes(
+        app=app,
+        Session=Session,
+        FloodWeatherRecord=FloodWeatherRecord,
+        FloodRainEvent=FloodRainEvent,
+        FloodWaterloggingPoint=FloodWaterloggingPoint,
+        FloodDispatchRecord=FloodDispatchRecord,
+        FloodDutyShift=FloodDutyShift,
+        FloodEmergencySupply=FloodEmergencySupply,
+        protected=protected,
+    )
 
 except Exception as e:
     print(f"数据库初始化失败: {e}")
@@ -1103,7 +1218,7 @@ def login():
         token = generate_token(user.id, user.username, user.role)
 
         # 获取用户权限
-        permission = session.execute(text("SELECT dashboard, data_management, assessment, data_analysis, spotcheck, cases, map, huiwentai, business FROM permissions WHERE user_id = :user_id"), {'user_id': user.id}).fetchone()
+        permission = session.execute(text("SELECT dashboard, data_management, assessment, data_analysis, spotcheck, cases, map, huiwentai, business, flood_monitor FROM permissions WHERE user_id = :user_id"), {'user_id': user.id}).fetchone()
         permissions = {
             'dashboard': False,
             'data_management': False,
@@ -1113,7 +1228,8 @@ def login():
             'cases': False,
             'map': False,
             'huiwentai': False,
-            'business': False
+            'business': False,
+            'flood_monitor': False
         }
         if permission:
             permissions = {
@@ -1125,7 +1241,8 @@ def login():
                 'cases': permission[5],
                 'map': permission[6],
                 'huiwentai': permission[7],
-                'business': permission[8]
+                'business': permission[8],
+                'flood_monitor': permission[9]
             }
 
         session.commit()
@@ -1172,7 +1289,7 @@ def get_current_user():
     session = Session()
     try:
         # 获取用户权限
-        permission = session.execute(text("SELECT dashboard, data_management, assessment, data_analysis, spotcheck, cases, map, huiwentai, business FROM permissions WHERE user_id = :user_id"), {'user_id': request.user_id}).fetchone()
+        permission = session.execute(text("SELECT dashboard, data_management, assessment, data_analysis, spotcheck, cases, map, huiwentai, business, flood_monitor FROM permissions WHERE user_id = :user_id"), {'user_id': request.user_id}).fetchone()
 
         permissions = {
             'dashboard': False,
@@ -1183,7 +1300,8 @@ def get_current_user():
             'cases': False,
             'map': False,
             'huiwentai': False,
-            'business': False
+            'business': False,
+            'flood_monitor': False
         }
 
         if permission:
@@ -1196,7 +1314,8 @@ def get_current_user():
                 'cases': permission[5],
                 'map': permission[6],
                 'huiwentai': permission[7],
-                'business': permission[8]
+                'business': permission[8],
+                'flood_monitor': permission[9]
             }
         
         session.commit()
@@ -1247,7 +1366,7 @@ def get_users():
         user_list = []
         for user in users:
             # 获取用户权限
-            permission = session.execute(text("SELECT dashboard, data_management, assessment, data_analysis, spotcheck, cases, map, huiwentai, business FROM permissions WHERE user_id = :user_id"), {'user_id': user.id}).fetchone()
+            permission = session.execute(text("SELECT dashboard, data_management, assessment, data_analysis, spotcheck, cases, map, huiwentai, business, flood_monitor FROM permissions WHERE user_id = :user_id"), {'user_id': user.id}).fetchone()
             permissions = {
                 'dashboard': False,
                 'data_management': False,
@@ -1328,7 +1447,7 @@ def create_user():
         session.flush()  # 获取 new_user.id 但不提交事务
         
         # 为新用户添加默认权限（包含所有权限列）
-        session.execute(text("INSERT INTO permissions (user_id, dashboard, data_management, assessment, data_analysis, spotcheck, cases, map, huiwentai, business) VALUES (:user_id, :dashboard, :data_management, :assessment, :data_analysis, :spotcheck, :cases, :map, :huiwentai, :business)"), {
+        session.execute(text("INSERT INTO permissions (user_id, dashboard, data_management, assessment, data_analysis, spotcheck, cases, map, huiwentai, business, flood_monitor) VALUES (:user_id, :dashboard, :data_management, :assessment, :data_analysis, :spotcheck, :cases, :map, :huiwentai, :business, :flood_monitor)"), {
             'user_id': new_user.id,
             'dashboard': False,
             'data_management': False,
@@ -1338,7 +1457,8 @@ def create_user():
             'cases': False,
             'map': False,
             'huiwentai': False,
-            'business': False
+            'business': False,
+            'flood_monitor': False
         })
         session.commit()
 
@@ -1429,7 +1549,7 @@ def update_user_permissions(user_id):
             return jsonify({'error': 'User not found'}), 404
         
         # 更新用户权限
-        session.execute(text("UPDATE permissions SET dashboard = :dashboard, data_management = :data_management, assessment = :assessment, data_analysis = :data_analysis, spotcheck = :spotcheck, cases = :cases, map = :map, huiwentai = :huiwentai, business = :business WHERE user_id = :user_id"), {
+        session.execute(text("UPDATE permissions SET dashboard = :dashboard, data_management = :data_management, assessment = :assessment, data_analysis = :data_analysis, spotcheck = :spotcheck, cases = :cases, map = :map, huiwentai = :huiwentai, business = :business, flood_monitor = :flood_monitor WHERE user_id = :user_id"), {
             'user_id': user_id,
             'dashboard': data.get('dashboard', False),
             'data_management': data.get('data_management', False),
@@ -1439,12 +1559,13 @@ def update_user_permissions(user_id):
             'cases': data.get('cases', False),
             'map': data.get('map', False),
             'huiwentai': data.get('huiwentai', False),
-            'business': data.get('business', False)
+            'business': data.get('business', False),
+            'flood_monitor': data.get('flood_monitor', False)
         })
         session.commit()
 
         # 返回更新后的权限
-        permission = session.execute(text("SELECT dashboard, data_management, assessment, data_analysis, spotcheck, cases, map, huiwentai, business FROM permissions WHERE user_id = :user_id"), {'user_id': user_id}).fetchone()
+        permission = session.execute(text("SELECT dashboard, data_management, assessment, data_analysis, spotcheck, cases, map, huiwentai, business, flood_monitor FROM permissions WHERE user_id = :user_id"), {'user_id': user_id}).fetchone()
         permissions = {
             'dashboard': False,
             'data_management': False,
@@ -1454,7 +1575,8 @@ def update_user_permissions(user_id):
             'cases': False,
             'map': False,
             'huiwentai': False,
-            'business': False
+            'business': False,
+            'flood_monitor': False
         }
         if permission:
             permissions = {
@@ -1466,7 +1588,8 @@ def update_user_permissions(user_id):
                 'cases': permission[5],
                 'map': permission[6],
                 'huiwentai': permission[7],
-                'business': permission[8]
+                'business': permission[8],
+                'flood_monitor': permission[9]
             }
         
         return jsonify({
@@ -6464,14 +6587,22 @@ try:
         migrate_general_to_unified,
         get_migration_status,
     )
-except ImportError:
-    from kb_unified import (
-        unified_ask,
-        unified_search,
-        get_unified_stats,
-        migrate_general_to_unified,
-        get_migration_status,
-    )
+except Exception:
+    try:
+        from kb_unified import (
+            unified_ask,
+            unified_search,
+            get_unified_stats,
+            migrate_general_to_unified,
+            get_migration_status,
+        )
+    except Exception:
+        print("[WARNING] kb_unified 模块加载失败，统一知识库功能不可用")
+        unified_ask = None
+        unified_search = None
+        get_unified_stats = None
+        migrate_general_to_unified = None
+        get_migration_status = None
 
 @app.route('/api/kb/ask', methods=['POST'])
 @protected
