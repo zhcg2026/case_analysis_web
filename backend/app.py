@@ -457,12 +457,19 @@ try:
         __tablename__ = 'flood_waterlogging_points'
         id = Column(Integer, primary_key=True, autoincrement=True)
         name = Column(String(100), nullable=False)
+        road_type = Column(String(50))        # 道路类型：桥涵/路口路段/城中村
         longitude = Column(String(50))
         latitude = Column(String(50))
-        duty_person = Column(String(50))
-        duty_phone = Column(String(20))
+        responsible_person = Column(String(100))  # 积水点责任人
+        responsible_phone = Column(String(20))
+        duty_persons = Column(Text)           # 值守人员(JSON数组，支持多人)
+        traffic_police = Column(String(100))  # 交警责任人
+        traffic_police_phone = Column(String(20))
         water_level = Column(String(20), default='normal')
         water_depth = Column(String(20))
+        management_unit = Column(String(100)) # 管理单位
+        monitoring_points = Column(Text)      # 监控点位(JSON数组)
+        remarks = Column(Text)                # 备注
         last_updated = Column(DateTime)
         created_at = Column(DateTime, server_default=func.now())
         updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
@@ -479,6 +486,7 @@ try:
         location = Column(String(200))
         images = Column(Text)                # JSON: 图片路径数组
         operator = Column(String(50))
+        warning_id = Column(Integer, nullable=True)  # 关联预警ID
         status = Column(String(20), default='active')
         created_at = Column(DateTime, server_default=func.now())
 
@@ -492,6 +500,28 @@ try:
         person1_phone = Column(String(20))
         person2 = Column(String(50))
         person2_phone = Column(String(20))
+        created_at = Column(DateTime, server_default=func.now())
+        updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    # 预警状态模型
+    class FloodWarning(Base):
+        __tablename__ = 'flood_warnings'
+        id = Column(Integer, primary_key=True, autoincrement=True)
+        level = Column(String(20), nullable=False)  # blue, yellow, orange, red
+        status = Column(String(20), default='active')  # active, ended
+        start_time = Column(DateTime, default=func.now())
+        end_time = Column(DateTime, nullable=True)
+        report_snapshot = Column(Text)  # 预警结束时自动生成的报告
+        created_at = Column(DateTime, server_default=func.now())
+
+    # 带班领导模型
+    class FloodDutyLeader(Base):
+        __tablename__ = 'flood_duty_leaders'
+        id = Column(Integer, primary_key=True, autoincrement=True)
+        title = Column(String(50), default='带班领导')  # 职务名称，如"副局长"、"局长"
+        name = Column(String(50), default='')
+        phone = Column(String(20), default='')
+        duty_date = Column(DateTime, nullable=True)
         created_at = Column(DateTime, server_default=func.now())
         updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
@@ -554,6 +584,17 @@ try:
     except Exception as e:
         print(f"数据库迁移检查(flood_monitor): {e}")
 
+    # 数据库迁移：添加 flood_warnings 表的 report_snapshot 列
+    try:
+        with engine.connect() as conn:
+            result = conn.execute(text("SHOW COLUMNS FROM flood_warnings LIKE 'report_snapshot'"))
+            if result.fetchone() is None:
+                conn.execute(text("ALTER TABLE flood_warnings ADD COLUMN report_snapshot TEXT"))
+                conn.commit()
+                print("数据库迁移：已添加 report_snapshot 列")
+    except Exception as e:
+        print(f"数据库迁移检查(report_snapshot): {e}")
+
     # 创建会话工厂
     Session = sessionmaker(bind=engine)
 
@@ -584,6 +625,8 @@ try:
         FloodDutyShift=FloodDutyShift,
         FloodEmergencySupply=FloodEmergencySupply,
         protected=protected,
+        FloodWarning=FloodWarning,
+        FloodDutyLeader=FloodDutyLeader,
     )
 
 except Exception as e:

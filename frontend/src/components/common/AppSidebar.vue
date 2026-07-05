@@ -90,8 +90,8 @@ const navItems = computed(() => {
     { path: '/knowledge', title: '知识库', icon: icons.knowledge },
     { path: '/cases', title: '案件管理', icon: icons.cases, permission: 'cases' },
     { path: '/huiwentai', title: '汇问台', icon: icons.huiwentai, permission: 'huiwentai' },
-    { path: '/map', title: '地图服务', icon: icons.map, permission: 'map' },
-    { path: '/flood-monitor', title: '汛情值守', icon: icons.flood, permission: 'flood_monitor' },
+    { path: '/map', title: '数图城管', icon: icons.map, permission: 'map' },
+    { path: '/flood-monitor', title: '防汛指挥调度', icon: icons.flood, permission: 'flood_monitor' },
     { path: '/business', title: '业务平台', icon: icons.business, permission: 'business' },
     { path: '/admin', title: '系统管理', icon: icons.admin, requiresAdmin: true }
   ]

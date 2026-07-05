@@ -362,7 +362,7 @@
             </label>
             <label class="permission-item">
               <input type="checkbox" v-model="editingPermissions.flood_monitor" />
-              <span>汛情值守</span>
+              <span>防汛指挥调度</span>
             </label>
           </div>
         </div>
@@ -444,6 +444,11 @@
           <div class="form-group">
             <label class="form-label">月份（如：202603）</label>
             <input v-model="dataMonth" type="text" class="form-input" placeholder="202603" />
+          </div>
+          <div class="append-hint">
+            <p><strong>案件数据只能追加到 business_cases 表</strong></p>
+            <p>追加前请确认Excel字段符合以下要求：</p>
+            <p class="field-list">任务号、问题来源、监督员、上报时间、问题类型、大类名称、小类名称、所属片区、问题描述、地址描述、所属街道、所属社区、处置部门、捆绑处置截止时间、结案时间、当前阶段名称、延期次数（值为1）、返工次数（值为"是"）、月份（值为"202606"格式）、是否超时（值为"是"）</p>
           </div>
         </div>
 
@@ -3198,6 +3203,37 @@ watch(articlesCurrentPage, fetchArticles)
 
 .append-options .form-group {
   margin-bottom: 0;
+}
+
+.append-hint {
+  width: 100%;
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  background: rgba(64, 158, 255, 0.1);
+  border: 1px solid rgba(64, 158, 255, 0.3);
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.append-hint p {
+  margin: 0 0 var(--space-2) 0;
+}
+
+.append-hint p:last-child {
+  margin-bottom: 0;
+}
+
+.append-hint strong {
+  color: var(--color-primary);
+}
+
+.append-hint .field-list {
+  font-family: monospace;
+  padding: var(--space-2);
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: var(--radius-sm);
 }
 
 .file-upload-row {
