@@ -210,16 +210,15 @@ def recommend_additional_staff(session, FloodPersonnel, FloodDutyAssignment, Flo
     for person in all_persons:
         name = person.name
 
-        # 硬约束排除：避免连续上班/疲劳
-        if name in on_duty_today:
+        # 硬约束：排除夜班疲劳 + 明天白班的AB组人员
+        if name in just_finished_night:
             continue
         if name in tonight_night_shift:
             continue
-        if name in just_finished_night:
-            continue
-        if name in on_duty_tomorrow:
-            continue
         if name in tomorrow_night_shift:
+            continue
+        # AB组人员如果明天有白班，排除（行政人员明天上班不排除）
+        if person.group_type in ('group_a', 'group_b') and name in on_duty_tomorrow:
             continue
 
         # 轮流排序：近7天被增援次数越少越优先，同次数随机
