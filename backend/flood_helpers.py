@@ -206,8 +206,6 @@ def recommend_additional_staff(session, FloodPersonnel, FloodDutyAssignment, Flo
             continue
         if name in just_finished_night:
             continue
-        if not person.phone:
-            continue
 
         # 计算得分（越低越优先）
         score = 0

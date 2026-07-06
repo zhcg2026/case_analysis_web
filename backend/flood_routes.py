@@ -34,24 +34,89 @@ def parse_persons_from_cell(cell_value):
         for match in bracket_matches:
             names = re.split(r'[\s、，,]+', match)
             for name in names:
-                name = name.strip()
+                name = name.strip().replace(' ', '')  # 去掉名字中的空格
                 if name:
                     persons.append(name)
     else:
         names = re.split(r'[\s、，,]+', cell_value)
         for name in names:
-            name = name.strip()
+            name = name.strip().replace(' ', '')  # 去掉名字中的空格
             if name:
                 persons.append(name)
     return persons
 
 
-def parse_duty_excel(file_path, year=2026, month=7):
+def resolve_group_persons(cell_value, personnel_map):
+    """
+    解析单元格文本，支持组名引用：
+    - "行政人员" → 行政组所有人
+    - "A组"/"a组" → A组所有人
+    - "B组"/"b组" → B组所有人
+    - 带括号的如 "A组（李瑞瑶 展晓瑞 茹佳兆）" → 括号内的人
+    - 普通人名如 "裴  迎"（含空格）→ 匹配花名册
+    返回: list of person_name
+    """
+    result = []
+    cell_lower = cell_value.lower()
+
+    # 提取括号内的人员
+    bracket_pattern = r'[\(（]([^)）]+)[\)）]'
+    bracket_matches = re.findall(bracket_pattern, cell_value)
+
+    if bracket_matches:
+        for match in bracket_matches:
+            names = re.split(r'[\s、，,]+', match)
+            for name in names:
+                name = name.strip().replace(' ', '')
+                if name:
+                    result.append(name)
+        # 如果有"行政人员"关键词，也加上行政组（但排除已在括号中的人）
+        if '行政' in cell_value:
+            for p in personnel_map.values():
+                if p.group_type == 'admin' and p.name not in result:
+                    result.append(p.name)
+    else:
+        # 无括号，检查是否是组名
+        if '行政' in cell_value:
+            for p in personnel_map.values():
+                if p.group_type == 'admin':
+                    result.append(p.name)
+        elif 'a组' in cell_lower:
+            for p in personnel_map.values():
+                if p.group_type == 'group_a':
+                    result.append(p.name)
+        elif 'b组' in cell_lower:
+            for p in personnel_map.values():
+                if p.group_type == 'group_b':
+                    result.append(p.name)
+        else:
+            # 普通人名 - 先尝试匹配花名册
+            clean_name = cell_value.strip().replace(' ', '')
+            if clean_name in personnel_map:
+                result.append(clean_name)
+            else:
+                # 尝试去掉所有空格后匹配
+                for p_name in personnel_map:
+                    if p_name in clean_name or clean_name in p_name:
+                        result.append(p_name)
+                        break
+                else:
+                    # 无法匹配，按空格拆分（可能有多个名字）
+                    names = re.split(r'[\s]+', cell_value)
+                    for name in names:
+                        name = name.strip()
+                        if name:
+                            result.append(name)
+
+    return result
+
+
+def parse_duty_excel(file_path, year=2026, month=7, personnel_map=None):
     """
     解析实际格式的排班表：
-    - 第1行: 日期头 (日期, 7.1, 7.2, ..., 7.31)
-    - 白班行: 含"白班"标识
-    - 夜班行: 含"夜班"标识
+    Row 1: 标题（值班表）
+    Row 2: 表头（日期, 白班, 夜班, 备注）
+    Row 3+: 数据行（7.1, 白班内容, 夜班内容, 备注）
     返回: list[dict]
     """
     import openpyxl
@@ -59,67 +124,118 @@ def parse_duty_excel(file_path, year=2026, month=7):
     ws = wb.active
     results = []
 
-    # 解析第1行获取日期列
-    header_row = list(ws.iter_rows(min_row=1, max_row=1, values_only=True))[0]
-    date_columns = {}
-    for col_idx, cell in enumerate(header_row):
-        if cell is None:
-            continue
-        cell_str = str(cell).strip()
-        match = re.match(r'^(\d+)\.(\d+)$', cell_str)
-        if match:
-            m, d = int(match.group(1)), int(match.group(2))
-            try:
-                date_columns[col_idx] = datetime.date(year, m, d)
-            except ValueError:
-                continue
+    # 找到表头行（包含"日期"和"白班"的行）
+    header_row_idx = None
+    for row_idx, row in enumerate(ws.iter_rows(min_row=1, values_only=True)):
+        row_str = [str(c or '') for c in row]
+        if '日期' in row_str and ('白班' in row_str or '夜班' in row_str):
+            header_row_idx = row_idx
+            break
 
-    # 找到白班和夜班所在行
+    if header_row_idx is None:
+        return results
+
+    # 解析数据行（表头之后的所有行）
     all_rows = list(ws.iter_rows(min_row=1, values_only=True))
-    day_row = None
-    night_row = None
-    for row_idx, row in enumerate(all_rows):
-        first_cell = str(row[0] or '').strip() if row[0] else ''
-        if '白班' in first_cell and day_row is None:
-            day_row = row_idx
-        if '夜班' in first_cell and night_row is None:
-            night_row = row_idx
+    for row_idx in range(header_row_idx + 1, len(all_rows)):
+        row = all_rows[row_idx]
+        if not row or not row[0]:
+            continue
 
-    if day_row is None and night_row is None:
-        if len(all_rows) >= 3:
-            day_row = 1
-            night_row = 2
+        cell_0 = str(row[0]).strip()
+        # 跳过非日期行（如尾部注释行）
+        if not re.match(r'^\d+\.\d+$', cell_0):
+            continue
 
-    if day_row is not None:
-        row = all_rows[day_row]
-        for col_idx, date in date_columns.items():
-            if col_idx >= len(row) or not row[col_idx]:
-                continue
-            cell_value = str(row[col_idx]).strip()
-            if not cell_value or cell_value in ('-', '/', '—', '无') or '备注' in cell_value:
-                continue
-            persons = parse_persons_from_cell(cell_value)
+        # 解析日期
+        match = re.match(r'^(\d+)\.(\d+)$', cell_0)
+        if not match:
+            continue
+        m, d = int(match.group(1)), int(match.group(2))
+        try:
+            duty_date = datetime.date(year, m, d)
+        except ValueError:
+            continue
+
+        # 白班（B列，索引1）
+        day_shift_text = str(row[1] or '').strip() if len(row) > 1 and row[1] else ''
+        if day_shift_text and day_shift_text not in ('-', '/', '—', '无'):
+            if '备注' not in day_shift_text[:10]:
+                if personnel_map:
+                    persons = resolve_group_persons(day_shift_text, personnel_map)
+                else:
+                    persons = parse_persons_from_cell(day_shift_text)
+                for person_name in persons:
+                    results.append({
+                        'date': datetime.datetime.combine(duty_date, datetime.time.min),
+                        'shift_name': '白班',
+                        'person_name': person_name,
+                        'person_phone': '',
+                        'source': 'regular',
+                    })
+
+        # 夜班（C列，索引2）
+        night_shift_text = str(row[2] or '').strip() if len(row) > 2 and row[2] else ''
+        if night_shift_text and night_shift_text not in ('-', '/', '—', '无'):
+            if personnel_map:
+                persons = resolve_group_persons(night_shift_text, personnel_map)
+            else:
+                persons = parse_persons_from_cell(night_shift_text)
             for person_name in persons:
                 results.append({
-                    'date': datetime.datetime.combine(date, datetime.time.min),
-                    'shift_name': '白班',
+                    'date': datetime.datetime.combine(duty_date, datetime.time.min),
+                    'shift_name': '夜班',
                     'person_name': person_name,
                     'person_phone': '',
                     'source': 'regular',
                 })
 
-    if night_row is not None:
-        row = all_rows[night_row]
-        for col_idx, date in date_columns.items():
-            if col_idx >= len(row) or not row[col_idx]:
-                continue
-            cell_value = str(row[col_idx]).strip()
-            if not cell_value or cell_value in ('-', '/', '—', '无'):
-                continue
-            persons = parse_persons_from_cell(cell_value)
+    return results
+
+    # 解析数据行（表头之后的所有行）
+    all_rows = list(ws.iter_rows(min_row=1, values_only=True))
+    for row_idx in range(header_row_idx + 1, len(all_rows)):
+        row = all_rows[row_idx]
+        if not row or not row[0]:
+            continue
+
+        cell_0 = str(row[0]).strip()
+        # 跳过非日期行（如尾部注释行）
+        if not re.match(r'^\d+\.\d+$', cell_0):
+            continue
+
+        # 解析日期
+        match = re.match(r'^(\d+)\.(\d+)$', cell_0)
+        if not match:
+            continue
+        m, d = int(match.group(1)), int(match.group(2))
+        try:
+            duty_date = datetime.date(year, m, d)
+        except ValueError:
+            continue
+
+        # 白班（B列，索引1）
+        day_shift_text = str(row[1] or '').strip() if len(row) > 1 and row[1] else ''
+        if day_shift_text and day_shift_text not in ('-', '/', '—', '无'):
+            # 跳过包含"备注"的行
+            if '备注' not in day_shift_text[:10]:
+                persons = parse_persons_from_cell(day_shift_text)
+                for person_name in persons:
+                    results.append({
+                        'date': datetime.datetime.combine(duty_date, datetime.time.min),
+                        'shift_name': '白班',
+                        'person_name': person_name,
+                        'person_phone': '',
+                        'source': 'regular',
+                    })
+
+        # 夜班（C列，索引2）
+        night_shift_text = str(row[2] or '').strip() if len(row) > 2 and row[2] else ''
+        if night_shift_text and night_shift_text not in ('-', '/', '—', '无'):
+            persons = parse_persons_from_cell(night_shift_text)
             for person_name in persons:
                 results.append({
-                    'date': datetime.datetime.combine(date, datetime.time.min),
+                    'date': datetime.datetime.combine(duty_date, datetime.time.min),
                     'shift_name': '夜班',
                     'person_name': person_name,
                     'person_phone': '',
@@ -1071,19 +1187,22 @@ def register_flood_monitor_routes(
                 temp_path = temp.name
 
             try:
-                # 解析Excel
-                raw_records = parse_duty_excel(temp_path)
+                # 获取花名册（用于解析组名）
+                personnel_map_dict = {}
+                if FloodPersonnel:
+                    all_persons = session.query(FloodPersonnel).filter_by(is_active=True).all()
+                    personnel_map_dict = {p.name: p for p in all_persons}
+
+                # 解析Excel（传入花名册用于解析组名）
+                raw_records = parse_duty_excel(temp_path, personnel_map=personnel_map_dict if personnel_map_dict else None)
 
                 if not raw_records:
                     return jsonify({'error': '未能解析出排班数据，请检查Excel格式'}), 400
 
                 # 关联花名册获取电话
-                if FloodPersonnel:
-                    all_persons = session.query(FloodPersonnel).filter_by(is_active=True).all()
-                    person_map = {p.name: p for p in all_persons}
-                    for record in raw_records:
-                        if record['person_name'] in person_map:
-                            record['person_phone'] = person_map[record['person_name']].phone or ''
+                for record in raw_records:
+                    if record['person_name'] in personnel_map_dict:
+                        record['person_phone'] = personnel_map_dict[record['person_name']].phone or ''
 
                 # 清除该月已有数据再写入
                 dates = set(r['date'] for r in raw_records)
@@ -1101,7 +1220,13 @@ def register_flood_monitor_routes(
 
                 # 批量写入
                 for record in raw_records:
-                    assignment = FloodDutyAssignment(**record)
+                    assignment = FloodDutyAssignment(
+                        assignment_date=record['date'],
+                        shift_name=record['shift_name'],
+                        person_name=record['person_name'],
+                        person_phone=record.get('person_phone', ''),
+                        source=record.get('source', 'regular'),
+                    )
                     session.add(assignment)
 
                 # 兼容旧接口：同时写入FloodDutyShift

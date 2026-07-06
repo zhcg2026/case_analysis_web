@@ -649,7 +649,7 @@ try:
                 ('杨雅茜', '', 'admin'), ('范倩', '', 'admin'),
                 ('李瑞瑶', '', 'group_a'), ('展晓瑞', '', 'group_a'), ('茹佳兆', '', 'group_a'),
                 ('张萌', '', 'group_b'), ('张金龙', '', 'group_b'),
-                ('王康乐', '', 'night'),
+                ('王康乐', '', 'night'), ('常家仪', '', 'night'), ('张青', '', 'night'),
             ]
             for name, phone, gtype in initial_persons:
                 session_init.add(FloodPersonnel(name=name, phone=phone, group_type=gtype))
