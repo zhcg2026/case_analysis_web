@@ -1817,6 +1817,16 @@ def register_flood_monitor_routes(
                         FloodWaterloggingPoint.last_updated: now
                     })
 
+                # 清除今日增援记录
+                if FloodDutyAssignment:
+                    today_start = datetime.datetime.combine(now.date(), datetime.time.min)
+                    today_end = datetime.datetime.combine(now.date(), datetime.time.max)
+                    session.query(FloodDutyAssignment).filter(
+                        FloodDutyAssignment.assignment_date >= today_start,
+                        FloodDutyAssignment.assignment_date <= today_end,
+                        FloodDutyAssignment.source == 'added',
+                    ).delete()
+
                 session.commit()
                 return jsonify({'message': '预警已结束', 'report': report_text}), 200
             return jsonify({'message': '当前无激活预警'}), 200
