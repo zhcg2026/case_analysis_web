@@ -576,14 +576,21 @@ try:
 
     # 创建数据库表
     # 只创建不存在的表，保留现有数据
-    try:
-        Base.metadata.create_all(engine)
-    except Exception as e:
-        # 忽略"表已存在"的错误
-        if "already exists" in str(e).lower():
-            print("数据库表已存在，跳过创建")
-        else:
-            raise
+    # 多worker并发时可能冲突，加重试
+    import time as _time
+    for _retry in range(5):
+        try:
+            Base.metadata.create_all(engine)
+            break
+        except Exception as e:
+            err_str = str(e).lower()
+            if "already exists" in err_str or "concurrent" in err_str or "being modified" in err_str:
+                if _retry < 4:
+                    _time.sleep(1 + _retry)
+                    continue
+                print(f"数据库表创建跳过（重试后）: {e}")
+            else:
+                raise
 
     # 数据库迁移：添加 dashboard 列
     try:
