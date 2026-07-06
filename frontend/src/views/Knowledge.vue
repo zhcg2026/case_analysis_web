@@ -415,7 +415,7 @@ function clearLocation() {
 // 初始化
 onMounted(() => {
   loadStats()
-  loadLocationFromMap()
+  // 不自动恢复上次位置，默认不标记地点
   window.addEventListener('map-location-updated', handleMapLocationUpdated)
 })
 

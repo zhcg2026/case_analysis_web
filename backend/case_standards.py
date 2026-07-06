@@ -36,6 +36,9 @@ os.environ['HF_HUB_OFFLINE'] = '1'
 # 本地模式配置（在加载dotenv之后读取）
 USE_LOCAL_MODE = os.getenv('USE_LOCAL_MODE', 'false').lower() == 'true'
 
+# LLM提供商配置（doubao 或 ollama）
+LLM_PROVIDER = os.getenv('LLM_PROVIDER', 'ollama').lower()
+
 # 服务器模式配置
 OLLAMA_HOST = os.getenv('OLLAMA_HOST', 'http://localhost:11434')
 OLLAMA_EMBED_MODEL = os.getenv('OLLAMA_EMBED_MODEL', 'nomic-embed-text')
@@ -47,7 +50,7 @@ MILVUS_PORT = os.getenv('MILVUS_PORT', '19530')
 LOCAL_DB_PATH = os.getenv('LOCAL_DB_PATH', './chroma_db')
 LOCAL_EMBED_MODEL = os.getenv('LOCAL_EMBED_MODEL', 'paraphrase-multilingual-MiniLM-L12-v2')
 
-# 豆包API配置（本地模式使用）
+# 豆包API配置
 DOUBAO_API_KEY = os.getenv('DOUBAO_API_KEY', '58a51ac5-3b75-4c5e-85ac-1fb4ef652bd0')
 DOUBAO_API_URL = os.getenv('DOUBAO_API_URL', 'https://ark.cn-beijing.volces.com/api/v3/chat/completions')
 DOUBAO_MODEL = os.getenv('DOUBAO_MODEL', 'doubao-seed-1-8-251228')
@@ -97,6 +100,63 @@ def connect_milvus():
         return False
 
 
+def call_llm(prompt: str, provider: str = None, timeout: int = 120) -> Optional[str]:
+    """
+    统一LLM调用函数，支持豆包API和Ollama
+
+    Args:
+        prompt: 提示词
+        provider: LLM提供商（doubao/ollama），None则使用全局配置
+        timeout: 超时时间（秒）
+
+    Returns:
+        LLM返回的文本，失败返回None
+    """
+    if provider is None:
+        provider = LLM_PROVIDER
+
+    try:
+        if provider == 'doubao':
+            # 调用豆包API
+            response = requests.post(
+                DOUBAO_API_URL,
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {DOUBAO_API_KEY}"
+                },
+                json={
+                    "model": DOUBAO_MODEL,
+                    "messages": [{"role": "user", "content": prompt}]
+                },
+                timeout=timeout
+            )
+            if response.status_code == 200:
+                return response.json().get("choices", [{}])[0].get("message", {}).get("content", "")
+            else:
+                print(f"[CaseStandards] 豆包API调用失败: {response.status_code} {response.text[:200]}")
+                return None
+        else:
+            # 调用Ollama
+            response = requests.post(
+                f"{OLLAMA_HOST}/api/generate",
+                json={
+                    "model": OLLAMA_MODEL,
+                    "prompt": prompt,
+                    "stream": False,
+                    "options": {"num_ctx": 4096, "temperature": 0.3}
+                },
+                timeout=timeout
+            )
+            if response.status_code == 200:
+                return response.json().get("response", "")
+            else:
+                print(f"[CaseStandards] Ollama调用失败: {response.status_code}")
+                return None
+    except Exception as e:
+        print(f"[CaseStandards] LLM调用异常: {e}")
+        return None
+
+
 def get_local_embed_model():
     """获取本地embedding模型（延迟加载）"""
     global _local_embed_model
@@ -117,6 +177,11 @@ def get_local_embed_model():
 
 def get_embedding(text: str, max_retries: int = 3) -> Optional[List[float]]:
     """生成文本嵌入向量"""
+    # 截断过长文本，避免超出 embedding 模型上下文长度限制
+    MAX_EMBED_CHARS = 1500
+    if len(text) > MAX_EMBED_CHARS:
+        text = text[:MAX_EMBED_CHARS]
+
     # 动态检查本地模式（而不是使用模块级别的USE_LOCAL_MODE）
     use_local = os.getenv('USE_LOCAL_MODE', 'false').lower() == 'true'
 
@@ -540,6 +605,7 @@ def index_standard_file_milvus(file_path: str) -> Dict:
         # 准备文档
         parent_text = parsed['raw_content']
         parent_meta = {
+            'filename': parsed['filename'],
             'big_category': parsed['big_category'],
             'small_category': parsed['small_category'],
             'case_type': parsed['case_type'],
@@ -689,8 +755,8 @@ DISPATCH_INTENT_WORDS = [
 ]
 
 DEPARTMENT_KEYWORDS = {
-    # 环卫类关键词：包含“遗撒/抛洒/洒落”，用于覆盖“道路遗撒/路面抛洒”等提问
-    "市容环卫中心": ["环卫", "垃圾", "保洁", "清扫", "污物", "脏污", "果皮箱", "清运", "遗撒", "抛洒", "洒落"],
+    # 环卫类关键词：包含"遗撒/抛洒/洒落"，用于覆盖"道路遗撒/路面抛洒"等提问
+    "市容环卫中心": ["环卫", "垃圾", "保洁", "清扫", "污物", "脏污", "果皮箱", "清运", "遗撒", "抛洒", "洒落", "不洁", "积存", "积冰", "积雪", "清洁", "粪便", "排泄物", "呕吐物", "动物尸体", "死禽", "死畜"],
     "园林绿化中心": ["园林", "绿化", "树木", "草坪", "花坛", "绿化带", "公园", "行道树", "绿化垃圾"],
     "综合行政执法队": ["执法", "占道", "违建", "商贩", "广告牌", "渣土车", "门头牌匾", "无照经营"],
     "市政公用服务中心": ["市政", "路灯", "灯杆", "道路", "路面", "井盖", "护栏", "交通设施"],
@@ -699,6 +765,9 @@ DEPARTMENT_KEYWORDS = {
     "供热供气服务中心": ["供热", "供气", "燃气", "热力", "暖气", "管道燃气", "供暖"],
     "建筑资源化服务中心": ["建筑垃圾", "资源化", "装修垃圾", "再生利用", "渣土处置", "消纳场"],
 }
+
+# 环卫优先词：当问题中包含这些词时，即使匹配了市政的"道路/路面"，也强制归为环卫
+_SANITATION_OVERRIDE = ["不洁", "脏", "污", "积存", "积冰", "积雪", "垃圾", "保洁", "清扫", "遗撒", "抛洒", "洒落", "清洁", "粪便", "排泄物", "呕吐物", "动物尸体", "死禽", "死畜"]
 
 PARK_NAMES = ["人民公园", "航天公园", "禹都公园", "圣惠公园", "体育公园", "天逸公园", "南风广场"]
 
@@ -753,8 +822,8 @@ def _is_dispatch_question(question: str) -> bool:
 
 def _classify_department(question: str) -> Optional[str]:
     normalized = normalize_cn_text(question)
-    # 对“遗撒/抛洒/洒落”这类典型环卫问题，直接优先归类到环卫中心，
-    # 避免“道路/路面”等市政关键词抢占最高分。
+    # 对"遗撒/抛洒/洒落"这类典型环卫问题，直接优先归类到环卫中心，
+    # 避免"道路/路面"等市政关键词抢占最高分。
     if "遗撒" in normalized or "抛洒" in normalized or "洒落" in normalized:
         return "市容环卫中心"
 
@@ -765,7 +834,116 @@ def _classify_department(question: str) -> Optional[str]:
         if score > best_score:
             best_score = score
             best_dept = dept
+
+    # 环卫优先覆盖：如果问题包含环卫核心词（如"不洁""积存"），
+    # 即使市政的"道路/路面"得分更高，也强制归为环卫
+    if best_dept == "市政公用服务中心" and best_score > 0:
+        has_sanitation = any(normalize_cn_text(w) in normalized for w in _SANITATION_OVERRIDE)
+        if has_sanitation:
+            return "市容环卫中心"
+
     return best_dept if best_score > 0 else None
+
+
+def pre_analyze_question(question: str) -> Dict[str, Any]:
+    """
+    预分析市民问题，提取关键信息，辅助LLM分析
+
+    Returns:
+        {
+            "location_area": str,      # 区域（如"盐湖区"）
+            "location_road": str,      # 道路（如"圣惠路"）
+            "location_landmark": str,  # 地标（如"明珠快捷酒店门口"）
+            "problem_type": str,       # 问题类型（如"损坏""脏污""缺失"）
+            "facility": str,           # 涉及设施（如"护栏""井盖""路灯"）
+            "department": str,         # 匹配的部门（如"市政公用服务中心"）
+            "keywords": list,          # 关键词列表
+        }
+    """
+    result = {
+        "location_area": "",
+        "location_road": "",
+        "location_landmark": "",
+        "problem_type": "",
+        "facility": "",
+        "department": "",
+        "keywords": [],
+    }
+
+    # 提取区域信息
+    area_patterns = [
+        r'([\u4e00-\u9fa5]{2,4}区)',  # 盐湖区、临猗县
+        r'([\u4e00-\u9fa5]{2,4}县)',
+        r'([\u4e00-\u9fa5]{2,4}市)',
+    ]
+    for pattern in area_patterns:
+        match = re.search(pattern, question)
+        if match:
+            result["location_area"] = match.group(1)
+            break
+
+    # 提取道路信息
+    road_match = re.search(r'([\u4e00-\u9fa5]{2,8}(?:路|街|巷|道|大道|街道))', question)
+    if road_match:
+        result["location_road"] = road_match.group(1)
+
+    # 提取地标信息（门口、附近、旁边等）
+    landmark_match = re.search(r'([\u4e00-\u9fa5]{2,15}(?:门口|附近|旁边|对面|处|侧))', question)
+    if landmark_match:
+        result["location_landmark"] = landmark_match.group(1)
+
+    # 提取问题类型
+    problem_types = ["损坏", "破损", "缺失", "丢失", "断裂", "弯曲", "变形",
+                     "脏污", "不洁", "积存", "垃圾", "污染",
+                     "倾斜", "倒塌", "松动", "脱落",
+                     "堵塞", "积水", "漏水", "溢水",
+                     "噪音", "异味", "扬尘"]
+    for pt in problem_types:
+        if pt in question:
+            result["problem_type"] = pt
+            break
+
+    # 提取涉及设施
+    facility_keywords = {
+        "护栏": ["护栏", "交通护栏", "隔离栏", "围栏"],
+        "井盖": ["井盖", "窨井盖", "下水道盖"],
+        "路灯": ["路灯", "灯杆", "照明", "灯"],
+        "树木": ["树木", "行道树", "树枝", "绿化"],
+        "广告牌": ["广告牌", "招牌", "门头牌匾", "户外广告"],
+        "垃圾桶": ["垃圾桶", "果皮箱", "垃圾箱"],
+        "路面": ["路面", "道路", "地面", "人行道"],
+        "排水": ["排水", "下水道", "雨水", "污水", "管网"],
+        "健身器材": ["健身器材", "体育设施", "运动器材"],
+    }
+    for facility, keywords in facility_keywords.items():
+        if any(kw in question for kw in keywords):
+            result["facility"] = facility
+            break
+
+    # 匹配部门
+    result["department"] = _classify_department(question) or ""
+
+    # 提取关键词（用于辅助搜索）
+    # 移除常见停用词
+    stop_words = ["市民", "建议", "反映", "问题", "希望", "予以", "采纳", "及时",
+                  "维护", "处理", "解决", "相关", "部门", "单位", "应该", "需要"]
+    keywords = question
+    for sw in stop_words:
+        keywords = keywords.replace(sw, "")
+    # 提取2-4字词组
+    extracted_kw = []
+    for length in [4, 3, 2]:
+        for i in range(len(keywords) - length + 1):
+            seg = keywords[i:i+length]
+            if all('\u4e00' <= c <= '\u9fa5' for c in seg) and seg not in extracted_kw:
+                extracted_kw.append(seg)
+                if len(extracted_kw) >= 5:
+                    break
+        if len(extracted_kw) >= 5:
+            break
+    result["keywords"] = extracted_kw
+
+    return result
 
 
 def _extract_location_point(location: Any) -> Optional[Tuple[float, float]]:
@@ -891,9 +1069,20 @@ def match_department_dispatch(question: str, location: Any, force_dispatch: bool
         return None
     point = _extract_location_point(location)
     if not point:
+        # 没有位置信息时，返回通用部门分类结果
+        department = _classify_department(question)
+        if department:
+            return {
+                "success": True,
+                "department": department,
+                "unit": None,
+                "in_jurisdiction": False,
+                "layer_status": "no_location",
+                "answer": f"根据问题描述，该问题可能由{department}负责。如需精确判断管辖区域，请在地图上点选具体位置。",
+            }
         return {
             "success": True,
-            "department": _classify_department(question),
+            "department": None,
             "unit": None,
             "in_jurisdiction": False,
             "layer_status": "missing_location",
@@ -1425,13 +1614,11 @@ def search_case_standards_chroma(query: str, top_k: int = 5) -> List[Dict]:
 
     except Exception as e:
         print(f"[CaseStandards] 搜索失败: {e}")
-        import traceback
-        traceback.print_exc()
         return []
 
 
 def search_case_standards_milvus(query: str, top_k: int = 5) -> List[Dict]:
-    """搜索立结案标准（Milvus 服务器模式）"""
+    """搜索立结案标准（Milvus 服务器模式），带关键词兜底"""
     try:
         from pymilvus import Collection, utility
 
@@ -1473,6 +1660,71 @@ def search_case_standards_milvus(query: str, top_k: int = 5) -> List[Dict]:
                     "meta_info": hit.entity.get("meta_info"),
                     "score": hit.distance
                 })
+
+        # 关键词兜底：如果搜索结果中没有case_type精确包含问题核心词的，补充匹配的记录
+        query_keywords = []
+        for length in [4, 3, 2]:
+            for i in range(len(query) - length + 1):
+                segment = query[i:i+length]
+                if all('\u4e00' <= c <= '\u9fa5' for c in segment) and segment not in query_keywords:
+                    query_keywords.append(segment)
+        existing_types = set(cr.get('case_type', '') for cr in child_results)
+        has_keyword_match = any(kw in ct for ct in existing_types for kw in query_keywords if len(kw) >= 3)
+
+        if not has_keyword_match and query_keywords:
+            # 先用完整查询搜case_type
+            try:
+                extra = collection.query(
+                    expr=f'level == 1 and case_type like "%{query}%"',
+                    output_fields=["parent_id", "text_content", "case_type", "meta_info"],
+                    limit=3
+                )
+                for er in extra:
+                    ct = er.get('case_type', '')
+                    if ct not in existing_types:
+                        existing_types.add(ct)
+                        child_results.append({
+                            "child_id": er.get('parent_id'),
+                            "parent_id": er.get('parent_id'),
+                            "child_text": "",
+                            "case_type": ct,
+                            "meta_info": er.get('meta_info'),
+                            "score": 0.5
+                        })
+                        parent_ids.add(er.get('parent_id'))
+            except Exception:
+                pass
+            # 再用关键词搜（优先2字核心词，如"路灯""井盖"）
+            for kw in query_keywords:
+                if len(kw) < 2:
+                    continue
+                # 跳过太通用的词
+                if kw in ["处置", "时限", "结案", "条件", "找谁", "是谁", "哪个"]:
+                    continue
+                # 已经找到足够的兜底结果就停止
+                if len(child_results) > top_k + 3:
+                    break
+                try:
+                    extra = collection.query(
+                        expr=f'level == 1 and case_type like "%{kw}%"',
+                        output_fields=["parent_id", "text_content", "case_type", "meta_info"],
+                        limit=3
+                    )
+                    for er in extra:
+                        ct = er.get('case_type', '')
+                        if ct not in existing_types:
+                            existing_types.add(ct)
+                            child_results.append({
+                                "child_id": er.get('parent_id'),
+                                "parent_id": er.get('parent_id'),
+                                "child_text": "",
+                                "case_type": ct,
+                                "meta_info": er.get('meta_info'),
+                                "score": 0.5  # 给一个中等分数
+                            })
+                            parent_ids.add(er.get('parent_id'))
+                except Exception:
+                    pass
 
         if parent_ids:
             parent_results = collection.query(
@@ -1577,136 +1829,413 @@ def build_structured_intent_answer(question: str, results: List[Dict]) -> Option
     return None
 
 
-def ask_case_standard(question: str, top_k: int = 5, location: Any = None) -> Dict:
+def _extract_answer_from_text(question: str, results: List[Dict], dept_info: str) -> str:
+    """从知识库文本直接提取答案，按案件类型聚合所有相关条目"""
+    q_norm = normalize_cn_text(question)
+    answer_parts = [dept_info]
+
+    # 从问题中提取场景关键词
+    scenario_keywords = ["破损", "缺失", "移位", "开裂", "弹跳", "沉降", "丢失", "被盗",
+                         "积冰", "积雪", "积水", "堵塞", "溢出", "倒塌", "倾斜",
+                         "不洁", "脏", "污", "积存", "垃圾", "保洁", "清扫",
+                         "私搭乱建", "违建", "占道", "抛洒", "遗撒"]
+
+    # 按案件类型聚合：{case_type: [matched_entries_text]}
+    type_entries = {}
+    type_parent_text = {}
+
+    for r in results:
+        case_type = r.get('case_type', '')
+        parent_text = r.get('parent_text', '')
+
+        # 每个case_type只处理一次（取最完整的parent_text）
+        if case_type in type_parent_text:
+            continue
+        type_parent_text[case_type] = parent_text
+
+        # 按条目拆分
+        entries = re.findall(r'(\d+:\s*.+?)(?=\n\d+:|\n【|$)', parent_text, re.DOTALL)
+
+        # 检查case_type是否包含问题关键词
+        case_type_norm = normalize_cn_text(case_type)
+        # 匹配条件1：场景关键词匹配
+        case_type_match = any(kw in case_type_norm for kw in scenario_keywords if kw in q_norm)
+        # 匹配条件2：问题中的2-4字词组出现在case_type中（如"小广告"匹配"非法小广告"）
+        if not case_type_match:
+            for length in [4, 3, 2]:
+                for i in range(len(question) - length + 1):
+                    seg = question[i:i+length]
+                    if all('\u4e00' <= c <= '\u9fa5' for c in seg) and seg in case_type_norm:
+                        case_type_match = True
+                        break
+                if case_type_match:
+                    break
+
+        matched = []
+        for entry in entries:
+            entry_norm = normalize_cn_text(entry)
+            # 匹配条件：条目包含关键词 或 case_type包含关键词（整个类型匹配）
+            if case_type_match or any(kw in entry_norm for kw in scenario_keywords if kw in q_norm):
+                time_m = re.search(r'处置时限:\s*(.+?)(?:\n|$)', entry)
+                cond_m = re.search(r'结案条件:\s*(.+?)(?:\n|$)', entry)
+                desc_m = re.search(r'\d+:\s*(.+?)(?:\n处置|$)', entry)
+                if time_m and cond_m:
+                    desc = desc_m.group(1).strip() if desc_m else ""
+                    matched.append(f"  {desc} → 处置时限 {time_m.group(1).strip()}，结案条件 {cond_m.group(1).strip()}")
+
+        if matched:
+            # 每个类型最多保留3个最相关的条目
+            type_entries[case_type] = matched[:3]
+            # 同时提取监管/责任主体
+            supervisor = re.search(r'【监管主体】(.+?)(?:\r?\n【|$)', parent_text)
+            responsible = re.search(r'【责任主体】(.+?)(?:\r?\n【|$)', parent_text)
+            sup_text = supervisor.group(1).strip() if supervisor else ""
+            res_text = responsible.group(1).strip() if responsible else ""
+            if sup_text and sup_text != "未指定":
+                type_entries[case_type].append(f"  监管主体：{sup_text}")
+            if res_text and res_text != "未指定":
+                type_entries[case_type].append(f"  责任主体：{res_text}")
+
+    # 按类型输出，最多3个类型，优先case_type精确匹配的
+    sorted_types = sorted(type_entries.keys(), key=lambda ct: -sum(1 for seg in [
+        question[i:i+l] for l in [4,3,2] for i in range(len(question)-l+1)
+        if all('\u4e00' <= c <= '\u9fa5' for c in seg)
+    ] if seg in normalize_cn_text(ct)))
+    for case_type in sorted_types[:3]:
+        entries = type_entries[case_type]
+        answer_parts.append(f"\n【{case_type}】")
+        answer_parts.extend(entries)
+
+    return "\n".join(answer_parts)
+
+
+def _refine_with_llm(question: str, extracted: str, history: list = None, dispatch_info: dict = None) -> str:
+    """用LLM将提取的条目精炼成简洁回答，支持多轮对话"""
+    history_text = ""
+    if history:
+        for msg in history[-6:]:  # 最多保留最近6轮
+            role = "用户" if msg.get("role") == "user" else "助手"
+            history_text += f"- {role}：{msg.get('content', '')}\n"
+
+    # 检查是否需要追问
+    all_matched = find_all_matching_types(question)
+    type_groups = _group_types_by_category(all_matched)
+    need_clarify = False
+    clarify_options = []
+    for category, subtypes in type_groups.items():
+        if len(subtypes) > 3:
+            need_clarify = True
+            clarify_options = subtypes
+            break
+
+    # 构建地理匹配信息
+    geo_info = ""
+    if dispatch_info:
+        unit = dispatch_info.get("unit")
+        department = dispatch_info.get("department", "")
+        geo_info = f"""
+## 地理定位结果
+用户已点选位置，系统自动匹配结果：
+- 所属片区/单位：{unit if unit else '未匹配到具体片区'}
+- 责任部门：{department if department else '未确定'}
+
+注意：地理定位结果仅供参考，不决定由哪个部门处理。请根据参考标准中的案件类型，判断该问题应由哪个部门负责（如路面垃圾、碎玻璃渣等环卫问题归市容环卫中心，护栏损坏等市政问题归市政公用服务中心）。如果匹配到了片区，请在回答中注明具体片区。
+"""
+
+    prompt = f"""你是运城市城市管理局的资深专家。请根据以下立结案标准数据，分析市民反映的问题并给出专业答复。
+
+## 分析步骤
+1. 从市民描述中提取关键信息（地点、问题类型、涉及设施）
+2. 在下方参考标准中找到最匹配的案件类型
+3. 根据该案件类型的【监管主体】和【责任主体】判断归属部门
+4. 给出处置建议和参考时限
+
+## 重要规则
+- 归属部门必须从参考标准中的【监管主体】和【责任主体】中提取，不要自己编造
+- 如果问题涉及的设施有多种子类型（如井盖分为路灯井盖、污水井盖、燃气井盖等），且无法从问题中确定具体是哪种，应该先列出所有子类型让用户选择
+- 如果能从上下文或常识判断具体类型，直接回答
+- 回答要简洁准确，有理有据
+
+## 回答格式
+
+### 问题分析
+- 问题类型：xxx
+- 涉及设施：xxx
+
+### 归属判断
+- 是否属于我局职责：是/否
+- 判断依据：xxx
+
+### 处置建议
+- 责任部门：xxx
+- 处置措施：xxx
+- 参考时限：xxx
+
+{f"## 可选子类型{chr(10)}问题涉及的设施有以下子类型，请先让用户确认具体是哪种：{chr(10)}{chr(10).join('- ' + t for t in clarify_options[:15])}" if need_clarify and clarify_options else ""}{geo_info}## 立结案标准数据
+{extracted}
+
+{f"对话历史：{chr(10)}{history_text}" if history_text else ""}市民问题：{question}
+
+请按上述格式分析回答："""
+
+    result = call_llm(prompt, timeout=120)
+    if result:
+        return result
+
+    # LLM失败，返回原始提取的数据
+    return extracted if extracted else "抱歉，处理您的问题时出现错误，请稍后重试。"
+
+    return extracted
+
+
+def _get_all_case_types() -> List[str]:
+    """获取所有案件类型名称（缓存）"""
+    if hasattr(_get_all_case_types, '_cache') and _get_all_case_types._cache:
+        return _get_all_case_types._cache
+    try:
+        from pymilvus import Collection
+        if not connect_milvus():
+            return []
+        collection = Collection(CASE_STANDARDS_COLLECTION)
+        results = collection.query(
+            expr='level == 1',
+            output_fields=['case_type'],
+            limit=500
+        )
+        types = list(set(r.get('case_type', '') for r in results if r.get('case_type')))
+        _get_all_case_types._cache = types
+        return types
+    except Exception:
+        return []
+
+
+def _get_case_type_embeddings() -> Dict[str, list]:
+    """获取所有案件类型的embedding（缓存）"""
+    if hasattr(_get_case_type_embeddings, '_cache') and _get_case_type_embeddings._cache:
+        return _get_case_type_embeddings._cache
+    try:
+        from pymilvus import Collection
+        if not connect_milvus():
+            return {}
+        collection = Collection(CASE_STANDARDS_COLLECTION)
+        results = collection.query(
+            expr='level == 1',
+            output_fields=['case_type', 'embedding'],
+            limit=500
+        )
+        cache = {}
+        for r in results:
+            ct = r.get('case_type', '')
+            emb = r.get('embedding', None)
+            if ct and emb:
+                cache[ct] = emb
+        _get_case_type_embeddings._cache = cache
+        return cache
+    except Exception:
+        return {}
+
+
+def _pick_types_hybrid(question: str, top_n: int = 3) -> List[str]:
+    """混合选类型：先关键词匹配，再embedding兜底"""
+    # 第一步：关键词精确匹配（从问题中提取2-4字词组，匹配case_type）
+    all_types = _get_all_case_types()
+    keyword_matches = []
+    for length in [4, 3, 2]:
+        for i in range(len(question) - length + 1):
+            seg = question[i:i+length]
+            if not all('\u4e00' <= c <= '\u9fa5' for c in seg):
+                continue
+            # 跳过通用词
+            if seg in ["处置", "时限", "结案", "条件", "找谁", "是谁", "哪个", "破损", "缺失", "管理"]:
+                continue
+            for ct in all_types:
+                ct_norm = normalize_cn_text(ct)
+                if seg in ct_norm and ct not in keyword_matches:
+                    keyword_matches.append(ct)
+                    if len(keyword_matches) >= top_n:
+                        return keyword_matches
+
+    if keyword_matches:
+        return keyword_matches[:top_n]
+
+    # 第二步：embedding相似度兜底
+    return _pick_types_by_embedding(question, top_n)
+
+
+def find_all_matching_types(question: str) -> List[str]:
+    """查找所有匹配的案件类型（不限数量），用于判断是否需要追问"""
+    all_types = _get_all_case_types()
+    keyword_matches = []
+    for length in [4, 3, 2]:
+        for i in range(len(question) - length + 1):
+            seg = question[i:i+length]
+            if not all('\u4e00' <= c <= '\u9fa5' for c in seg):
+                continue
+            if seg in ["处置", "时限", "结案", "条件", "找谁", "是谁", "哪个", "破损", "缺失", "管理"]:
+                continue
+            for ct in all_types:
+                ct_norm = normalize_cn_text(ct)
+                if seg in ct_norm and ct not in keyword_matches:
+                    keyword_matches.append(ct)
+    return keyword_matches
+
+
+def _group_types_by_category(types: List[str]) -> Dict[str, List[str]]:
+    """将案件类型按大类分组，用于判断是否需要追问"""
+    groups = {}
+    for ct in types:
+        parts = ct.split(' - ')
+        if len(parts) >= 2:
+            category = parts[0]
+            sub_type = parts[1]
+            if category not in groups:
+                groups[category] = []
+            groups[category].append(ct)
+    return groups
+    return _pick_types_by_embedding(question, top_n)
+
+
+def _search_by_case_type(case_type: str, top_k: int = 5) -> List[Dict]:
+    """按案件类型精确搜索"""
+    try:
+        from pymilvus import Collection
+        if not connect_milvus():
+            return []
+        collection = Collection(CASE_STANDARDS_COLLECTION)
+        results = collection.query(
+            expr=f'level == 1 and case_type == "{case_type}"',
+            output_fields=["parent_id", "text_content", "case_type", "meta_info"],
+            limit=1
+        )
+        if not results:
+            return []
+        parent_id = results[0].get('parent_id')
+        # 获取子条目
+        children = collection.query(
+            expr=f'level == 0 and parent_id == "{parent_id}"',
+            output_fields=["id", "parent_id", "text_content", "case_type", "meta_info"],
+            limit=top_k
+        )
+        for c in children:
+            c['parent_text'] = results[0].get('text_content', '')
+            c['parent_meta'] = results[0].get('meta_info', {})
+            c['score'] = 1.0
+        return children
+    except Exception as e:
+        print(f"[CaseStandards] 按类型搜索失败: {e}")
+        return []
+
+
+def ask_case_standard(question: str, top_k: int = 5, location: Any = None, history: list = None) -> Dict:
     """
-    基于立结案标准回答问题（父子索引RAG）
-    返回: {"answer": str, "sources": list, "success": bool}
+    基于立结案标准回答问题
+    流程：搜索知识库 → LLM分析回答
     """
     try:
-        # 只要前端传了定位参数，就优先走处置部门+空间匹配链路，
-        # 避免因坐标格式细节回退到标准库检索导致异常。
-        force_dispatch = location is not None
-        dispatch_result = match_department_dispatch(question, location, force_dispatch=force_dispatch)
-        if dispatch_result is not None:
-            dispatch_result["sources"] = []
-            dispatch_result["matches"] = []
-            return dispatch_result
+        # 如果有位置信息，走地理匹配链路
+        dispatch_info = None
+        if location is not None:
+            dispatch_result = match_department_dispatch(question, location, force_dispatch=True)
+            if dispatch_result is not None:
+                dispatch_info = dispatch_result
+                # 有位置时，也搜索知识库补充信息
+                results = search_case_standards(question, top_k)
+                if results:
+                    extracted = _extract_answer_from_text(question, results, dispatch_result.get("answer", ""))
+                    answer = _refine_with_llm(question, extracted, history, dispatch_info)
+                    sources = [r.get("case_type", "") for r in results[:3] if r.get("case_type")]
+                    return {"answer": answer, "sources": list(dict.fromkeys(sources)), "success": True, "matches": results}
+                dispatch_result["sources"] = []
+                dispatch_result["matches"] = []
+                return dispatch_result
 
-        results = search_case_standards(question, top_k)
+        # === 核心流程：搜索知识库 → LLM分析回答 ===
+
+        # 1. 向量搜索知识库
+        results = search_case_standards(question, top_k=top_k)
+
+        # 2. 检查是否需要追问：匹配到的类型属于同一子类但有多个子类型
+        all_matched = find_all_matching_types(question)
+        type_groups = _group_types_by_category(all_matched)
+        need_clarify = False
+        clarify_options = []
+        for category, subtypes in type_groups.items():
+            if len(subtypes) > 3:  # 同一大类下超过3个子类型，需要追问
+                need_clarify = True
+                clarify_options = subtypes
+                break
 
         if not results:
-            return {
-                "answer": "立结案标准库中没有找到相关信息。",
-                "sources": [],
-                "success": True
-            }
+            return {"answer": "知识库中没有找到相关信息。", "sources": [], "success": True}
 
-        # 强意图问题优先走结构化回答，避免LLM生成偏差
-        structured_answer = build_structured_intent_answer(question, results)
-        if structured_answer:
-            sources = [r.get("case_type", "") for r in results[:3] if r.get("case_type")]
-            return {
-                "answer": structured_answer,
-                "sources": list(dict.fromkeys(sources)),
-                "success": True,
-                "matches": results
-            }
-
-        # 构建上下文（使用父文档的完整内容）
+        # 4. 构建上下文给LLM总结
         context_parts = []
-        seen_parents = set()
+        seen = set()
         sources = []
-
         for r in results:
-            parent_id = r['parent_id']
-            if parent_id not in seen_parents:
-                seen_parents.add(parent_id)
-                case_type = r.get('case_type', '')
-                parent_text = r.get('parent_text', '')
-
-                context_parts.append(f"【案件类型】{case_type}\n{parent_text}")
-                sources.append(case_type)
+            ct = r.get('case_type', '')
+            if ct in seen:
+                continue
+            seen.add(ct)
+            parent_text = r.get('parent_text', '')
+            context_parts.append(f"【{ct}】\n{parent_text}")
+            sources.append(ct)
 
         context = "\n\n---\n\n".join(context_parts)
 
-        prompt = f"""你是一个智慧城市管理专家，专门负责立结案标准的咨询。
+        history_text = ""
+        if history:
+            for msg in history[-4:]:
+                role = "用户" if msg.get("role") == "user" else "助手"
+                history_text += f"- {role}：{msg.get('content', '')}\n"
 
-请根据以下【参考标准】回答用户的问题。回答要求：
-1. **优先判断语义包含关系**：如果用户问题中的案件类型（如"建筑垃圾"）属于参考标准中案件类型的子类或具体形式（如"积存垃圾渣土"包含建筑垃圾、装修垃圾等），应当直接给出标准答案
-2. 直接回答用户关心的问题，重点给出：处置时限、结案条件
-3. 如果有责任主体或监管主体信息，可以补充说明
-4. 回答要简洁准确，引用标准中的原文
-5. 只有当参考标准与用户问题完全无关时，才回复"未找到相关标准"
+        prompt = f"""你是运城市城市管理局的资深专家。请根据以下立结案标准数据，分析市民反映的问题并给出专业答复。
 
-【参考标准】:
+## 分析步骤
+1. 从市民描述中提取关键信息（地点、问题类型、涉及设施）
+2. 在下方参考标准中找到最匹配的案件类型
+3. 根据该案件类型的【监管主体】和【责任主体】判断归属部门
+4. 给出处置建议和参考时限
+
+## 重要规则
+- 归属部门必须从参考标准中的【监管主体】和【责任主体】中提取，不要自己编造
+- 如果问题涉及的设施有多种子类型（如井盖分为路灯井盖、污水井盖、燃气井盖等），且无法从问题中确定具体是哪种，应该先列出所有子类型让用户选择
+- 如果能从上下文或常识判断具体类型，直接回答
+- 回答要简洁准确，有理有据
+
+## 回答格式
+
+### 问题分析
+- 问题类型：xxx
+- 涉及设施：xxx
+
+### 归属判断
+- 是否属于我局职责：是/否
+- 判断依据：xxx
+
+### 处置建议
+- 责任部门：xxx
+- 处置措施：xxx
+- 参考时限：xxx
+
+{f"## 可选子类型{chr(10)}问题涉及的设施有以下子类型，请先让用户确认具体是哪种：{chr(10)}{chr(10).join('- ' + t for t in clarify_options[:15])}" if need_clarify and clarify_options else ""}## 立结案标准数据
 {context}
 
-【用户问题】:
-{question}
+{f"对话历史：{chr(10)}{history_text}" if history_text else ""}市民问题：{question}
 
-请给出准确、简洁的回答："""
+请按上述格式分析回答："""
 
-        # 动态检查本地模式
-        use_local = os.getenv('USE_LOCAL_MODE', 'false').lower() == 'true'
+        # 5. LLM生成回答
+        answer = call_llm(prompt, timeout=120)
+        if answer:
+            return {"answer": answer, "sources": list(dict.fromkeys(sources)), "success": True}
 
-        if use_local:
-            # 本地模式：调用豆包API
-            response = requests.post(
-                DOUBAO_API_URL,
-                headers={
-                    "Content-Type": "application/json",
-                    "Authorization": f"Bearer {DOUBAO_API_KEY}"
-                },
-                json={
-                    "model": DOUBAO_MODEL,
-                    "messages": [
-                        {"role": "user", "content": prompt}
-                    ]
-                },
-                timeout=180
-            )
+        # LLM失败，返回提取的原始数据
+        extracted = _extract_answer_from_text(question, results, "")
+        if extracted and len(extracted.strip()) > 5:
+            return {"answer": extracted, "sources": list(dict.fromkeys(sources)), "success": True}
 
-            if response.status_code == 200:
-                data = response.json()
-                answer = data.get("choices", [{}])[0].get("message", {}).get("content", "")
-                return {
-                    "answer": answer,
-                    "sources": sources,
-                    "success": True,
-                    "matches": results
-                }
-            else:
-                return {
-                    "answer": f"豆包API调用失败: {response.status_code}",
-                    "sources": sources,
-                    "success": False
-                }
-        else:
-            # 服务器模式：调用Ollama
-            response = requests.post(
-                f"{OLLAMA_HOST}/api/generate",
-                json={
-                    "model": OLLAMA_MODEL,
-                    "prompt": prompt,
-                    "stream": False
-                },
-                timeout=180
-            )
-
-            if response.status_code == 200:
-                answer = response.json().get("response", "")
-                return {
-                    "answer": answer,
-                    "sources": sources,
-                    "success": True,
-                    "matches": results
-                }
-            else:
-                return {
-                    "answer": f"LLM调用失败: {response.status_code}",
-                    "sources": sources,
-                    "success": False
-                }
+        return {"answer": "抱歉，处理您的问题时出现错误，请稍后重试。", "sources": [], "success": False}
 
     except Exception as e:
         print(f"[CaseStandards] 问答失败: {e}")
@@ -2217,7 +2746,7 @@ def incremental_index_milvus(directory: str, progress_callback=None) -> Dict:
             if progress_callback:
                 progress_callback(i, total_files, filename, status)
 
-            if filename in indexed_filenames:
+            if filename[:-4] in indexed_filenames:  # Strip .txt for comparison
                 status = "skipped"
                 results['skipped'] += 1
                 results['details'].append({

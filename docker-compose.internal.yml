@@ -20,7 +20,7 @@ services:
           sleep 3
         done
         sleep 2
-        gunicorn --bind 0.0.0.0:5000 --workers 4 --timeout 300 --graceful-timeout 300 backend.app:app
+        gunicorn --bind 0.0.0.0:5000 --workers 4 --worker-class gthread --threads 4 --timeout 300 --graceful-timeout 60 backend.app:app
       "
     ports:
       - "5001:5000"
@@ -38,6 +38,7 @@ services:
       - MILVUS_COLLECTION=knowledge_base
     volumes:
       - ./backend/uploads:/app/backend/uploads
+      - ./backend/standards:/app/backend/standards
       - ./backend/app.py:/app/backend/app.py
       - ./backend/cases_helpers.py:/app/backend/cases_helpers.py
       - ./backend/cases_routes.py:/app/backend/cases_routes.py

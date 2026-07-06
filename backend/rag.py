@@ -39,6 +39,9 @@ from pymilvus import (
 # 本地模式配置（在加载dotenv之后读取）
 USE_LOCAL_MODE = os.getenv('USE_LOCAL_MODE', 'false').lower() == 'true'
 
+# LLM提供商配置（doubao 或 ollama）
+LLM_PROVIDER = os.getenv('LLM_PROVIDER', 'ollama').lower()
+
 # 配置
 OLLAMA_HOST = os.getenv('OLLAMA_HOST', 'http://localhost:11434')
 OLLAMA_MODEL = os.getenv('OLLAMA_MODEL', 'qwen2.5:7b')
@@ -51,7 +54,7 @@ COLLECTION_NAME = os.getenv('MILVUS_COLLECTION', 'knowledge_base')
 LOCAL_MILVUS_FILE = os.getenv('LOCAL_MILVUS_FILE', './local_milvus.db')
 LOCAL_EMBED_MODEL = os.getenv('LOCAL_EMBED_MODEL', 'paraphrase-multilingual-MiniLM-L12-v2')
 
-# 豆包API配置（本地模式使用）
+# 豆包API配置
 DOUBAO_API_KEY = os.getenv('DOUBAO_API_KEY', '58a51ac5-3b75-4c5e-85ac-1fb4ef652bd0')
 DOUBAO_API_URL = os.getenv('DOUBAO_API_URL', 'https://ark.cn-beijing.volces.com/api/v3/chat/completions')
 DOUBAO_MODEL = os.getenv('DOUBAO_MODEL', 'doubao-seed-1-8-251228')
@@ -109,6 +112,63 @@ def disconnect_milvus():
             _milvus_client = None
         except:
             pass
+
+
+def call_llm(prompt: str, provider: str = None, timeout: int = 120) -> Optional[str]:
+    """
+    统一LLM调用函数，支持豆包API和Ollama
+
+    Args:
+        prompt: 提示词
+        provider: LLM提供商（doubao/ollama），None则使用全局配置
+        timeout: 超时时间（秒）
+
+    Returns:
+        LLM返回的文本，失败返回None
+    """
+    if provider is None:
+        provider = LLM_PROVIDER
+
+    try:
+        if provider == 'doubao':
+            # 调用豆包API
+            response = requests.post(
+                DOUBAO_API_URL,
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {DOUBAO_API_KEY}"
+                },
+                json={
+                    "model": DOUBAO_MODEL,
+                    "messages": [{"role": "user", "content": prompt}]
+                },
+                timeout=timeout
+            )
+            if response.status_code == 200:
+                return response.json().get("choices", [{}])[0].get("message", {}).get("content", "")
+            else:
+                print(f"[RAG] 豆包API调用失败: {response.status_code}")
+                return None
+        else:
+            # 调用Ollama
+            response = requests.post(
+                f"{OLLAMA_HOST}/api/generate",
+                json={
+                    "model": OLLAMA_MODEL,
+                    "prompt": prompt,
+                    "stream": False,
+                    "options": {"num_ctx": 4096, "temperature": 0.3}
+                },
+                timeout=timeout
+            )
+            if response.status_code == 200:
+                return response.json().get("response", "")
+            else:
+                print(f"[RAG] Ollama调用失败: {response.status_code}")
+                return None
+    except Exception as e:
+        print(f"[RAG] LLM调用异常: {e}")
+        return None
 
 # Milvus Lite client 全局变量
 _milvus_client = None
@@ -512,8 +572,8 @@ def ask_question(question: str, top_k: int = 15, min_score: float = 0.45) -> Dic
             elif score >= min_score:
                 score_matched.append(doc)
 
-        # 合并结果，标题匹配优先，总共最多5个
-        filtered_docs = title_matched[:3] + score_matched[:5-len(title_matched)]
+        # 合并结果，标题匹配优先，总共最多3个
+        filtered_docs = title_matched[:2] + score_matched[:3-len(title_matched)]
 
         if not filtered_docs:
             return {
@@ -522,13 +582,16 @@ def ask_question(question: str, top_k: int = 15, min_score: float = 0.45) -> Dic
                 "success": True
             }
 
-        # 构建上下文，标注来源和相似度
+        # 构建上下文，标注来源和相似度（截断过长内容）
         context_parts = []
         sources = []
         for i, doc in enumerate(filtered_docs, 1):
             score = doc.get("score", 0)
             source = doc.get("source", "未知")
             content = doc.get("content", "")
+            # 截断过长内容，保留前500字
+            if len(content) > 500:
+                content = content[:500] + "..."
             # 标注是否标题匹配
             matched_kw = [kw for kw in keywords if kw and kw in source]
             match_tag = "【标题匹配:" + ",".join(matched_kw) + "】" if matched_kw else ""
@@ -539,71 +602,35 @@ def ask_question(question: str, top_k: int = 15, min_score: float = 0.45) -> Dic
         context = "\n\n---\n\n".join(context_parts)
 
         # 调用LLM生成回答
-        prompt = f"""基于以下参考资料回答问题。注意：相似度越高表示资料越相关，请优先参考相似度高的资料。
+        prompt = f"""你是运城市城市管理局的政策专家。请根据以下参考资料回答问题。
+
+回答要求：
+1. 如果资料中有明确答案，直接给出
+2. 如果涉及部门归属，说明负责部门和依据
+3. 如果资料中没有相关内容，如实告知并建议咨询相关部门
+4. 回答要简洁准确，有理有据
 
 参考资料：
 {context}
 
 问题：{question}
 
-请给出准确、简洁的回答："""
+请回答："""
 
-        if USE_LOCAL_MODE:
-            # 本地模式：调用豆包API
-            response = requests.post(
-                DOUBAO_API_URL,
-                headers={
-                    "Content-Type": "application/json",
-                    "Authorization": f"Bearer {DOUBAO_API_KEY}"
-                },
-                json={
-                    "model": DOUBAO_MODEL,
-                    "messages": [
-                        {"role": "user", "content": prompt}
-                    ]
-                },
-                timeout=180
-            )
-
-            if response.status_code == 200:
-                data = response.json()
-                answer = data.get("choices", [{}])[0].get("message", {}).get("content", "")
-                return {
-                    "answer": answer,
-                    "sources": sources,
-                    "success": True
-                }
-            else:
-                return {
-                    "answer": f"豆包API调用失败: {response.status_code}",
-                    "sources": sources,
-                    "success": False
-                }
+        # 调用LLM生成回答
+        answer = call_llm(prompt, timeout=120)
+        if answer:
+            return {
+                "answer": answer,
+                "sources": sources,
+                "success": True
+            }
         else:
-            # 服务器模式：调用Ollama
-            response = requests.post(
-                f"{OLLAMA_HOST}/api/generate",
-                json={
-                    "model": OLLAMA_MODEL,
-                    "prompt": prompt,
-                    "stream": False
-                },
-                timeout=180
-            )
-
-            if response.status_code == 200:
-                answer = response.json().get("response", "")
-                return {
-                    "answer": answer,
-                    "sources": sources,
-                    "success": True
-                }
-            else:
-                return {
-                    "answer": f"LLM调用失败: {response.status_code}",
-                    "sources": sources,
-                    "success": False
-                }
+            return {
+                "answer": "LLM调用失败，请稍后重试",
+                "sources": sources,
+                "success": False
+            }
 
     except Exception as e:
         print(f"[RAG] 问答失败: {e}")
@@ -668,10 +695,12 @@ def get_collection_stats() -> Dict:
             if COLLECTION_NAME in collections:
                 # 获取统计信息
                 stats = client.get_collection_stats(COLLECTION_NAME)
+                docs = list_documents()
                 return {
                     "exists": True,
                     "name": COLLECTION_NAME,
                     "count": stats.get('row_count', 0),
+                    "doc_count": len(docs),
                     "mode": "local (Milvus Lite)",
                     "embed_model": LOCAL_EMBED_MODEL,
                     "llm": f"豆包API ({DOUBAO_MODEL})"
@@ -686,10 +715,12 @@ def get_collection_stats() -> Dict:
             collection = Collection(COLLECTION_NAME)
             collection.load()
 
+            docs = list_documents()
             return {
                 "exists": True,
                 "name": COLLECTION_NAME,
                 "count": collection.num_entities,
+                "doc_count": len(docs),
                 "mode": "server",
                 "ollama_host": OLLAMA_HOST,
                 "ollama_model": OLLAMA_MODEL,

@@ -41,6 +41,7 @@ try:
         _refine_with_llm,
         build_query_profile,
         normalize_cn_text,
+        pre_analyze_question,
     )
 except ImportError:
     from case_standards import (
@@ -54,6 +55,7 @@ except ImportError:
         _refine_with_llm,
         build_query_profile,
         normalize_cn_text,
+        pre_analyze_question,
     )
 
 
@@ -64,6 +66,17 @@ STANDARDS_KEYWORDS = [
     "处置时限", "结案条件", "时限", "结案", "立案", "立案条件",
     "责任主体", "监管主体", "采集要求", "归哪个部门", "哪个单位",
     "由谁处置", "负责部门", "管辖", "归属",
+]
+
+# 城市设施问题关键词（涉及这些词也走立结案标准库）
+FACILITY_KEYWORDS = [
+    "护栏", "井盖", "路灯", "树木", "草坪", "绿化", "广告牌", "招牌",
+    "垃圾桶", "果皮箱", "路面", "道路", "排水", "下水道", "积水",
+    "健身器材", "护栏", "围栏", "交通设施", "市政", "环卫", "保洁",
+    "损坏", "破损", "缺失", "丢失", "断裂", "弯曲", "变形",
+    "脏污", "不洁", "积存", "垃圾", "污染", "倾斜", "倒塌",
+    "松动", "脱落", "堵塞", "漏水", "溢水", "噪音", "异味",
+    "粪便", "排泄物", "呕吐物", "动物尸体", "遗撒", "抛洒", "洒落",
 ]
 
 # 通用知识相关关键词
@@ -91,11 +104,18 @@ def _analyze_intent(question: str) -> Dict[str, Any]:
     """
     normalized = normalize_cn_text(question)
 
-    # 检查是否涉及立结案标准
+    # 检查是否涉及立结案标准（显式关键词）
     is_standards = any(
         normalize_cn_text(kw) in normalized
         for kw in STANDARDS_KEYWORDS
     )
+
+    # 如果没有显式关键词，检查是否涉及城市设施问题
+    if not is_standards:
+        is_standards = any(
+            normalize_cn_text(kw) in normalized
+            for kw in FACILITY_KEYWORDS
+        )
 
     # 检查是否涉及部门归属
     is_dispatch = any(
@@ -163,18 +183,12 @@ def unified_ask(
         }
     """
     try:
-        # 1. 分析意图
-        intent = _analyze_intent(question)
+        # 1. 预分析问题，提取关键信息
+        pre_analysis = pre_analyze_question(question)
+        print(f"[KB Unified] 预分析结果: {pre_analysis}")
 
-        # 2. 判断是否需要位置信息
-        if intent["need_location"] and not location:
-            return {
-                "answer": "",
-                "sources": [],
-                "success": True,
-                "need_location": True,
-                "message": "您的问题涉及区域判定，请在地图上点选具体位置，以便更精准地判断归属部门。",
-            }
+        # 2. 分析意图
+        intent = _analyze_intent(question)
 
         # 3. 根据意图选择检索策略
         if intent["is_standards"]:
@@ -184,12 +198,14 @@ def unified_ask(
             )
             result["need_location"] = False
             result["message"] = ""
+            result["pre_analysis"] = pre_analysis
             return result
         else:
             # 通用知识问答
             result = general_ask(question, top_k=top_k)
             result["need_location"] = False
             result["message"] = ""
+            result["pre_analysis"] = pre_analysis
             return result
 
     except Exception as e:

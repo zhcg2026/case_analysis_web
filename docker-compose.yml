@@ -25,7 +25,7 @@ services:
     container_name: case-analysis-web
     command: gunicorn --bind 0.0.0.0:5000 --workers 4 --timeout 300 --graceful-timeout 300 backend.app:app
     ports:
-      - "5000:5000"
+      - "5001:5000"
     env_file:
       - .env.production
     environment:
@@ -36,7 +36,11 @@ services:
       - ./backend/app.py:/app/backend/app.py
       - ./backend/cases_helpers.py:/app/backend/cases_helpers.py
       - ./backend/cases_routes.py:/app/backend/cases_routes.py
+      - ./backend/case_standards.py:/app/backend/case_standards.py
+      - ./backend/rag.py:/app/backend/rag.py
+      - ./backend/kb_unified.py:/app/backend/kb_unified.py
       - ./frontend/dist:/app/frontend/dist
+      - ./frontend/public/data:/app/frontend/public/data
     depends_on:
       mysql-case-analysis:
         condition: service_healthy
@@ -47,6 +51,13 @@ services:
       timeout: 3s
       retries: 3
       start_period: 5s
+    networks:
+      - default
+      - milvus
+
+networks:
+  milvus:
+    external: true
 
 volumes:
   mysql-data:

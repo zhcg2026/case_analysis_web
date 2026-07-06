@@ -76,7 +76,7 @@ const routes = [
     path: '/flood-monitor',
     name: 'FloodMonitor',
     component: FloodMonitor,
-    meta: { requiresAuth: true, title: '汛情值守', permission: 'flood_monitor' }
+    meta: { requiresAuth: true, title: '防汛指挥调度系统', permission: 'flood_monitor' }
   },
   {
     path: '/admin',
