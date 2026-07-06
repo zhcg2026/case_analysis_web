@@ -186,14 +186,6 @@ def recommend_additional_staff(session, FloodPersonnel, FloodDutyAssignment, Flo
     for log in recent_additions:
         addition_count[log.recommended_person] = addition_count.get(log.recommended_person, 0) + 1
 
-    # 获取近7天总工作天数
-    recent_work_days = {}
-    recent_assignments = session.query(FloodDutyAssignment).filter(
-        FloodDutyAssignment.assignment_date >= seven_days_ago_dt,
-    ).all()
-    for a in recent_assignments:
-        recent_work_days[a.person_name] = recent_work_days.get(a.person_name, 0) + 1
-
     # 筛选候选人
     candidates = []
     for person in all_persons:
@@ -207,10 +199,8 @@ def recommend_additional_staff(session, FloodPersonnel, FloodDutyAssignment, Flo
         if name in just_finished_night:
             continue
 
-        # 计算得分（越低越优先）
-        score = 0
-        score += addition_count.get(name, 0) * 100
-        score += recent_work_days.get(name, 0) * 20
+        # 轮流排序：近7天被增援次数越少越优先，同次数随机
+        score = addition_count.get(name, 0) * 100
 
         candidates.append({
             'name': name,
@@ -218,24 +208,20 @@ def recommend_additional_staff(session, FloodPersonnel, FloodDutyAssignment, Flo
             'group_type': person.group_type,
             'score': score,
             'recent_additions': addition_count.get(name, 0),
-            'recent_work_days': recent_work_days.get(name, 0),
         })
 
     if not candidates:
         return None
 
-    # 排序并选最优
-    candidates.sort(key=lambda x: x['score'])
+    # 排序并选最优（同分时随机选一个，避免总是同一个人）
+    import random
+    candidates.sort(key=lambda x: (x['score'], random.random()))
     best = candidates[0]
 
     # 生成推荐理由
-    reason_parts = []
     if best['recent_additions'] == 0:
-        reason_parts.append('近7天未被增援')
+        best['reason'] = '近7天未被增援，轮空优先'
     else:
-        reason_parts.append(f'近7天已被增援{best["recent_additions"]}次')
-    reason_parts.append(f'近7天工作{best["recent_work_days"]}天')
-
-    best['reason'] = '；'.join(reason_parts)
+        best['reason'] = f'近7天已被增援{best["recent_additions"]}次，增援次数最少'
 
     return best
