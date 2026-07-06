@@ -257,7 +257,7 @@ Article = None
 # 尝试初始化数据库（可选）
 try:
     from sqlalchemy.ext.declarative import declarative_base
-    from sqlalchemy import Column, Integer, String, DateTime, Text
+    from sqlalchemy import Column, Integer, String, DateTime, Text, Boolean
     from sqlalchemy.sql import func
     from sqlalchemy.orm import sessionmaker
 
@@ -539,6 +539,41 @@ try:
         created_at = Column(DateTime, server_default=func.now())
         updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
+    # 人员花名册模型
+    class FloodPersonnel(Base):
+        __tablename__ = 'flood_personnel'
+        id = Column(Integer, primary_key=True, autoincrement=True)
+        name = Column(String(50), nullable=False, unique=True)
+        phone = Column(String(20), default='')
+        group_type = Column(String(20), nullable=False, default='admin')  # admin/group_a/group_b/night
+        is_active = Column(Boolean, default=True)
+        created_at = Column(DateTime, server_default=func.now())
+        updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    # 每日排班明细模型（一人一条记录）
+    class FloodDutyAssignment(Base):
+        __tablename__ = 'flood_duty_assignments'
+        id = Column(Integer, primary_key=True, autoincrement=True)
+        assignment_date = Column(DateTime, nullable=False)
+        shift_name = Column(String(20), nullable=False)  # 白班/夜班
+        person_name = Column(String(50), nullable=False)
+        person_phone = Column(String(20), default='')
+        source = Column(String(20), default='regular')  # regular=正常排班/added=增援
+        warning_id = Column(Integer, nullable=True)
+        created_at = Column(DateTime, server_default=func.now())
+
+    # 增援操作日志模型
+    class FloodStaffingLog(Base):
+        __tablename__ = 'flood_staffing_logs'
+        id = Column(Integer, primary_key=True, autoincrement=True)
+        warning_id = Column(Integer, nullable=True)
+        recommended_person = Column(String(50), nullable=False)
+        recommended_phone = Column(String(20), default='')
+        reason = Column(Text)
+        status = Column(String(20), default='recommended')  # recommended/confirmed/rejected
+        confirmed_by = Column(String(50))
+        created_at = Column(DateTime, server_default=func.now())
+
     # 创建数据库表
     # 只创建不存在的表，保留现有数据
     try:
@@ -595,6 +630,28 @@ try:
     except Exception as e:
         print(f"数据库迁移检查(report_snapshot): {e}")
 
+    # 初始化人员花名册数据
+    try:
+        SessionInit = sessionmaker(bind=engine)
+        session_init = SessionInit()
+        existing = session_init.query(FloodPersonnel).count()
+        if existing == 0:
+            initial_persons = [
+                ('王亮', '', 'admin'), ('杜婧楠', '', 'admin'), ('韩司宇辰', '', 'admin'),
+                ('白雪', '', 'admin'), ('裴迎', '', 'admin'), ('秦碧霞', '', 'admin'),
+                ('杨雅茜', '', 'admin'), ('范倩', '', 'admin'),
+                ('李瑞瑶', '', 'group_a'), ('展晓瑞', '', 'group_a'), ('茹佳兆', '', 'group_a'),
+                ('张萌', '', 'group_b'), ('张金龙', '', 'group_b'),
+                ('王康乐', '', 'night'),
+            ]
+            for name, phone, gtype in initial_persons:
+                session_init.add(FloodPersonnel(name=name, phone=phone, group_type=gtype))
+            session_init.commit()
+            print(f"已初始化 {len(initial_persons)} 名人员花名册")
+        session_init.close()
+    except Exception as e:
+        print(f"人员花名册初始化: {e}")
+
     # 创建会话工厂
     Session = sessionmaker(bind=engine)
 
@@ -627,6 +684,9 @@ try:
         protected=protected,
         FloodWarning=FloodWarning,
         FloodDutyLeader=FloodDutyLeader,
+        FloodPersonnel=FloodPersonnel,
+        FloodDutyAssignment=FloodDutyAssignment,
+        FloodStaffingLog=FloodStaffingLog,
     )
 
 except Exception as e:

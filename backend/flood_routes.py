@@ -1,4 +1,5 @@
 import os
+import re
 import json
 import uuid
 import datetime
@@ -24,6 +25,110 @@ except ImportError:
     )
 
 
+def parse_persons_from_cell(cell_value):
+    """从单元格文本中解析人员名单"""
+    persons = []
+    bracket_pattern = r'[\(（]([^)）]+)[\)）]'
+    bracket_matches = re.findall(bracket_pattern, cell_value)
+    if bracket_matches:
+        for match in bracket_matches:
+            names = re.split(r'[\s、，,]+', match)
+            for name in names:
+                name = name.strip()
+                if name:
+                    persons.append(name)
+    else:
+        names = re.split(r'[\s、，,]+', cell_value)
+        for name in names:
+            name = name.strip()
+            if name:
+                persons.append(name)
+    return persons
+
+
+def parse_duty_excel(file_path, year=2026, month=7):
+    """
+    解析实际格式的排班表：
+    - 第1行: 日期头 (日期, 7.1, 7.2, ..., 7.31)
+    - 白班行: 含"白班"标识
+    - 夜班行: 含"夜班"标识
+    返回: list[dict]
+    """
+    import openpyxl
+    wb = openpyxl.load_workbook(file_path)
+    ws = wb.active
+    results = []
+
+    # 解析第1行获取日期列
+    header_row = list(ws.iter_rows(min_row=1, max_row=1, values_only=True))[0]
+    date_columns = {}
+    for col_idx, cell in enumerate(header_row):
+        if cell is None:
+            continue
+        cell_str = str(cell).strip()
+        match = re.match(r'^(\d+)\.(\d+)$', cell_str)
+        if match:
+            m, d = int(match.group(1)), int(match.group(2))
+            try:
+                date_columns[col_idx] = datetime.date(year, m, d)
+            except ValueError:
+                continue
+
+    # 找到白班和夜班所在行
+    all_rows = list(ws.iter_rows(min_row=1, values_only=True))
+    day_row = None
+    night_row = None
+    for row_idx, row in enumerate(all_rows):
+        first_cell = str(row[0] or '').strip() if row[0] else ''
+        if '白班' in first_cell and day_row is None:
+            day_row = row_idx
+        if '夜班' in first_cell and night_row is None:
+            night_row = row_idx
+
+    if day_row is None and night_row is None:
+        if len(all_rows) >= 3:
+            day_row = 1
+            night_row = 2
+
+    if day_row is not None:
+        row = all_rows[day_row]
+        for col_idx, date in date_columns.items():
+            if col_idx >= len(row) or not row[col_idx]:
+                continue
+            cell_value = str(row[col_idx]).strip()
+            if not cell_value or cell_value in ('-', '/', '—', '无') or '备注' in cell_value:
+                continue
+            persons = parse_persons_from_cell(cell_value)
+            for person_name in persons:
+                results.append({
+                    'date': datetime.datetime.combine(date, datetime.time.min),
+                    'shift_name': '白班',
+                    'person_name': person_name,
+                    'person_phone': '',
+                    'source': 'regular',
+                })
+
+    if night_row is not None:
+        row = all_rows[night_row]
+        for col_idx, date in date_columns.items():
+            if col_idx >= len(row) or not row[col_idx]:
+                continue
+            cell_value = str(row[col_idx]).strip()
+            if not cell_value or cell_value in ('-', '/', '—', '无'):
+                continue
+            persons = parse_persons_from_cell(cell_value)
+            for person_name in persons:
+                results.append({
+                    'date': datetime.datetime.combine(date, datetime.time.min),
+                    'shift_name': '夜班',
+                    'person_name': person_name,
+                    'person_phone': '',
+                    'source': 'regular',
+                })
+
+    return results
+
+
 def register_flood_monitor_routes(
     app,
     Session,
@@ -36,6 +141,9 @@ def register_flood_monitor_routes(
     protected,
     FloodWarning=None,
     FloodDutyLeader=None,
+    FloodPersonnel=None,
+    FloodDutyAssignment=None,
+    FloodStaffingLog=None,
 ):
 
     def generate_report_text(report_data):
@@ -916,10 +1024,39 @@ def register_flood_monitor_routes(
         finally:
             session.close()
 
+    @app.route('/api/flood/duty-added/today', methods=['GET'])
+    @protected
+    def flood_today_added_duty():
+        """获取今日增援人员"""
+        if not FloodDutyAssignment:
+            return jsonify({'added': []}), 200
+        session = Session()
+        try:
+            today = datetime.date.today()
+            start = datetime.datetime.combine(today, datetime.time.min)
+            end = datetime.datetime.combine(today, datetime.time.max)
+            assignments = session.query(FloodDutyAssignment).filter(
+                FloodDutyAssignment.assignment_date >= start,
+                FloodDutyAssignment.assignment_date <= end,
+                FloodDutyAssignment.source == 'added',
+            ).all()
+            result = []
+            for a in assignments:
+                result.append({
+                    'id': a.id,
+                    'personName': a.person_name,
+                    'personPhone': a.person_phone,
+                })
+            return jsonify({'added': result}), 200
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+        finally:
+            session.close()
+
     @app.route('/api/flood/duty-shifts/upload', methods=['POST'])
     @protected
     def flood_upload_duty_shifts():
-        """上传Excel排班表（批量导入）"""
+        """上传Excel排班表（智能解析实际格式）"""
         session = Session()
         try:
             if 'file' not in request.files:
@@ -929,44 +1066,66 @@ def register_flood_monitor_routes(
                 return jsonify({'error': '仅支持Excel文件'}), 400
 
             import tempfile
-            import openpyxl
-
             with tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False) as temp:
                 file.save(temp.name)
                 temp_path = temp.name
 
             try:
-                wb = openpyxl.load_workbook(temp_path)
-                ws = wb.active
-                created = 0
-                # 跳过表头行，假设列顺序: 日期 | 班次 | 人员1 | 电话1 | 人员2 | 电话2
-                for row in ws.iter_rows(min_row=2, values_only=True):
-                    if not row[0]:
-                        continue
-                    shift_date = row[0]
-                    if isinstance(shift_date, datetime.datetime):
-                        pass
-                    elif isinstance(shift_date, str):
-                        try:
-                            shift_date = datetime.datetime.fromisoformat(shift_date)
-                        except ValueError:
-                            continue
-                    else:
-                        continue
+                # 解析Excel
+                raw_records = parse_duty_excel(temp_path)
 
+                if not raw_records:
+                    return jsonify({'error': '未能解析出排班数据，请检查Excel格式'}), 400
+
+                # 关联花名册获取电话
+                if FloodPersonnel:
+                    all_persons = session.query(FloodPersonnel).filter_by(is_active=True).all()
+                    person_map = {p.name: p for p in all_persons}
+                    for record in raw_records:
+                        if record['person_name'] in person_map:
+                            record['person_phone'] = person_map[record['person_name']].phone or ''
+
+                # 清除该月已有数据再写入
+                dates = set(r['date'] for r in raw_records)
+                if dates:
+                    month_start = min(dates).replace(day=1)
+                    if month_start.month == 12:
+                        month_end = month_start.replace(year=month_start.year + 1, month=1, day=1)
+                    else:
+                        month_end = month_start.replace(month=month_start.month + 1, day=1)
+                    month_end = month_end - datetime.timedelta(days=1)
+                    session.query(FloodDutyAssignment).filter(
+                        FloodDutyAssignment.assignment_date >= month_start,
+                        FloodDutyAssignment.assignment_date <= datetime.datetime.combine(month_end, datetime.time.max),
+                    ).delete()
+
+                # 批量写入
+                for record in raw_records:
+                    assignment = FloodDutyAssignment(**record)
+                    session.add(assignment)
+
+                # 兼容旧接口：同时写入FloodDutyShift
+                # 按日期+班次聚合
+                from collections import defaultdict
+                shift_groups = defaultdict(lambda: {'persons': []})
+                for r in raw_records:
+                    key = (r['date'], r['shift_name'])
+                    shift_groups[key]['persons'].append((r['person_name'], r['person_phone']))
+
+                for (sdate, sname), info in shift_groups.items():
+                    persons = info['persons']
                     shift = FloodDutyShift(
-                        shift_date=shift_date,
-                        shift_name=str(row[1] or '白班'),
-                        person1=str(row[2] or ''),
-                        person1_phone=str(row[3] or ''),
-                        person2=str(row[4] or ''),
-                        person2_phone=str(row[5] or ''),
+                        shift_date=sdate,
+                        shift_name=sname,
+                        person1=persons[0][0] if len(persons) > 0 else '',
+                        person1_phone=persons[0][1] if len(persons) > 0 else '',
+                        person2=persons[1][0] if len(persons) > 1 else '',
+                        person2_phone=persons[1][1] if len(persons) > 1 else '',
                     )
                     session.add(shift)
-                    created += 1
 
                 session.commit()
-                return jsonify({'message': f'成功导入 {created} 条排班记录', 'created': created}), 201
+                return jsonify({'message': f'成功导入 {len(raw_records)} 条排班记录', 'created': len(raw_records)}), 201
             finally:
                 os.unlink(temp_path)
         except Exception as e:
@@ -1287,7 +1446,7 @@ def register_flood_monitor_routes(
     @app.route('/api/flood/warnings/start', methods=['POST'])
     @protected
     def flood_start_warning():
-        """启动预警"""
+        """启动预警（含增援推荐）"""
         if not FloodWarning:
             return jsonify({'error': '预警模块未启用'}), 500
         session = Session()
@@ -1327,8 +1486,41 @@ def register_flood_monitor_routes(
                 status='active',
             )
             session.add(dispatch)
+
+            # 计算增援推荐
+            staffing_result = None
+            if FloodPersonnel and FloodDutyAssignment and FloodStaffingLog:
+                try:
+                    from backend.flood_helpers import recommend_additional_staff
+                except ImportError:
+                    from flood_helpers import recommend_additional_staff
+                recommended = recommend_additional_staff(
+                    session, FloodPersonnel, FloodDutyAssignment, FloodStaffingLog, now
+                )
+                if recommended:
+                    log = FloodStaffingLog(
+                        warning_id=warning.id,
+                        recommended_person=recommended['name'],
+                        recommended_phone=recommended['phone'],
+                        reason=recommended['reason'],
+                        status='recommended',
+                    )
+                    session.add(log)
+                    session.flush()
+                    staffing_result = {
+                        'personName': recommended['name'],
+                        'personPhone': recommended['phone'],
+                        'reason': recommended['reason'],
+                        'logId': log.id,
+                    }
+
             session.commit()
-            return jsonify({'message': '预警已启动', 'id': warning.id, 'level': level}), 201
+            return jsonify({
+                'message': '预警已启动',
+                'id': warning.id,
+                'level': level,
+                'recommendedStaff': staffing_result,
+            }), 201
         except Exception as e:
             session.rollback()
             return jsonify({'error': str(e)}), 500
@@ -1531,6 +1723,241 @@ def register_flood_monitor_routes(
                 })
             return jsonify({'warnings': result}), 200
         except Exception as e:
+            return jsonify({'error': str(e)}), 500
+        finally:
+            session.close()
+
+    # ============================================================
+    # 增援管理接口
+    # ============================================================
+
+    @app.route('/api/flood/staffing/recommend', methods=['GET'])
+    @protected
+    def flood_get_staffing_recommend():
+        """获取当前增援推荐（不触发预警）"""
+        if not FloodPersonnel or not FloodDutyAssignment or not FloodStaffingLog:
+            return jsonify({'recommendation': None}), 200
+        session = Session()
+        try:
+            try:
+                from backend.flood_helpers import recommend_additional_staff
+            except ImportError:
+                from flood_helpers import recommend_additional_staff
+            recommended = recommend_additional_staff(
+                session, FloodPersonnel, FloodDutyAssignment, FloodStaffingLog
+            )
+            if recommended:
+                # 创建推荐日志
+                log = FloodStaffingLog(
+                    recommended_person=recommended['name'],
+                    recommended_phone=recommended['phone'],
+                    reason=recommended['reason'],
+                    status='recommended',
+                )
+                session.add(log)
+                session.commit()
+                return jsonify({'recommendation': {
+                    'personName': recommended['name'],
+                    'personPhone': recommended['phone'],
+                    'reason': recommended['reason'],
+                    'logId': log.id,
+                }}), 200
+            return jsonify({'recommendation': None}), 200
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+        finally:
+            session.close()
+
+    @app.route('/api/flood/staffing/confirm', methods=['POST'])
+    @protected
+    def flood_confirm_staffing():
+        """确认或修改增援人选"""
+        session = Session()
+        try:
+            data = request.json
+            log_id = data.get('logId')
+            confirmed_person = data.get('personName')
+            confirmed_phone = data.get('personPhone', '')
+
+            log = session.query(FloodStaffingLog).get(log_id)
+            if not log:
+                return jsonify({'error': '记录不存在'}), 404
+
+            log.status = 'confirmed'
+            log.confirmed_by = data.get('confirmedBy', 'system')
+
+            if confirmed_person != log.recommended_person:
+                log.recommended_person = confirmed_person
+                log.recommended_phone = confirmed_phone
+
+            # 创建增援排班记录
+            if FloodDutyAssignment:
+                warning = session.query(FloodWarning).get(log.warning_id) if FloodWarning and log.warning_id else None
+                assignment = FloodDutyAssignment(
+                    assignment_date=warning.start_time if warning else datetime.datetime.now(),
+                    shift_name='白班',
+                    person_name=confirmed_person,
+                    person_phone=confirmed_phone,
+                    source='added',
+                    warning_id=log.warning_id,
+                )
+                session.add(assignment)
+
+            # 创建调度记录
+            dispatch = FloodDispatchRecord(
+                record_type='人员调度',
+                title=f'增援到岗：{confirmed_person}',
+                content=f'预警增援：{confirmed_person} ({confirmed_phone}) 已确认到岗',
+                event_time=datetime.datetime.now(),
+                warning_id=log.warning_id,
+                status='active',
+            )
+            session.add(dispatch)
+
+            session.commit()
+            return jsonify({'message': '增援已确认', 'personName': confirmed_person}), 200
+        except Exception as e:
+            session.rollback()
+            return jsonify({'error': str(e)}), 500
+        finally:
+            session.close()
+
+    @app.route('/api/flood/staffing/log', methods=['GET'])
+    @protected
+    def flood_get_staffing_log():
+        """查询增援历史记录"""
+        if not FloodStaffingLog:
+            return jsonify({'logs': []}), 200
+        session = Session()
+        try:
+            warning_id = request.args.get('warning_id')
+            query = session.query(FloodStaffingLog)
+            if warning_id:
+                query = query.filter(FloodStaffingLog.warning_id == int(warning_id))
+            logs = query.order_by(FloodStaffingLog.created_at.desc()).limit(50).all()
+            result = []
+            for log in logs:
+                result.append({
+                    'id': log.id,
+                    'warningId': log.warning_id,
+                    'recommendedPerson': log.recommended_person,
+                    'recommendedPhone': log.recommended_phone,
+                    'reason': log.reason,
+                    'status': log.status,
+                    'confirmedBy': log.confirmed_by,
+                    'createdAt': log.created_at.isoformat() if log.created_at else None,
+                })
+            return jsonify({'logs': result}), 200
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+        finally:
+            session.close()
+
+    # ============================================================
+    # 人员花名册接口
+    # ============================================================
+
+    @app.route('/api/flood/personnel', methods=['GET'])
+    @protected
+    def flood_get_personnel():
+        """获取人员花名册"""
+        if not FloodPersonnel:
+            return jsonify({'personnel': []}), 200
+        session = Session()
+        try:
+            persons = session.query(FloodPersonnel).filter_by(is_active=True).order_by(FloodPersonnel.id).all()
+            result = []
+            for p in persons:
+                result.append({
+                    'id': p.id,
+                    'name': p.name,
+                    'phone': p.phone,
+                    'groupType': p.group_type,
+                    'isActive': p.is_active,
+                })
+            return jsonify({'personnel': result}), 200
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+        finally:
+            session.close()
+
+    @app.route('/api/flood/personnel', methods=['POST'])
+    @protected
+    def flood_create_personnel():
+        """新增人员"""
+        if not FloodPersonnel:
+            return jsonify({'error': '人员模块未启用'}), 500
+        session = Session()
+        try:
+            data = request.json
+            name = data.get('name', '').strip()
+            if not name:
+                return jsonify({'error': '姓名不能为空'}), 400
+            existing = session.query(FloodPersonnel).filter_by(name=name).first()
+            if existing:
+                if existing.is_active:
+                    return jsonify({'error': '人员已存在'}), 400
+                existing.is_active = True
+                existing.phone = data.get('phone', '')
+                existing.group_type = data.get('groupType', 'admin')
+                session.commit()
+                return jsonify({'message': '人员已恢复', 'id': existing.id}), 200
+            person = FloodPersonnel(
+                name=name,
+                phone=data.get('phone', ''),
+                group_type=data.get('groupType', 'admin'),
+            )
+            session.add(person)
+            session.commit()
+            return jsonify({'message': '人员已创建', 'id': person.id}), 201
+        except Exception as e:
+            session.rollback()
+            return jsonify({'error': str(e)}), 500
+        finally:
+            session.close()
+
+    @app.route('/api/flood/personnel/<int:person_id>', methods=['PUT'])
+    @protected
+    def flood_update_personnel(person_id):
+        """更新人员"""
+        if not FloodPersonnel:
+            return jsonify({'error': '人员模块未启用'}), 500
+        session = Session()
+        try:
+            person = session.query(FloodPersonnel).get(person_id)
+            if not person:
+                return jsonify({'error': '人员不存在'}), 404
+            data = request.json
+            if 'name' in data:
+                person.name = data['name']
+            if 'phone' in data:
+                person.phone = data['phone']
+            if 'groupType' in data:
+                person.group_type = data['groupType']
+            session.commit()
+            return jsonify({'message': '人员已更新'}), 200
+        except Exception as e:
+            session.rollback()
+            return jsonify({'error': str(e)}), 500
+        finally:
+            session.close()
+
+    @app.route('/api/flood/personnel/<int:person_id>', methods=['DELETE'])
+    @protected
+    def flood_delete_personnel(person_id):
+        """删除人员（软删除）"""
+        if not FloodPersonnel:
+            return jsonify({'error': '人员模块未启用'}), 500
+        session = Session()
+        try:
+            person = session.query(FloodPersonnel).get(person_id)
+            if not person:
+                return jsonify({'error': '人员不存在'}), 404
+            person.is_active = False
+            session.commit()
+            return jsonify({'message': '人员已删除'}), 200
+        except Exception as e:
+            session.rollback()
             return jsonify({'error': str(e)}), 500
         finally:
             session.close()

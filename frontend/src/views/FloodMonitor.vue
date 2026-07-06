@@ -218,14 +218,26 @@
                   <span class="person-name">{{ d.person1 }}</span>
                   <span class="person-phone">{{ d.person1Phone }}</span>
                 </div>
-                <div class="duty-person">
+                <div class="duty-person" v-if="d.person2">
                   <span class="person-name">{{ d.person2 }}</span>
                   <span class="person-phone">{{ d.person2Phone }}</span>
                 </div>
               </div>
             </div>
           </div>
-          <div class="duty-empty" v-else>今日暂无排班</div>
+          <!-- 增援人员 -->
+          <div class="duty-list" v-if="addedDuty.length" style="margin-top:8px;">
+            <div class="duty-card" v-for="d in addedDuty" :key="'added-'+d.id" style="border-left:3px solid #3b82f6;">
+              <div class="duty-shift-name" style="color:#3b82f6;">增援</div>
+              <div class="duty-persons">
+                <div class="duty-person">
+                  <span class="person-name">{{ d.personName }}</span>
+                  <span class="person-phone">{{ d.personPhone }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="duty-empty" v-if="!todayDuty.length && !addedDuty.length">今日暂无排班</div>
         </div>
 
         <div class="panel-section">
@@ -445,24 +457,52 @@
             <button class="drawer-close" @click="closeDrawer">&times;</button>
           </div>
           <div class="drawer-body">
-            <div class="drawer-toolbar">
-              <button class="btn btn-primary" @click="showShiftForm = true">新增排班</button>
-              <label class="btn btn-secondary upload-btn">
-                上传排班表
-                <input type="file" accept=".xlsx,.xls" @change="handleShiftUpload" hidden/>
-              </label>
+            <!-- Tab切换 -->
+            <div style="display:flex;gap:0;margin-bottom:16px;border-bottom:1px solid var(--border-color);">
+              <button @click="shiftTab='schedule'" :style="{padding:'8px 16px',border:'none',background:'none',cursor:'pointer',borderBottom:shiftTab==='schedule'?'2px solid #3b82f6':'2px solid transparent',color:shiftTab==='schedule'?'#3b82f6':'var(--text-secondary)',fontWeight:shiftTab==='schedule'?'600':'400'}">排班表</button>
+              <button @click="shiftTab='personnel';loadPersonnel()" :style="{padding:'8px 16px',border:'none',background:'none',cursor:'pointer',borderBottom:shiftTab==='personnel'?'2px solid #3b82f6':'2px solid transparent',color:shiftTab==='personnel'?'#3b82f6':'var(--text-secondary)',fontWeight:shiftTab==='personnel'?'600':'400'}">人员管理</button>
             </div>
-            <div class="shift-list">
-              <div class="shift-item" v-for="s in allShifts" :key="s.id">
-                <div class="shift-date">{{ formatDate(s.shiftDate) }}</div>
-                <div class="shift-name">{{ s.shiftName }}</div>
-                <div class="shift-persons">
-                  <span>{{ s.person1 }}</span>
-                  <span class="shift-divider">/</span>
-                  <span>{{ s.person2 }}</span>
-                </div>
+            <!-- 排班表 -->
+            <div v-if="shiftTab==='schedule'">
+              <div class="drawer-toolbar">
+                <button class="btn btn-primary" @click="showShiftForm = true">新增排班</button>
+                <label class="btn btn-secondary upload-btn">
+                  上传排班表
+                  <input type="file" accept=".xlsx,.xls" @change="handleShiftUpload" hidden/>
+                </label>
               </div>
-              <div class="empty-state" v-if="!allShifts.length">暂无排班记录</div>
+              <div class="shift-list">
+                <div class="shift-item" v-for="s in allShifts" :key="s.id">
+                  <div class="shift-date">{{ formatDate(s.shiftDate) }}</div>
+                  <div class="shift-name">{{ s.shiftName }}</div>
+                  <div class="shift-persons">
+                    <span>{{ s.person1 }}</span>
+                    <span class="shift-divider">/</span>
+                    <span>{{ s.person2 }}</span>
+                  </div>
+                </div>
+                <div class="empty-state" v-if="!allShifts.length">暂无排班记录</div>
+              </div>
+            </div>
+            <!-- 人员管理 -->
+            <div v-if="shiftTab==='personnel'">
+              <div class="drawer-toolbar">
+                <button class="btn btn-primary" @click="showPersonnelForm=true;personnelForm={name:'',phone:'',groupType:'admin'}">新增人员</button>
+              </div>
+              <div class="shift-list">
+                <div class="shift-item" v-for="p in personnelList" :key="p.id" style="display:flex;justify-content:space-between;align-items:center;">
+                  <div>
+                    <span style="font-weight:500;">{{ p.name }}</span>
+                    <span style="color:var(--text-secondary);font-size:12px;margin-left:8px;">{{ p.phone || '未填' }}</span>
+                    <span style="font-size:11px;padding:1px 6px;border-radius:4px;margin-left:6px;" :style="{background:p.groupType==='admin'?'#dbeafe':p.groupType==='group_a'?'#dcfce7':p.groupType==='group_b'?'#fef3c7':'#f3e8ff',color:p.groupType==='admin'?'#1d4ed8':p.groupType==='group_a'?'#166534':p.groupType==='group_b'?'#92400e':'#7c3aed'}">{{ {admin:'行政',group_a:'A组',group_b:'B组',night:'夜班'}[p.groupType]||p.groupType }}</span>
+                  </div>
+                  <div style="display:flex;gap:4px;">
+                    <button class="btn btn-sm btn-secondary" @click="editPersonnel(p)" style="font-size:11px;padding:2px 8px;">编辑</button>
+                    <button class="btn btn-sm btn-secondary" @click="deletePersonnel(p)" style="font-size:11px;padding:2px 8px;color:#ef4444;">删除</button>
+                  </div>
+                </div>
+                <div class="empty-state" v-if="!personnelList.length">暂无人员</div>
+              </div>
             </div>
           </div>
         </div>
@@ -515,6 +555,41 @@
           <div class="modal-footer">
             <button class="btn btn-secondary" @click="showShiftForm = false">取消</button>
             <button class="btn btn-primary" @click="submitShift" :disabled="submitting">保存</button>
+          </div>
+        </div>
+      </div>
+    </transition>
+
+    <!-- 人员管理表单 -->
+    <transition name="modal">
+      <div class="modal-overlay" v-if="showPersonnelForm" @click="showPersonnelForm = false">
+        <div class="modal-panel small" @click.stop>
+          <div class="modal-header">
+            <h3>{{ personnelForm.id ? '编辑人员' : '新增人员' }}</h3>
+            <button class="modal-close" @click="showPersonnelForm = false">&times;</button>
+          </div>
+          <div class="modal-body">
+            <div class="form-group">
+              <label>姓名</label>
+              <input type="text" v-model="personnelForm.name" placeholder="姓名"/>
+            </div>
+            <div class="form-group">
+              <label>电话</label>
+              <input type="text" v-model="personnelForm.phone" placeholder="电话"/>
+            </div>
+            <div class="form-group">
+              <label>分组</label>
+              <select v-model="personnelForm.groupType">
+                <option value="admin">行政</option>
+                <option value="group_a">A组</option>
+                <option value="group_b">B组</option>
+                <option value="night">夜班</option>
+              </select>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-secondary" @click="showPersonnelForm = false">取消</button>
+            <button class="btn btn-primary" @click="submitPersonnel" :disabled="submitting">保存</button>
           </div>
         </div>
       </div>
@@ -692,6 +767,31 @@
             <div class="form-group">
               <label>联系电话</label>
               <input type="text" v-model="warningStartForm.leaderPhone" placeholder="电话"/>
+            </div>
+            <!-- 推荐增援 -->
+            <div class="form-group" v-if="staffingRecommend">
+              <label style="display:flex;align-items:center;gap:6px;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
+                  <circle cx="9" cy="7" r="4"/>
+                  <line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/>
+                </svg>
+                推荐增援
+              </label>
+              <div style="background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.2);border-radius:8px;padding:12px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                  <span style="font-weight:600;font-size:15px;">{{ staffingRecommend.personName }}</span>
+                  <span style="color:var(--text-secondary);font-size:13px;">{{ staffingRecommend.personPhone }}</span>
+                </div>
+                <div style="color:var(--text-secondary);font-size:12px;margin-bottom:8px;">{{ staffingRecommend.reason }}</div>
+                <div style="display:flex;gap:8px;">
+                  <button class="btn btn-sm btn-primary" @click="confirmStaffing" style="font-size:12px;padding:4px 12px;">确认到岗</button>
+                  <button class="btn btn-sm btn-secondary" @click="refreshStaffingRecommend" style="font-size:12px;padding:4px 12px;">换一个人</button>
+                </div>
+              </div>
+            </div>
+            <div class="form-group" v-else-if="staffingLoading">
+              <div style="color:var(--text-secondary);font-size:13px;">正在计算推荐增援...</div>
             </div>
           </div>
           <div class="modal-footer">
@@ -963,6 +1063,17 @@ const pointEditForm = ref({ id: null, name: '', roadType: '', responsiblePerson:
 const waterLevelForm = ref({ depth: '0' })
 const supplyForm = ref({ name: '', suppliesText: '', contactPerson: '', contactPhone: '', remark: '', longitude: '', latitude: '' })
 
+// 增援状态
+const staffingRecommend = ref(null)
+const staffingLoading = ref(false)
+const addedDuty = ref([])
+
+// 人员管理状态
+const shiftTab = ref('schedule')
+const personnelList = ref([])
+const showPersonnelForm = ref(false)
+const personnelForm = ref({ id: null, name: '', phone: '', groupType: 'admin' })
+
 // 地图
 let mapInstance = null
 let markers = []
@@ -1056,6 +1167,12 @@ async function fetchTodayDuty() {
     todayDuty.value = res.data.shifts || []
   } catch (e) {
     console.error('获取今日值班失败:', e)
+  }
+  try {
+    const res = await axios.get('/api/flood/duty-added/today')
+    addedDuty.value = res.data.added || []
+  } catch (e) {
+    console.error('获取今日增援失败:', e)
   }
 }
 
@@ -1202,23 +1319,126 @@ function openWarningStart() {
     warningStartForm.value.leaderName = dutyLeader.value.name || ''
     warningStartForm.value.leaderPhone = dutyLeader.value.phone || ''
   }
+  staffingRecommend.value = null
+  staffingLoading.value = true
   showWarningStartForm.value = true
+  loadStaffingRecommend()
+}
+
+async function loadStaffingRecommend() {
+  try {
+    const res = await axios.get('/api/flood/staffing/recommend')
+    staffingRecommend.value = res.data.recommendation
+  } catch (e) {
+    console.error('获取增援推荐失败:', e)
+  } finally {
+    staffingLoading.value = false
+  }
+}
+
+async function refreshStaffingRecommend() {
+  staffingLoading.value = true
+  staffingRecommend.value = null
+  try {
+    const res = await axios.get('/api/flood/staffing/recommend')
+    staffingRecommend.value = res.data.recommendation
+  } catch (e) {
+    console.error('获取增援推荐失败:', e)
+  } finally {
+    staffingLoading.value = false
+  }
+}
+
+async function confirmStaffing() {
+  if (!staffingRecommend.value) return
+  try {
+    await axios.post('/api/flood/staffing/confirm', {
+      logId: staffingRecommend.value.logId,
+      personName: staffingRecommend.value.personName,
+      personPhone: staffingRecommend.value.personPhone,
+    })
+    await fetchTodayDuty()
+    await fetchDispatchRecords()
+    staffingRecommend.value = null
+  } catch (e) {
+    alert('确认增援失败: ' + (e.response?.data?.error || e.message))
+  }
+}
+
+// 人员管理函数
+async function loadPersonnel() {
+  try {
+    const res = await axios.get('/api/flood/personnel')
+    personnelList.value = res.data.personnel || []
+  } catch (e) {
+    console.error('获取人员列表失败:', e)
+  }
+}
+
+function editPersonnel(p) {
+  personnelForm.value = { id: p.id, name: p.name, phone: p.phone, groupType: p.groupType }
+  showPersonnelForm.value = true
+}
+
+async function submitPersonnel() {
+  if (!personnelForm.value.name) { alert('请输入姓名'); return }
+  submitting.value = true
+  try {
+    if (personnelForm.value.id) {
+      await axios.put(`/api/flood/personnel/${personnelForm.value.id}`, {
+        name: personnelForm.value.name,
+        phone: personnelForm.value.phone,
+        groupType: personnelForm.value.groupType,
+      })
+    } else {
+      await axios.post('/api/flood/personnel', {
+        name: personnelForm.value.name,
+        phone: personnelForm.value.phone,
+        groupType: personnelForm.value.groupType,
+      })
+    }
+    await loadPersonnel()
+    showPersonnelForm.value = false
+  } catch (e) {
+    alert('保存失败: ' + (e.response?.data?.error || e.message))
+  } finally {
+    submitting.value = false
+  }
+}
+
+async function deletePersonnel(p) {
+  if (!confirm(`确定删除 ${p.name}？`)) return
+  try {
+    await axios.delete(`/api/flood/personnel/${p.id}`)
+    await loadPersonnel()
+  } catch (e) {
+    alert('删除失败: ' + (e.response?.data?.error || e.message))
+  }
 }
 
 async function confirmStartWarning() {
   try {
-    await Promise.all([
-      axios.post('/api/flood/warnings/start', { level: warningStartForm.value.level }),
-      axios.post('/api/flood/duty-leader', {
-        title: warningStartForm.value.leaderTitle,
-        name: warningStartForm.value.leaderName,
-        phone: warningStartForm.value.leaderPhone,
+    // 启动预警（后端会返回推荐增援）
+    const warningRes = await axios.post('/api/flood/warnings/start', { level: warningStartForm.value.level })
+    await axios.post('/api/flood/duty-leader', {
+      title: warningStartForm.value.leaderTitle,
+      name: warningStartForm.value.leaderName,
+      phone: warningStartForm.value.leaderPhone,
+    })
+    // 如果有推荐增援且未手动确认，自动确认
+    const recommendedStaff = warningRes.data.recommendedStaff
+    if (recommendedStaff && !staffingRecommend.value) {
+      await axios.post('/api/flood/staffing/confirm', {
+        logId: recommendedStaff.logId,
+        personName: recommendedStaff.personName,
+        personPhone: recommendedStaff.personPhone,
       })
-    ])
+    }
     await fetchActiveWarning()
     await fetchDutyLeader()
     await fetchDispatchRecords()
     await fetchWarningHistory()
+    await fetchTodayDuty()
     showWarningStartForm.value = false
   } catch (e) {
     alert('启动预警失败: ' + (e.response?.data?.error || e.message))
