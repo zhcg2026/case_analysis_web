@@ -1320,9 +1320,8 @@ function openWarningStart() {
     warningStartForm.value.leaderPhone = dutyLeader.value.phone || ''
   }
   staffingRecommend.value = null
-  staffingLoading.value = true
+  staffingLoading.value = false
   showWarningStartForm.value = true
-  loadStaffingRecommend()
 }
 
 async function loadStaffingRecommend() {
