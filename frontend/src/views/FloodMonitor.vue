@@ -783,11 +783,7 @@
                   <span style="font-weight:600;font-size:15px;">{{ staffingRecommend.personName }}</span>
                   <span style="color:var(--text-secondary);font-size:13px;">{{ staffingRecommend.personPhone }}</span>
                 </div>
-                <div style="color:var(--text-secondary);font-size:12px;margin-bottom:8px;">{{ staffingRecommend.reason }}</div>
-                <div style="display:flex;gap:8px;">
-                  <button class="btn btn-sm btn-primary" @click="confirmStaffing" style="font-size:12px;padding:4px 12px;">确认到岗</button>
-                  <button class="btn btn-sm btn-secondary" @click="refreshStaffingRecommend" style="font-size:12px;padding:4px 12px;">换一个人</button>
-                </div>
+                <div style="color:var(--text-secondary);font-size:12px;">{{ staffingRecommend.reason }}</div>
               </div>
             </div>
             <div class="form-group" v-else-if="staffingLoading">
@@ -1417,16 +1413,15 @@ async function deletePersonnel(p) {
 
 async function confirmStartWarning() {
   try {
-    // 启动预警（后端会返回推荐增援）
     const warningRes = await axios.post('/api/flood/warnings/start', { level: warningStartForm.value.level })
     await axios.post('/api/flood/duty-leader', {
       title: warningStartForm.value.leaderTitle,
       name: warningStartForm.value.leaderName,
       phone: warningStartForm.value.leaderPhone,
     })
-    // 如果有推荐增援且未手动确认，自动确认
+    // 直接用后端返回的推荐结果确认增援
     const recommendedStaff = warningRes.data.recommendedStaff
-    if (recommendedStaff && !staffingRecommend.value) {
+    if (recommendedStaff) {
       await axios.post('/api/flood/staffing/confirm', {
         logId: recommendedStaff.logId,
         personName: recommendedStaff.personName,
