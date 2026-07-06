@@ -149,7 +149,7 @@ def recommend_additional_staff(session, FloodPersonnel, FloodDutyAssignment, Flo
     # 获取全量花名册
     all_persons = session.query(FloodPersonnel).filter_by(is_active=True).all()
 
-    # 获取今日排班（已确定在岗的人）
+    # 今日
     today_start = datetime.datetime.combine(target_date, datetime.time.min)
     today_end = datetime.datetime.combine(target_date, datetime.time.max)
     today_assignments = session.query(FloodDutyAssignment).filter(
@@ -158,7 +158,18 @@ def recommend_additional_staff(session, FloodPersonnel, FloodDutyAssignment, Flo
     ).all()
     on_duty_today = {a.person_name for a in today_assignments}
 
-    # 获取昨晚夜班人员（刚下班的）
+    # 明天
+    tomorrow = target_date + datetime.timedelta(days=1)
+    tomorrow_start = datetime.datetime.combine(tomorrow, datetime.time.min)
+    tomorrow_end = datetime.datetime.combine(tomorrow, datetime.time.max)
+    tomorrow_assignments = session.query(FloodDutyAssignment).filter(
+        FloodDutyAssignment.assignment_date >= tomorrow_start,
+        FloodDutyAssignment.assignment_date <= tomorrow_end,
+    ).all()
+    on_duty_tomorrow = {a.person_name for a in tomorrow_assignments}
+
+    # 昨晚夜班（刚下班）
+    yesterday = target_date - datetime.timedelta(days=1)
     yesterday_start = datetime.datetime.combine(yesterday, datetime.time.min)
     yesterday_end = datetime.datetime.combine(yesterday, datetime.time.max)
     last_night_shift = session.query(FloodDutyAssignment).filter(
@@ -168,13 +179,21 @@ def recommend_additional_staff(session, FloodPersonnel, FloodDutyAssignment, Flo
     ).all()
     just_finished_night = {a.person_name for a in last_night_shift}
 
-    # 获取今晚夜班人员（晚上要上班的）
+    # 今晚夜班（晚上要上班）
     tonight_shift = session.query(FloodDutyAssignment).filter(
         FloodDutyAssignment.assignment_date >= today_start,
         FloodDutyAssignment.assignment_date <= today_end,
         FloodDutyAssignment.shift_name == '夜班',
     ).all()
     tonight_night_shift = {a.person_name for a in tonight_shift}
+
+    # 明晚夜班（明晚要上班，今天叫来也累）
+    tomorrow_night = session.query(FloodDutyAssignment).filter(
+        FloodDutyAssignment.assignment_date >= tomorrow_start,
+        FloodDutyAssignment.assignment_date <= tomorrow_end,
+        FloodDutyAssignment.shift_name == '夜班',
+    ).all()
+    tomorrow_night_shift = {a.person_name for a in tomorrow_night}
 
     # 获取近7天增援记录
     seven_days_ago_dt = datetime.datetime.combine(seven_days_ago, datetime.time.min)
@@ -191,12 +210,16 @@ def recommend_additional_staff(session, FloodPersonnel, FloodDutyAssignment, Flo
     for person in all_persons:
         name = person.name
 
-        # 硬约束排除
+        # 硬约束排除：避免连续上班/疲劳
         if name in on_duty_today:
             continue
         if name in tonight_night_shift:
             continue
         if name in just_finished_night:
+            continue
+        if name in on_duty_tomorrow:
+            continue
+        if name in tomorrow_night_shift:
             continue
 
         # 轮流排序：近7天被增援次数越少越优先，同次数随机
