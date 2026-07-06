@@ -1942,7 +1942,7 @@ def register_flood_monitor_routes(
             dispatch = FloodDispatchRecord(
                 record_type='人员调度',
                 title=f'增援到岗：{confirmed_person}',
-                content=f'预警增援：{confirmed_person} ({confirmed_phone}) 已确认到岗',
+                content=f'预警增援：{confirmed_person} 到岗',
                 event_time=datetime.datetime.now(),
                 warning_id=log.warning_id,
                 status='active',
