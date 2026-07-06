@@ -326,7 +326,8 @@
           </div>
           <div class="drawer-body">
             <div class="drawer-toolbar">
-              <button class="btn btn-primary" @click="showLedgerForm = true">新增记录</button>
+              <button class="btn btn-primary" @click="showLedgerForm = true" :disabled="!activeWarning" :title="!activeWarning ? '请先启动预警' : ''">新增记录</button>
+              <span v-if="!activeWarning" class="toolbar-hint">需先启动预警才能新增调度记录</span>
             </div>
             <!-- 当前激活预警 -->
             <div v-if="activeWarning" class="warning-group-current" @click="selectWarning(activeWarning.id)">
@@ -338,7 +339,7 @@
               </div>
             </div>
             <!-- 预警历史列表 -->
-            <div class="warning-history-list">
+            <div class="warning-history-list" v-if="warningHistory.length">
               <div v-for="w in warningHistory" :key="w.id"
                 class="warning-group-item"
                 :class="{ expanded: selectedWarningId === w.id }"
@@ -529,37 +530,16 @@
           </div>
           <div class="drawer-body">
             <div class="point-list">
-              <div class="point-item" v-for="p in waterPoints" :key="p.id">
+              <div class="point-item point-item-compact" v-for="p in waterPoints" :key="p.id" @click="focusPoint(p)">
                 <div class="point-header">
                   <span class="point-name">{{ p.name }}</span>
                   <span v-if="p.roadType" class="point-road-type">{{ p.roadType }}</span>
                   <span class="point-level" :class="'level-' + p.waterLevel">{{ getLevelLabel(p.waterLevel) }}</span>
                 </div>
-                <div class="point-info" v-if="p.managementUnit">
-                  <span>管理: {{ p.managementUnit }}</span>
-                </div>
-                <div class="point-info" v-if="p.responsiblePerson">
-                  <span>责任人: {{ p.responsiblePerson }}</span>
-                  <span v-if="p.responsiblePhone">{{ p.responsiblePhone }}</span>
-                </div>
-                <div class="point-info" v-if="p.dutyPersons && p.dutyPersons.length">
-                  <span>值守: {{ p.dutyPersons.map(d => d.name).join('、') }}</span>
-                </div>
-                <div class="point-info" v-if="p.trafficPolice">
-                  <span>交警: {{ p.trafficPolice }}</span>
-                  <span v-if="p.trafficPolicePhone">{{ p.trafficPolicePhone }}</span>
-                </div>
-                <div class="point-info" v-if="p.monitoringPoints && p.monitoringPoints.length">
-                  <span class="point-monitor-label">监控:</span>
-                  <span v-for="(m, i) in p.monitoringPoints" :key="i" class="point-monitor-tag">{{ m.type }} {{ m.code }}</span>
-                </div>
-                <div class="point-info" v-if="p.remarks">
-                  <span>备注: {{ p.remarks }}</span>
-                </div>
                 <div class="point-actions">
-                  <button class="btn-sm" @click="editPoint(p)">编辑</button>
-                  <button class="btn-sm" @click="editWaterLevel(p)">更新水位</button>
-                  <button class="btn-sm danger" @click="deletePoint(p.id)">删除</button>
+                  <button class="btn-sm" @click.stop="editPoint(p)">编辑</button>
+                  <button class="btn-sm" @click.stop="editWaterLevel(p)">水位</button>
+                  <button class="btn-sm danger" @click.stop="deletePoint(p.id)">删除</button>
                 </div>
               </div>
               <div class="empty-state" v-if="!waterPoints.length">暂无积水点，可在地图上点击添加</div>
@@ -937,6 +917,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted, computed, nextTick, watch } from 'vue'
 import axios from 'axios'
+import * as echarts from 'echarts'
 
 // ======== 状态 ========
 const currentTime = ref('')
@@ -1425,6 +1406,16 @@ function renderMapMarkers() {
   renderSupplyMarkers()
 }
 
+function focusPoint(p) {
+  if (!mapInstance || !p.longitude || !p.latitude) return
+  const pos = new window.AMap.LngLat(parseFloat(p.longitude), parseFloat(p.latitude))
+  mapInstance.setZoomAndCenter(16, pos, false)
+  const idx = waterPoints.value.findIndex(wp => wp.id === p.id)
+  if (idx >= 0 && markers[idx]) {
+    markers[idx].emit('click')
+  }
+}
+
 let supplyMarkers = []
 
 function renderSupplyMarkers() {
@@ -1466,8 +1457,8 @@ function getMarkerColor(level) {
 // ======== 图表 ========
 function renderHourlyChart() {
   const el = document.querySelector('.flood-page .chart-wrapper')
-  if (!el || !window.echarts) return
-  const chart = window.echarts.init(el, 'dark')
+  if (!el) return
+  const chart = echarts.init(el, 'dark')
   const times = hourlyForecast.value.map(h => {
     const d = new Date(h.time)
     return `${d.getHours()}:00`
@@ -2507,6 +2498,11 @@ onUnmounted(() => {
   display: flex;
   gap: 8px;
   margin-bottom: 16px;
+  align-items: center;
+}
+.toolbar-hint {
+  font-size: 12px;
+  color: rgba(255,255,255,0.4);
 }
 
 /* ======== 模态框 ======== */
@@ -2898,13 +2894,26 @@ onUnmounted(() => {
 .shift-divider { margin: 0 4px; color: rgba(255,255,255,0.3); }
 
 /* ======== 积水点列表 ======== */
-.point-list { display: flex; flex-direction: column; gap: 8px; }
+.point-list { display: flex; flex-direction: column; gap: 4px; }
 .point-item {
   padding: 12px;
   background: rgba(0,0,0,0.2);
   border: 1px solid rgba(64,158,255,0.1);
   border-radius: 8px;
 }
+.point-item-compact {
+  padding: 8px 12px;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  transition: background 0.15s;
+}
+.point-item-compact:hover {
+  background: rgba(64,158,255,0.1);
+  border-color: rgba(64,158,255,0.3);
+}
+.point-item-compact .point-header { margin-bottom: 0; }
 .point-header {
   display: flex;
   justify-content: space-between;

@@ -268,7 +268,7 @@ try:
 
     # 创建数据库引擎
     encoded_password = urllib.parse.quote_plus(DB_PASSWORD)
-    engine = create_engine(f'mysql+pymysql://{DB_USER}:{encoded_password}@{DB_HOST}:{DB_PORT}/{DB_NAME}', pool_pre_ping=True, pool_recycle=3600)
+    engine = create_engine(f'mysql+pymysql://{DB_USER}:{encoded_password}@{DB_HOST}:{DB_PORT}/{DB_NAME}?charset=utf8mb4', pool_pre_ping=True, pool_recycle=3600)
     print("数据库连接成功")
     
     # 定义模型

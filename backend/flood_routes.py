@@ -4,14 +4,24 @@ import uuid
 import datetime
 from flask import jsonify, request, send_file
 from sqlalchemy import func
-from flood_helpers import (
-    fetch_realtime_weather,
-    fetch_hourly_forecast,
-    determine_rain_intensity,
-    determine_water_level,
-    serialize_weather,
-    serialize_hourly_forecast,
-)
+try:
+    from backend.flood_helpers import (
+        fetch_realtime_weather,
+        fetch_hourly_forecast,
+        determine_rain_intensity,
+        determine_water_level,
+        serialize_weather,
+        serialize_hourly_forecast,
+    )
+except ImportError:
+    from flood_helpers import (
+        fetch_realtime_weather,
+        fetch_hourly_forecast,
+        determine_rain_intensity,
+        determine_water_level,
+        serialize_weather,
+        serialize_hourly_forecast,
+    )
 
 
 def register_flood_monitor_routes(
