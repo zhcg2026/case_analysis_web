@@ -2,6 +2,7 @@ import os
 import time
 import datetime
 import requests
+import json
 
 QWEATHER_API_KEY = os.getenv('QWEATHER_API_KEY', '')
 QWEATHER_API_HOST = os.getenv('QWEATHER_API_HOST', 'n77h2twnn4.re.qweatherapi.com')
@@ -11,7 +12,9 @@ YUNCHENG_LOCATION = '110.976935,35.06161'
 # 天气数据内存缓存
 _weather_cache = {'data': None, 'timestamp': 0}
 _hourly_cache = {'data': None, 'timestamp': 0}
+_satellite_cache = {'data': None, 'timestamp': 0}
 CACHE_TTL = 300  # 5分钟缓存
+SATELLITE_CACHE_TTL = 600  # 10分钟缓存（卫星云图更新频率较低）
 
 
 def fetch_realtime_weather():
@@ -132,6 +135,46 @@ def serialize_hourly_forecast(hourly_list):
             'precip': h.get('precip', '0'),
         })
     return result
+
+
+def fetch_satellite_image():
+    """
+    获取卫星云图（中央气象台风云四号B星）
+    返回: { url, updateTime, type } 或 None
+    """
+    now = time.time()
+    if _satellite_cache['data'] and (now - _satellite_cache['timestamp']) < SATELLITE_CACHE_TTL:
+        return _satellite_cache['data']
+
+    try:
+        now_time = datetime.datetime.now()
+
+        # 中央气象台风云四号B星卫星云图
+        # URL格式: https://image.nmc.cn/product/{date}/WXBL/medium/SEVP_NSMC_WXBL_FY4B_ETCC_ACHN_LNO_PY_{timestamp}000000.JPG
+        # 时间戳格式: YYYYMMDDHHMMSSSSSS（如 20260707003000000）
+        date_str = now_time.strftime('%Y/%m/%d')
+        hour = now_time.strftime('%H')
+
+        # 生成最近几个时间点的URL（每15分钟一张）
+        satellite_urls = []
+        for minutes in [30, 15, 0]:
+            ts = f"{now_time.strftime('%Y%m%d')}{hour}{minutes:02d}000000"
+            url = f'https://image.nmc.cn/product/{date_str}/WXBL/medium/SEVP_NSMC_WXBL_FY4B_ETCC_ACHN_LNO_PY_{ts}.JPG'
+            satellite_urls.append(url)
+
+        result = {
+            'urls': satellite_urls,
+            'updateTime': now_time.strftime('%Y-%m-%d %H:%M'),
+            'source': '中央气象台风云四号B星'
+        }
+
+        _satellite_cache['data'] = result
+        _satellite_cache['timestamp'] = now
+        return result
+
+    except Exception as e:
+        print(f'获取卫星云图失败: {e}')
+    return None
 
 
 def recommend_additional_staff(session, FloodPersonnel, FloodDutyAssignment, FloodStaffingLog, target_time=None):

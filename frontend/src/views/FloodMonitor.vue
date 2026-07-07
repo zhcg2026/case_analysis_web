@@ -112,6 +112,37 @@
           </div>
           <div class="chart-wrapper" ref="hourlyChartRef"></div>
         </div>
+
+        <!-- 卫星云图 -->
+        <div class="panel-section satellite-section">
+          <div class="panel-header">
+            <svg class="panel-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+              <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/>
+              <path d="M2 12h20"/>
+            </svg>
+            <h3 class="panel-title">卫星云图</h3>
+          </div>
+          <div class="satellite-container">
+            <div class="satellite-image-wrapper" @click="satelliteReady ? showSatelliteModal = true : loadSatellite()">
+              <iframe v-if="satelliteReady" src="https://embed.windy.com/embed2.html?lat=35.06&lon=110.98&zoom=5&level=surface&overlay=wind&product=ecmwf&menu=&message=&marker=&calendar=&pressure=&type=map&location=coordinates&detail=&metricWind=m%2Fs&metricTemp=%C2%B0C&radarRange=-1" class="satellite-iframe" frameborder="0" loading="lazy"></iframe>
+              <div v-else class="satellite-placeholder">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-bottom:8px;opacity:0.5">
+                  <circle cx="12" cy="12" r="10"/>
+                  <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/>
+                  <path d="M2 12h20"/>
+                </svg>
+                <span>点击加载云图</span>
+              </div>
+              <div class="satellite-overlay" v-if="!satelliteReady">
+                <span class="satellite-hint">点击加载</span>
+              </div>
+              <div class="satellite-overlay" v-else>
+                <span class="satellite-hint">点击放大</span>
+              </div>
+            </div>
+          </div>
+        </div>
       </aside>
 
       <!-- 中间地图区域 -->
@@ -210,30 +241,31 @@
             </svg>
             <h3 class="panel-title">今日值班人员</h3>
           </div>
-          <div class="duty-list" v-if="todayDuty.length">
-            <div class="duty-card" v-for="d in todayDuty" :key="d.id">
-              <div class="duty-shift-name">{{ d.shiftName }}</div>
-              <div class="duty-persons">
-                <div class="duty-person">
-                  <span class="person-name">{{ d.person1 }}</span>
-                  <span class="person-phone">{{ d.person1Phone }}</span>
-                </div>
-                <div class="duty-person" v-if="d.person2">
-                  <span class="person-name">{{ d.person2 }}</span>
-                  <span class="person-phone">{{ d.person2Phone }}</span>
-                </div>
+          <div class="duty-row-list">
+            <!-- 白班人员 -->
+            <div class="duty-row" v-if="dayShiftDuty">
+              <div class="duty-row-label">白班</div>
+              <div class="duty-row-names">
+                <span class="duty-name">{{ dayShiftDuty.person1 }}</span>
+                <span class="duty-name" v-if="dayShiftDuty.person2">、{{ dayShiftDuty.person2 }}</span>
               </div>
             </div>
-          </div>
-          <!-- 增援人员 -->
-          <div class="duty-list" v-if="addedDuty.length" style="margin-top:8px;">
-            <div class="duty-card" v-for="d in addedDuty" :key="'added-'+d.id" style="border-left:3px solid #3b82f6;">
-              <div class="duty-shift-name" style="color:#3b82f6;">增援</div>
-              <div class="duty-persons">
-                <div class="duty-person">
-                  <span class="person-name">{{ d.personName }}</span>
-                  <span class="person-phone">{{ d.personPhone }}</span>
-                </div>
+            <!-- 夜班人员 -->
+            <div class="duty-row" v-if="nightShiftDuty">
+              <div class="duty-row-label night">夜班</div>
+              <div class="duty-row-names">
+                <span class="duty-name">{{ nightShiftDuty.person1 }}</span>
+                <span class="duty-name" v-if="nightShiftDuty.person2">、{{ nightShiftDuty.person2 }}</span>
+              </div>
+            </div>
+            <!-- 增援人员 -->
+            <div class="duty-row" v-if="addedDuty.length" style="border-left-color:#3b82f6;">
+              <div class="duty-row-label support">增援</div>
+              <div class="duty-row-names">
+                <template v-for="(d, i) in addedDuty" :key="'added-'+d.id">
+                  <span class="duty-name" style="color:#3b82f6;">{{ d.personName }}</span>
+                  <span v-if="i < addedDuty.length - 1" class="duty-name">、</span>
+                </template>
               </div>
             </div>
           </div>
@@ -828,6 +860,25 @@
       </div>
     </transition>
 
+    <!-- 卫星云图放大模态框 -->
+    <transition name="modal">
+      <div class="modal-overlay" v-if="showSatelliteModal" @click="showSatelliteModal = false">
+        <div class="modal-panel satellite-modal" @click.stop>
+          <div class="modal-header">
+            <h3>卫星云图</h3>
+            <button class="modal-close" @click="showSatelliteModal = false">&times;</button>
+          </div>
+          <div class="modal-body satellite-modal-body">
+            <iframe v-if="showSatelliteModal" src="https://embed.windy.com/embed2.html?lat=35.06&lon=110.98&zoom=5&level=surface&overlay=wind&product=ecmwf&menu=&message=&marker=&calendar=&pressure=&type=map&location=coordinates&detail=&metricWind=m%2Fs&metricTemp=%C2%B0C&radarRange=-1" class="satellite-full-iframe" frameborder="0"></iframe>
+          </div>
+          <div class="modal-footer">
+            <span class="satellite-source">数据来源：Windy.com</span>
+            <button class="btn btn-primary" @click="showSatelliteModal = false">关闭</button>
+          </div>
+        </div>
+      </div>
+    </transition>
+
     <!-- 更新水位弹窗 -->
     <transition name="modal">
       <div class="modal-overlay" v-if="showWaterLevelForm" @click="showWaterLevelForm = false">
@@ -1064,6 +1115,14 @@ const staffingRecommend = ref(null)
 const staffingLoading = ref(false)
 const addedDuty = ref([])
 
+// 卫星云图状态
+const satelliteReady = ref(false)
+const showSatelliteModal = ref(false)
+
+function loadSatellite() {
+  satelliteReady.value = true
+}
+
 // 人员管理状态
 const shiftTab = ref('schedule')
 const personnelList = ref([])
@@ -1077,6 +1136,8 @@ let markers = []
 // ======== 计算属性 ========
 const severeCount = computed(() => waterPoints.value.filter(p => p.waterLevel === 'severe').length)
 const deepCount = computed(() => waterPoints.value.filter(p => p.waterLevel === 'deep').length)
+const dayShiftDuty = computed(() => todayDuty.value.find(d => d.shiftName === '白班'))
+const nightShiftDuty = computed(() => todayDuty.value.find(d => d.shiftName === '夜班'))
 
 // ======== 工具函数 ========
 function getWeatherIcon(text) {
@@ -1116,6 +1177,34 @@ function updateTime() {
     year: 'numeric', month: '2-digit', day: '2-digit',
     hour: '2-digit', minute: '2-digit', second: '2-digit'
   })
+}
+
+// 卫星云图相关函数
+const currentSatelliteUrl = computed(() => {
+  if (!satelliteData.value || !satelliteData.value.urls) return ''
+  return satelliteData.value.urls[satelliteIndex.value] || satelliteData.value.urls[0]
+})
+
+function handleSatelliteError() {
+  // 图片加载失败时尝试下一个URL
+  if (satelliteData.value && satelliteData.value.urls) {
+    if (satelliteIndex.value < satelliteData.value.urls.length - 1) {
+      satelliteIndex.value++
+    }
+  }
+}
+
+async function refreshSatellite() {
+  satelliteLoading.value = true
+  satelliteIndex.value = 0
+  try {
+    const res = await axios.get('/api/flood/weather/satellite')
+    satelliteData.value = res.data.satellite
+  } catch (e) {
+    console.error('获取卫星云图失败:', e)
+  } finally {
+    satelliteLoading.value = false
+  }
 }
 
 // ======== API 调用 ========
@@ -2088,13 +2177,15 @@ onMounted(async () => {
     fetchEmergencyPlan(),
     fetchEmergencySupplies(),
     fetchActiveWarning(),
-    fetchDutyLeader()
+    fetchDutyLeader(),
+    refreshSatellite()
   ])
 
   // 每5分钟刷新天气
   weatherInterval = setInterval(() => {
     fetchWeather()
     fetchRainEvents()
+    refreshSatellite()
   }, 300000)
 
   // 每2分钟刷新数据
@@ -2387,6 +2478,82 @@ onUnmounted(() => {
 /* 图表 */
 .chart-wrapper { height: 160px; }
 
+/* 卫星云图 */
+.satellite-section {
+  min-height: 180px;
+}
+.satellite-container {
+  position: relative;
+  width: 100%;
+  height: 160px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: rgba(0,0,0,0.3);
+}
+.satellite-image-wrapper {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
+}
+.satellite-iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+}
+.satellite-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.satellite-image-wrapper:hover .satellite-overlay {
+  opacity: 1;
+}
+.satellite-hint {
+  padding: 8px 16px;
+  background: rgba(64,158,255,0.9);
+  color: #fff;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+}
+.satellite-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255,255,255,0.4);
+  font-size: 12px;
+}
+.satellite-modal {
+  width: 90vw;
+  max-width: 1200px;
+  height: 85vh;
+}
+.satellite-modal-body {
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #000;
+}
+.satellite-full-iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+}
+.satellite-source {
+  font-size: 12px;
+  color: rgba(255,255,255,0.5);
+}
+
 /* 降雨状态 */
 /* 中间地图 */
 .flood-center {
@@ -2574,6 +2741,30 @@ onUnmounted(() => {
 }
 .person-name { color: rgba(255,255,255,0.9); }
 .person-phone { color: rgba(255,255,255,0.5); }
+.duty-row-list { display: flex; flex-direction: column; gap: 6px; }
+.duty-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  background: rgba(0,0,0,0.15);
+  border: 1px solid rgba(64,158,255,0.1);
+  border-left: 3px solid #67c23a;
+  border-radius: 6px;
+}
+.duty-row-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #67c23a;
+  min-width: 32px;
+}
+.duty-row-label.night { color: #e6a23c; }
+.duty-row-label.support { color: #3b82f6; }
+.duty-row-names {
+  font-size: 13px;
+  color: rgba(255,255,255,0.9);
+}
+.duty-name { color: rgba(255,255,255,0.9); }
 .duty-empty {
   text-align: center;
   padding: 16px;

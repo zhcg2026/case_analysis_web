@@ -9,6 +9,7 @@ try:
     from backend.flood_helpers import (
         fetch_realtime_weather,
         fetch_hourly_forecast,
+        fetch_satellite_image,
         determine_rain_intensity,
         determine_water_level,
         serialize_weather,
@@ -18,6 +19,7 @@ except ImportError:
     from flood_helpers import (
         fetch_realtime_weather,
         fetch_hourly_forecast,
+        fetch_satellite_image,
         determine_rain_intensity,
         determine_water_level,
         serialize_weather,
@@ -421,6 +423,16 @@ def register_flood_monitor_routes(
             hourly = fetch_hourly_forecast()
             result = serialize_hourly_forecast(hourly)
             return jsonify({'hourly': result}), 200
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+
+    @app.route('/api/flood/weather/satellite', methods=['GET'])
+    @protected
+    def flood_weather_satellite():
+        """获取卫星云图"""
+        try:
+            satellite = fetch_satellite_image()
+            return jsonify({'satellite': satellite}), 200
         except Exception as e:
             return jsonify({'error': str(e)}), 500
 
