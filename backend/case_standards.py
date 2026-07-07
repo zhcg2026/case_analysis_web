@@ -10,7 +10,7 @@
 
 服务器模式（USE_LOCAL_MODE=false或不设置）：
 - Docker Milvus
-- Ollama nomic-embed-text + Qwen2.5-7B
+- Ollama jina-embeddings-v2-base-zh + Qwen2.5-7B
 """
 
 import os
@@ -41,7 +41,7 @@ LLM_PROVIDER = os.getenv('LLM_PROVIDER', 'ollama').lower()
 
 # 服务器模式配置
 OLLAMA_HOST = os.getenv('OLLAMA_HOST', 'http://localhost:11434')
-OLLAMA_EMBED_MODEL = os.getenv('OLLAMA_EMBED_MODEL', 'nomic-embed-text')
+OLLAMA_EMBED_MODEL = os.getenv('OLLAMA_EMBED_MODEL', 'EntropyYue/jina-embeddings-v2-base-zh')
 OLLAMA_MODEL = os.getenv('OLLAMA_MODEL', 'qwen2.5:7b')
 MILVUS_HOST = os.getenv('MILVUS_HOST', 'localhost')
 MILVUS_PORT = os.getenv('MILVUS_PORT', '19530')
@@ -1671,6 +1671,28 @@ def search_case_standards_milvus(query: str, top_k: int = 5) -> List[Dict]:
         existing_types = set(cr.get('case_type', '') for cr in child_results)
         has_keyword_match = any(kw in ct for ct in existing_types for kw in query_keywords if len(kw) >= 3)
 
+        # 同义词映射：将问题中的常见表述映射到标准case_type关键词
+        synonym_map = {
+            '粪便': ['道路不洁', '暴露生活垃圾', '积存垃圾'],
+            '碎玻璃': ['道路不洁', '积存垃圾'],
+            '玻璃': ['道路不洁', '积存垃圾'],
+            '路面垃圾': ['道路不洁', '暴露生活垃圾', '积存垃圾'],
+            '垃圾': ['道路不洁', '暴露生活垃圾', '积存垃圾', '垃圾满溢'],
+            '无人清扫': ['道路不洁', '暴露生活垃圾'],
+            '动物尸体': ['动物尸体'],
+            '死': ['动物尸体'],
+            '尸体': ['动物尸体'],
+            '噪音': ['施工扰民', '商业噪音'],
+            '扰民': ['施工扰民', '商业噪音'],
+            '护栏': ['交通护栏', '交通设施'],
+            '开口': ['交通护栏', '违章开设道口'],
+            '天然气': ['供气管理', '燃气'],
+            '燃气': ['供气管理', '燃气管道', '燃气调压', '燃气井盖'],
+            '停气': ['供气管理'],
+            '供气': ['供气管理'],
+            '气费': ['供气管理'],
+        }
+
         if not has_keyword_match and query_keywords:
             # 先用完整查询搜case_type
             try:
@@ -1694,7 +1716,38 @@ def search_case_standards_milvus(query: str, top_k: int = 5) -> List[Dict]:
                         parent_ids.add(er.get('parent_id'))
             except Exception:
                 pass
-            # 再用关键词搜（优先2字核心词，如"路灯""井盖"）
+
+            # 使用同义词映射搜索
+            for kw in query_keywords:
+                if len(kw) < 2:
+                    continue
+                if kw in synonym_map:
+                    for synonym in synonym_map[kw]:
+                        if len(child_results) > top_k + 5:
+                            break
+                        try:
+                            extra = collection.query(
+                                expr=f'level == 1 and case_type like "%{synonym}%"',
+                                output_fields=["parent_id", "text_content", "case_type", "meta_info"],
+                                limit=2
+                            )
+                            for er in extra:
+                                ct = er.get('case_type', '')
+                                if ct not in existing_types:
+                                    existing_types.add(ct)
+                                    child_results.append({
+                                        "child_id": er.get('parent_id'),
+                                        "parent_id": er.get('parent_id'),
+                                        "child_text": "",
+                                        "case_type": ct,
+                                        "meta_info": er.get('meta_info'),
+                                        "score": 0.6
+                                    })
+                                    parent_ids.add(er.get('parent_id'))
+                        except Exception:
+                            pass
+
+            # 再用原始关键词搜（优先2字核心词，如"路灯""井盖"）
             for kw in query_keywords:
                 if len(kw) < 2:
                     continue
@@ -1727,9 +1780,12 @@ def search_case_standards_milvus(query: str, top_k: int = 5) -> List[Dict]:
                     pass
 
         if parent_ids:
+            # 构建正确的Milvus查询表达式（字符串需要加引号）
+            quoted_ids = [f'"{pid}"' for pid in parent_ids]
             parent_results = collection.query(
-                expr=f'level == 1 and parent_id in {list(parent_ids)}',
-                output_fields=["parent_id", "text_content", "meta_info"]
+                expr=f'level == 1 and parent_id in [{",".join(quoted_ids)}]',
+                output_fields=["parent_id", "text_content", "meta_info"],
+                limit=len(parent_ids) + 10
             )
 
             parent_map = {}

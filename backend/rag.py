@@ -45,7 +45,7 @@ LLM_PROVIDER = os.getenv('LLM_PROVIDER', 'ollama').lower()
 # 配置
 OLLAMA_HOST = os.getenv('OLLAMA_HOST', 'http://localhost:11434')
 OLLAMA_MODEL = os.getenv('OLLAMA_MODEL', 'qwen2.5:7b')
-OLLAMA_EMBED_MODEL = os.getenv('OLLAMA_EMBED_MODEL', 'nomic-embed-text')
+OLLAMA_EMBED_MODEL = os.getenv('OLLAMA_EMBED_MODEL', 'EntropyYue/jina-embeddings-v2-base-zh')
 MILVUS_HOST = os.getenv('MILVUS_HOST', 'localhost')
 MILVUS_PORT = os.getenv('MILVUS_PORT', '19530')
 COLLECTION_NAME = os.getenv('MILVUS_COLLECTION', 'knowledge_base')
