@@ -74,44 +74,42 @@ def fetch_hourly_forecast():
 
 
 def fetch_weather_alerts():
-    """获取气象预警信息（和风天气 天气预警API v1）
-    API路径: GET /weatheralert/v1/current/{latitude}/{longitude}
-    文档: https://dev.qweather.com/docs/api/weather-alert/
+    """获取气象预警信息（和风天气 API v7 /warning/now）
+    使用免费的预警接口替代付费的 alert v1 接口
+    文档: https://dev.qweather.com/docs/api/warning/
     """
     now = time.time()
     if _alert_cache['data'] and (now - _alert_cache['timestamp']) < ALERT_CACHE_TTL:
         return _alert_cache['data']
 
     try:
-        # 运城坐标: 纬度35.06, 经度110.98
-        lat, lon = YUNCHENG_LOCATION.split(',')
-        # 使用天气预警API v1
-        alert_url = f'https://{QWEATHER_API_HOST}/weatheralert/v1/current/{lat}/{lon}'
+        alert_url = f'{QWEATHER_BASE_URL}/warning/now'
         params = {
             'key': QWEATHER_API_KEY,
-            'lang': 'zh',
-            'localTime': 'true'
+            'location': YUNCHENG_LOCATION,
         }
         resp = requests.get(alert_url, params=params, timeout=10)
         data = resp.json()
         if data.get('code') == '200':
-            alerts = data.get('alert', [])
+            warnings = data.get('warning', [])
             result = []
-            for alert in alerts:
+            for w in warnings:
                 result.append({
-                    'id': alert.get('id', ''),
-                    'sender': alert.get('sender', ''),
-                    'title': alert.get('title', ''),
-                    'startTime': alert.get('startTime', ''),
-                    'endTime': alert.get('endTime', ''),
-                    'status': alert.get('status', ''),
-                    'level': alert.get('level', ''),
-                    'type': alert.get('type', ''),
-                    'text': alert.get('text', ''),
+                    'id': w.get('id', ''),
+                    'sender': w.get('sender', ''),
+                    'title': w.get('title', ''),
+                    'startTime': w.get('startTime', ''),
+                    'endTime': w.get('endTime', ''),
+                    'status': w.get('status', ''),
+                    'level': w.get('level', ''),
+                    'type': w.get('type', ''),
+                    'text': w.get('text', ''),
                 })
             _alert_cache['data'] = result
             _alert_cache['timestamp'] = now
             return result
+        else:
+            print(f'预警接口返回错误: code={data.get("code")}')
     except Exception as e:
         print(f'获取气象预警失败: {e}')
     return []

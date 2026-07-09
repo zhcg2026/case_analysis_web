@@ -2652,15 +2652,21 @@ onUnmounted(() => {
 
 /* 卫星云图 */
 .satellite-section {
-  min-height: 180px;
+  padding: 0 !important;
+  border: none !important;
+  background: transparent !important;
+}
+.satellite-section .panel-header {
+  padding: 14px 14px 8px 14px;
 }
 .satellite-container {
   position: relative;
   width: 100%;
   height: 180px;
-  border-radius: 8px;
+  border-radius: 12px;
   overflow: hidden;
-  background: rgba(0,0,0,0.3);
+  background: rgba(13, 31, 60, 0.6);
+  border: 1px solid rgba(64, 158, 255, 0.12);
   cursor: pointer;
 }
 @media (max-width: 1200px) {
@@ -2674,9 +2680,14 @@ onUnmounted(() => {
   }
 }
 .satellite-iframe {
+  position: absolute;
+  top: 0;
+  left: 0;
   width: 100%;
   height: 100%;
   border: none;
+  margin: 0;
+  padding: 0;
   display: block;
 }
 .satellite-click-overlay {
@@ -2689,6 +2700,9 @@ onUnmounted(() => {
   z-index: 1;
 }
 .satellite-placeholder {
+  position: absolute;
+  top: 0;
+  left: 0;
   width: 100%;
   height: 100%;
   display: flex;
@@ -2698,6 +2712,7 @@ onUnmounted(() => {
   color: rgba(255,255,255,0.4);
   font-size: 12px;
   transition: all 0.2s;
+  box-sizing: border-box;
 }
 .satellite-placeholder:hover {
   color: rgba(255,255,255,0.7);

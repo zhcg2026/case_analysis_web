@@ -76,7 +76,12 @@
               <line x1="12" y1="8" x2="12" y2="12"></line>
               <line x1="12" y1="16" x2="12.01" y2="16"></line>
             </svg>
-            {{ error }}
+            <div class="error-content">
+              <span>{{ error }}</span>
+              <span v-if="lockCountdown > 0" class="countdown">
+                ({{ lockCountdown }}秒后可重试)
+              </span>
+            </div>
           </div>
 
           <button type="submit" class="login-btn" :disabled="loading">
@@ -94,7 +99,7 @@
 </template>
 
 <script setup>
-import { ref, reactive } from 'vue'
+import { ref, reactive, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '../stores/user'
 import axios from 'axios'
@@ -110,10 +115,48 @@ const form = reactive({
 const loading = ref(false)
 const error = ref('')
 const showPassword = ref(false)
+const lockCountdown = ref(0)
+let countdownTimer = null
+
+function parseLockout(errorMsg) {
+  const match = errorMsg && errorMsg.match(/请(\d+)秒后/)
+  if (match) {
+    lockCountdown.value = parseInt(match[1], 10)
+    startCountdown()
+  }
+}
+
+function startCountdown() {
+  clearCountdown()
+  countdownTimer = setInterval(() => {
+    if (lockCountdown.value > 1) {
+      lockCountdown.value--
+    } else {
+      lockCountdown.value = 0
+      clearCountdown()
+    }
+  }, 1000)
+}
+
+function clearCountdown() {
+  if (countdownTimer) {
+    clearInterval(countdownTimer)
+    countdownTimer = null
+  }
+}
+
+onUnmounted(() => {
+  clearCountdown()
+})
 
 async function handleLogin() {
   if (!form.username || !form.password) {
     error.value = '请输入用户名和密码'
+    return
+  }
+
+  if (lockCountdown.value > 0) {
+    error.value = `账户已锁定，请等待 ${lockCountdown.value} 秒后再试`
     return
   }
 
@@ -141,7 +184,9 @@ async function handleLogin() {
 
     router.push('/')
   } catch (err) {
-    error.value = err.response?.data?.error || err.response?.data?.message || '登录失败，请检查用户名和密码'
+    const msg = err.response?.data?.error || err.response?.data?.message || '登录失败，请检查用户名和密码'
+    error.value = msg
+    parseLockout(msg)
   } finally {
     loading.value = false
   }
@@ -326,7 +371,7 @@ async function handleLogin() {
 
 .login-error {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: var(--space-2);
   padding: var(--space-3);
   background: rgba(245, 108, 108, 0.1);
@@ -334,6 +379,17 @@ async function handleLogin() {
   border-radius: var(--radius-md);
   color: var(--danger);
   font-size: 14px;
+}
+
+.error-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.countdown {
+  font-weight: 600;
+  color: var(--warning);
 }
 
 .login-btn {

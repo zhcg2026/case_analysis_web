@@ -445,7 +445,8 @@ def register_flood_monitor_routes(
             alerts = fetch_weather_alerts()
             return jsonify({'alerts': alerts}), 200
         except Exception as e:
-            return jsonify({'error': str(e)}), 500
+            print(f'获取气象预警异常: {e}')
+            return jsonify({'alerts': [], 'error': str(e)}), 200
 
     @app.route('/api/flood/weather/record', methods=['POST'])
     @protected
