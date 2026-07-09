@@ -201,7 +201,21 @@
 
           <div class="form-group">
             <label class="form-label">文章内容 *</label>
-            <textarea v-model="articleForm.content" class="form-textarea content-editor" rows="12" placeholder="请输入文章内容，图片将显示为 ![图片](图片链接)"></textarea>
+            <div class="editor-container">
+              <Toolbar
+                :editor="editorRef"
+                :defaultConfig="toolbarConfig"
+                :mode="mode"
+                style="border-bottom: 1px solid #ccc"
+              />
+              <Editor
+                v-model="articleForm.content"
+                :defaultConfig="editorConfig"
+                :mode="mode"
+                @onCreated="handleEditorCreated"
+                style="height: 320px; overflow-y: hidden"
+              />
+            </div>
           </div>
 
           <!-- 附件上传区域 -->
@@ -1233,8 +1247,10 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch, shallowRef } from 'vue'
 import axios from 'axios'
+import { Editor, Toolbar } from '@wangeditor/editor-for-vue'
+import '@wangeditor/editor/dist/css/style.css'
 
 const tabs = [
   { key: 'users', label: '用户管理' },
@@ -1376,6 +1392,33 @@ const articleForm = ref({
   content: '',
   file_path: ''
 })
+
+// wangEditor配置
+const editorRef = shallowRef(null)
+const mode = ref('default')
+const toolbarConfig = {}
+const editorConfig = {
+  placeholder: '请输入文章内容...',
+  MENU_CONF: {
+    uploadImage: {
+      server: '/api/upload/image',
+      fieldName: 'file',
+      maxFileSize: 10 * 1024 * 1024,
+      allowedFileTypes: ['image/*'],
+      meta: {},
+      onBeforeUpload: (file) => {
+        return file
+      },
+      customInsert: (res, insertFn) => {
+        insertFn(res.location, '', '')
+      }
+    }
+  }
+}
+
+function handleEditorCreated(editor) {
+  editorRef.value = editor
+}
 
 // 方法
 function formatDate(dateStr) {
@@ -2271,6 +2314,11 @@ async function openArticleEditor(article = null) {
 function closeArticleEditor() {
   showArticleEditor.value = false
   editingArticle.value = null
+  // 销毁编辑器实例
+  if (editorRef.value) {
+    editorRef.value.destroy()
+    editorRef.value = null
+  }
 }
 
 async function handleImageUpload(e) {
@@ -2284,7 +2332,15 @@ async function handleImageUpload(e) {
       headers: { 'Content-Type': 'multipart/form-data' }
     })
     const imageUrl = response.data.location
-    articleForm.value.content += `\n![${file.name}](${imageUrl})\n`
+    // 插入到编辑器
+    if (editorRef.value) {
+      editorRef.value.insertNode({
+        type: 'image',
+        src: imageUrl,
+        alt: file.name,
+        style: { width: '100%' }
+      })
+    }
   } catch (error) {
     console.error('上传图片失败:', error)
     alert('上传图片失败')
@@ -3052,8 +3108,7 @@ watch(articlesCurrentPage, fetchArticles)
 }
 
 .content-editor {
-  font-family: var(--font-mono);
-  line-height: 1.6;
+  min-height: 400px;
 }
 
 .settings-form {
@@ -3574,13 +3629,18 @@ watch(articlesCurrentPage, fetchArticles)
 .pagination-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 .page-info { color: var(--text-secondary); font-size: 14px; }
 
-.article-editor { max-width: 800px; }
+.article-editor { max-width: 900px; }
 .category-manager { max-width: 500px; }
 .category-editor { max-width: 400px; }
 
+.editor-container {
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  z-index: 100;
+}
+
 .content-editor {
-  font-family: var(--font-mono);
-  line-height: 1.6;
+  min-height: 400px;
 }
 
 .add-category {

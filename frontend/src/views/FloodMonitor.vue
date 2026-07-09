@@ -37,10 +37,50 @@
       </div>
     </header>
 
-    <!-- 主内容区 -->
-    <main class="flood-main">
-      <!-- 左侧面板 -->
-      <aside class="flood-panel left-panel">
+    <!-- 全屏地图背景 -->
+    <div class="map-fullscreen">
+      <div id="flood-map" class="map-element"></div>
+      <!-- 地图工具栏 -->
+      <div class="map-toolbar" :style="mapToolbarStyle">
+        <button class="toolbar-btn" @click="zoomIn" title="放大">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+        </button>
+        <button class="toolbar-btn" @click="zoomOut" title="缩小">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+        </button>
+        <button class="toolbar-btn" :class="{ active: mapMode === 'add' }" @click="mapMode = 'add'" title="添加积水点">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        </button>
+        <button class="toolbar-btn" :class="{ active: showTrafficLayer }" @click="toggleTrafficLayer" title="交通状况">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+        </button>
+      </div>
+      <!-- 积水点统计 -->
+      <div class="map-stats" :style="mapStatsStyle">
+        <div class="stat-item">
+          <span class="stat-num">{{ waterPoints.length }}</span>
+          <span class="stat-text">积水点</span>
+        </div>
+        <div class="stat-item warning" v-if="severeCount > 0">
+          <span class="stat-num">{{ severeCount }}</span>
+          <span class="stat-text">严重</span>
+        </div>
+        <div class="stat-item danger" v-if="deepCount > 0">
+          <span class="stat-num">{{ deepCount }}</span>
+          <span class="stat-text">较深</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 左侧展开/收起按钮 -->
+    <button class="panel-toggle-btn left-toggle" :class="{ collapsed: leftPanelCollapsed }" @click="leftPanelCollapsed = !leftPanelCollapsed" :title="leftPanelCollapsed ? '展开' : '收起'">
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polyline :points="leftPanelCollapsed ? '9 18 15 12 9 6' : '15 18 9 12 15 6'"/>
+      </svg>
+    </button>
+
+    <!-- 左侧悬浮面板 -->
+    <aside class="floating-panel left-panel" :class="{ collapsed: leftPanelCollapsed }">
         <!-- 预警控制 -->
         <div class="panel-section warning-section">
           <button v-if="!activeWarning" class="warning-start-btn" @click="openWarningStart">
@@ -124,89 +164,52 @@
             <h3 class="panel-title">卫星云图</h3>
           </div>
           <div class="satellite-container">
-            <div class="satellite-image-wrapper" @click="satelliteReady ? showSatelliteModal = true : loadSatellite()">
-              <iframe v-if="satelliteReady" src="https://embed.windy.com/embed2.html?lat=35.06&lon=110.98&zoom=5&level=surface&overlay=wind&product=ecmwf&menu=&message=&marker=&calendar=&pressure=&type=map&location=coordinates&detail=&metricWind=m%2Fs&metricTemp=%C2%B0C&radarRange=-1" class="satellite-iframe" frameborder="0" loading="lazy"></iframe>
-              <div v-else class="satellite-placeholder">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-bottom:8px;opacity:0.5">
-                  <circle cx="12" cy="12" r="10"/>
-                  <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/>
-                  <path d="M2 12h20"/>
-                </svg>
-                <span>点击加载云图</span>
+            <iframe v-if="satelliteReady" src="https://embed.windy.com/embed2.html?lat=35.06&lon=110.98&zoom=5&level=surface&overlay=wind&product=ecmwf&menu=&message=&marker=&calendar=&pressure=&type=map&location=coordinates&detail=&metricWind=m%2Fs&metricTemp=%C2%B0C&radarRange=-1" class="satellite-iframe" frameborder="0" loading="lazy"></iframe>
+            <div v-else class="satellite-placeholder" @click="loadSatellite()">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-bottom:8px;opacity:0.5">
+                <circle cx="12" cy="12" r="10"/>
+                <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/>
+                <path d="M2 12h20"/>
+              </svg>
+              <span>点击加载云图</span>
+            </div>
+            <div class="satellite-click-overlay" v-if="satelliteReady" @click="showSatelliteModal = true"></div>
+          </div>
+        </div>
+
+        <!-- 气象预警 -->
+        <div class="panel-section" v-if="weatherAlerts.length > 0">
+          <div class="panel-header">
+            <svg class="panel-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+              <line x1="12" y1="9" x2="12" y2="13"/>
+              <line x1="12" y1="17" x2="12.01" y2="17"/>
+            </svg>
+            <h3 class="panel-title">气象预警</h3>
+          </div>
+          <div class="alert-list">
+            <div v-for="alert in weatherAlerts" :key="alert.id" class="alert-item" :class="'alert-' + alert.level">
+              <div class="alert-header">
+                <span class="alert-level">{{ alert.level }}预警</span>
+                <span class="alert-type">{{ alert.type }}</span>
               </div>
-              <div class="satellite-overlay" v-if="!satelliteReady">
-                <span class="satellite-hint">点击加载</span>
-              </div>
-              <div class="satellite-overlay" v-else>
-                <span class="satellite-hint">点击放大</span>
-              </div>
+              <div class="alert-title">{{ alert.title }}</div>
+              <div class="alert-time">{{ alert.startTime }} 至 {{ alert.endTime }}</div>
+              <div class="alert-sender">{{ alert.sender }}</div>
             </div>
           </div>
         </div>
       </aside>
 
-      <!-- 中间地图区域 -->
-      <div class="flood-center">
-        <div class="map-container">
-          <div id="flood-map" class="map-element"></div>
-          <!-- 地图工具栏 -->
-          <div class="map-toolbar">
-            <button class="toolbar-btn" @click="zoomIn" title="放大">
-              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
-            </button>
-            <button class="toolbar-btn" @click="zoomOut" title="缩小">
-              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
-            </button>
-            <button class="toolbar-btn" :class="{ active: mapMode === 'add' }" @click="mapMode = 'add'" title="添加积水点">
-              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            </button>
-          </div>
-          <!-- 积水点统计 -->
-          <div class="map-stats">
-            <div class="stat-item">
-              <span class="stat-num">{{ waterPoints.length }}</span>
-              <span class="stat-text">积水点</span>
-            </div>
-            <div class="stat-item warning" v-if="severeCount > 0">
-              <span class="stat-num">{{ severeCount }}</span>
-              <span class="stat-text">严重</span>
-            </div>
-            <div class="stat-item danger" v-if="deepCount > 0">
-              <span class="stat-num">{{ deepCount }}</span>
-              <span class="stat-text">较深</span>
-            </div>
-          </div>
-        </div>
-        <!-- 滚动数据条 -->
-        <div class="scroll-data">
-          <div class="scroll-label">
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg>
-            <span>实时动态</span>
-          </div>
-          <div class="scroll-content">
-            <div v-if="recentDispatchRecords.length" class="scroll-inner">
-              <template v-for="(item, i) in recentDispatchRecords" :key="'a'+i">
-                <div class="scroll-ticker">
-                  <span class="ticker-time">{{ formatTime(item.eventTime) }}</span>
-                  <span class="ticker-type">[{{ item.recordType }}]</span>
-                  <span class="ticker-title">{{ item.title }}</span>
-                </div>
-              </template>
-              <template v-for="(item, i) in recentDispatchRecords" :key="'b'+i">
-                <div class="scroll-ticker">
-                  <span class="ticker-time">{{ formatTime(item.eventTime) }}</span>
-                  <span class="ticker-type">[{{ item.recordType }}]</span>
-                  <span class="ticker-title">{{ item.title }}</span>
-                </div>
-              </template>
-            </div>
-            <div v-else class="scroll-empty">暂无调度动态</div>
-          </div>
-        </div>
-      </div>
+      <!-- 右侧展开/收起按钮 -->
+      <button class="panel-toggle-btn right-toggle" :class="{ collapsed: rightPanelCollapsed }" @click="rightPanelCollapsed = !rightPanelCollapsed" :title="rightPanelCollapsed ? '展开' : '收起'">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline :points="rightPanelCollapsed ? '15 18 9 12 15 6' : '9 18 15 12 9 6'"/>
+        </svg>
+      </button>
 
       <!-- 右侧面板 -->
-      <aside class="flood-panel right-panel">
+      <aside class="floating-panel right-panel" :class="{ collapsed: rightPanelCollapsed }">
         <!-- 带班领导 -->
         <div class="panel-section leader-section">
           <div class="panel-header">
@@ -325,7 +328,33 @@
           </button>
         </div>
       </aside>
-    </main>
+
+      <!-- 滚动数据条 -->
+      <div class="scroll-data floating-scroll">
+        <div class="scroll-label">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg>
+          <span>实时动态</span>
+        </div>
+        <div class="scroll-content">
+          <div v-if="recentDispatchRecords.length" class="scroll-inner">
+            <template v-for="(item, i) in recentDispatchRecords" :key="'a'+i">
+              <div class="scroll-ticker">
+                <span class="ticker-time">{{ formatTime(item.eventTime) }}</span>
+                <span class="ticker-type">[{{ item.recordType }}]</span>
+                <span class="ticker-title">{{ item.title }}</span>
+              </div>
+            </template>
+            <template v-for="(item, i) in recentDispatchRecords" :key="'b'+i">
+              <div class="scroll-ticker">
+                <span class="ticker-time">{{ formatTime(item.eventTime) }}</span>
+                <span class="ticker-type">[{{ item.recordType }}]</span>
+                <span class="ticker-title">{{ item.title }}</span>
+              </div>
+            </template>
+          </div>
+          <div v-else class="scroll-empty">暂无调度动态</div>
+        </div>
+      </div>
 
     <!-- 侧边抽屉 - 应急预案 -->
     <transition name="drawer">
@@ -1069,6 +1098,7 @@ import * as echarts from 'echarts'
 // ======== 状态 ========
 const currentTime = ref('')
 const weather = ref(null)
+const weatherAlerts = ref([])
 const hourlyForecast = ref([])
 const activeRainEvent = ref(null)
 const recentRainEvents = ref([])
@@ -1119,8 +1149,43 @@ const addedDuty = ref([])
 const satelliteReady = ref(false)
 const showSatelliteModal = ref(false)
 
+// 交通状况图层
+const showTrafficLayer = ref(false)
+let trafficLayer = null
+
+// 面板收起/展开状态
+const leftPanelCollapsed = ref(false)
+const rightPanelCollapsed = ref(false)
+
+// 计算地图控件位置
+const mapToolbarStyle = computed(() => ({
+  left: leftPanelCollapsed.value ? '12px' : '312px'
+}))
+
+const mapStatsStyle = computed(() => ({
+  right: rightPanelCollapsed.value ? '12px' : '312px'
+}))
+
 function loadSatellite() {
   satelliteReady.value = true
+}
+
+function toggleTrafficLayer() {
+  if (!mapInstance) return
+  showTrafficLayer.value = !showTrafficLayer.value
+  if (showTrafficLayer.value) {
+    if (!trafficLayer) {
+      trafficLayer = new window.AMap.TileLayer.Traffic({
+        zooms: [3, 18],
+        zIndex: 10
+      })
+    }
+    mapInstance.add(trafficLayer)
+  } else {
+    if (trafficLayer) {
+      mapInstance.remove(trafficLayer)
+    }
+  }
 }
 
 // 人员管理状态
@@ -1210,12 +1275,14 @@ async function refreshSatellite() {
 // ======== API 调用 ========
 async function fetchWeather() {
   try {
-    const [realtimeRes, hourlyRes] = await Promise.all([
+    const [realtimeRes, hourlyRes, alertsRes] = await Promise.all([
       axios.get('/api/flood/weather/realtime'),
-      axios.get('/api/flood/weather/hourly')
+      axios.get('/api/flood/weather/hourly'),
+      axios.get('/api/flood/weather/alerts')
     ])
     weather.value = realtimeRes.data.weather
     hourlyForecast.value = hourlyRes.data.hourly || []
+    weatherAlerts.value = alertsRes.data.alerts || []
     await nextTick()
     renderHourlyChart()
   } catch (e) {
@@ -2391,14 +2458,119 @@ onUnmounted(() => {
 /* 主内容区 */
 .flood-main {
   flex: 1;
-  display: flex;
-  gap: 12px;
-  padding: 12px;
+  position: relative;
   min-width: 0;
   overflow: hidden;
 }
 
-/* 面板 */
+/* 全屏地图 */
+.map-fullscreen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1;
+}
+
+.map-fullscreen .map-element {
+  width: 100%;
+  height: 100%;
+}
+
+/* 悬浮面板 */
+.floating-panel {
+  position: fixed;
+  top: 60px;
+  bottom: 56px;
+  width: 300px;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+  overflow-x: visible;
+  padding: 12px;
+  transition: transform 0.3s ease;
+}
+.floating-panel::-webkit-scrollbar { width: 4px; }
+.floating-panel::-webkit-scrollbar-track { background: transparent; }
+.floating-panel::-webkit-scrollbar-thumb { background: rgba(64, 158, 255, 0.2); border-radius: 2px; }
+
+.left-panel {
+  left: 0;
+}
+.left-panel.collapsed {
+  transform: translateX(-300px);
+}
+
+.right-panel {
+  right: 0;
+}
+.right-panel.collapsed {
+  transform: translateX(300px);
+}
+
+/* 面板收起/展开按钮 - 独立固定元素 */
+.panel-toggle-btn {
+  position: fixed;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 28px;
+  height: 56px;
+  background: rgba(13, 31, 60, 0.9);
+  border: 1px solid rgba(64, 158, 255, 0.4);
+  color: rgba(255, 255, 255, 0.8);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease;
+  z-index: 150;
+}
+.panel-toggle-btn:hover {
+  background: rgba(64, 158, 255, 0.4);
+  color: #fff;
+}
+
+/* 左侧按钮 */
+.left-toggle {
+  left: 0;
+  border-radius: 0 8px 8px 0;
+  border-left: none;
+}
+.left-toggle.collapsed {
+  left: 0;
+}
+.floating-panel.left-panel:not(.collapsed) ~ .left-toggle,
+.left-toggle:not(.collapsed) {
+  left: 288px;
+}
+
+/* 右侧按钮 */
+.right-toggle {
+  right: 0;
+  border-radius: 8px 0 0 8px;
+  border-right: none;
+}
+.right-toggle.collapsed {
+  right: 0;
+}
+.floating-panel.right-panel:not(.collapsed) ~ .right-toggle,
+.right-toggle:not(.collapsed) {
+  right: 288px;
+}
+
+/* 浮动滚动数据条 */
+.floating-scroll {
+  position: fixed;
+  bottom: 12px;
+  left: 312px;
+  right: 312px;
+  z-index: 10;
+}
+
+/* 面板样式（继承原样式） */
 .flood-panel {
   width: 300px;
   min-width: 300px;
@@ -2485,42 +2657,36 @@ onUnmounted(() => {
 .satellite-container {
   position: relative;
   width: 100%;
-  height: 160px;
+  height: 180px;
   border-radius: 8px;
   overflow: hidden;
   background: rgba(0,0,0,0.3);
-}
-.satellite-image-wrapper {
-  position: relative;
-  width: 100%;
-  height: 100%;
   cursor: pointer;
+}
+@media (max-width: 1200px) {
+  .satellite-container {
+    height: 150px;
+  }
+}
+@media (max-width: 900px) {
+  .satellite-container {
+    height: 120px;
+  }
 }
 .satellite-iframe {
   width: 100%;
   height: 100%;
   border: none;
+  display: block;
 }
-.satellite-overlay {
+.satellite-click-overlay {
   position: absolute;
-  inset: 0;
-  background: rgba(0,0,0,0.3);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  opacity: 0;
-  transition: opacity 0.2s;
-}
-.satellite-image-wrapper:hover .satellite-overlay {
-  opacity: 1;
-}
-.satellite-hint {
-  padding: 8px 16px;
-  background: rgba(64,158,255,0.9);
-  color: #fff;
-  border-radius: 6px;
-  font-size: 13px;
-  font-weight: 500;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  cursor: pointer;
+  z-index: 1;
 }
 .satellite-placeholder {
   width: 100%;
@@ -2531,11 +2697,16 @@ onUnmounted(() => {
   justify-content: center;
   color: rgba(255,255,255,0.4);
   font-size: 12px;
+  transition: all 0.2s;
+}
+.satellite-placeholder:hover {
+  color: rgba(255,255,255,0.7);
+  background: rgba(64,158,255,0.1);
 }
 .satellite-modal {
-  width: 90vw;
-  max-width: 1200px;
-  height: 85vh;
+  width: 95vw;
+  max-width: 1400px;
+  height: 90vh;
 }
 .satellite-modal-body {
   padding: 0;
@@ -2552,6 +2723,58 @@ onUnmounted(() => {
 .satellite-source {
   font-size: 12px;
   color: rgba(255,255,255,0.5);
+}
+
+/* 气象预警 */
+.alert-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+.alert-item {
+  padding: 10px;
+  border-radius: 8px;
+  border-left: 4px solid;
+}
+.alert-red { background: rgba(245,73,73,0.15); border-color: #f54949; }
+.alert-orange { background: rgba(255,152,0,0.15); border-color: #ff9800; }
+.alert-yellow { background: rgba(255,235,59,0.15); border-color: #ffeb3b; }
+.alert-blue { background: rgba(33,150,243,0.15); border-color: #2196f3; }
+.alert-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+.alert-level {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+.alert-red .alert-level { background: #f54949; color: #fff; }
+.alert-orange .alert-level { background: #ff9800; color: #fff; }
+.alert-yellow .alert-level { background: #ffeb3b; color: #333; }
+.alert-blue .alert-level { background: #2196f3; color: #fff; }
+.alert-type {
+  font-size: 12px;
+  color: rgba(255,255,255,0.6);
+}
+.alert-title {
+  font-size: 13px;
+  color: #fff;
+  margin-bottom: 4px;
+  line-height: 1.4;
+}
+.alert-time {
+  font-size: 11px;
+  color: rgba(255,255,255,0.5);
+}
+.alert-sender {
+  font-size: 11px;
+  color: rgba(255,255,255,0.4);
 }
 
 /* 降雨状态 */
@@ -2573,13 +2796,13 @@ onUnmounted(() => {
 }
 .map-element { width: 100%; height: 100%; }
 .map-toolbar {
-  position: absolute;
-  top: 12px;
+  position: fixed;
+  top: 72px;
   left: 12px;
   display: flex;
   flex-direction: column;
   gap: 6px;
-  z-index: 5;
+  z-index: 50;
 }
 .toolbar-btn {
   width: 36px;
@@ -2600,12 +2823,12 @@ onUnmounted(() => {
   border-color: #409eff;
 }
 .map-stats {
-  position: absolute;
-  top: 12px;
+  position: fixed;
+  top: 72px;
   right: 12px;
   display: flex;
   gap: 8px;
-  z-index: 5;
+  z-index: 50;
 }
 .stat-item {
   padding: 6px 12px;
@@ -2678,8 +2901,8 @@ onUnmounted(() => {
 /* 值班人员 */
 /* 带班领导 */
 .leader-section {
-  border-color: rgba(230, 162, 60, 0.25) !important;
-  background: rgba(230, 162, 60, 0.05);
+  background: rgba(13, 31, 60, 0.6);
+  border: 1px solid rgba(64, 158, 255, 0.12);
 }
 .leader-section .panel-header {
   position: relative;

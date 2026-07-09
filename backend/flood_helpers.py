@@ -3,6 +3,14 @@ import time
 import datetime
 import requests
 import json
+from dotenv import load_dotenv
+
+# 加载环境变量
+if os.path.exists('.env.local'):
+    load_dotenv('.env.local')
+elif os.path.exists('../.env.local'):
+    load_dotenv('../.env.local')
+load_dotenv()
 
 QWEATHER_API_KEY = os.getenv('QWEATHER_API_KEY', '')
 QWEATHER_API_HOST = os.getenv('QWEATHER_API_HOST', 'n77h2twnn4.re.qweatherapi.com')
@@ -13,8 +21,10 @@ YUNCHENG_LOCATION = '110.976935,35.06161'
 _weather_cache = {'data': None, 'timestamp': 0}
 _hourly_cache = {'data': None, 'timestamp': 0}
 _satellite_cache = {'data': None, 'timestamp': 0}
+_alert_cache = {'data': None, 'timestamp': 0}
 CACHE_TTL = 300  # 5分钟缓存
 SATELLITE_CACHE_TTL = 600  # 10分钟缓存（卫星云图更新频率较低）
+ALERT_CACHE_TTL = 300  # 5分钟缓存（预警数据）
 
 
 def fetch_realtime_weather():
@@ -60,6 +70,50 @@ def fetch_hourly_forecast():
             return hourly
     except Exception as e:
         print(f'获取逐小时预报失败: {e}')
+    return []
+
+
+def fetch_weather_alerts():
+    """获取气象预警信息（和风天气 天气预警API v1）
+    API路径: GET /weatheralert/v1/current/{latitude}/{longitude}
+    文档: https://dev.qweather.com/docs/api/weather-alert/
+    """
+    now = time.time()
+    if _alert_cache['data'] and (now - _alert_cache['timestamp']) < ALERT_CACHE_TTL:
+        return _alert_cache['data']
+
+    try:
+        # 运城坐标: 纬度35.06, 经度110.98
+        lat, lon = YUNCHENG_LOCATION.split(',')
+        # 使用天气预警API v1
+        alert_url = f'https://{QWEATHER_API_HOST}/weatheralert/v1/current/{lat}/{lon}'
+        params = {
+            'key': QWEATHER_API_KEY,
+            'lang': 'zh',
+            'localTime': 'true'
+        }
+        resp = requests.get(alert_url, params=params, timeout=10)
+        data = resp.json()
+        if data.get('code') == '200':
+            alerts = data.get('alert', [])
+            result = []
+            for alert in alerts:
+                result.append({
+                    'id': alert.get('id', ''),
+                    'sender': alert.get('sender', ''),
+                    'title': alert.get('title', ''),
+                    'startTime': alert.get('startTime', ''),
+                    'endTime': alert.get('endTime', ''),
+                    'status': alert.get('status', ''),
+                    'level': alert.get('level', ''),
+                    'type': alert.get('type', ''),
+                    'text': alert.get('text', ''),
+                })
+            _alert_cache['data'] = result
+            _alert_cache['timestamp'] = now
+            return result
+    except Exception as e:
+        print(f'获取气象预警失败: {e}')
     return []
 
 

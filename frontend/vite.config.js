@@ -27,5 +27,14 @@ export default defineConfig({
         rewrite: (path) => path
       }
     }
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          tinymce: ['tinymce']
+        }
+      }
+    }
   }
 })

@@ -11,6 +11,8 @@
   "dependencies": {
     "@cloudbase/js-sdk": "^2.25.4",
     "@tinymce/tinymce-vue": "^6.3.0",
+    "@wangeditor/editor": "^5.1.23",
+    "@wangeditor/editor-for-vue": "^5.1.12",
     "axios": "^1.13.5",
     "echarts": "^6.0.0",
     "element-plus": "^2.9.0",

@@ -436,6 +436,17 @@ def register_flood_monitor_routes(
         except Exception as e:
             return jsonify({'error': str(e)}), 500
 
+    @app.route('/api/flood/weather/alerts', methods=['GET'])
+    @protected
+    def flood_weather_alerts():
+        """获取气象预警信息"""
+        try:
+            from backend.flood_helpers import fetch_weather_alerts
+            alerts = fetch_weather_alerts()
+            return jsonify({'alerts': alerts}), 200
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+
     @app.route('/api/flood/weather/record', methods=['POST'])
     @protected
     def flood_weather_record():

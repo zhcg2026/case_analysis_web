@@ -125,7 +125,12 @@ const formattedContent = computed(() => {
 
   let content = article.value.content
 
-  // 处理markdown风格的图片: ![alt](url)
+  // 如果内容已经是HTML格式（包含HTML标签），直接返回
+  if (/<[a-z][\s\S]*>/i.test(content)) {
+    return content
+  }
+
+  // 兼容旧数据：处理markdown风格的图片: ![alt](url)
   content = content.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" style="max-width:100%;border-radius:8px;margin:16px 0;" />')
 
   // 简单的换行处理

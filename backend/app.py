@@ -6426,17 +6426,23 @@ def knowledge_search():
 @app.route('/api/knowledge/ask', methods=['POST'])
 @protected
 def knowledge_ask():
-    """RAG问答"""
+    """RAG问答 - 同时搜索通用知识库和立结案标准库"""
     try:
         data = request.get_json()
         question = data.get('question', '')
-        # 强制使用足够大的top_k，确保标题匹配策略能生效
-        top_k = 8
+        top_k = data.get('top_k', 5)
 
         if not question:
             return jsonify({'error': '请提供问题'}), 400
 
-        result = ask_question(question, top_k)
+        # 使用统一问答入口，同时搜索两个库
+        try:
+            from backend.kb_unified import unified_ask
+            result = unified_ask(question, top_k=top_k)
+        except ImportError:
+            from kb_unified import unified_ask
+            result = unified_ask(question, top_k=top_k)
+
         return jsonify(result), 200
 
     except Exception as e:
