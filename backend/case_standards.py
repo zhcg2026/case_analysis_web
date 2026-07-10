@@ -1241,6 +1241,13 @@ def extract_entities_and_terms(query: str) -> Dict[str, Any]:
     for block in re.findall(r'[\u4e00-\u9fa5]{2,12}', cleaned_query):
         if block and block not in NOISE_WORDS:
             core_terms.add(block)
+            # 将长核心词拆分为2-4字的子片段，提升匹配灵活性
+            if len(block) > 4:
+                for seg_len in [4, 3, 2]:
+                    for i in range(0, len(block) - seg_len + 1):
+                        seg = block[i:i+seg_len]
+                        if seg and seg not in NOISE_WORDS:
+                            core_terms.add(seg)
 
     for block in chinese_blocks:
         text = block.strip()
@@ -1619,7 +1626,7 @@ def search_case_standards_chroma(query: str, top_k: int = 5) -> List[Dict]:
 
 
 def search_case_standards_milvus(query: str, top_k: int = 5) -> List[Dict]:
-    """搜索立结案标准（Milvus 服务器模式），带关键词兜底"""
+    """搜索立结案标准（Milvus 服务器模式），混合搜索+加权重排"""
     try:
         from pymilvus import Collection, utility
 
@@ -1632,16 +1639,25 @@ def search_case_standards_milvus(query: str, top_k: int = 5) -> List[Dict]:
         collection = Collection(CASE_STANDARDS_COLLECTION)
         collection.load()
 
-        query_embedding = get_embedding(query)
+        # 构建查询画像（复用ChromaDB模式的查询改写）
+        query_profile = build_query_profile(query)
+        rewritten_query = query_profile["rewritten_query"]
+        core_terms = query_profile.get("core_terms", [])
+        terms = query_profile.get("terms", [])
+
+        # 用改写后的查询做embedding（包含扩展实体，提升语义匹配）
+        query_embedding = get_embedding(rewritten_query)
         if not query_embedding:
             return []
 
+        # 1. 向量搜索：扩大候选集（top_k * 8，至少20个）
+        search_limit = max(top_k * 8, 20)
         search_params = {"metric_type": "COSINE", "params": {"nprobe": 16}}
         results = collection.search(
             data=[query_embedding],
             anns_field="embedding",
             param=search_params,
-            limit=top_k,
+            limit=search_limit,
             expr="level == 0",
             output_fields=["id", "parent_id", "text_content", "case_type", "meta_info"]
         )
@@ -1659,12 +1675,12 @@ def search_case_standards_milvus(query: str, top_k: int = 5) -> List[Dict]:
                     "child_text": hit.entity.get("text_content"),
                     "case_type": hit.entity.get("case_type"),
                     "meta_info": hit.entity.get("meta_info"),
-                    "score": hit.distance
+                    "score": hit.distance,
+                    "vector_score": hit.distance
                 })
 
-        # 同义词映射：将问题中的常见表述映射到标准case_type关键词
+        # 2. 同义词映射：补充关键词召回
         synonym_map = {
-            # 垃圾/脏污类
             '粪便': ['道路不洁', '暴露生活垃圾', '积存垃圾'],
             '碎玻璃': ['道路不洁', '积存垃圾'],
             '玻璃': ['道路不洁', '积存垃圾'],
@@ -1674,18 +1690,15 @@ def search_case_standards_milvus(query: str, top_k: int = 5) -> List[Dict]:
             '动物尸体': ['动物尸体'],
             '死': ['动物尸体'],
             '尸体': ['动物尸体'],
-            # 噪音类
             '噪音': ['施工扰民', '商业噪音'],
             '扰民': ['施工扰民', '商业噪音'],
             '夜间施工': ['施工扰民'],
             '施工噪音': ['施工扰民'],
-            # 护栏/交通类
             '护栏': ['交通护栏', '交通设施'],
             '开口': ['交通护栏', '违章开设道口'],
             '红绿灯': ['交通信号灯'],
             '信号灯': ['交通信号灯'],
             '公交站': ['公交站亭', '公交站牌'],
-            # 天然气/燃气类
             '天然气': ['供气管理', '燃气'],
             '燃气': ['供气管理', '燃气管道', '燃气调压', '燃气井盖'],
             '停气': ['供气管理'],
@@ -1693,20 +1706,17 @@ def search_case_standards_milvus(query: str, top_k: int = 5) -> List[Dict]:
             '气费': ['供气管理'],
             '暖气': ['供热管理'],
             '供暖': ['供热管理'],
-            # 共享单车类
             '共享单车': ['共享单车管理'],
             '共享电动车': ['共享单车管理'],
             '共享电瓶车': ['共享单车管理'],
             '单车': ['共享单车管理'],
             '乱停放': ['共享单车管理', '占道经营'],
             '停放': ['共享单车管理', '停车管理'],
-            # 道路问题类
             '坑洼': ['道路破损', '路面塌陷', '路面不平'],
             '不平': ['道路破损', '路面塌陷'],
             '破损': ['道路破损', '园路破损'],
             '道路': ['道路破损', '道路不洁'],
             '路面': ['道路破损', '道路不洁'],
-            # 绿化设施类
             '水管': ['绿地附属设施', '供水管道破裂'],
             '管道': ['绿地附属设施', '供水管道破裂', '排水管道堵塞'],
             '破裂': ['绿地附属设施', '供水管道破裂', '道路破损'],
@@ -1718,48 +1728,39 @@ def search_case_standards_milvus(query: str, top_k: int = 5) -> List[Dict]:
             '树': ['行道树', '护树设施', '古树名木'],
             '修剪': ['行道树', '护树设施'],
             '喷泉': ['喷泉'],
-            # 井盖类
             '井盖': ['上水井盖', '污水井盖', '雨水井盖', '路灯井盖', '燃气井盖', '热力井盖', '园林井盖', '化粪池井盖', '不明井盖'],
             '下水道': ['污水井盖', '排水管道堵塞'],
             '下水': ['污水井盖', '排水管道堵塞'],
             '排水': ['污水井盖', '排水管道堵塞', '雨水井盖'],
             '积水': ['排水管道堵塞', '道路积水'],
             '外溢': ['污水井盖', '排水管道堵塞', '雨水井盖'],
-            # 垃圾设施类
             '垃圾桶': ['垃圾箱', '垃圾满溢'],
             '果皮箱': ['垃圾箱', '垃圾满溢'],
-            # 照明类
             '路灯': ['路灯', '景观灯', '地灯'],
             '灯': ['路灯', '景观灯', '地灯'],
-            # 施工类
             '工地': ['施工扰民', '施工工地出入口道路破损', '施工工地围挡', '施工占道'],
             '施工': ['施工扰民', '施工占道'],
-            # 广告/招牌类
             '广告': ['户外广告', '违规户外广告', '违规牌匾标识'],
             '招牌': ['违规牌匾标识'],
             '小广告': ['非法小广告'],
-            # 城市管理类
             '占道': ['占道经营', '占道促销宣传'],
             '流动摊贩': ['无照经营游商'],
             '游商': ['无照经营游商'],
-            # 投诉/工资类
             '拖欠': ['投诉', '投诉拖欠农民工工资'],
             '工资': ['投诉', '投诉拖欠农民工工资'],
             '评审费': ['投诉', '投诉拖欠农民工工资'],
             '欠薪': ['投诉', '投诉拖欠农民工工资'],
             '农民工': ['投诉', '投诉拖欠农民工工资'],
-            # 水管/管道类
             '供水': ['供水管道破裂', '供水管理'],
             '污水': ['排水管道堵塞', '污水井盖'],
             '雨水': ['雨水井盖', '排水管道堵塞'],
-            # 病虫害类
             '害虫': ['病虫害'],
             '虫子': ['病虫害'],
             '虫害': ['病虫害'],
             '喷洒': ['病虫害'],
         }
 
-        # 关键词兜底：如果搜索结果中没有case_type精确包含问题核心词的，补充匹配的记录
+        # 关键词兜底：提取查询中的中文片段
         query_keywords = []
         for length in [4, 3, 2]:
             for i in range(len(query) - length + 1):
@@ -1767,125 +1768,117 @@ def search_case_standards_milvus(query: str, top_k: int = 5) -> List[Dict]:
                 if all('\u4e00' <= c <= '\u9fa5' for c in segment) and segment not in query_keywords:
                     query_keywords.append(segment)
         existing_types = set(cr.get('case_type', '') for cr in child_results)
-        has_keyword_match = any(kw in ct for ct in existing_types for kw in query_keywords if len(kw) >= 3)
 
-        # 额外检查：对于同义词映射中的关键词，也检查是否在搜索结果中
-        if not has_keyword_match:
-            for kw in query_keywords:
-                if kw in synonym_map:
-                    for synonym in synonym_map[kw]:
-                        if any(synonym in ct for ct in existing_types):
-                            has_keyword_match = True
-                            break
-                if has_keyword_match:
-                    break
-
+        # 用同义词映射搜索补充
         if query_keywords:
-            # 先用完整查询搜case_type
-            try:
-                extra = collection.query(
-                    expr=f'level == 1 and case_type like "%{query}%"',
-                    output_fields=["parent_id", "text_content", "case_type", "meta_info"],
-                    limit=3
-                )
-                for er in extra:
-                    ct = er.get('case_type', '')
-                    if ct not in existing_types:
-                        existing_types.add(ct)
-                        child_results.append({
-                            "child_id": er.get('parent_id'),
-                            "parent_id": er.get('parent_id'),
-                            "child_text": er.get('text_content', ''),
-                            "case_type": ct,
-                            "meta_info": er.get('meta_info'),
-                            "score": 0.5
-                        })
-                        parent_ids.add(er.get('parent_id'))
-            except Exception:
-                pass
-
-            # 使用同义词映射搜索
             for kw in query_keywords:
                 if len(kw) < 2:
                     continue
-                if kw in synonym_map:
-                    for synonym in synonym_map[kw]:
-                        try:
-                            extra = collection.query(
-                                expr=f'level == 1 and case_type like "%{synonym}%"',
-                                output_fields=["parent_id", "text_content", "case_type", "meta_info"],
-                                limit=5
-                            )
-                            for er in extra:
-                                ct = er.get('case_type', '')
-                                if ct not in existing_types:
-                                    existing_types.add(ct)
-                                    child_results.append({
-                                        "child_id": er.get('parent_id'),
-                                        "parent_id": er.get('parent_id'),
-                                        "child_text": "",
-                                        "case_type": ct,
-                                        "meta_info": er.get('meta_info'),
-                                        "score": 0.6
-                                    })
-                                    parent_ids.add(er.get('parent_id'))
-                        except Exception:
-                            pass
+                targets = synonym_map.get(kw, [kw])
+                for synonym in targets:
+                    try:
+                        extra = collection.query(
+                            expr=f'level == 1 and case_type like "%{synonym}%"',
+                            output_fields=["parent_id", "text_content", "case_type", "meta_info"],
+                            limit=5
+                        )
+                        for er in extra:
+                            ct = er.get('case_type', '')
+                            if ct not in existing_types:
+                                existing_types.add(ct)
+                                child_results.append({
+                                    "child_id": er.get('parent_id'),
+                                    "parent_id": er.get('parent_id'),
+                                    "child_text": er.get('text_content', ''),
+                                    "case_type": ct,
+                                    "meta_info": er.get('meta_info'),
+                                    "score": 0.6,
+                                    "vector_score": 0.0
+                                })
+                                parent_ids.add(er.get('parent_id'))
+                    except Exception:
+                        pass
 
-            # 再用原始关键词搜（优先2字核心词，如"路灯""井盖"）
-            for kw in query_keywords:
-                if len(kw) < 2:
-                    continue
-                # 跳过太通用的词
-                if kw in ["处置", "时限", "结案", "条件", "找谁", "是谁", "哪个"]:
-                    continue
+        # 3. 计算关键词+核心词+意图字段得分（复用ChromaDB模式的评分函数）
+        # 提取查询中的核心实体用于类型匹配
+        query_entities = []
+        for kw in query_keywords:
+            if len(kw) >= 2 and kw in synonym_map:
+                query_entities.append(kw)
+        if not query_entities:
+            query_entities = [kw for kw in query_keywords if len(kw) >= 2]
+
+        for cr in child_results:
+            doc_text = cr.get('child_text', '') + ' ' + cr.get('case_type', '')
+            meta_str = cr.get('meta_info', '')
+            # 尝试解析meta_info为dict
+            meta = {}
+            if meta_str:
                 try:
-                    extra = collection.query(
-                        expr=f'level == 1 and case_type like "%{kw}%"',
-                        output_fields=["parent_id", "text_content", "case_type", "meta_info"],
-                        limit=3
-                    )
-                    for er in extra:
-                        ct = er.get('case_type', '')
-                        if ct not in existing_types:
-                            existing_types.add(ct)
-                            child_results.append({
-                                "child_id": er.get('parent_id'),
-                                "parent_id": er.get('parent_id'),
-                                "child_text": "",
-                                "case_type": ct,
-                                "meta_info": er.get('meta_info'),
-                                "score": 0.5  # 给一个中等分数
-                            })
-                            parent_ids.add(er.get('parent_id'))
+                    import json
+                    meta = json.loads(meta_str) if isinstance(meta_str, str) else meta_str
                 except Exception:
                     pass
 
+            keyword_score, field_score, core_score, core_hit_count, reasons = compute_keyword_field_score(
+                query_profile, doc_text, meta
+            )
+            cr['keyword_score'] = keyword_score
+            cr['field_score'] = field_score
+            cr['core_score'] = core_score
+            cr['core_hit_count'] = core_hit_count
+
+        # 4. 加权重排序
+        for cr in child_results:
+            # 实体类型匹配加成：case_type包含查询核心实体时加分
+            entity_boost = 0.0
+            ct = cr.get('case_type', '')
+            for ent in query_entities:
+                if ent in ct:
+                    entity_boost = 0.15
+                    break
+
+            cr['final_score'] = (
+                cr.get('core_score', 0) * 0.45 +
+                cr.get('keyword_score', 0) * 0.25 +
+                cr.get('vector_score', 0) * 0.20 +
+                cr.get('field_score', 0) * 0.10 +
+                entity_boost
+            )
+
+        child_results.sort(key=lambda x: x.get('final_score', 0), reverse=True)
+
+        # 5. 核心词强约束：如果有核心词命中，排除完全没命中的结果
+        if core_terms:
+            non_trivial_core = [t for t in core_terms if len(t) >= 2]
+            any_core_hit = any(cr.get('core_hit_count', 0) > 0 for cr in child_results)
+            if any_core_hit:
+                required_hits = 2 if len(non_trivial_core) >= 3 else 1
+                filtered = [cr for cr in child_results if cr.get('core_hit_count', 0) >= required_hits]
+                if filtered:
+                    child_results = filtered
+
+        # 6. 截断到top_k
+        child_results = child_results[:top_k]
+
+        # 7. 回表查询父文档
         if parent_ids:
-            # 构建正确的Milvus查询表达式（字符串需要加引号）
             quoted_ids = [f'"{pid}"' for pid in parent_ids]
             parent_results = collection.query(
                 expr=f'level == 1 and parent_id in [{",".join(quoted_ids)}]',
                 output_fields=["parent_id", "text_content", "meta_info"],
                 limit=len(parent_ids) + 10
             )
-
             parent_map = {}
             for pr in parent_results:
                 parent_map[pr['parent_id']] = {
                     'text': pr['text_content'],
                     'meta': pr['meta_info']
                 }
-
             for cr in child_results:
                 parent_info = parent_map.get(cr['parent_id'], {})
                 cr['parent_text'] = parent_info.get('text', '')
-                cr['parent_meta'] = parent_info.get('meta', {})
-
-        # 6. 重新排序：关键词匹配结果（score < 0.7）优先于embedding结果
-        keyword_results = [r for r in child_results if r.get('score', 0) < 0.7]
-        embedding_results = [r for r in child_results if r.get('score', 0) >= 0.7]
-        child_results = keyword_results + embedding_results
+                cr['parent_meta'] = parent_info.get('meta', '')
 
         return child_results
 
@@ -2110,7 +2103,7 @@ def _refine_with_llm(question: str, extracted: str, history: list = None, dispat
 
 ## 重要规则（必须严格遵守）
 - **只能使用参考标准中的信息回答**，不要添加参考标准中没有的内容
-- 归属部门必须从参考标准中的【监管主体】和【责任主体】中提取，不要自己编造
+- **归属部门判断**：必须从参考标准中提取【监管主体】和【责任主体】字段，格式为"【监管主体】xxx"和"【责任主体】xxx"，直接复制使用，不要自己编造
 - 处置建议和参考时限必须来自参考标准中的【立案条件】和【处置时限】
 - 如果参考标准中没有相关信息，明确说明"根据现有知识库，未找到相关信息，建议咨询相关部门"
 - **禁止根据常识或推测补充知识库中没有的内容**
@@ -2119,6 +2112,11 @@ def _refine_with_llm(question: str, extracted: str, history: list = None, dispat
 - **"建议"不等于"建议类问题"**：市民说"建议修复XX"不是在提建议，而是在反映XX问题需要修复
 - **对于投诉类问题**：优先理解用户的因果诉求（"因XX导致YY"），识别核心问题是什么
 - **对于设施类问题**：如果涉及设施有多种子类型，且无法从问题中确定具体是哪种，应该先列出所有子类型让用户选择
+- **责任主体定位规则（最高优先级）**：
+  1. 当责任主体中同时包含我局单位（如排水服务中心、市容环卫中心等）和外单位（如所属街办、属地行政执法部门）时，**必须立即追问具体地点**，回答格式为："该问题可能涉及排水服务中心或所属街办，请问您反映的问题具体在哪个位置？（如：xx路xx小区附近），以便确定责任单位。"
+  2. 当责任主体全部是我局单位时，直接给出答案
+  3. 当责任主体全部是外单位时，说明不属于我局职责
+  4. **绝对不要在不确定时就断言"属于我局职责"**
 - 回答要简洁准确，有理有据
 
 ## 回答格式
@@ -2140,6 +2138,11 @@ def _refine_with_llm(question: str, extracted: str, history: list = None, dispat
 {extracted}
 
 {f"对话历史：{chr(10)}{history_text}" if history_text else ""}市民问题：{question}
+
+## 特别提醒（最重要）
+**参考标准数据中已经包含了完整的【监管主体】和【责任主体】信息。你必须直接从参考标准中复制这些字段的内容，绝对不要说"未找到"或"缺少信息"。**
+
+**示例：如果参考标准中写着"【责任主体】运城市市容环卫中心、各环卫部门"，你的回答中责任部门就应该写"运城市市容环卫中心、各环卫部门"，一字不差地复制。**
 
 请按上述格式分析回答："""
 
@@ -2365,12 +2368,22 @@ def ask_case_standard(question: str, top_k: int = 5, location: Any = None, histo
    - 例如："井盖缺失，建议更换" → 本质是"井盖缺失"，不是"建议"
 3. **关键：根据场景上下文选择最匹配的标准**（如"绿化带内水管破裂"应选"绿地附属设施"而非"供水管道破裂"，因为场景是绿化带而非市政供水管网）
 4. 在下方参考标准中找到最匹配的案件类型
-5. 根据该案件类型的【监管主体】和【责任主体】判断归属部门
+5. **从该案件类型的【监管主体】和【责任主体】字段中提取归属部门信息**
 6. 给出处置建议和参考时限
+
+## 参考标准格式说明
+每条标准包含以下字段：
+- 【案件类型】：标准名称
+- 【立案条件】：具体情形和处置时限
+- 【监管主体】：管理部门（如：运城市城市管理局、盐湖区政府）
+- 【责任主体】：具体处置部门（如：运城市市容环卫中心、各环卫部门）
+- 【法律依据】：相关法规
+
+**你必须从【监管主体】和【责任主体】字段中提取信息，不要自己编造部门名称**
 
 ## 重要规则（必须严格遵守）
 - **只能使用参考标准中的信息回答**，不要添加参考标准中没有的内容
-- 归属部门必须从参考标准中的【监管主体】和【责任主体】中提取，不要自己编造
+- **归属部门判断**：必须从参考标准中提取【监管主体】和【责任主体】字段，格式为"【监管主体】xxx"和"【责任主体】xxx"，直接复制使用，不要自己编造
 - 处置建议和参考时限必须来自参考标准中的【立案条件】和【处置时限】
 - 如果参考标准中没有相关信息，明确说明"根据现有知识库，未找到相关信息，建议咨询相关部门"
 - **禁止根据常识或推测补充知识库中没有的内容**
@@ -2379,6 +2392,11 @@ def ask_case_standard(question: str, top_k: int = 5, location: Any = None, histo
 - **"建议"不等于"建议类问题"**：市民说"建议修复XX"不是在提建议，而是在反映XX问题需要修复
 - **对于投诉类问题**：优先理解用户的因果诉求（"因XX导致YY"），识别核心问题是什么
 - **对于设施类问题**：如果涉及设施有多种子类型，且无法从问题中确定具体是哪种，应该先列出所有子类型让用户选择
+- **责任主体定位规则（最高优先级）**：
+  1. 当责任主体中同时包含我局单位（如排水服务中心、市容环卫中心等）和外单位（如所属街办、属地行政执法部门）时，**必须立即追问具体地点**，回答格式为："该问题可能涉及排水服务中心或所属街办，请问您反映的问题具体在哪个位置？（如：xx路xx小区附近），以便确定责任单位。"
+  2. 当责任主体全部是我局单位时，直接给出答案
+  3. 当责任主体全部是外单位时，说明不属于我局职责
+  4. **绝对不要在不确定时就断言"属于我局职责"**
 - 回答要简洁准确，有理有据
 
 ## 回答格式
@@ -2400,6 +2418,11 @@ def ask_case_standard(question: str, top_k: int = 5, location: Any = None, histo
 {context}
 
 {f"对话历史：{chr(10)}{history_text}" if history_text else ""}市民问题：{question}
+
+## 特别提醒（最重要）
+**参考标准数据中已经包含了完整的【监管主体】和【责任主体】信息。你必须直接从参考标准中复制这些字段的内容，绝对不要说"未找到"或"缺少信息"。**
+
+**示例：如果参考标准中写着"【责任主体】运城市市容环卫中心、各环卫部门"，你的回答中责任部门就应该写"运城市市容环卫中心、各环卫部门"，一字不差地复制。**
 
 请按上述格式分析回答："""
 

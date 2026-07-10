@@ -27,19 +27,19 @@
     <!-- 全屏地图背景 -->
     <div class="map-fullscreen">
       <div id="urban-map" class="map-element"></div>
+    </div>
 
-      <!-- 地图工具栏 -->
-      <div class="map-toolbar">
-        <button class="toolbar-btn" @click="zoomIn" title="放大">
-          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
-        </button>
-        <button class="toolbar-btn" @click="zoomOut" title="缩小">
-          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
-        </button>
-        <button class="toolbar-btn" :class="{ active: mapMode === 'add' }" @click="toggleAddMode" title="添加标记">
-          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        </button>
-      </div>
+    <!-- 地图工具栏 -->
+    <div class="map-toolbar">
+      <button class="toolbar-btn" @click="zoomIn" title="放大">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+      </button>
+      <button class="toolbar-btn" @click="zoomOut" title="缩小">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+      </button>
+      <button class="toolbar-btn" :class="{ active: mapMode === 'add' }" @click="toggleAddMode" title="添加标记" v-if="isAdmin">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      </button>
     </div>
 
     <!-- 左侧展开/收起按钮 -->
@@ -77,7 +77,7 @@
           </div>
           <div v-show="group.expanded" class="layer-children">
             <label v-for="layer in group.children" :key="layer.id" class="layer-item">
-              <input type="checkbox" v-model="layer.visible" @change="toggleLayer(layer)" />
+              <input type="checkbox" :checked="layer.visible" @change="toggleLayer(layer, $event)" />
               <span class="layer-icon">{{ layer.icon }}</span>
               <span class="layer-name">{{ layer.name }}</span>
               <span class="layer-count">{{ getLayerCount(layer) }}</span>
@@ -226,6 +226,9 @@
 
 <script setup>
 import { ref, reactive, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
+import { useUserStore } from '../stores/user'
+
+const userStore = useUserStore()
 
 // ========== 地图状态 ==========
 const mapContainer = ref(null)
@@ -240,7 +243,7 @@ const leftPanelCollapsed = ref(false)
 const rightPanelCollapsed = ref(false)
 
 // ========== 用户权限 ==========
-const isAdmin = ref(false)
+const isAdmin = computed(() => userStore.isAdmin)
 
 // ========== 标记点状态 ==========
 const markers = ref([])
@@ -263,25 +266,27 @@ const layers = ref([
   {
     id: 'huanwei', name: '环卫', icon: '🗑️', expanded: true,
     children: [
-      { id: 'huanwei_area', name: '管辖范围', type: 'geojson', file: '/data/guanxia.geojson', deptFilter: '环卫', visible: true, icon: '📍', color: '#22c55e' },
-      { id: 'huanwei_facility', name: '环卫设施', type: 'markers', visible: false, icon: '🗑️' },
-      { id: 'huanwei_station', name: '河东驿站', type: 'markers', visible: false, icon: '🏪' }
+      { id: 'huanwei_area', name: '管辖范围', type: 'geojson', file: '/data/guanxia.geojson', deptFilter: '环卫', visible: false, icon: '📍', color: '#22c55e' },
+      { id: 'huanwei_toilet', name: '公共厕所', type: 'markers', visible: false, icon: '🚻' },
+      { id: 'huanwei_station', name: '河东驿站', type: 'markers', visible: false, icon: '🏪' },
+      { id: 'huanwei_transfer', name: '垃圾中转站', type: 'markers', visible: false, icon: '♻️' }
     ]
   },
   {
     id: 'yuanlin', name: '园林', icon: '🌳', expanded: true,
     children: [
-      { id: 'yuanlin_area', name: '管辖范围', type: 'geojson', file: '/data/园林片区.geojson', visible: true, icon: '📍', color: '#10b981' },
-      { id: 'yuanlin_park', name: '公园广场', type: 'markers', visible: false, icon: '🌳' },
+      { id: 'yuanlin_area', name: '管辖范围', type: 'geojson', file: '/data/园林片区.geojson', visible: false, icon: '📍', color: '#10b981' },
+      { id: 'yuanlin_park', name: '公园广场', type: 'geojson', file: '/data/公园广场.geojson', visible: false, icon: '🌳', color: '#34d399' },
+      { id: 'yuanlin_small_garden', name: '小游园', type: 'markers', visible: false, icon: '🌿' },
+      { id: 'yuanlin_pocket_park', name: '口袋公园', type: 'markers', visible: false, icon: '🌺' },
       { id: 'yuanlin_tree', name: '古树名木', type: 'markers', visible: false, icon: '🌲' }
     ]
   },
   {
     id: 'shizheng', name: '市政', icon: '🔧', expanded: true,
     children: [
-      { id: 'shizheng_road', name: '管辖道路', type: 'geojson', file: '/data/市政管辖道路.geojson', visible: true, icon: '🛣️', color: '#f59e0b' },
-      { id: 'shizheng_facility', name: '市政设施', type: 'markers', visible: false, icon: '🔧' },
-      { id: 'shizheng_pipe', name: '排水管网', type: 'geojson', file: '/data/排水管网.geojson', visible: false, icon: '💧' }
+      { id: 'shizheng_road', name: '管辖道路', type: 'geojson', file: '/data/市政管辖道路.geojson', visible: false, icon: '🛣️', color: '#f59e0b' },
+      { id: 'shizheng_pipe', name: '排水管网', type: 'geojson', file: '/data/排水管网.geojson', visible: false, icon: '💧', color: '#3b82f6' }
     ]
   },
   {
@@ -294,7 +299,8 @@ const layers = ref([
 ])
 
 // ========== 地图覆盖物 ==========
-const geoJsonLayers = {} // 存储GeoJSON图层
+const geoJsonLayers = {} // 存储GeoJSON图层（非响应式，避免代理AMap对象）
+const loadedLayerIds = ref(new Set()) // 追踪已加载图层ID（响应式，驱动UI更新）
 const markerLayers = {} // 存储标记点图层
 
 // ========== 统计数据 ==========
@@ -345,7 +351,7 @@ function getItemCategoryName(category) {
 
 function getLayerCount(layer) {
   if (layer.type === 'geojson') {
-    return geoJsonLayers[layer.id] ? '已加载' : '-'
+    return loadedLayerIds.value.has(layer.id) ? '已加载' : '-'
   }
   return markers.value.filter(m => m.subcategory === layer.id).length
 }
@@ -367,20 +373,31 @@ function toggleAddMode() {
   }
 }
 
-function toggleLayer(layer) {
+function toggleLayer(layer, event) {
   if (!mapInstance) return
+  layer.visible = event.target.checked
 
   if (layer.type === 'geojson') {
     if (layer.visible) {
       loadGeoJsonLayer(layer)
     } else {
       removeGeoJsonLayer(layer.id)
+      // 取消图层时，如果选中的项属于该图层，清空详情
+      if (selectedItem.value && selectedItem.value.subcategory === layer.id) {
+        selectedItem.value = null
+        rightPanelCollapsed.value = true
+      }
     }
   } else {
     if (layer.visible) {
       loadMarkerLayer(layer)
     } else {
       removeMarkerLayer(layer.id)
+      // 取消图层时，如果选中的项属于该图层，清空详情
+      if (selectedItem.value && selectedItem.value.subcategory === layer.id) {
+        selectedItem.value = null
+        rightPanelCollapsed.value = true
+      }
     }
   }
 }
@@ -412,10 +429,13 @@ async function loadGeoJsonLayer(layer) {
 
         if (!path) return null
 
+        const roadType = feature.properties?.road_type
+        const strokeWidth = roadType === 1 ? 6 : roadType === 2 ? 4 : 2.5
+
         const polyline = new window.AMap.Polyline({
           path: path,
           strokeColor: color,
-          strokeWeight: 3,
+          strokeWeight: strokeWidth,
           strokeOpacity: 0.8
         })
 
@@ -439,6 +459,7 @@ async function loadGeoJsonLayer(layer) {
 
       geoJsonLayers[layer.id] = polylines
       polylines.forEach(p => mapInstance.add(p))
+      loadedLayerIds.value.add(layer.id)
     } else {
       // Polygon类型 - 管辖范围
       const polygons = features.map(feature => {
@@ -482,6 +503,7 @@ async function loadGeoJsonLayer(layer) {
 
       geoJsonLayers[layer.id] = polygons
       polygons.forEach(p => mapInstance.add(p))
+      loadedLayerIds.value.add(layer.id)
     }
   } catch (error) {
     console.error(`加载GeoJSON失败: ${layer.file}`, error)
@@ -493,6 +515,7 @@ function removeGeoJsonLayer(layerId) {
   if (polygons) {
     polygons.forEach(p => mapInstance.remove(p))
     delete geoJsonLayers[layerId]
+    loadedLayerIds.value.delete(layerId)
   }
 }
 
@@ -696,17 +719,6 @@ function initMap() {
     mapInstance.on('click', handleMapClick)
 
     mapLoading.value = false
-
-    // 自动加载默认图层（已设为visible的）
-    nextTick(() => {
-      layers.value.forEach(group => {
-        group.children.forEach(layer => {
-          if (layer.type === 'geojson' && layer.visible) {
-            loadGeoJsonLayer(layer)
-          }
-        })
-      })
-    })
   } catch (error) {
     console.error('地图初始化失败:', error)
     mapError.value = '地图初始化失败: ' + error.message
@@ -831,12 +843,12 @@ onUnmounted(() => {
 /* 地图工具栏 */
 .map-toolbar {
   position: fixed;
-  top: 12px;
+  top: 60px;
   left: 50%;
   transform: translateX(-50%);
   display: flex;
   gap: 8px;
-  z-index: 200;
+  z-index: 250;
 }
 
 .toolbar-btn {
@@ -918,17 +930,21 @@ onUnmounted(() => {
   bottom: 56px;
   width: 320px;
   z-index: 100;
-  background: rgba(13, 31, 60, 0.95);
-  border: 1px solid rgba(64, 158, 255, 0.2);
+  background: rgba(13, 31, 60, 0.6);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(64, 158, 255, 0.12);
+  border-radius: 12px;
   display: flex;
   flex-direction: column;
   overflow: hidden;
   transition: transform 0.3s ease;
 }
+.floating-panel::-webkit-scrollbar { width: 4px; }
+.floating-panel::-webkit-scrollbar-track { background: transparent; }
+.floating-panel::-webkit-scrollbar-thumb { background: rgba(64, 158, 255, 0.2); border-radius: 2px; }
 
 .left-panel {
   left: 0;
-  border-radius: 0 12px 12px 0;
 }
 
 .left-panel.collapsed {
@@ -937,7 +953,6 @@ onUnmounted(() => {
 
 .right-panel {
   right: 0;
-  border-radius: 12px 0 0 12px;
 }
 
 .right-panel.collapsed {
@@ -1201,8 +1216,9 @@ onUnmounted(() => {
   left: 320px;
   right: 320px;
   height: 56px;
-  background: rgba(13, 31, 60, 0.95);
-  border-top: 1px solid rgba(64, 158, 255, 0.2);
+  background: rgba(13, 31, 60, 0.6);
+  backdrop-filter: blur(12px);
+  border-top: 1px solid rgba(64, 158, 255, 0.12);
   display: flex;
   align-items: center;
   justify-content: center;

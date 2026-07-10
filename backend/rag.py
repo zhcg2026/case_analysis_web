@@ -414,7 +414,7 @@ def insert_document(doc_id: str, content: str, source: str = "", metadata: Dict 
 
 def search_similar(query: str, top_k: int = 5) -> List[Dict]:
     """
-    搜索相似内容
+    搜索相似内容（混合搜索：向量 + 关键词）
     返回: [{"content": str, "source": str, "score": float, "metadata": dict}, ...]
     """
     try:
@@ -431,30 +431,89 @@ def search_similar(query: str, top_k: int = 5) -> List[Dict]:
         if not query_embedding:
             return []
 
-        # 搜索
+        # 1. 向量搜索：扩大候选集
+        search_limit = max(top_k * 4, 15)
         search_params = {"metric_type": "COSINE", "params": {"nprobe": 16}}
         results = collection.search(
             data=[query_embedding],
             anns_field="embedding",
             param=search_params,
-            limit=top_k,
+            limit=search_limit,
             output_fields=["content", "source", "metadata", "doc_id", "chunk_id"]
         )
 
-        # 解析结果
-        similar_docs = []
+        # 解析向量搜索结果
+        all_docs = []
+        seen_contents = set()
         for hits in results:
             for hit in hits:
-                similar_docs.append({
-                    "content": hit.entity.get("content"),
+                content = hit.entity.get("content", "")
+                # 去重
+                content_key = content[:50]
+                if content_key in seen_contents:
+                    continue
+                seen_contents.add(content_key)
+                all_docs.append({
+                    "content": content,
                     "source": hit.entity.get("source"),
                     "doc_id": hit.entity.get("doc_id"),
                     "chunk_id": hit.entity.get("chunk_id"),
-                    "score": hit.distance,
+                    "vector_score": hit.distance,
+                    "keyword_score": 0.0,
                     "metadata": json.loads(hit.entity.get("metadata") or "{}")
                 })
 
-        return similar_docs
+        # 2. 关键词搜索：用内容字段做LIKE查询
+        try:
+            # 提取查询中的关键词（2-4字中文片段）
+            keywords = []
+            for length in [4, 3, 2]:
+                for i in range(len(query) - length + 1):
+                    segment = query[i:i+length]
+                    if all('\u4e00' <= c <= '\u9fa5' for c in segment) and segment not in keywords:
+                        keywords.append(segment)
+
+            # 取前5个关键词做LIKE搜索
+            for kw in keywords[:5]:
+                if len(kw) < 2:
+                    continue
+                try:
+                    keyword_results = collection.query(
+                        expr=f'content like "%{kw}%"',
+                        output_fields=["content", "source", "metadata", "doc_id", "chunk_id"],
+                        limit=5
+                    )
+                    for kr in keyword_results:
+                        content = kr.get("content", "")
+                        content_key = content[:50]
+                        if content_key in seen_contents:
+                            continue
+                        seen_contents.add(content_key)
+                        all_docs.append({
+                            "content": content,
+                            "source": kr.get("source"),
+                            "doc_id": kr.get("doc_id"),
+                            "chunk_id": kr.get("chunk_id"),
+                            "vector_score": 0.0,
+                            "keyword_score": 0.6,
+                            "metadata": json.loads(kr.get("metadata") or "{}")
+                        })
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        # 3. 加权融合排序
+        for doc in all_docs:
+            doc['score'] = (
+                doc.get('vector_score', 0) * 0.7 +
+                doc.get('keyword_score', 0) * 0.3
+            )
+
+        all_docs.sort(key=lambda x: x.get('score', 0), reverse=True)
+
+        # 4. 截断到top_k
+        return all_docs[:top_k]
 
     except Exception as e:
         print(f"[RAG] 搜索失败: {e}")
@@ -518,11 +577,12 @@ def delete_all_documents() -> Dict:
         return {"success": False, "message": str(e)}
 
 
-def ask_question(question: str, top_k: int = 15, min_score: float = 0.45) -> Dict:
+def ask_question(question: str, top_k: int = 15, min_score: float = 0.45, history: list = None) -> Dict:
     """
     RAG问答：检索相关内容 + LLM生成回答
     返回: {"answer": str, "sources": list, "success": bool}
     min_score: 相似度阈值，低于此值的结果将被过滤（标题匹配除外）
+    history: 对话历史 [{role: "user"/"assistant", content: "..."}, ...]
     """
     try:
         # 检索更多内容
@@ -601,6 +661,13 @@ def ask_question(question: str, top_k: int = 15, min_score: float = 0.45) -> Dic
 
         context = "\n\n---\n\n".join(context_parts)
 
+        # 构建对话历史文本
+        history_text = ""
+        if history:
+            for msg in history[-4:]:  # 最近4轮
+                role = "用户" if msg.get("role") == "user" else "助手"
+                history_text += f"- {role}：{msg.get('content', '')}\n"
+
         # 调用LLM生成回答
         prompt = f"""你是运城市城市管理局的政策专家。请根据以下参考资料回答问题。
 
@@ -611,6 +678,9 @@ def ask_question(question: str, top_k: int = 15, min_score: float = 0.45) -> Dic
 4. 如果参考资料中没有相关内容，明确说明"根据现有知识库，未找到相关信息，建议咨询相关部门"
 5. **禁止根据常识或推测补充知识库中没有的内容**
 6. 回答要简洁准确，有理有据
+7. 如果用户的问题是在追问之前的回答，结合对话历史理解上下文
+
+{f"## 对话历史" + chr(10) + history_text if history_text else ""}
 
 参考资料：
 {context}

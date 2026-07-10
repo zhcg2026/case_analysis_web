@@ -394,8 +394,42 @@ async function initMap() {
   }
 }
 
-function useLocation() {
+async function useLocation() {
   if (!hasLocation.value) return
+  
+  // 先调用管辖范围判断接口
+  try {
+    const res = await fetch('/api/jurisdiction/check', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({
+        lng: Number(selectedLng.value),
+        lat: Number(selectedLat.value)
+      })
+    })
+    const data = await res.json()
+    
+    if (data.matched && data.jurisdictions && data.jurisdictions.length > 0) {
+      // 匹配到管辖范围
+      const depts = [...new Set(data.jurisdictions.map(j => j.department))]
+      const areas = data.jurisdictions.map(j => j.area_name).join('、')
+      const jurisdictionInfo = `该位置属于${areas}管辖范围，责任部门为：${depts.join('、')}。`
+      
+      chatHistory.value.push({ 
+        role: 'assistant', 
+        content: jurisdictionInfo
+      })
+    } else {
+      // 未匹配到管辖范围，可能是外单位（如街办）
+      chatHistory.value.push({ 
+        role: 'assistant', 
+        content: '该位置未在我局管辖范围内，可能属于街办等外单位管辖。'
+      })
+    }
+  } catch (e) {
+    console.error('管辖范围判断失败:', e)
+  }
+  
   needLocation.value = false
   // 如果有未发送的问题，自动发送
   if (question.value.trim()) {

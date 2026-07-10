@@ -18,13 +18,7 @@
         </router-link>
       </div>
       <div class="header-center">
-        <h1 class="flood-title">
-          <svg class="title-icon" xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-            <path d="M12 2v6M12 16v6M4.93 4.93l4.24 4.24M14.83 14.83l4.24 4.24M2 12h6M16 12h6M4.93 19.07l4.24-4.24M14.83 9.17l4.24-4.24"/>
-            <circle cx="12" cy="12" r="4"/>
-          </svg>
-          运城市智慧城市管理平台防汛指挥调度系统
-        </h1>
+        <h1 class="flood-title">运城市智慧城市管理平台防汛指挥调度系统</h1>
       </div>
       <div class="header-right">
         <div class="time-display">
@@ -116,7 +110,6 @@
           </div>
           <div class="weather-current" v-if="weather">
             <div class="weather-main">
-              <span class="weather-icon">{{ getWeatherIcon(weather.text) }}</span>
               <div class="weather-temp">{{ weather.temperature }}°C</div>
             </div>
             <div class="weather-desc">{{ weather.text }}</div>

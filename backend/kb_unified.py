@@ -264,7 +264,7 @@ def unified_ask(
             return result
         else:
             # 通用知识问答
-            result = general_ask(question, top_k=top_k)
+            result = general_ask(question, top_k=top_k, history=history)
             result["need_location"] = False
             result["message"] = ""
             result["pre_analysis"] = pre_analysis
