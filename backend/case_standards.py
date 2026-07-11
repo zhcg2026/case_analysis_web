@@ -2312,7 +2312,9 @@ def ask_case_standard(question: str, top_k: int = 5, location: Any = None, histo
         # 如果有位置信息，走地理匹配链路
         dispatch_info = None
         if location is not None:
+            print(f"[CaseStandards] 收到位置信息: {location}")
             dispatch_result = match_department_dispatch(question, location, force_dispatch=True)
+            print(f"[CaseStandards] dispatch结果: department={dispatch_result.get('department') if dispatch_result else None}, in_jurisdiction={dispatch_result.get('in_jurisdiction') if dispatch_result else None}")
             if dispatch_result is not None:
                 dispatch_info = dispatch_result
                 # 位置不在对应部门管辖范围 → 直接返回，不搜索其他部门
