@@ -31,6 +31,7 @@ services:
     environment:
       - FLASK_ENV=production
       - PYTHONUNBUFFERED=1
+      - TZ=Asia/Shanghai
     volumes:
       - ./backend/uploads:/app/backend/uploads
       - ./backend/app.py:/app/backend/app.py

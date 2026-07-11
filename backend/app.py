@@ -6432,6 +6432,7 @@ def knowledge_ask():
         question = data.get('question', '')
         top_k = data.get('top_k', 5)
         history = data.get('history', None)  # 对话历史
+        location = data.get('location', None)  # 位置信息 {lng, lat}
 
         if not question:
             return jsonify({'error': '请提供问题'}), 400
@@ -6439,10 +6440,10 @@ def knowledge_ask():
         # 使用统一问答入口，同时搜索两个库
         try:
             from backend.kb_unified import unified_ask
-            result = unified_ask(question, top_k=top_k, history=history)
+            result = unified_ask(question, top_k=top_k, history=history, location=location)
         except ImportError:
             from kb_unified import unified_ask
-            result = unified_ask(question, top_k=top_k, history=history)
+            result = unified_ask(question, top_k=top_k, history=history, location=location)
 
         return jsonify(result), 200
 
@@ -7432,7 +7433,7 @@ def generate_smart_report_charts(df, template_type, months, dimension, dimension
     charts = []
 
     # 设置中文字体
-    plt.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'SimSun']
+    plt.rcParams['font.sans-serif'] = ['WenQuanYi Micro Hei', 'WenQuanYi Zen Hei', 'SimHei', 'Microsoft YaHei', 'SimSun']
     plt.rcParams['axes.unicode_minus'] = False
 
     # 列名映射（英文 -> 中文）
@@ -8883,13 +8884,22 @@ def serve_upload(filename):
 def serve_frontend(path):
     # 构建前端文件路径
     frontend_dist = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'frontend', 'dist')
-    
-    # 如果路径为空或者不存在文件，返回 index.html
+
+    # 如果路径为空或者不存在文件，返回 index.html（禁止缓存，确保每次获取最新版本）
     if not path or not os.path.exists(os.path.join(frontend_dist, path)):
-        return send_from_directory(frontend_dist, 'index.html')
-    
-    # 否则返回请求的文件
-    return send_from_directory(frontend_dist, path)
+        response = send_from_directory(frontend_dist, 'index.html')
+        response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+        response.headers['Pragma'] = 'no-cache'
+        response.headers['Expires'] = '0'
+        return response
+
+    # 带哈希的静态资源（JS/CSS）可长期缓存，其他文件短缓存
+    resp = send_from_directory(frontend_dist, path)
+    if '.' in path and any(path.endswith(ext) for ext in ('.js', '.css', '.woff2', '.woff', '.ttf')):
+        resp.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
+    else:
+        resp.headers['Cache-Control'] = 'no-cache'
+    return resp
 
 if __name__ == '__main__':
     app.run(

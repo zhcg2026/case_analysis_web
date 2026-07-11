@@ -675,11 +675,8 @@ def index_standard_file_milvus(file_path: str) -> Dict:
 
 
 def index_standard_file(file_path: str) -> Dict:
-    """索引单个立结案标准文件（自动选择模式）"""
-    if USE_LOCAL_MODE:
-        return index_standard_file_chroma(file_path)
-    else:
-        return index_standard_file_milvus(file_path)
+    """索引单个立结案标准文件（统一使用 Milvus）"""
+    return index_standard_file_milvus(file_path)
 
 
 def index_all_standards(directory: str) -> Dict:
@@ -772,7 +769,7 @@ _SANITATION_OVERRIDE = ["不洁", "脏", "污", "积存", "积冰", "积雪", "�
 PARK_NAMES = ["人民公园", "航天公园", "禹都公园", "圣惠公园", "体育公园", "天逸公园", "南风广场"]
 
 MAP_DATA_DIR = os.path.normpath(
-    os.path.join(os.path.dirname(__file__), "..", "frontend", "public", "data")
+    os.path.join(os.path.dirname(__file__), "..", "frontend", "dist", "data")
 )
 
 DEPARTMENT_GEO_RULES = {
@@ -1715,6 +1712,19 @@ def search_case_standards_milvus(query: str, top_k: int = 5) -> List[Dict]:
             '坑洼': ['道路破损', '路面塌陷', '路面不平'],
             '不平': ['道路破损', '路面塌陷'],
             '破损': ['道路破损', '园路破损'],
+            '道路破损': ['市容环境 - 道路破损', '施工管理 - 施工工地出入口道路破损'],
+            '路面破损': ['市容环境 - 道路破损'],
+            '路破损': ['市容环境 - 道路破损'],
+            '路不平': ['市容环境 - 道路破损'],
+            '路坑洼': ['市容环境 - 道路破损'],
+            '路开裂': ['市容环境 - 道路破损'],
+            '路面开裂': ['市容环境 - 道路破损'],
+            '路面裂': ['市容环境 - 道路破损'],
+            '路面坑': ['市容环境 - 道路破损'],
+            '路面塌陷': ['市容环境 - 道路破损', '突发事件 - 路面塌陷'],
+            '园路破损': ['市容环境 - 园路破损'],
+            '道路不洁': ['市容环境 - 道路不洁'],
+            '路面不洁': ['市容环境 - 道路不洁'],
             '道路': ['道路破损', '道路不洁'],
             '路面': ['道路破损', '道路不洁'],
             '水管': ['绿地附属设施', '供水管道破裂'],
@@ -1786,10 +1796,12 @@ def search_case_standards_milvus(query: str, top_k: int = 5) -> List[Dict]:
                             ct = er.get('case_type', '')
                             if ct not in existing_types:
                                 existing_types.add(ct)
+                                parent_text_content = er.get('text_content', '')
                                 child_results.append({
                                     "child_id": er.get('parent_id'),
                                     "parent_id": er.get('parent_id'),
-                                    "child_text": er.get('text_content', ''),
+                                    "child_text": parent_text_content,
+                                    "parent_text": parent_text_content,
                                     "case_type": ct,
                                     "meta_info": er.get('meta_info'),
                                     "score": 0.6,
@@ -1877,8 +1889,10 @@ def search_case_standards_milvus(query: str, top_k: int = 5) -> List[Dict]:
                 }
             for cr in child_results:
                 parent_info = parent_map.get(cr['parent_id'], {})
-                cr['parent_text'] = parent_info.get('text', '')
-                cr['parent_meta'] = parent_info.get('meta', '')
+                # 只在 parent_text 为空时才从回表结果填充
+                if not cr.get('parent_text'):
+                    cr['parent_text'] = parent_info.get('text', '')
+                cr['parent_meta'] = parent_info.get('meta', '') or cr.get('parent_meta', '')
 
         return child_results
 
@@ -1888,13 +1902,8 @@ def search_case_standards_milvus(query: str, top_k: int = 5) -> List[Dict]:
 
 
 def search_case_standards(query: str, top_k: int = 5) -> List[Dict]:
-    """搜索立结案标准（自动选择模式）"""
-    # 动态检查本地模式
-    use_local = os.getenv('USE_LOCAL_MODE', 'false').lower() == 'true'
-    if use_local:
-        return search_case_standards_chroma(query, top_k)
-    else:
-        return search_case_standards_milvus(query, top_k)
+    """搜索立结案标准（统一使用 Milvus）"""
+    return search_case_standards_milvus(query, top_k)
 
 
 def build_structured_intent_answer(question: str, results: List[Dict]) -> Optional[str]:
@@ -2328,7 +2337,7 @@ def ask_case_standard(question: str, top_k: int = 5, location: Any = None, histo
         need_clarify = False
         clarify_options = []
         for category, subtypes in type_groups.items():
-            if len(subtypes) > 3:  # 同一大类下超过3个子类型，需要追问
+            if len(subtypes) > 10:  # 同一大类下超过10个子类型，才需要追问
                 need_clarify = True
                 clarify_options = subtypes
                 break
@@ -2512,11 +2521,8 @@ def get_case_standards_stats_milvus() -> Dict:
 
 
 def get_case_standards_stats() -> Dict:
-    """获取立结案标准集合统计信息（自动选择模式）"""
-    if USE_LOCAL_MODE:
-        return get_case_standards_stats_chroma()
-    else:
-        return get_case_standards_stats_milvus()
+    """获取立结案标准集合统计信息（统一使用 Milvus）"""
+    return get_case_standards_stats_milvus()
 
 
 def clear_case_standards_chroma() -> Dict:
@@ -2559,11 +2565,8 @@ def clear_case_standards_milvus() -> Dict:
 
 
 def clear_case_standards() -> Dict:
-    """清空立结案标准集合（自动选择模式）"""
-    if USE_LOCAL_MODE:
-        return clear_case_standards_chroma()
-    else:
-        return clear_case_standards_milvus()
+    """清空立结案标准集合（统一使用 Milvus）"""
+    return clear_case_standards_milvus()
 
 
 # 测试函数
@@ -2695,12 +2698,8 @@ def list_indexed_standards_milvus() -> List[Dict]:
 
 
 def list_indexed_standards() -> List[Dict]:
-    """列出已索引的立结案标准（自动选择模式）"""
-    use_local = os.getenv('USE_LOCAL_MODE', 'false').lower() == 'true'
-    if use_local:
-        return list_indexed_standards_chroma()
-    else:
-        return list_indexed_standards_milvus()
+    """列出已索引的立结案标准（统一使用 Milvus）"""
+    return list_indexed_standards_milvus()
 
 
 def delete_single_standard_chroma(parent_id: str) -> Dict:
@@ -2784,12 +2783,8 @@ def delete_single_standard_milvus(parent_id: str) -> Dict:
 
 
 def delete_single_standard(parent_id: str) -> Dict:
-    """删除单个立结案标准（自动选择模式）"""
-    use_local = os.getenv('USE_LOCAL_MODE', 'false').lower() == 'true'
-    if use_local:
-        return delete_single_standard_chroma(parent_id)
-    else:
-        return delete_single_standard_milvus(parent_id)
+    """删除单个立结案标准（统一使用 Milvus）"""
+    return delete_single_standard_milvus(parent_id)
 
 
 def incremental_index_chroma(directory: str, progress_callback=None) -> Dict:
@@ -2989,12 +2984,8 @@ def incremental_index_milvus(directory: str, progress_callback=None) -> Dict:
 
 
 def incremental_index(directory: str, progress_callback=None) -> Dict:
-    """增量索引（自动选择模式）"""
-    use_local = os.getenv('USE_LOCAL_MODE', 'false').lower() == 'true'
-    if use_local:
-        return incremental_index_chroma(directory, progress_callback)
-    else:
-        return incremental_index_milvus(directory, progress_callback)
+    """增量索引（统一使用 Milvus）"""
+    return incremental_index_milvus(directory, progress_callback)
 
 
 def index_single_file_upload(file_content: str, filename: str) -> Dict:

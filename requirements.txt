@@ -27,10 +27,9 @@ Pillow>=8.0.0
 requests>=2.25.0
 python-dotenv>=1.0.0
 
-# RAG 知识库依赖（暂时跳过，后续单独安装）
+# RAG 知识库依赖
 # sentence-transformers>=5.3.0
-# chromadb>=1.5.7
-pymilvus>=2.3.0
+pymilvus[milvus_lite]>=2.3.0
 
 # 视频报告依赖
 matplotlib>=3.5.0

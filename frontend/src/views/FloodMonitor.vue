@@ -1140,6 +1140,9 @@ const addedDuty = ref([])
 
 // 卫星云图状态
 const satelliteReady = ref(false)
+const satelliteData = ref(null)
+const satelliteLoading = ref(false)
+const satelliteIndex = ref(0)
 const showSatelliteModal = ref(false)
 
 // 交通状况图层
@@ -2233,13 +2236,15 @@ onMounted(async () => {
     fetchRainEvents(),
     fetchWaterPoints(),
     fetchTodayDuty(),
-    fetchDispatchRecords(),
     fetchEmergencyPlan(),
     fetchEmergencySupplies(),
     fetchActiveWarning(),
     fetchDutyLeader(),
     refreshSatellite()
   ])
+
+  // 必须在 fetchActiveWarning 完成后再获取调度记录，确保 activeWarning 已设置
+  await fetchDispatchRecords()
 
   // 每5分钟刷新天气
   weatherInterval = setInterval(() => {
@@ -2253,7 +2258,7 @@ onMounted(async () => {
     fetchWaterPoints()
     fetchTodayDuty()
     fetchEmergencySupplies()
-    fetchActiveWarning()
+    fetchActiveWarning().then(() => fetchDispatchRecords())
   }, 120000)
 })
 

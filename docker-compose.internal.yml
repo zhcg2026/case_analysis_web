@@ -29,6 +29,8 @@ services:
     environment:
       - FLASK_ENV=production
       - PYTHONUNBUFFERED=1
+      - TZ=Asia/Shanghai
+      - USE_LOCAL_MODE=false
       # RAG 知识库配置 - 连接宿主机服务
       - OLLAMA_HOST=http://192.168.101.3:11434
       - OLLAMA_MODEL=qwen2.5:7b
@@ -43,6 +45,10 @@ services:
       - ./backend/cases_helpers.py:/app/backend/cases_helpers.py
       - ./backend/cases_routes.py:/app/backend/cases_routes.py
       - ./backend/rag.py:/app/backend/rag.py
+      - ./backend/video_report.py:/app/backend/video_report.py
+      - ./backend/flood_routes.py:/app/backend/flood_routes.py
+      - ./backend/flood_helpers.py:/app/backend/flood_helpers.py
+      - ./backend/case_standards.py:/app/backend/case_standards.py
       - ./frontend/dist:/app/frontend/dist
     restart: unless-stopped
     healthcheck:

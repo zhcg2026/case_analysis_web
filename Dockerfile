@@ -14,7 +14,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     fonts-wqy-zenhei \
     fonts-wqy-microhei \
+    tzdata \
     && rm -rf /var/lib/apt/lists/*
+
+# 设置时区为北京时间
+ENV TZ=Asia/Shanghai
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
 # 复制后端需求文件
 COPY requirements.txt .
