@@ -2315,16 +2315,31 @@ def ask_case_standard(question: str, top_k: int = 5, location: Any = None, histo
             dispatch_result = match_department_dispatch(question, location, force_dispatch=True)
             if dispatch_result is not None:
                 dispatch_info = dispatch_result
-                # 有位置时，也搜索知识库补充信息
+                # 位置不在对应部门管辖范围 → 直接返回，不搜索其他部门
+                if not dispatch_result.get("in_jurisdiction", False):
+                    dept = dispatch_result.get("department", "我局")
+                    return {
+                        "answer": f"该位置不在{dept}管辖路段范围内，不属于我局该类问题的管辖范围。",
+                        "sources": [],
+                        "success": True,
+                        "matches": [],
+                    }
+                # 位置在管辖范围内，搜索知识库补充立案条件等细节
                 results = search_case_standards(question, top_k)
                 if results:
                     extracted = _extract_answer_from_text(question, results, dispatch_result.get("answer", ""))
                     answer = _refine_with_llm(question, extracted, history, dispatch_info)
                     sources = [r.get("case_type", "") for r in results[:3] if r.get("case_type")]
                     return {"answer": answer, "sources": list(dict.fromkeys(sources)), "success": True, "matches": results}
-                dispatch_result["sources"] = []
-                dispatch_result["matches"] = []
-                return dispatch_result
+                # 搜索无结果但位置在管辖范围内
+                dept = dispatch_result.get("department", "")
+                unit = dispatch_result.get("unit", "")
+                return {
+                    "answer": f"该位置属于{unit or dept}管辖范围，但知识库中暂无对应的立案标准详情，请咨询{dept}。",
+                    "sources": [],
+                    "success": True,
+                    "matches": [],
+                }
 
         # === 核心流程：搜索知识库 → LLM分析回答 ===
 
