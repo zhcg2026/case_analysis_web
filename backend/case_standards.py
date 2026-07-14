@@ -3,14 +3,7 @@
 - 子文档：按立案条件切片，用于精准检索
 - 父文档：完整标准内容，用于LLM生成回答
 
-本地调试模式（USE_LOCAL_MODE=true）：
-- ChromaDB（嵌入式向量数据库）
-- sentence-transformers 本地embedding
-- LLM使用豆包API
-
-服务器模式（USE_LOCAL_MODE=false或不设置）：
-- Docker Milvus
-- Ollama jina-embeddings-v2-base-zh + Qwen2.5-7B
+共享函数从 kb_common 导入，同义词从 kb_synonyms 导入
 """
 
 import os
@@ -18,51 +11,59 @@ import re
 import json
 import math
 import hashlib
-import requests
 from typing import List, Dict, Optional, Tuple, Any
 from dotenv import load_dotenv
 
-# 加载环境变量（优先加载 .env.local）
+# 加载环境变量
 if os.path.exists('.env.local'):
     load_dotenv('.env.local')
 elif os.path.exists('../.env.local'):
     load_dotenv('../.env.local')
 
-# 设置离线模式，防止模型尝试联网下载
 os.environ['HF_DATASETS_OFFLINE'] = '1'
 os.environ['TRANSFORMERS_OFFLINE'] = '1'
 os.environ['HF_HUB_OFFLINE'] = '1'
 
-# 本地模式配置（在加载dotenv之后读取）
-USE_LOCAL_MODE = os.getenv('USE_LOCAL_MODE', 'false').lower() == 'true'
+# 从共享模块导入
+try:
+    from kb_common import (
+        call_llm, get_embedding, get_local_embed_model, connect_milvus,
+        get_embedding_dim,
+        USE_LOCAL_MODE, LLM_PROVIDER,
+        OLLAMA_HOST, OLLAMA_EMBED_MODEL, OLLAMA_MODEL,
+        MILVUS_HOST, MILVUS_PORT,
+        LOCAL_EMBED_MODEL,
+        DOUBAO_API_KEY, DOUBAO_API_URL, DOUBAO_MODEL,
+        SCORE_WEIGHT_CORE, SCORE_WEIGHT_KEYWORD, SCORE_WEIGHT_VECTOR, SCORE_WEIGHT_FIELD,
+    )
+    from kb_synonyms import (
+        ENTITY_SYNONYMS, SYNONYM_MAP, SPECIFIC_FACILITY_WORDS,
+        expand_query, get_synonym_targets, has_specific_facility,
+    )
+except ImportError:
+    from backend.kb_common import (
+        call_llm, get_embedding, get_local_embed_model, connect_milvus,
+        get_embedding_dim,
+        USE_LOCAL_MODE, LLM_PROVIDER,
+        OLLAMA_HOST, OLLAMA_EMBED_MODEL, OLLAMA_MODEL,
+        MILVUS_HOST, MILVUS_PORT,
+        LOCAL_EMBED_MODEL,
+        DOUBAO_API_KEY, DOUBAO_API_URL, DOUBAO_MODEL,
+        SCORE_WEIGHT_CORE, SCORE_WEIGHT_KEYWORD, SCORE_WEIGHT_VECTOR, SCORE_WEIGHT_FIELD,
+    )
+    from backend.kb_synonyms import (
+        ENTITY_SYNONYMS, SYNONYM_MAP, SPECIFIC_FACILITY_WORDS,
+        expand_query, get_synonym_targets, has_specific_facility,
+    )
 
-# LLM提供商配置（doubao 或 ollama）
-LLM_PROVIDER = os.getenv('LLM_PROVIDER', 'ollama').lower()
-
-# 服务器模式配置
-OLLAMA_HOST = os.getenv('OLLAMA_HOST', 'http://localhost:11434')
-OLLAMA_EMBED_MODEL = os.getenv('OLLAMA_EMBED_MODEL', 'EntropyYue/jina-embeddings-v2-base-zh')
-OLLAMA_MODEL = os.getenv('OLLAMA_MODEL', 'qwen2.5:7b')
-MILVUS_HOST = os.getenv('MILVUS_HOST', 'localhost')
-MILVUS_PORT = os.getenv('MILVUS_PORT', '19530')
-
-# 本地模式特定配置
+# 本模块特有配置
 LOCAL_DB_PATH = os.getenv('LOCAL_DB_PATH', './chroma_db')
-LOCAL_EMBED_MODEL = os.getenv('LOCAL_EMBED_MODEL', 'paraphrase-multilingual-MiniLM-L12-v2')
-
-# 豆包API配置
-DOUBAO_API_KEY = os.getenv('DOUBAO_API_KEY', '58a51ac5-3b75-4c5e-85ac-1fb4ef652bd0')
-DOUBAO_API_URL = os.getenv('DOUBAO_API_URL', 'https://ark.cn-beijing.volces.com/api/v3/chat/completions')
-DOUBAO_MODEL = os.getenv('DOUBAO_MODEL', 'doubao-seed-1-8-251228')
-
 CASE_STANDARDS_COLLECTION = 'case_standards'
 PARENT_COLLECTION = 'case_standards_parents'
 CHILD_COLLECTION = 'case_standards_children'
 
 # 全局连接状态
 _chroma_client = None
-_milvus_connected = False
-_local_embed_model = None
 
 
 def get_chroma_client():
@@ -77,193 +78,6 @@ def get_chroma_client():
             print(f"[CaseStandards] ChromaDB 连接失败: {e}")
             return None
     return _chroma_client
-
-
-def connect_milvus():
-    """连接 Milvus 向量数据库（服务器模式）"""
-    global _milvus_connected
-    if _milvus_connected:
-        return True
-
-    try:
-        from pymilvus import connections
-        connections.connect(
-            alias="default",
-            host=MILVUS_HOST,
-            port=MILVUS_PORT
-        )
-        _milvus_connected = True
-        print(f"[CaseStandards] 已连接 Milvus: {MILVUS_HOST}:{MILVUS_PORT}")
-        return True
-    except Exception as e:
-        print(f"[CaseStandards] Milvus 连接失败: {e}")
-        return False
-
-
-def call_llm(prompt: str, provider: str = None, timeout: int = 120) -> Optional[str]:
-    """
-    统一LLM调用函数，支持豆包API和Ollama
-
-    Args:
-        prompt: 提示词
-        provider: LLM提供商（doubao/ollama），None则使用全局配置
-        timeout: 超时时间（秒）
-
-    Returns:
-        LLM返回的文本，失败返回None
-    """
-    if provider is None:
-        provider = LLM_PROVIDER
-
-    try:
-        if provider == 'doubao':
-            # 调用豆包API
-            response = requests.post(
-                DOUBAO_API_URL,
-                headers={
-                    "Content-Type": "application/json",
-                    "Authorization": f"Bearer {DOUBAO_API_KEY}"
-                },
-                json={
-                    "model": DOUBAO_MODEL,
-                    "messages": [{"role": "user", "content": prompt}]
-                },
-                timeout=timeout
-            )
-            if response.status_code == 200:
-                return response.json().get("choices", [{}])[0].get("message", {}).get("content", "")
-            else:
-                print(f"[CaseStandards] 豆包API调用失败: {response.status_code} {response.text[:200]}")
-                return None
-        else:
-            # 调用Ollama
-            response = requests.post(
-                f"{OLLAMA_HOST}/api/generate",
-                json={
-                    "model": OLLAMA_MODEL,
-                    "prompt": prompt,
-                    "stream": False,
-                    "options": {"num_ctx": 4096, "temperature": 0.3}
-                },
-                timeout=timeout
-            )
-            if response.status_code == 200:
-                return response.json().get("response", "")
-            else:
-                print(f"[CaseStandards] Ollama调用失败: {response.status_code}")
-                return None
-    except Exception as e:
-        print(f"[CaseStandards] LLM调用异常: {e}")
-        return None
-
-
-def get_local_embed_model():
-    """获取本地embedding模型（延迟加载）"""
-    global _local_embed_model
-    if _local_embed_model is None:
-        try:
-            from sentence_transformers import SentenceTransformer
-            print(f"[CaseStandards] 加载本地embedding模型: {LOCAL_EMBED_MODEL}")
-            _local_embed_model = SentenceTransformer(LOCAL_EMBED_MODEL)
-            print(f"[CaseStandards] 本地embedding模型加载完成")
-        except ImportError:
-            print("[CaseStandards] sentence-transformers 未安装，请运行: pip install sentence-transformers")
-            return None
-        except Exception as e:
-            print(f"[CaseStandards] 本地embedding模型加载失败: {e}")
-            return None
-    return _local_embed_model
-
-
-def get_embedding(text: str, max_retries: int = 3) -> Optional[List[float]]:
-    """生成文本嵌入向量"""
-    # 截断过长文本，避免超出 embedding 模型上下文长度限制
-    MAX_EMBED_CHARS = 1500
-    if len(text) > MAX_EMBED_CHARS:
-        text = text[:MAX_EMBED_CHARS]
-
-    # 动态检查本地模式（而不是使用模块级别的USE_LOCAL_MODE）
-    use_local = os.getenv('USE_LOCAL_MODE', 'false').lower() == 'true'
-
-    if use_local:
-        # 本地模式：使用 sentence-transformers
-        model = get_local_embed_model()
-        if model is None:
-            print("[CaseStandards] 本地embedding模型为None")
-            return None
-        try:
-            embedding = model.encode(text, convert_to_numpy=True)
-            return embedding.tolist()
-        except Exception as e:
-            print(f"[CaseStandards] 本地embedding失败: {e}")
-            return None
-    else:
-        # 服务器模式：使用 Ollama
-        import time
-
-        for attempt in range(max_retries):
-            try:
-                # 尝试新版API (/api/embed)
-                response = requests.post(
-                    f"{OLLAMA_HOST}/api/embed",
-                    json={
-                        "model": OLLAMA_EMBED_MODEL,
-                        "input": text
-                    },
-                    timeout=60
-                )
-
-                if response.status_code == 200:
-                    data = response.json()
-                    embeddings = data.get("embeddings", [])
-                    if embeddings and len(embeddings) > 0:
-                        emb = embeddings[0]
-                        if isinstance(emb, list) and all(isinstance(x, (int, float)) for x in emb):
-                            return emb
-
-                # 尝试旧版API (/api/embeddings)
-                response = requests.post(
-                    f"{OLLAMA_HOST}/api/embeddings",
-                    json={
-                        "model": OLLAMA_EMBED_MODEL,
-                        "prompt": text
-                    },
-                    timeout=60
-                )
-
-                if response.status_code == 200:
-                    emb = response.json().get("embedding")
-                    if emb and isinstance(emb, list):
-                        if isinstance(emb[0], list):
-                            flat = []
-                            for item in emb:
-                                if isinstance(item, list):
-                                    flat.extend(item)
-                                else:
-                                    flat.append(item)
-                            return flat
-                        elif all(isinstance(x, (int, float)) for x in emb):
-                            return emb
-
-                print(f"[CaseStandards] Embedding失败: {response.status_code}, 尝试 {attempt + 1}/{max_retries}")
-                if attempt < max_retries - 1:
-                    time.sleep(1)
-
-            except Exception as e:
-                print(f"[CaseStandards] Embedding异常: {e}, 尝试 {attempt + 1}/{max_retries}")
-                if attempt < max_retries - 1:
-                    time.sleep(1)
-
-        print(f"[CaseStandards] Embedding最终失败，文本长度: {len(text)}")
-        return None
-
-
-def get_embedding_dim() -> int:
-    """获取embedding维度"""
-    test_embedding = get_embedding("测试")
-    if test_embedding:
-        return len(test_embedding)
-    return 384  # 默认维度（paraphrase-multilingual-MiniLM-L12-v2）
 
 
 def parse_standard_file(file_path: str) -> Dict:
@@ -730,16 +544,7 @@ INTENT_KEYWORDS = {
     "collection_requirement": ["采集要求", "采集标准", "采集口径", "如何采集", "取证要求"],
 }
 
-ENTITY_SYNONYMS = {
-    "井盖": ["井盖", "窨井盖", "上水井盖", "雨水井盖", "污水井盖", "检查井盖"],
-    "破损": ["破损", "损坏", "破裂", "破碎", "裂开", "缺损", "坏了"],
-    "塌陷": ["塌陷", "塌方", "下陷", "沉降", "凹陷"],
-    "垃圾": ["垃圾", "渣土", "建筑垃圾", "装修垃圾", "生活垃圾"],
-    "立交桥": ["立交桥", "高架桥", "栈桥", "天桥", "桥梁", "立交"],
-    "护栏": ["护栏", "栏杆", "防护栏", "隔离栏"],
-    "脏污": ["脏污", "污损", "污染", "污渍", "积尘", "不洁"],
-    "路灯": ["路灯", "灯杆", "照明灯", "灯具", "道路照明"],
-}
+ENTITY_SYNONYMS_IMPORTED = ENTITY_SYNONYMS  # 从 kb_synonyms 导入，保留兼容
 
 NOISE_WORDS = {
     "请问", "帮我", "咨询", "一下", "一个", "这个", "那个", "相关", "情况", "问题",
@@ -1550,10 +1355,10 @@ def search_case_standards_chroma(query: str, top_k: int = 5) -> List[Dict]:
         child_results = []
         for _, item in candidates.items():
             final_score = (
-                item["core_score"] * 0.45 +
-                item["keyword_score"] * 0.25 +
-                item["vector_score"] * 0.20 +
-                item["field_score"] * 0.10
+                item["core_score"] * SCORE_WEIGHT_CORE +
+                item["keyword_score"] * SCORE_WEIGHT_KEYWORD +
+                item["vector_score"] * SCORE_WEIGHT_VECTOR +
+                item["field_score"] * SCORE_WEIGHT_FIELD
             )
             item["score"] = round(min(1.0, final_score), 4)
             child_results.append(item)
@@ -1676,105 +1481,8 @@ def search_case_standards_milvus(query: str, top_k: int = 5) -> List[Dict]:
                     "vector_score": hit.distance
                 })
 
-        # 2. 同义词映射：补充关键词召回
-        synonym_map = {
-            '粪便': ['道路不洁', '暴露生活垃圾', '积存垃圾'],
-            '碎玻璃': ['道路不洁', '积存垃圾'],
-            '玻璃': ['道路不洁', '积存垃圾'],
-            '路面垃圾': ['道路不洁', '暴露生活垃圾', '积存垃圾'],
-            '垃圾': ['道路不洁', '暴露生活垃圾', '积存垃圾', '垃圾满溢'],
-            '无人清扫': ['道路不洁', '暴露生活垃圾'],
-            '脏乱差': ['道路不洁', '暴露生活垃圾', '积存垃圾', '绿地脏乱'],
-            '脏乱': ['道路不洁', '暴露生活垃圾', '绿地脏乱'],
-            '环境差': ['道路不洁', '暴露生活垃圾'],
-            '卫生差': ['道路不洁', '暴露生活垃圾'],
-            '动物尸体': ['动物尸体'],
-            '死': ['动物尸体'],
-            '尸体': ['动物尸体'],
-            '噪音': ['施工扰民', '商业噪音'],
-            '扰民': ['施工扰民', '商业噪音'],
-            '夜间施工': ['施工扰民'],
-            '施工噪音': ['施工扰民'],
-            '护栏': ['交通护栏', '交通设施'],
-            '开口': ['交通护栏', '违章开设道口'],
-            '红绿灯': ['交通信号灯'],
-            '信号灯': ['交通信号灯'],
-            '公交站': ['公交站亭', '公交站牌'],
-            '天然气': ['供气管理', '燃气'],
-            '燃气': ['供气管理', '燃气管道', '燃气调压', '燃气井盖'],
-            '停气': ['供气管理'],
-            '供气': ['供气管理'],
-            '气费': ['供气管理'],
-            '暖气': ['供热管理'],
-            '供暖': ['供热管理'],
-            '共享单车': ['共享单车管理'],
-            '共享电动车': ['共享单车管理'],
-            '共享电瓶车': ['共享单车管理'],
-            '单车': ['共享单车管理'],
-            '乱停放': ['共享单车管理', '占道经营'],
-            '停放': ['共享单车管理', '停车管理'],
-            '坑洼': ['道路破损', '路面塌陷', '路面不平'],
-            '不平': ['道路破损', '路面塌陷'],
-            '破损': ['道路破损', '园路破损'],
-            '道路破损': ['市容环境 - 道路破损', '施工管理 - 施工工地出入口道路破损'],
-            '路面破损': ['市容环境 - 道路破损'],
-            '路破损': ['市容环境 - 道路破损'],
-            '路不平': ['市容环境 - 道路破损'],
-            '路坑洼': ['市容环境 - 道路破损'],
-            '路开裂': ['市容环境 - 道路破损'],
-            '路面开裂': ['市容环境 - 道路破损'],
-            '路面裂': ['市容环境 - 道路破损'],
-            '路面坑': ['市容环境 - 道路破损'],
-            '路面塌陷': ['市容环境 - 道路破损', '突发事件 - 路面塌陷'],
-            '园路破损': ['市容环境 - 园路破损'],
-            '道路不洁': ['市容环境 - 道路不洁'],
-            '路面不洁': ['市容环境 - 道路不洁'],
-            '道路': ['道路破损', '道路不洁'],
-            '路面': ['道路破损', '道路不洁'],
-            '水管': ['绿地附属设施', '供水管道破裂'],
-            '管道': ['绿地附属设施', '供水管道破裂', '排水管道堵塞'],
-            '破裂': ['绿地附属设施', '供水管道破裂', '道路破损'],
-            '漏水': ['绿地附属设施', '供水管道破裂'],
-            '绿化带': ['绿地附属设施', '绿地脏乱'],
-            '绿地': ['绿地附属设施', '绿地脏乱'],
-            '树木': ['行道树', '护树设施', '古树名木'],
-            '行道树': ['行道树', '护树设施'],
-            '树': ['行道树', '护树设施', '古树名木'],
-            '修剪': ['行道树', '护树设施'],
-            '喷泉': ['喷泉'],
-            '井盖': ['上水井盖', '污水井盖', '雨水井盖', '路灯井盖', '燃气井盖', '热力井盖', '园林井盖', '化粪池井盖', '不明井盖'],
-            '下水道': ['污水井盖', '排水管道堵塞'],
-            '下水': ['污水井盖', '排水管道堵塞'],
-            '排水': ['污水井盖', '排水管道堵塞', '雨水井盖'],
-            '积水': ['排水管道堵塞', '道路积水'],
-            '外溢': ['污水井盖', '排水管道堵塞', '雨水井盖'],
-            '垃圾桶': ['垃圾箱', '垃圾满溢'],
-            '果皮箱': ['垃圾箱', '垃圾满溢'],
-            '路灯': ['路灯', '景观灯', '地灯'],
-            '灯': ['路灯', '景观灯', '地灯'],
-            '工地': ['施工扰民', '施工工地出入口道路破损', '施工工地围挡', '施工占道'],
-            '施工': ['施工扰民', '施工占道'],
-            '广告': ['户外广告', '违规户外广告', '违规牌匾标识'],
-            '招牌': ['违规牌匾标识'],
-            '小广告': ['非法小广告'],
-            '占道': ['占道经营', '占道促销宣传'],
-            '流动摊贩': ['无照经营游商'],
-            '游商': ['无照经营游商'],
-            '拖欠': ['投诉', '投诉拖欠农民工工资'],
-            '工资': ['投诉', '投诉拖欠农民工工资'],
-            '评审费': ['投诉', '投诉拖欠农民工工资'],
-            '欠薪': ['投诉', '投诉拖欠农民工工资'],
-            '农民工': ['投诉', '投诉拖欠农民工工资'],
-            '供水': ['供水管道破裂', '供水管理'],
-            '污水': ['排水管道堵塞', '污水井盖'],
-            '雨水': ['雨水井盖', '排水管道堵塞'],
-            '害虫': ['病虫害'],
-            '虫子': ['病虫害'],
-            '虫害': ['病虫害'],
-            '喷洒': ['病虫害'],
-        }
+        # 2. 同义词映射：从 kb_synonyms 导入（已删除内嵌 synonym_map）
 
-        # 关键词兜底：提取查询中的中文片段
         query_keywords = []
         for length in [4, 3, 2]:
             for i in range(len(query) - length + 1):
@@ -1788,7 +1496,7 @@ def search_case_standards_milvus(query: str, top_k: int = 5) -> List[Dict]:
             for kw in query_keywords:
                 if len(kw) < 2:
                     continue
-                targets = synonym_map.get(kw, [kw])
+                targets = get_synonym_targets(kw)
                 for synonym in targets:
                     try:
                         extra = collection.query(
@@ -1819,7 +1527,7 @@ def search_case_standards_milvus(query: str, top_k: int = 5) -> List[Dict]:
         # 提取查询中的核心实体用于类型匹配
         query_entities = []
         for kw in query_keywords:
-            if len(kw) >= 2 and kw in synonym_map:
+            if len(kw) >= 2 and kw in SYNONYM_MAP:
                 query_entities.append(kw)
         if not query_entities:
             query_entities = [kw for kw in query_keywords if len(kw) >= 2]
@@ -1855,10 +1563,10 @@ def search_case_standards_milvus(query: str, top_k: int = 5) -> List[Dict]:
                     break
 
             cr['final_score'] = (
-                cr.get('core_score', 0) * 0.45 +
-                cr.get('keyword_score', 0) * 0.25 +
-                cr.get('vector_score', 0) * 0.20 +
-                cr.get('field_score', 0) * 0.10 +
+                cr.get('core_score', 0) * SCORE_WEIGHT_CORE +
+                cr.get('keyword_score', 0) * SCORE_WEIGHT_KEYWORD +
+                cr.get('vector_score', 0) * SCORE_WEIGHT_VECTOR +
+                cr.get('field_score', 0) * SCORE_WEIGHT_FIELD +
                 entity_boost
             )
 
@@ -2371,16 +2079,7 @@ def ask_case_standard(question: str, top_k: int = 5, location: Any = None, histo
             if len(result_types) >= 2:
                 # 检查查询是否足够具体（包含具体设施或问题描述词）
                 normalized_q = normalize_cn_text(question)
-                specific_keywords = [
-                    "井盖", "路灯", "护栏", "信号灯", "红绿灯", "公交站",
-                    "树木", "草坪", "绿化带", "行道树", "古树",
-                    "垃圾桶", "果皮箱", "公厕", "厕所",
-                    "下水道", "积水", "污水", "雨水",
-                    "广告牌", "招牌", "工地", "施工",
-                    "共享单车", "共享电动车",
-                    "粪便", "呕吐物", "动物尸体",
-                ]
-                has_specific = any(kw in normalized_q for kw in specific_keywords)
+                has_specific = has_specific_facility(question)
                 if not has_specific:
                     need_clarify = True
                     clarify_options = result_types
