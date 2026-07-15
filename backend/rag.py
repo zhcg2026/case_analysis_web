@@ -17,8 +17,12 @@ import os
 import re
 import json
 import requests
+import math
 from typing import List, Dict, Optional, Tuple
 from dotenv import load_dotenv
+
+import jieba
+from rank_bm25 import BM25Okapi
 
 # 加载环境变量（优先加载 .env.local）
 if os.path.exists('.env.local'):
@@ -236,43 +240,62 @@ def search_similar(query: str, top_k: int = 5) -> List[Dict]:
                     "metadata": json.loads(hit.entity.get("metadata") or "{}")
                 })
 
-        # 2. 关键词搜索
+        # 2. 关键词搜索（jieba分词 + BM25评分）
         try:
-            keywords = []
-            for length in [4, 3, 2]:
-                for i in range(len(query) - length + 1):
-                    segment = query[i:i+length]
-                    if all('一' <= c <= '龥' for c in segment) and segment not in keywords:
-                        keywords.append(segment)
+            # 用jieba分词处理查询
+            query_tokens = list(jieba.cut(query))
+            query_tokens = [t.strip() for t in query_tokens if len(t.strip()) >= 2]
 
-            for kw in keywords[:5]:
-                if len(kw) < 2:
-                    continue
+            if query_tokens:
+                # 构建BM25查询表达式：匹配任一分词结果
+                like_conditions = [f'content like "%{token}%"' for token in query_tokens[:8]]
+                keyword_expr = " or ".join(like_conditions)
+
                 try:
                     keyword_results = collection.query(
-                        expr=f'content like "%{kw}%"',
+                        expr=keyword_expr,
                         output_fields=["content", "source", "metadata", "doc_id", "chunk_id"],
-                        limit=5
+                        limit=20
                     )
-                    for kr in keyword_results:
-                        content = kr.get("content", "")
-                        content_key = content[:50]
-                        if content_key in seen_contents:
-                            continue
-                        seen_contents.add(content_key)
-                        all_docs.append({
-                            "content": content,
-                            "source": kr.get("source"),
-                            "doc_id": kr.get("doc_id"),
-                            "chunk_id": kr.get("chunk_id"),
-                            "vector_score": 0.0,
-                            "keyword_score": 0.6,
-                            "metadata": json.loads(kr.get("metadata") or "{}")
-                        })
-                except Exception:
-                    pass
-        except Exception:
-            pass
+
+                    # 使用BM25计算关键词得分
+                    if keyword_results:
+                        # 对每个结果计算BM25分数
+                        for kr in keyword_results:
+                            content = kr.get("content", "")
+                            content_key = content[:50]
+                            if content_key in seen_contents:
+                                continue
+                            seen_contents.add(content_key)
+
+                            # 用jieba分词处理文档内容
+                            doc_tokens = list(jieba.cut(content))
+                            doc_tokens = [t.strip() for t in doc_tokens if len(t.strip()) >= 2]
+
+                            # 计算BM25分数
+                            try:
+                                bm25 = BM25Okapi([doc_tokens])
+                                score = bm25.get_scores(query_tokens)[0]
+                                # 归一化到0-1区间（经验值：BM25原始分通常在0-15之间）
+                                normalized_score = min(1.0, max(0.0, score / 10.0))
+                            except Exception:
+                                # fallback：简单的词频匹配
+                                matched_count = sum(1 for t in query_tokens if t in content)
+                                normalized_score = min(0.8, matched_count * 0.2)
+
+                            all_docs.append({
+                                "content": content,
+                                "source": kr.get("source"),
+                                "doc_id": kr.get("doc_id"),
+                                "chunk_id": kr.get("chunk_id"),
+                                "vector_score": 0.0,
+                                "keyword_score": normalized_score,
+                                "metadata": json.loads(kr.get("metadata") or "{}")
+                            })
+                except Exception as e:
+                    print(f"[RAG] BM25搜索失败: {e}")
+        except Exception as e:
+            print(f"[RAG] 关键词搜索异常: {e}")
 
         # 3. 加权融合排序
         for doc in all_docs:

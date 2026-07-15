@@ -169,16 +169,20 @@ def unified_ask(
 
 
 def _merge_and_rank(question: str, general_results: List[Dict], standards_results: List[Dict]) -> List[Dict]:
-    """合并两库结果，统一排序"""
+    """合并两库结果，统一排序（分数归一化到[0,1]）"""
     all_results = []
 
-    # 立结案标准库结果（通常更精准，适当提权）
+    # 立结案标准库结果归一化
+    # 标准库的score/final_score范围通常在0-1之间，但分布不均
     for r in standards_results:
-        score = r.get("score", r.get("final_score", 0))
-        r["unified_score"] = min(1.0, score + 0.05)  # 微弱提权
+        score = r.get("final_score", r.get("score", 0))
+        # 归一化：标准库score通常在0.3-0.8之间，映射到0-1
+        normalized_score = min(1.0, max(0.0, (score - 0.2) / 0.6)) if score > 0.2 else score * 0.5
+        r["unified_score"] = min(1.0, normalized_score + 0.05)  # 微弱提权
         all_results.append(r)
 
-    # 通用知识库结果
+    # 通用知识库结果归一化
+    # 通用库的score通常是cosine similarity，范围0-1
     for r in general_results:
         score = r.get("score", 0)
         r["unified_score"] = score
@@ -234,12 +238,13 @@ def _check_need_clarify(question: str, results: List[Dict]) -> tuple:
 
 
 def _build_context(results: List[Dict]) -> str:
-    """构建LLM上下文，合并两库结果"""
+    """构建LLM上下文，合并两库结果（通用化处理）"""
     context_parts = []
     seen_types = set()
 
     for r in results:
         source_type = r.get("source_type", "")
+        unified_score = r.get("unified_score", 0)
 
         if source_type == "standards":
             case_type = r.get("case_type", "")
@@ -247,12 +252,26 @@ def _build_context(results: List[Dict]) -> str:
                 continue
             seen_types.add(case_type)
             parent_text = r.get("parent_text", "")
+            child_text = r.get("child_text", "")
+
+            # 提取meta_info中的关键信息
+            meta_info = r.get("meta_info", {})
+            time_limit = meta_info.get("time_limit", "")
+            supervision = meta_info.get("supervision", "")
+            responsibility = meta_info.get("responsibility", "")
+
+            # 构建更丰富的上下文
+            context_parts.append(f"【{case_type}】（立结案标准库，相关度: {unified_score:.2f}）")
             if parent_text:
-                context_parts.append(f"【{case_type}】（立结案标准库）\n{parent_text}")
-            else:
-                child_text = r.get("child_text", "")
-                if child_text:
-                    context_parts.append(f"【{case_type}】（立结案标准库）\n{child_text}")
+                context_parts.append(f"标准内容：{parent_text}")
+            if child_text:
+                context_parts.append(f"详细说明：{child_text}")
+            if supervision:
+                context_parts.append(f"监管主体：{supervision}")
+            if responsibility:
+                context_parts.append(f"责任主体：{responsibility}")
+            if time_limit:
+                context_parts.append(f"处置时限：{time_limit}")
 
         elif source_type == "general":
             content = r.get("content", "")
@@ -260,7 +279,19 @@ def _build_context(results: List[Dict]) -> str:
             score = r.get("score", 0)
             if len(content) > 500:
                 content = content[:500] + "..."
-            context_parts.append(f"【{source}】（通用知识库，相似度: {score:.2f}）\n{content}")
+
+            # 根据来源类型判断内容类型
+            content_type = "通用知识"
+            if "法律" in source or "法规" in source:
+                content_type = "法律法规"
+            elif "职责" in source or "部门" in source:
+                content_type = "职责划分"
+            elif "考核" in source:
+                content_type = "考核办法"
+            elif "规章" in source or "制度" in source:
+                content_type = "规章制度"
+
+            context_parts.append(f"【{source}】（{content_type}，相关度: {score:.2f}）\n{content}")
 
     return "\n\n---\n\n".join(context_parts)
 
@@ -295,11 +326,18 @@ def _ask_llm_unified(
     prompt = f"""你是运城市城市管理局的资深专家。根据以下参考资料回答市民问题。
 
 ## 规则
-1. 只用参考资料中的信息回答，禁止编造或推测
-2. 场景优先：问题中的场景（绿化带、公园、道路等）是选择标准的关键依据
-3. 本质优先：识别问题本质，不被"建议""投诉"等表面词误导
-4. 归属部门必须从参考标准的【监管主体】【责任主体】字段复制，不要自己编造
-5. 笼统描述（如"脏乱差""环境差"）必须追问具体类型
+1. **只用参考资料中的信息回答**，禁止编造或推测
+2. **反幻觉约束**：如果参考资料中没有相关信息，明确说"知识库中暂无相关信息"，不要补充常识
+3. **场景优先**：问题中的场景（绿化带、公园、道路等）是选择标准的关键依据
+4. **本质优先**：识别问题本质，不被"建议""投诉"等表面词误导
+5. **归属部门**：必须从参考标准的【监管主体】【责任主体】字段复制，不要自己编造
+6. **笼统描述**（如"脏乱差""环境差"）必须追问具体类型
+7. **根据问题类型调整回答风格**：
+   - 法规咨询：引用具体条款，说明法律依据
+   - 业务办理：说明办理流程、所需材料、注意事项
+   - 权责所属：明确责任部门、监管主体
+   - 问题投诉：给出处置建议、参考时限
+8. **整合多个来源**：如果参考资料中有多个相关内容，整合成完整回答，注明来源
 
 {f"## 可选子类型{chr(10)}请先让用户确认具体是哪种：{chr(10)}{chr(10).join('- ' + t for t in clarify_options[:15])}" if need_clarify and clarify_options else ""}{geo_info}
 ## 参考资料
