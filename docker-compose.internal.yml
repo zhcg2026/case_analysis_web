@@ -61,6 +61,7 @@ services:
       - ./backend/cms_routes.py:/app/backend/cms_routes.py
       - ./backend/data_edit_routes.py:/app/backend/data_edit_routes.py
       - ./backend/knowledge_routes.py:/app/backend/knowledge_routes.py
+      - ./backend/case_standards_routes.py:/app/backend/case_standards_routes.py
       - ./frontend/dist:/app/frontend/dist
     restart: unless-stopped
     healthcheck:

@@ -100,6 +100,11 @@ try:
 except ImportError:
     from knowledge_routes import register_knowledge_routes
 
+try:
+    from backend.case_standards_routes import register_case_standards_routes
+except ImportError:
+    from case_standards_routes import register_case_standards_routes
+
 # 导入处理docx文件的库
 from docx import Document
 
@@ -808,6 +813,16 @@ try:
         init_rag=init_rag,
     )
     print("知识库路由注册成功")
+
+    # 注册立结案标准库路由
+    register_case_standards_routes(
+        app=app,
+        Session=Session,
+        engine=engine,
+        protected=protected,
+        admin_required=admin_required,
+    )
+    print("立结案标准库路由注册成功")
 
 except Exception as e:
     print(f"数据库初始化失败: {e}")
@@ -4517,9 +4532,9 @@ except ImportError:
         index_single_file_upload
     )
 
-@app.route('/api/case-standards/stats', methods=['GET'])
-@admin_required
-def case_standards_stats():
+# MIGRATED: @app.route('/api/case-standards/stats', methods=['GET'])
+# MIGRATED: @admin_required
+def _migrated_case_standards_stats():
     """获取立结案标准库统计信息"""
     try:
         stats = get_case_standards_stats()
@@ -4527,9 +4542,9 @@ def case_standards_stats():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/case-standards/index', methods=['POST'])
-@admin_required
-def case_standards_index():
+# MIGRATED: @app.route('/api/case-standards/index', methods=['POST'])
+# MIGRATED: @admin_required
+def _migrated_case_standards_index():
     """索引立结案标准文件目录"""
     try:
         data = request.get_json() or {}
@@ -4540,9 +4555,9 @@ def case_standards_index():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/case-standards/clear', methods=['POST'])
-@admin_required
-def case_standards_clear():
+# MIGRATED: @app.route('/api/case-standards/clear', methods=['POST'])
+# MIGRATED: @admin_required
+def _migrated_case_standards_clear():
     """清空立结案标准库"""
     try:
         result = clear_case_standards()
@@ -4550,9 +4565,9 @@ def case_standards_clear():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/case-standards/search', methods=['POST'])
-@protected
-def case_standards_search():
+# MIGRATED: @app.route('/api/case-standards/search', methods=['POST'])
+# MIGRATED: @protected
+def _migrated_case_standards_search():
     """搜索立结案标准"""
     try:
 
@@ -4568,8 +4583,8 @@ def case_standards_search():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/case-standards-debug/search', methods=['POST'])
-def case_standards_debug_search():
+# MIGRATED: @app.route('/api/case-standards-debug/search', methods=['POST'])
+# MIGRATED: def case_standards_debug_search():
     """调试端点：搜索立结案标准（无需认证）"""
     try:
         data = request.get_json()
@@ -4595,8 +4610,8 @@ def case_standards_debug_search():
         traceback.print_exc()
         return jsonify({'error': str(e), 'traceback': traceback.format_exc()}), 500
 
-@app.route('/api/case-standards-debug/ask', methods=['POST'])
-def case_standards_debug_ask():
+# MIGRATED: @app.route('/api/case-standards-debug/ask', methods=['POST'])
+# MIGRATED: def case_standards_debug_ask():
     """调试端点：立结案标准问答（无需认证）"""
     try:
         import os
@@ -4624,9 +4639,9 @@ def case_standards_debug_ask():
         traceback.print_exc()
         return jsonify({'error': str(e), 'traceback': traceback.format_exc()}), 500
 
-@app.route('/api/case-standards/ask', methods=['POST'])
-@protected
-def case_standards_ask():
+# MIGRATED: @app.route('/api/case-standards/ask', methods=['POST'])
+# MIGRATED: @protected
+def _migrated_case_standards_ask():
     """立结案标准问答"""
     try:
 
@@ -4650,9 +4665,9 @@ def case_standards_ask():
 
 # ==================== 立结案标准索引管理 API ====================
 
-@app.route('/api/case-standards/list', methods=['GET'])
-@admin_required
-def case_standards_list():
+# MIGRATED: @app.route('/api/case-standards/list', methods=['GET'])
+# MIGRATED: @admin_required
+def _migrated_case_standards_list():
     """获取已索引的标准列表"""
     try:
 
@@ -4664,9 +4679,9 @@ def case_standards_list():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/case-standards/delete/<parent_id>', methods=['DELETE'])
-@admin_required
-def case_standards_delete_single(parent_id):
+# MIGRATED: @app.route('/api/case-standards/delete/<parent_id>', methods=['DELETE'])
+# MIGRATED: @admin_required
+def _migrated_case_standards_delete_single(parent_id):
     """删除单个已索引的标准"""
     try:
 
@@ -4675,9 +4690,9 @@ def case_standards_delete_single(parent_id):
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/case-standards/incremental', methods=['POST'])
-@admin_required
-def case_standards_incremental_index():
+# MIGRATED: @app.route('/api/case-standards/incremental', methods=['POST'])
+# MIGRATED: @admin_required
+def _migrated_case_standards_incremental_index():
     """增量索引立结案标准"""
     try:
 
@@ -4691,9 +4706,9 @@ def case_standards_incremental_index():
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/case-standards/index-single', methods=['POST'])
-@admin_required
-def case_standards_index_single():
+# MIGRATED: @app.route('/api/case-standards/index-single', methods=['POST'])
+# MIGRATED: @admin_required
+def _migrated_case_standards_index_single():
     """上传并索引单个标准文件"""
     try:
 
