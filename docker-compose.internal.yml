@@ -7,12 +7,12 @@ services:
   case-analysis-app:
     build: .
     container_name: case-analysis-web
-    # 启动前等待数据库就绪（db 是 MySQL 容器的网络别名）
+    # 启动前等待数据库就绪
     command: >
       sh -c "
         echo '等待数据库就绪...'
         for i in 1 2 3 4 5 6 7 8 9 10; do
-          if curl -s http://db:3306 > /dev/null 2>&1 || nc -z db 3306 2>/dev/null; then
+          if curl -s http://mysql-case-analysis:3306 > /dev/null 2>&1 || nc -z mysql-case-analysis 3306 2>/dev/null; then
             echo '数据库已就绪'
             break
           fi
@@ -29,6 +29,7 @@ services:
     environment:
       - FLASK_ENV=production
       - PYTHONUNBUFFERED=1
+      - PYTHONPATH=/app/backend:/app
       - TZ=Asia/Shanghai
       - USE_LOCAL_MODE=false
       # RAG 知识库配置 - 连接宿主机服务
@@ -49,6 +50,17 @@ services:
       - ./backend/flood_routes.py:/app/backend/flood_routes.py
       - ./backend/flood_helpers.py:/app/backend/flood_helpers.py
       - ./backend/case_standards.py:/app/backend/case_standards.py
+      - ./backend/helpers.py:/app/backend/helpers.py
+      - ./backend/models.py:/app/backend/models.py
+      - ./backend/models_init.py:/app/backend/models_init.py
+      - ./backend/auth_routes.py:/app/backend/auth_routes.py
+      - ./backend/upload_routes.py:/app/backend/upload_routes.py
+      - ./backend/data_management_routes.py:/app/backend/data_management_routes.py
+      - ./backend/assessment_routes.py:/app/backend/assessment_routes.py
+      - ./backend/analysis_routes.py:/app/backend/analysis_routes.py
+      - ./backend/cms_routes.py:/app/backend/cms_routes.py
+      - ./backend/data_edit_routes.py:/app/backend/data_edit_routes.py
+      - ./backend/knowledge_routes.py:/app/backend/knowledge_routes.py
       - ./frontend/dist:/app/frontend/dist
     restart: unless-stopped
     healthcheck:
