@@ -105,6 +105,26 @@ try:
 except ImportError:
     from case_standards_routes import register_case_standards_routes
 
+try:
+    from backend.report_routes import register_report_routes
+except ImportError:
+    from report_routes import register_report_routes
+
+try:
+    from backend.tools_routes import register_tools_routes
+except ImportError:
+    from tools_routes import register_tools_routes
+
+try:
+    from backend.kb_routes import register_kb_routes
+except ImportError:
+    from kb_routes import register_kb_routes
+
+try:
+    from backend.map_routes import register_map_routes
+except ImportError:
+    from map_routes import register_map_routes
+
 # 导入处理docx文件的库
 from docx import Document
 
@@ -823,6 +843,10 @@ try:
         admin_required=admin_required,
     )
     print("立结案标准库路由注册成功")
+
+    # ===== Phase 9: 新模块已创建，待逐步切换 =====
+    # register_report_routes, register_tools_routes, register_kb_routes, register_map_routes
+    # 这些模块已创建在 backend/ 目录，等确认无误后再激活
 
 except Exception as e:
     print(f"数据库初始化失败: {e}")
