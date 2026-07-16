@@ -844,9 +844,13 @@ try:
     )
     print("立结案标准库路由注册成功")
 
-    # ===== Phase 9: 新模块已创建，待逐步切换 =====
-    # register_report_routes, register_tools_routes, register_kb_routes, register_map_routes
-    # 这些模块已创建在 backend/ 目录，等确认无误后再激活
+    # ===== Phase 9: 逐步激活新模块 =====
+    # 激活地图/管辖区域路由
+    try:
+        register_map_routes(app=app, protected=protected)
+        print("地图路由注册成功")
+    except Exception as e:
+        print(f"地图路由注册失败: {e}")
 
 except Exception as e:
     print(f"数据库初始化失败: {e}")
@@ -4862,90 +4866,11 @@ def kb_migration_status():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/jurisdiction/check', methods=['POST'])
-@protected
-def check_jurisdiction():
-    """根据坐标判断管辖范围和责任部门"""
-    try:
-        data = request.get_json()
-        lng = data.get('lng')
-        lat = data.get('lat')
-        
-        if lng is None or lat is None:
-            return jsonify({'error': '请提供经纬度坐标'}), 400
-        
-        import json
-        
-        def point_in_polygon(x, y, polygon):
-            """射线法判断点是否在多边形内"""
-            n = len(polygon)
-            inside = False
-            j = n - 1
-            for i in range(n):
-                xi, yi = polygon[i]
-                xj, yj = polygon[j]
-                if ((yi > y) != (yj > y)) and (x < (xj - xi) * (y - yi) / (yj - yi) + xi):
-                    inside = not inside
-                j = i
-            return inside
-        
-        def extract_coords(geometry):
-            """从GeoJSON几何体提取坐标"""
-            geom_type = geometry.get('type', '')
-            coords = geometry.get('coordinates', [])
-            if geom_type == 'Polygon':
-                return coords[0] if coords else []
-            elif geom_type == 'MultiPolygon':
-                return coords[0][0] if coords and coords[0] else []
-            return []
-        
-        point_lng = float(lng)
-        point_lat = float(lat)
-        
-        # 加载管辖范围GeoJSON
-        geojson_files = {
-            'huanwei': {'path': '/app/frontend/dist/data/guanxia.geojson', 'dept': '市容环卫中心', 'category': '环卫'},
-            'yuanlin': {'path': '/app/frontend/dist/data/园林片区.geojson', 'dept': '园林绿化服务中心', 'category': '园林'},
-        }
-        
-        matched = []
-        
-        for key, info in geojson_files.items():
-            try:
-                with open(info['path'], 'r', encoding='utf-8') as f:
-                    geojson = json.load(f)
-                
-                for feature in geojson.get('features', []):
-                    coords = extract_coords(feature['geometry'])
-                    if coords and point_in_polygon(point_lng, point_lat, coords):
-                        props = feature.get('properties', {})
-                        name = props.get('name') or props.get('zone_name') or info['category']
-                        matched.append({
-                            'category': info['category'],
-                            'department': info['dept'],
-                            'area_name': name,
-                            'properties': props
-                        })
-            except Exception as e:
-                print(f"[Jurisdiction] 读取{info['path']}失败: {e}")
-        
-        if matched:
-            return jsonify({
-                'matched': True,
-                'jurisdictions': matched,
-                'message': f"该位置属于{'、'.join(m['area_name'] for m in matched)}管辖范围"
-            }), 200
-        else:
-            return jsonify({
-                'matched': False,
-                'jurisdictions': [],
-                'message': '该位置未匹配到我局管辖范围，可能属于外单位（如街办）管辖'
-            }), 200
-            
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return jsonify({'error': str(e)}), 500
+# MIGRATED: /api/jurisdiction/check 已迁移到 map_routes.py
+# @app.route('/api/jurisdiction/check', methods=['POST'])
+# @protected
+def _migrated_check_jurisdiction():
+    pass
 
 @app.route('/api/smart-report', methods=['POST'])
 @protected
