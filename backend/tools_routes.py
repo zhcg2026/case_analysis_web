@@ -78,6 +78,8 @@ def register_tools_routes(app, protected, extract_location_from_text):
     @app.route('/api/tools/extract-location', methods=['POST'])
     @protected
     def extract_location():
+        import tempfile
+        output_file = None
         try:
             if 'file' not in request.files:
                 return jsonify({'error': 'No file part'}), 400
@@ -104,15 +106,29 @@ def register_tools_routes(app, protected, extract_location_from_text):
                     df.loc[idx, "地址描述"] = new_addr
                     updated_count += 1
 
-            import tempfile
             with tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False) as temp:
                 output_file = temp.name
 
             df.to_excel(output_file, index=False)
 
-            return send_file(output_file, as_attachment=True, download_name='case_data_with_extracted_location.xlsx', mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+            response = send_file(output_file, as_attachment=True, download_name='case_data_with_extracted_location.xlsx', mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+            @response.call_on_close
+            def cleanup():
+                try:
+                    if output_file and os.path.exists(output_file):
+                        os.remove(output_file)
+                except Exception as cleanup_error:
+                    print(f"Error cleaning up temporary file: {cleanup_error}")
+
+            return response
         except Exception as e:
             print(f"Error in extract_location: {str(e)}")
             import traceback
             traceback.print_exc()
+            if output_file and os.path.exists(output_file):
+                try:
+                    os.remove(output_file)
+                except:
+                    pass
             return jsonify({'error': str(e)}), 500

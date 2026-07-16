@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """工具函数模块 - 从app.py提取的通用工具函数"""
 import os
 import re
@@ -321,3 +321,88 @@ def extract_location_from_text(text):
     if not location_parts:
         location_parts = [p.strip() for p in parts[:2] if p.strip()]
     return "，".join(location_parts) if location_parts else "未提取到地址"
+
+
+def read_file_content(file):
+    """读取文件内容，支持docx和xlsx文件"""
+    import pandas as pd
+    filename = file.filename
+    file_extension = os.path.splitext(filename)[1].lower()
+
+    if file_extension == '.docx':
+        with tempfile.NamedTemporaryFile(suffix='.docx', delete=False) as temp:
+            file.save(temp.name)
+            temp_path = temp.name
+
+        try:
+            def extract_headers_footers(doc):
+                texts = []
+                try:
+                    for section in doc.sections:
+                        header = section.header
+                        for para in header.paragraphs:
+                            text = para.text.strip()
+                            if text:
+                                texts.append(f"页眉: {text}")
+                        footer = section.footer
+                        for para in footer.paragraphs:
+                            text = para.text.strip()
+                            if text:
+                                texts.append(f"页脚: {text}")
+                except Exception as e:
+                    print(f"Error extracting headers/footers: {str(e)}")
+                return texts
+
+            doc = Document(temp_path)
+            full_text = []
+
+            header_footer_texts = extract_headers_footers(doc)
+            if header_footer_texts:
+                full_text.extend(header_footer_texts)
+
+            for para in doc.paragraphs:
+                text = para.text.strip()
+                if text:
+                    full_text.append(text)
+
+            for table in doc.tables:
+                for row in table.rows:
+                    row_text = []
+                    for cell in row.cells:
+                        cell_text = cell.text.strip()
+                        row_text.append(cell_text)
+                    row_content = '\t'.join(row_text)
+                    if row_content.strip():
+                        full_text.append(row_content)
+
+            try:
+                with zipfile.ZipFile(temp_path, 'r') as zf:
+                    if 'word/document.xml' in zf.namelist():
+                        with zf.open('word/document.xml') as f:
+                            xml_content = f.read().decode('utf-8')
+                            text_content = re.sub('<[^<]+?>', '', xml_content)
+                            text_content = text_content.strip()
+                            if text_content and not full_text:
+                                full_text.append(text_content)
+            except Exception:
+                pass
+
+            content = '\n'.join(full_text)
+            print(f"DOCX file processed: {len(content)} characters extracted")
+            return content
+        finally:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+    elif file_extension == '.xlsx':
+        df = pd.read_excel(file)
+        content = []
+        for index, row in df.iterrows():
+            row_content = []
+            for col in df.columns:
+                if pd.notna(row[col]):
+                    row_content.append(f"{col}: {row[col]}")
+            if row_content:
+                content.append(' | '.join(row_content))
+        return '\n'.join(content)
+    else:
+        raise ValueError('Unsupported file type')

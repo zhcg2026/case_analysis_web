@@ -67,6 +67,8 @@ services:
       - ./backend/map_routes.py:/app/backend/map_routes.py
       - ./backend/tools_routes.py:/app/backend/tools_routes.py
       - ./backend/report_routes.py:/app/backend/report_routes.py
+      - ./backend/chart_routes.py:/app/backend/chart_routes.py
+      - ./backend/analysis_v2_routes.py:/app/backend/analysis_v2_routes.py
       - ./backend/kb_unified.py:/app/backend/kb_unified.py
       - ./backend/kb_common.py:/app/backend/kb_common.py
       - ./frontend/dist:/app/frontend/dist
