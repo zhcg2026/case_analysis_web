@@ -1,83 +1,32 @@
-# Python
-.venv/
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-env/
-venv/
-ENV/
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
+# 测试/调试脚本
+test_*.py
+debug_*.py
+check_*.py
+fix_*.py
+bug.md
 
-# Flask
-instance/
-.webassets-cache
+# 临时文件
+_distill_*.py
+temp_*.py
+run_bg_*.py
+search_kb.py
+upload_*.py
+upload_*.sh
+extract.py
+find_road_point.py
+verify_*.py
 
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
+# 截图
+flood_screenshot*.png
 
-# OS
-.DS_Store
-Thumbs.db
+# 中文文件名的md/txt
+新模块.txt
+真实问题.txt
+公休号-知识库调优之路.md
+部署说明.md
+海埂街视E-Home对接需求.md
+汛情值守-待研究功能.md
 
-# Node.js (frontend)
-node_modules/
-frontend/node_modules/
-npm-debug.log
-yarn-error.log
-
-# Logs
-*.log
-logs/
-
-# Environment
-.env
-.env.local
-.env.production
-
-# Database (SQLite)
-*.db
-*.sqlite
-*.sqlite3
-
-# Vector database (ChromaDB)
-chroma_db/
-backend/chroma_db/
-local_milvus.db
-
-# Backup files
-*.bak
-*.backup
-
-# OS generated files
-ehthumbs.db
-Desktop.ini
-.gstack/
-
-# Uploaded files
-backend/uploads/
-
-# Data analysis files (临时数据分析文件不提交)
-*.xlsx
-charts/
-*.md.bak
-generate_charts.py
+# MiMoCode/Claude配置
+.claude/
+.mimocode/
