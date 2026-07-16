@@ -57,11 +57,18 @@ services:
       - ./backend/upload_routes.py:/app/backend/upload_routes.py
       - ./backend/data_management_routes.py:/app/backend/data_management_routes.py
       - ./backend/assessment_routes.py:/app/backend/assessment_routes.py
+      - ./backend/assessment_coefficients.json:/app/backend/assessment_coefficients.json
       - ./backend/analysis_routes.py:/app/backend/analysis_routes.py
       - ./backend/cms_routes.py:/app/backend/cms_routes.py
       - ./backend/data_edit_routes.py:/app/backend/data_edit_routes.py
       - ./backend/knowledge_routes.py:/app/backend/knowledge_routes.py
       - ./backend/case_standards_routes.py:/app/backend/case_standards_routes.py
+      - ./backend/kb_routes.py:/app/backend/kb_routes.py
+      - ./backend/map_routes.py:/app/backend/map_routes.py
+      - ./backend/tools_routes.py:/app/backend/tools_routes.py
+      - ./backend/report_routes.py:/app/backend/report_routes.py
+      - ./backend/kb_unified.py:/app/backend/kb_unified.py
+      - ./backend/kb_common.py:/app/backend/kb_common.py
       - ./frontend/dist:/app/frontend/dist
     restart: unless-stopped
     healthcheck:
