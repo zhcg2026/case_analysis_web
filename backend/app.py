@@ -864,6 +864,29 @@ try:
     except Exception as e:
         print(f"小工具路由注册失败: {e}")
 
+    # 激活统一知识库路由
+    try:
+        from kb_unified import (
+            unified_ask,
+            unified_search,
+            get_unified_stats,
+            migrate_general_to_unified,
+            get_migration_status,
+        )
+        register_kb_routes(
+            app=app,
+            protected=protected,
+            admin_required=admin_required,
+            unified_ask=unified_ask,
+            unified_search=unified_search,
+            get_unified_stats=get_unified_stats,
+            migrate_general_to_unified=migrate_general_to_unified,
+            get_migration_status=get_migration_status,
+        )
+        print("统一知识库路由注册成功")
+    except Exception as e:
+        print(f"统一知识库路由注册失败: {e}")
+
 except Exception as e:
     print(f"数据库初始化失败: {e}")
     print("应用将以无数据库模式运行（登录和用户管理功能不可用）")
@@ -4682,77 +4705,31 @@ except Exception:
         migrate_general_to_unified = None
         get_migration_status = None
 
-@app.route('/api/kb/ask', methods=['POST'])
-@protected
-def kb_unified_ask():
-    """统一知识库问答"""
-    try:
-        data = request.get_json(silent=True) or {}
-        question = data.get('question', '')
-        location = data.get('location')
-        history = data.get('history', [])
-        top_k = data.get('top_k', 5)
+# MIGRATED: /api/kb/* 已迁移到 kb_routes.py
+# @app.route('/api/kb/ask', methods=['POST'])
+# @protected
+def _migrated_kb_unified_ask():
+    pass
 
-        if not question:
-            return jsonify({'error': '请提供问题'}), 400
+# @app.route('/api/kb/search', methods=['POST'])
+# @protected
+def _migrated_kb_unified_search():
+    pass
 
-        result = unified_ask(question, location, history, top_k)
-        return jsonify(result), 200
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return jsonify({'error': str(e)}), 500
+# @app.route('/api/kb/stats', methods=['GET'])
+# @protected
+def _migrated_kb_unified_stats():
+    pass
 
-@app.route('/api/kb/search', methods=['POST'])
-@protected
-def kb_unified_search():
-    """统一知识库检索"""
-    try:
-        data = request.get_json(silent=True) or {}
-        query = data.get('query', '')
-        top_k = data.get('top_k', 10)
+# @app.route('/api/kb/migrate', methods=['POST'])
+# @admin_required
+def _migrated_kb_unified_migrate():
+    pass
 
-        if not query:
-            return jsonify({'error': '请提供搜索内容'}), 400
-
-        results = unified_search(query, top_k)
-        return jsonify({'results': results, 'total': len(results)}), 200
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/kb/stats', methods=['GET'])
-@protected
-def kb_unified_stats():
-    """获取统一知识库统计信息"""
-    try:
-        stats = get_unified_stats()
-        return jsonify(stats), 200
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/kb/migrate', methods=['POST'])
-@admin_required
-def kb_unified_migrate():
-    """迁移通用知识库到统一库"""
-    try:
-        result = migrate_general_to_unified()
-        return jsonify(result), 200
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/kb/migration-status', methods=['GET'])
-@admin_required
-def kb_migration_status():
-    """获取迁移状态"""
-    try:
-        status = get_migration_status()
-        return jsonify(status), 200
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+# @app.route('/api/kb/migration-status', methods=['GET'])
+# @admin_required
+def _migrated_kb_migration_status():
+    pass
 
 # MIGRATED: /api/jurisdiction/check 已迁移到 map_routes.py
 # @app.route('/api/jurisdiction/check', methods=['POST'])
