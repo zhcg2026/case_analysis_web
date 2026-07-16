@@ -62,7 +62,9 @@ def clear_login_attempts(username):
     if username in LOGIN_ATTEMPTS:
         del LOGIN_ATTEMPTS[username]
 
-SECRET_KEY = os.getenv("JWT_SECRET_KEY", "your-secret-key-for-jwt-token")
+SECRET_KEY = os.getenv("JWT_SECRET_KEY")
+if not SECRET_KEY:
+    raise RuntimeError('JWT_SECRET_KEY 未配置，禁止启动')
 TOKEN_EXPIRATION = int(os.getenv("TOKEN_EXPIRATION_SECONDS", str(24 * 60 * 60)))
 
 def generate_token(user_id, username, role):
@@ -149,13 +151,13 @@ def convert_nan_to_null(obj):
     else:
         return obj
 
-API_KEY = "58a51ac5-3b75-4c5e-85ac-1fb4ef652bd0"
+API_KEY = os.getenv('ARK_API_KEY', '')
 API_URL = "https://ark.cn-beijing.volces.com/api/v3/chat/completions"
 MODEL = "doubao-seed-1-8-251228"
-BAILIAN_GENERAL_API_KEY = "sk-8f9b17ffd00148868cdadcac65220930"
+BAILIAN_GENERAL_API_KEY = os.getenv('BAILIAN_GENERAL_API_KEY', '')
 BAILIAN_GENERAL_API_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
 BAILIAN_GENERAL_MODEL = "qwen-plus"
-BAILIAN_CHENGGUANTONG_API_KEY = "sk-9ee20f6ad5dd459aa8952e5ae979bead"
+BAILIAN_CHENGGUANTONG_API_KEY = os.getenv('BAILIAN_CHENGGUANTONG_API_KEY', '')
 BAILIAN_CHENGGUANTONG_API_URL = "https://dashscope.aliyuncs.com/api/v1/apps/b608e4ed05c44c19bf7e71679c859689/completion"
 API_CONNECT_TIMEOUT = 10
 API_READ_TIMEOUT = 300

@@ -30,3 +30,8 @@ flood_screenshot*.png
 # MiMoCode/Claude閰嶇疆
 .claude/
 .mimocode/
+
+# 环境变量文件（包含敏感信息）
+.env
+.env.*
+!.env.example
