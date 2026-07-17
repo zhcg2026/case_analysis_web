@@ -2,7 +2,27 @@
 """统一知识库路由模块"""
 from flask import request, jsonify
 
-def register_kb_routes(app, protected, admin_required, unified_ask, unified_search, get_unified_stats, migrate_general_to_unified, get_migration_status):
+try:
+    from common import (
+        protected as _protected, admin_required as _admin_required,
+        unified_ask as _unified_ask, unified_search as _unified_search,
+        get_unified_stats as _get_unified_stats,
+        migrate_general_to_unified as _migrate_general_to_unified,
+        get_migration_status as _get_migration_status,
+    )
+except ImportError:
+    from helpers import protected as _protected, admin_required as _admin_required
+    _unified_ask = _unified_search = _get_unified_stats = None
+    _migrate_general_to_unified = _get_migration_status = None
+
+def register_kb_routes(app, protected=None, admin_required=None, unified_ask=None, unified_search=None, get_unified_stats=None, migrate_general_to_unified=None, get_migration_status=None):
+    protected = protected or _protected
+    admin_required = admin_required or _admin_required
+    unified_ask = unified_ask or _unified_ask
+    unified_search = unified_search or _unified_search
+    get_unified_stats = get_unified_stats or _get_unified_stats
+    migrate_general_to_unified = migrate_general_to_unified or _migrate_general_to_unified
+    get_migration_status = get_migration_status or _get_migration_status
     """注册统一知识库相关路由"""
 
     @app.route('/api/kb/ask', methods=['POST'])

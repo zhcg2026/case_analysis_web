@@ -4,7 +4,14 @@ import os
 import pandas as pd
 from flask import request, jsonify, send_file
 
-def register_tools_routes(app, protected, extract_location_from_text):
+try:
+    from common import protected as _protected, extract_location_from_text as _extract_location
+except ImportError:
+    from helpers import protected as _protected, extract_location_from_text as _extract_location
+
+def register_tools_routes(app, protected=None, extract_location_from_text=None):
+    protected = protected or _protected
+    extract_location_from_text = extract_location_from_text or _extract_location
     """注册小工具相关路由"""
 
     @app.route('/api/tools/huanwei-assignment', methods=['POST'])

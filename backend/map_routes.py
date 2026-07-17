@@ -4,7 +4,14 @@ import os
 import json
 from flask import request, jsonify
 
-def register_map_routes(app, protected):
+try:
+    from common import protected as _protected
+except ImportError:
+    from helpers import protected as _protected
+
+def register_map_routes(app, protected=None):
+    """注册地图与管辖区域相关路由"""
+    protected = protected or _protected
     """注册地图与管辖区域相关路由"""
 
     @app.route('/api/jurisdiction/check', methods=['POST'])
