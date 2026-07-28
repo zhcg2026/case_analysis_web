@@ -4,15 +4,26 @@
 """
 
 import os
+import logging
 import requests
 from typing import List, Optional
 from dotenv import load_dotenv
 
-# 加载环境变量
-if os.path.exists('.env.local'):
-    load_dotenv('.env.local')
-elif os.path.exists('../.env.local'):
-    load_dotenv('../.env.local')
+logger = logging.getLogger("kb_common")
+
+# 加载环境变量：
+#   1) 先加载 backend/.env（本地开发 base 配置，含 LLM_PROVIDER=doubao 等）；
+#      不覆盖进程已有环境变量，故服务器若用 shell 注入 LLM_PROVIDER=ollama 不受影响。
+#   2) 再用 backend/.env.local 覆盖（本地/服务器差异配置最高优先级）。
+# 之前只加载 .env.local 导致本地 .env 里的 LLM_PROVIDER 等配置完全不生效，
+# 使本地测试默认走 ollama(localhost:11434) 而失败。
+_HERE = os.path.dirname(os.path.abspath(__file__))
+_base = os.path.join(_HERE, '.env')
+if os.path.exists(_base):
+    load_dotenv(_base)
+_local = os.path.join(_HERE, '.env.local')
+if os.path.exists(_local):
+    load_dotenv(_local, override=True)
 
 USE_LOCAL_MODE = os.getenv('USE_LOCAL_MODE', 'false').lower() == 'true'
 LLM_PROVIDER = os.getenv('LLM_PROVIDER', 'ollama').lower()
@@ -92,7 +103,14 @@ def get_local_embed_model():
         try:
             from sentence_transformers import SentenceTransformer
             print(f"[KB] 加载本地 embedding 模型: {LOCAL_EMBED_MODEL}")
-            _local_embed_model = SentenceTransformer(LOCAL_EMBED_MODEL)
+            try:
+                # 优先离线加载：仅用本地缓存，避免运行期联网校验 HuggingFace
+                # 导致首问卡顿 / 超时（尤其在出网受限的环境）。
+                _local_embed_model = SentenceTransformer(LOCAL_EMBED_MODEL, local_files_only=True)
+            except (OSError, FileNotFoundError, ValueError):
+                # 本地无缓存时退回联网下载（首次灌库场景）。
+                logger.warning("[KB] 本地 embedding 缓存未命中，回退联网下载模型")
+                _local_embed_model = SentenceTransformer(LOCAL_EMBED_MODEL)
             print(f"[KB] 本地 embedding 模型加载完成")
         except ImportError:
             print("[KB] sentence-transformers 未安装")
@@ -191,7 +209,7 @@ def call_llm(prompt: str, provider: str = None, timeout: int = 120) -> Optional[
                 },
                 json={
                     "model": DOUBAO_MODEL,
-                    "messages": [{"role": "user", "content": prompt}]
+                    "messages": [{"role": "user", "content": [{"type": "text", "text": prompt}]}]
                 },
                 timeout=timeout
             )

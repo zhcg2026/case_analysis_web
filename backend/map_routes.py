@@ -2,7 +2,8 @@
 """地图与管辖区域路由模块"""
 import os
 import json
-from flask import request, jsonify
+import requests as http_requests
+from flask import request, jsonify, Response
 
 try:
     from common import protected as _protected
@@ -94,4 +95,41 @@ def register_map_routes(app, protected=None):
         except Exception as e:
             import traceback
             traceback.print_exc()
+            return jsonify({'error': str(e)}), 500
+
+    @app.route('/api/wms-proxy', methods=['GET'])
+    def wms_proxy():
+        """WMS 代理接口，转发 GeoServer WMS 请求以绕过 CORS"""
+        try:
+            # 获取请求参数
+            wms_url = request.args.get('url', '')
+            if not wms_url:
+                return jsonify({'error': '缺少 url 参数'}), 400
+
+            # 构建 WMS 请求参数
+            params = {}
+            for key in request.args:
+                if key != 'url':
+                    params[key] = request.args.get(key)
+
+            # 发送请求到 GeoServer
+            resp = http_requests.get(
+                wms_url,
+                params=params,
+                timeout=30,
+                verify=False,
+                headers={'User-Agent': 'Mozilla/5.0'}
+            )
+
+            # 返回图片响应
+            return Response(
+                resp.content,
+                status=resp.status_code,
+                content_type=resp.headers.get('Content-Type', 'image/png'),
+                headers={
+                    'Cache-Control': 'no-cache, no-store, must-revalidate',
+                    'Access-Control-Allow-Origin': '*'
+                }
+            )
+        except Exception as e:
             return jsonify({'error': str(e)}), 500

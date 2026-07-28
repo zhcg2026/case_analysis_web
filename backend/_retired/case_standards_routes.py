@@ -83,48 +83,6 @@ def register_case_standards_routes(app, Session, engine, protected, admin_requir
         except Exception as e:
             return jsonify({'error': str(e)}), 500
 
-    @app.route('/api/case-standards-debug/search', methods=['POST'])
-    def case_standards_debug_search():
-        """调试端点：搜索立结案标准（无需认证）"""
-        try:
-            data = request.get_json()
-            query = data.get('query', '')
-            top_k = data.get('top_k', 5)
-
-            if not query:
-                return jsonify({'error': '请提供查询内容'}), 400
-
-            results = search_case_standards(query, top_k)
-            return jsonify({
-                'results': results,
-                'total': len(results)
-            }), 200
-        except Exception as e:
-            import traceback
-            traceback.print_exc()
-            return jsonify({'error': str(e), 'traceback': traceback.format_exc()}), 500
-
-    @app.route('/api/case-standards-debug/ask', methods=['POST'])
-    def case_standards_debug_ask():
-        """调试端点：立结案标准问答（无需认证）"""
-        try:
-            data = request.get_json(silent=True) or {}
-            question = data.get('question', '')
-            top_k = data.get('top_k', 5)
-            location = data.get('location')
-
-            if not question:
-                return jsonify({'error': '请提供问题'}), 400
-
-            result = ask_case_standard(question, top_k, location)
-            if isinstance(result, dict) and 'matches' in result:
-                result.pop('matches', None)
-            return jsonify(result), 200
-        except Exception as e:
-            import traceback
-            traceback.print_exc()
-            return jsonify({'error': str(e), 'traceback': traceback.format_exc()}), 500
-
     @app.route('/api/case-standards/ask', methods=['POST'])
     @protected
     def case_standards_ask():

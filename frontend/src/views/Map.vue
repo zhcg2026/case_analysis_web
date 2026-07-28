@@ -76,12 +76,12 @@
             <span class="group-count">{{ group.children.length }}</span>
           </div>
           <div v-show="group.expanded" class="layer-children">
-            <label v-for="layer in group.children" :key="layer.id" class="layer-item">
-              <input type="checkbox" :checked="layer.visible" @change="toggleLayer(layer, $event)" />
+            <div v-for="layer in group.children" :key="layer.id" class="layer-item" @click="handleLayerClick(layer)">
+              <input type="checkbox" :checked="layer.visible" @click.stop="handleLayerClick(layer)" />
               <span class="layer-icon">{{ layer.icon }}</span>
               <span class="layer-name">{{ layer.name }}</span>
               <span class="layer-count">{{ getLayerCount(layer) }}</span>
-            </label>
+            </div>
           </div>
         </div>
       </div>
@@ -145,14 +145,6 @@
       </div>
     </aside>
 
-    <!-- 底部统计栏 -->
-    <div class="bottom-stats">
-      <div v-for="stat in categoryStats" :key="stat.key" class="stat-item">
-        <span class="stat-icon">{{ stat.icon }}</span>
-        <span class="stat-name">{{ stat.name }}</span>
-        <span class="stat-value">{{ stat.count }}</span>
-      </div>
-    </div>
 
     <!-- 添加/编辑标记弹窗 -->
     <transition name="modal">
@@ -286,7 +278,78 @@ const layers = ref([
     id: 'shizheng', name: '市政', icon: '🔧', expanded: true,
     children: [
       { id: 'shizheng_road', name: '管辖道路', type: 'geojson', file: '/data/市政管辖道路.geojson', visible: false, icon: '🛣️', color: '#f59e0b' },
-      { id: 'shizheng_pipe', name: '排水管网', type: 'geojson', file: '/data/排水管网.geojson', visible: false, icon: '💧', color: '#3b82f6' }
+      {
+        id: 'pipeline_sewage', name: '污水管线', type: 'wms', visible: false, icon: '🔴',
+        wmsUrl: 'https://ycfhpl.cloudhw.cn:8446/geoserver/zhsw/wms',
+        wmsParams: {
+          service: 'WMS', version: '1.1.1', request: 'GetMap',
+          layers: 'zhsw:zhsw_line', styles: '', srs: 'EPSG:4326',
+          format: 'image/png', transparent: true,
+          viewparams: 'tenantId:6c4547881a6a4e3da44115d58547706e',
+          cql_filter: "network_type = '2'"
+        },
+        color: '#ff6b6b'
+      },
+      {
+        id: 'pipeline_rainwater', name: '雨水管线', type: 'wms', visible: false, icon: '🔵',
+        wmsUrl: 'https://ycfhpl.cloudhw.cn:8446/geoserver/zhsw/wms',
+        wmsParams: {
+          service: 'WMS', version: '1.1.1', request: 'GetMap',
+          layers: 'zhsw:zhsw_line', styles: '', srs: 'EPSG:4326',
+          format: 'image/png', transparent: true,
+          viewparams: 'tenantId:6c4547881a6a4e3da44115d58547706e',
+          cql_filter: "network_type = '1'"
+        },
+        color: '#4dabf7'
+      },
+      {
+        id: 'pipeline_combined', name: '合流管线', type: 'wms', visible: false, icon: '🟡',
+        wmsUrl: 'https://ycfhpl.cloudhw.cn:8446/geoserver/zhsw/wms',
+        wmsParams: {
+          service: 'WMS', version: '1.1.1', request: 'GetMap',
+          layers: 'zhsw:zhsw_line', styles: '', srs: 'EPSG:4326',
+          format: 'image/png', transparent: true,
+          viewparams: 'tenantId:6c4547881a6a4e3da44115d58547706e',
+          cql_filter: "network_type = '3'"
+        },
+        color: '#ffd43b'
+      },
+      {
+        id: 'manhole_sewage', name: '污水井盖', type: 'wms', visible: false, icon: '⚫',
+        wmsUrl: 'https://ycfhpl.cloudhw.cn:8446/geoserver/zhsw/wms',
+        wmsParams: {
+          service: 'WMS', version: '1.1.1', request: 'GetMap',
+          layers: 'zhsw:zhsw_manhole', styles: '', srs: 'EPSG:4326',
+          format: 'image/png', transparent: true,
+          viewparams: 'tenantId:6c4547881a6a4e3da44115d58547706e',
+          cql_filter: "category = '2'"
+        },
+        color: '#868e96'
+      },
+      {
+        id: 'manhole_rainwater', name: '雨水井盖', type: 'wms', visible: false, icon: '🔵',
+        wmsUrl: 'https://ycfhpl.cloudhw.cn:8446/geoserver/zhsw/wms',
+        wmsParams: {
+          service: 'WMS', version: '1.1.1', request: 'GetMap',
+          layers: 'zhsw:zhsw_manhole', styles: '', srs: 'EPSG:4326',
+          format: 'image/png', transparent: true,
+          viewparams: 'tenantId:6c4547881a6a4e3da44115d58547706e',
+          cql_filter: "category = '1'"
+        },
+        color: '#4dabf7'
+      },
+      {
+        id: 'manhole_combined', name: '合流井盖', type: 'wms', visible: false, icon: '🟡',
+        wmsUrl: 'https://ycfhpl.cloudhw.cn:8446/geoserver/zhsw/wms',
+        wmsParams: {
+          service: 'WMS', version: '1.1.1', request: 'GetMap',
+          layers: 'zhsw:zhsw_manhole', styles: '', srs: 'EPSG:4326',
+          format: 'image/png', transparent: true,
+          viewparams: 'tenantId:6c4547881a6a4e3da44115d58547706e',
+          cql_filter: "category = '3'"
+        },
+        color: '#ffd43b'
+      }
     ]
   },
   {
@@ -304,15 +367,6 @@ const loadedLayerIds = ref(new Set()) // 追踪已加载图层ID（响应式，�
 const markerLayers = {} // 存储标记点图层
 
 // ========== 统计数据 ==========
-const categoryStats = computed(() => {
-  return layers.value.map(group => ({
-    key: group.id,
-    name: group.name,
-    icon: group.icon,
-    count: markers.value.filter(m => m.category === group.id).length
-  }))
-})
-
 // ========== 搜索过滤 ==========
 const filteredLayers = computed(() => {
   if (!searchQuery.value) return layers.value
@@ -350,7 +404,7 @@ function getItemCategoryName(category) {
 }
 
 function getLayerCount(layer) {
-  if (layer.type === 'geojson') {
+  if (layer.type === 'geojson' || layer.type === 'wms') {
     return loadedLayerIds.value.has(layer.id) ? '已加载' : '-'
   }
   return markers.value.filter(m => m.subcategory === layer.id).length
@@ -373,27 +427,37 @@ function toggleAddMode() {
   }
 }
 
-function toggleLayer(layer, event) {
-  if (!mapInstance) return
-  layer.visible = event.target.checked
+function handleLayerClick(layer) {
+  layer.visible = !layer.visible
+  toggleLayer(layer)
+}
+
+function toggleLayer(layer) {
+  if (!mapInstance) {
+    return
+  }
 
   if (layer.type === 'geojson') {
     if (layer.visible) {
       loadGeoJsonLayer(layer)
     } else {
       removeGeoJsonLayer(layer.id)
-      // 取消图层时，如果选中的项属于该图层，清空详情
       if (selectedItem.value && selectedItem.value.subcategory === layer.id) {
         selectedItem.value = null
         rightPanelCollapsed.value = true
       }
+    }
+  } else if (layer.type === 'wms') {
+    if (layer.visible) {
+      loadWmsLayer(layer)
+    } else {
+      removeWmsLayer(layer.id)
     }
   } else {
     if (layer.visible) {
       loadMarkerLayer(layer)
     } else {
       removeMarkerLayer(layer.id)
-      // 取消图层时，如果选中的项属于该图层，清空详情
       if (selectedItem.value && selectedItem.value.subcategory === layer.id) {
         selectedItem.value = null
         rightPanelCollapsed.value = true
@@ -515,6 +579,77 @@ function removeGeoJsonLayer(layerId) {
   if (polygons) {
     polygons.forEach(p => mapInstance.remove(p))
     delete geoJsonLayers[layerId]
+    loadedLayerIds.value.delete(layerId)
+  }
+}
+
+// ========== WMS 图层 ==========
+const wmsLayers = {}
+
+function loadWmsLayer(layer) {
+  if (!mapInstance || !window.AMap) return
+
+  const proxyBase = '/api/wms-proxy'
+
+  // 构建基础参数（service/request/format/transparent/width/height 不在此处定义，
+  // 因为 getTileUrl 末尾已统一追加大写版本，避免重复参数）
+  const baseParams = {
+    url: layer.wmsUrl,
+    version: layer.wmsParams.version || '1.1.1',
+    layers: layer.wmsParams.layers || '',
+    styles: layer.wmsParams.styles || '',
+    srs: layer.wmsParams.srs || 'EPSG:4326',
+    viewparams: layer.wmsParams.viewparams || '',
+    cql_filter: layer.wmsParams.cql_filter || ''
+  }
+
+  // 用普通TileLayer代替TileLayer.WMS，避免AMap自动追加BBOX参数覆盖偏移值
+  const wmsLayer = new window.AMap.TileLayer({
+    opacity: 1,
+    getTileUrl: function(x, y, z) {
+      var n = Math.pow(2, z)
+      var M = 20037508.342789244  // Web Mercator半周长
+
+      // 直接在EPSG:3857下计算瓦片bbox
+      var left = x / n * 2 * M - M
+      var right = (x + 1) / n * 2 * M - M
+      var top = M - y / n * 2 * M
+      var bottom = M - (y + 1) / n * 2 * M
+
+      // 坐标偏移补偿（单位：米，EPSG:3857）
+      // offsetEast = 管线东移距离(米), offsetNorth = 管线北移距离(米)
+      // 负值=向西偏，正值=向东偏；正值=向北偏，负值=向南偏
+      var offsetEast = -650
+      var offsetNorth = 100
+      left += offsetEast
+      right += offsetEast
+      top += offsetNorth
+      bottom += offsetNorth
+
+      var bbox = left + ',' + bottom + ',' + right + ',' + top
+
+      var qs = Object.entries(baseParams)
+        .filter(([k, v]) => v !== '')
+        .map(([k, v]) => encodeURIComponent(k) + '=' + encodeURIComponent(v))
+        .join('&')
+      // 所有参数在此拼完，BBOX放最后确保生效
+      return proxyBase + '?' + qs
+        + '&WIDTH=256&HEIGHT=256&CRS=EPSG:3857'
+        + '&REQUEST=GetMap&SERVICE=WMS&FORMAT=image/png&TRANSPARENT=true'
+        + '&BBOX=' + bbox + '&_t=' + Date.now()
+    }
+  })
+
+  wmsLayer.setMap(mapInstance)
+  wmsLayers[layer.id] = wmsLayer
+  loadedLayerIds.value.add(layer.id)
+}
+
+function removeWmsLayer(layerId) {
+  const wmsLayer = wmsLayers[layerId]
+  if (wmsLayer) {
+    wmsLayer.setMap(null)
+    delete wmsLayers[layerId]
     loadedLayerIds.value.delete(layerId)
   }
 }
@@ -905,7 +1040,7 @@ onUnmounted(() => {
 
 .floating-panel.left-panel:not(.collapsed) ~ .left-toggle,
 .left-toggle:not(.collapsed) {
-  left: 320px;
+  left: 240px;
 }
 
 .right-toggle {
@@ -920,15 +1055,15 @@ onUnmounted(() => {
 
 .floating-panel.right-panel:not(.collapsed) ~ .right-toggle,
 .right-toggle:not(.collapsed) {
-  right: 320px;
+  right: 240px;
 }
 
 /* 悬浮面板 */
 .floating-panel {
   position: fixed;
   top: 50px;
-  bottom: 56px;
-  width: 320px;
+  bottom: 0;
+  width: 240px;
   z-index: 100;
   background: rgba(13, 31, 60, 0.6);
   backdrop-filter: blur(12px);
@@ -948,7 +1083,7 @@ onUnmounted(() => {
 }
 
 .left-panel.collapsed {
-  transform: translateX(-320px);
+  transform: translateX(-240px);
 }
 
 .right-panel {
@@ -956,7 +1091,7 @@ onUnmounted(() => {
 }
 
 .right-panel.collapsed {
-  transform: translateX(320px);
+  transform: translateX(240px);
 }
 
 .panel-header {
@@ -1207,45 +1342,6 @@ onUnmounted(() => {
 .empty-detail p {
   margin: 16px 0 0;
   font-size: 13px;
-}
-
-/* 底部统计栏 */
-.bottom-stats {
-  position: fixed;
-  bottom: 0;
-  left: 320px;
-  right: 320px;
-  height: 56px;
-  background: rgba(13, 31, 60, 0.6);
-  backdrop-filter: blur(12px);
-  border-top: 1px solid rgba(64, 158, 255, 0.12);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 32px;
-  z-index: 100;
-}
-
-.stat-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: rgba(255, 255, 255, 0.8);
-}
-
-.stat-icon {
-  font-size: 18px;
-}
-
-.stat-name {
-  font-size: 13px;
-  color: rgba(255, 255, 255, 0.6);
-}
-
-.stat-value {
-  font-size: 18px;
-  font-weight: 700;
-  color: #409eff;
 }
 
 /* 弹窗 */

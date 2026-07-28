@@ -4,18 +4,14 @@ import { useUserStore } from '../stores/user'
 // 路由懒加载
 const Home = () => import('../views/Home.vue')
 const Business = () => import('../views/Business.vue')
-const AiApps = () => import('../views/AiApps.vue')
-const Huiwentai = () => import('../views/Huiwentai.vue')
-const Assessment = () => import('../views/Assessment.vue')
-const Cases = () => import('../views/Cases.vue')
+const DataAnalysis = () => import('../views/DataAnalysis.vue')
 const Map = () => import('../views/Map.vue')
-const Dashboard = () => import('../views/Dashboard.vue')
 const Admin = () => import('../views/Admin.vue')
 const Login = () => import('../views/Login.vue')
 const Knowledge = () => import('../views/Knowledge.vue')
 const ArticleDetail = () => import('../views/ArticleDetail.vue')
 const CategoryArticles = () => import('../views/CategoryArticles.vue')
-const FloodMonitor = () => import('../views/FloodMonitor.vue')
+const ReportView = () => import('../views/ReportView.vue')
 
 const routes = [
   {
@@ -31,52 +27,28 @@ const routes = [
     meta: { requiresAuth: true, title: '首页' }
   },
   {
-    path: '/business',
-    name: 'Business',
-    component: Business,
-    meta: { requiresAuth: true, title: '业务平台', permission: 'business' }
+    path: '/data-analysis',
+    name: 'DataAnalysis',
+    component: DataAnalysis,
+    meta: { requiresAuth: true, title: '数据分析', permission: 'data_analysis' }
   },
   {
-    path: '/ai-apps',
-    name: 'AiApps',
-    component: AiApps,
-    meta: { requiresAuth: true, title: 'AI应用' }
-  },
-  {
-    path: '/huiwentai',
-    name: 'Huiwentai',
-    component: Huiwentai,
-    meta: { requiresAuth: true, title: '汇问台', permission: 'huiwentai' }
-  },
-  {
-    path: '/assessment',
-    name: 'Assessment',
-    component: Assessment,
-    meta: { requiresAuth: true, title: '考核计分', permission: 'assessment' }
-  },
-  {
-    path: '/cases',
-    name: 'Cases',
-    component: Cases,
-    meta: { requiresAuth: true, title: '案件管理', permission: 'cases' }
+    path: '/knowledge',
+    name: 'Knowledge',
+    component: Knowledge,
+    meta: { requiresAuth: true, title: '知识库' }
   },
   {
     path: '/map',
     name: 'Map',
     component: Map,
-    meta: { requiresAuth: true, title: '地图服务', permission: 'map' }
+    meta: { requiresAuth: true, title: '数图城管', permission: 'map' }
   },
   {
-    path: '/dashboard',
-    name: 'Dashboard',
-    component: Dashboard,
-    meta: { requiresAuth: true, title: '数据大屏' }
-  },
-  {
-    path: '/flood-monitor',
-    name: 'FloodMonitor',
-    component: FloodMonitor,
-    meta: { requiresAuth: true, title: '防汛指挥调度系统', permission: 'flood_monitor' }
+    path: '/business',
+    name: 'Business',
+    component: Business,
+    meta: { requiresAuth: true, title: '业务平台', permission: 'business' }
   },
   {
     path: '/admin',
@@ -85,10 +57,10 @@ const routes = [
     meta: { requiresAuth: true, title: '系统管理', requiresAdmin: true }
   },
   {
-    path: '/knowledge',
-    name: 'Knowledge',
-    component: Knowledge,
-    meta: { requiresAuth: true, title: '知识库' }
+    path: '/report/:id',
+    name: 'ReportView',
+    component: ReportView,
+    meta: { requiresAuth: true, title: '分析报告' }
   },
   {
     path: '/article/:id',

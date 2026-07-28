@@ -339,44 +339,24 @@
         <div class="modal-body">
           <div class="permissions-grid">
             <label class="permission-item">
-              <input type="checkbox" v-model="editingPermissions.dashboard" />
-              <span>数据大屏</span>
-            </label>
-            <label class="permission-item">
               <input type="checkbox" v-model="editingPermissions.data_management" />
               <span>数据管理</span>
             </label>
             <label class="permission-item">
-              <input type="checkbox" v-model="editingPermissions.assessment" />
-              <span>考核计分</span>
-            </label>
-            <label class="permission-item">
               <input type="checkbox" v-model="editingPermissions.data_analysis" />
-              <span>AI应用</span>
+              <span>数据分析</span>
             </label>
             <label class="permission-item">
               <input type="checkbox" v-model="editingPermissions.spotcheck" />
               <span>案件抽查</span>
             </label>
             <label class="permission-item">
-              <input type="checkbox" v-model="editingPermissions.cases" />
-              <span>案件管理</span>
-            </label>
-            <label class="permission-item">
-              <input type="checkbox" v-model="editingPermissions.huiwentai" />
-              <span>汇问台</span>
-            </label>
-            <label class="permission-item">
               <input type="checkbox" v-model="editingPermissions.map" />
-              <span>地图服务</span>
+              <span>数图城管</span>
             </label>
             <label class="permission-item">
               <input type="checkbox" v-model="editingPermissions.business" />
               <span>业务平台</span>
-            </label>
-            <label class="permission-item">
-              <input type="checkbox" v-model="editingPermissions.flood_monitor" />
-              <span>防汛指挥调度</span>
             </label>
           </div>
         </div>
@@ -427,258 +407,6 @@
       </div>
     </div>
 
-    <!-- 数据管理 -->
-    <div v-else-if="activeTab === 'data'" class="content-card">
-      <div class="card-header">
-        <h2 class="section-title">数据管理</h2>
-      </div>
-
-      <!-- Excel上传 -->
-      <div class="data-section">
-        <h3 class="subsection-title">Excel数据上传</h3>
-        <div class="upload-options">
-          <label class="radio-label">
-            <input type="radio" v-model="uploadMode" value="create" />
-            <span>新建表（以文件名命名）</span>
-          </label>
-          <label class="radio-label">
-            <input type="radio" v-model="uploadMode" value="append" />
-            <span>追加到现有表</span>
-          </label>
-        </div>
-
-        <div v-if="uploadMode === 'append'" class="append-options">
-          <div class="form-group">
-            <label class="form-label">目标表</label>
-            <select v-model="targetTable" class="form-select">
-              <option value="">请选择...</option>
-              <option v-for="table in dataTables" :key="table" :value="table">{{ table }}</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label class="form-label">月份（如：202603）</label>
-            <input v-model="dataMonth" type="text" class="form-input" placeholder="202603" />
-          </div>
-          <div class="append-hint">
-            <p><strong>案件数据只能追加到 business_cases 表</strong></p>
-            <p>追加前请确认Excel字段符合以下要求：</p>
-            <p class="field-list">任务号、问题来源、监督员、上报时间、问题类型、大类名称、小类名称、所属片区、问题描述、地址描述、所属街道、所属社区、处置部门、捆绑处置截止时间、结案时间、当前阶段名称、延期次数（值为1）、返工次数（值为"是"）、月份（值为"202606"格式）、是否超时（值为"是"）</p>
-          </div>
-        </div>
-
-        <div class="file-upload-row">
-          <input type="file" accept=".xlsx" @change="handleFileSelect" ref="excelFileInput" />
-          <span class="file-name">{{ excelFile ? excelFile.name : '未选择文件' }}</span>
-          <button class="btn btn-primary" @click="uploadExcel" :disabled="uploadLoading || !excelFile || (uploadMode === 'append' && !targetTable)">
-            {{ uploadLoading ? '上传中...' : (uploadMode === 'append' ? '追加数据' : '上传导入') }}
-          </button>
-        </div>
-        <div v-if="uploadMessage" class="message success">{{ uploadMessage }}</div>
-        <div v-if="uploadError" class="message error">{{ uploadError }}</div>
-      </div>
-
-      <!-- 数据表管理 -->
-      <div class="data-section">
-        <div class="section-header">
-          <h3 class="subsection-title">数据表管理</h3>
-          <div class="section-actions">
-            <button class="btn btn-secondary" @click="fetchDataTables" :disabled="tablesLoading">
-              {{ tablesLoading ? '加载中...' : '刷新' }}
-            </button>
-            <button class="btn btn-primary" @click="saveTableVisibility" :disabled="visibilitySaving">
-              {{ visibilitySaving ? '保存中...' : '保存配置' }}
-            </button>
-          </div>
-        </div>
-        <p class="section-hint">勾选的数据表将对前端用户可见，未勾选的表用户无法查看。</p>
-        <table class="data-table">
-          <thead>
-            <tr>
-              <th>表名</th>
-              <th>对用户可见</th>
-              <th>操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="table in dataTables" :key="table">
-              <td>{{ table }}</td>
-              <td>
-                <input type="checkbox" v-model="tableVisibility[table]" />
-              </td>
-              <td>
-                <button class="btn-text danger" @click="deleteDataTable(table)">删除</button>
-              </td>
-            </tr>
-            <tr v-if="dataTables.length === 0">
-              <td colspan="3" class="empty-text">暂无数据表</td>
-            </tr>
-          </tbody>
-        </table>
-        <div v-if="visibilityMessage" class="message success">{{ visibilityMessage }}</div>
-        <div v-if="visibilityError" class="message error">{{ visibilityError }}</div>
-      </div>
-    </div>
-
-    <!-- 数据编辑 -->
-    <div v-else-if="activeTab === 'dataEdit'" class="content-card">
-      <div class="card-header">
-        <h2 class="section-title">数据编辑</h2>
-      </div>
-
-      <!-- 筛选区域 -->
-      <div class="filter-section">
-        <div class="filter-row">
-          <div class="filter-group">
-            <div class="form-group">
-              <label class="form-label">选择数据表</label>
-              <select v-model="editTable" class="form-select" @change="onEditTableChange">
-                <option value="">请选择</option>
-                <option v-for="table in visibleTables" :key="table" :value="table">{{ table }}</option>
-              </select>
-            </div>
-            <div class="form-group" v-if="editAvailableMonths.length > 0">
-              <label class="form-label">选择月份</label>
-              <select v-model="editMonth" class="form-select" @change="fetchEditRecords">
-                <option value="">全部</option>
-                <option v-for="month in editAvailableMonths" :key="month" :value="month">{{ formatMonth(month) }}</option>
-              </select>
-            </div>
-          </div>
-          <div class="filter-group">
-            <div class="form-group">
-              <label class="form-label">查找字段</label>
-              <select v-model="searchField" class="form-select">
-                <option value="">请选择</option>
-                <option value="任务号">任务号（精确匹配）</option>
-                <option v-for="col in formFields.filter(c => c !== '任务号')" :key="col" :value="col">{{ col }}</option>
-              </select>
-            </div>
-            <div class="form-group">
-              <label class="form-label">查找值</label>
-              <input v-model="searchValue" type="text" class="form-input" placeholder="输入查找值" @keyup.enter="fetchEditRecords" />
-            </div>
-            <button class="btn btn-primary" @click="fetchEditRecords">查询</button>
-            <button class="btn btn-secondary" @click="resetEditFilters">重置</button>
-          </div>
-        </div>
-      </div>
-
-      <!-- 操作按钮 -->
-      <div class="action-bar">
-        <button class="btn btn-primary" @click="openAddRecordModal">+ 新增</button>
-        <button class="btn btn-secondary" :disabled="selectedRecords.length === 0" @click="openBatchEditModal">批量修改</button>
-        <button class="btn btn-danger" :disabled="selectedRecords.length === 0" @click="confirmBatchDelete">批量删除</button>
-        <span class="selection-info" v-if="selectedRecords.length > 0">已选择 {{ selectedRecords.length }} 条</span>
-      </div>
-
-      <!-- 数据列表 -->
-      <div v-if="editLoading" class="loading-state">
-        <div class="loading-spinner"></div>
-      </div>
-      <div v-else-if="editRecords.length > 0">
-        <table class="data-table">
-          <thead>
-            <tr>
-              <th><input type="checkbox" v-model="selectAll" @change="toggleSelectAll" /></th>
-              <th v-for="col in displayColumns" :key="col">{{ col }}</th>
-              <th>操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="record in editRecords" :key="record['任务号']">
-              <td><input type="checkbox" :value="record['任务号']" v-model="selectedRecords" /></td>
-              <td v-for="col in displayColumns" :key="col">{{ record[col] || '-' }}</td>
-              <td>
-                <button class="btn-text" @click="openEditRecordModal(record)">编辑</button>
-                <button class="btn-text danger" @click="confirmDeleteRecord(record)">删除</button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-        <!-- 分页 -->
-        <div class="pagination">
-          <button :disabled="editPage <= 1" @click="editPage--; fetchEditRecords()">上一页</button>
-          <span>第 {{ editPage }} / {{ editTotalPages }} 页，共 {{ editTotal }} 条</span>
-          <button :disabled="editPage >= editTotalPages" @click="editPage++; fetchEditRecords()">下一页</button>
-        </div>
-      </div>
-      <div v-else class="empty-state">
-        <p v-if="editTable">暂无数据</p>
-        <p v-else>请选择数据表</p>
-      </div>
-    </div>
-
-    <!-- 操作日志 -->
-    <div v-else-if="activeTab === 'logs'" class="content-card">
-      <div class="card-header">
-        <h2 class="section-title">操作日志</h2>
-      </div>
-
-      <!-- 筛选 -->
-      <div class="filter-section">
-        <div class="filter-row">
-          <div class="form-group">
-            <label class="form-label">数据表</label>
-            <select v-model="logTable" class="form-select">
-              <option value="">全部</option>
-              <option v-for="table in visibleTables" :key="table" :value="table">{{ table }}</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label class="form-label">操作类型</label>
-            <select v-model="logType" class="form-select">
-              <option value="">全部</option>
-              <option value="create">新增</option>
-              <option value="update">修改</option>
-              <option value="delete">删除</option>
-            </select>
-          </div>
-          <button class="btn btn-primary" @click="fetchLogs">查询</button>
-        </div>
-      </div>
-
-      <!-- 日志列表 -->
-      <div v-if="logsLoading" class="loading-state">
-        <div class="loading-spinner"></div>
-      </div>
-      <div v-else-if="logs.length > 0">
-        <table class="data-table">
-          <thead>
-            <tr>
-              <th>时间</th>
-              <th>操作人</th>
-              <th>操作类型</th>
-              <th>数据表</th>
-              <th>记录ID</th>
-              <th>操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="log in logs" :key="log.id">
-              <td>{{ log.created_at }}</td>
-              <td>{{ log.username }}</td>
-              <td>
-                <span :class="['op-type', log.operation_type]">
-                  {{ log.operation_type === 'create' ? '新增' : log.operation_type === 'update' ? '修改' : '删除' }}
-                </span>
-              </td>
-              <td>{{ log.table_name }}</td>
-              <td>{{ log.record_id }}</td>
-              <td><button class="btn-text" @click="viewLogDetail(log)">详情</button></td>
-            </tr>
-          </tbody>
-        </table>
-        <div class="pagination">
-          <button :disabled="logPage <= 1" @click="logPage--; fetchLogs()">上一页</button>
-          <span>第 {{ logPage }} / {{ logTotalPages }} 页，共 {{ logTotal }} 条</span>
-          <button :disabled="logPage >= logTotalPages" @click="logPage++; fetchLogs()">下一页</button>
-        </div>
-      </div>
-      <div v-else class="empty-state">
-        <p>暂无操作日志</p>
-      </div>
-    </div>
-
     <!-- 业务平台 -->
     <div v-else-if="activeTab === 'business'" class="content-card">
       <div class="card-header">
@@ -721,57 +449,6 @@
       </table>
     </div>
 
-    <!-- 考核系数配置 -->
-    <div v-else-if="activeTab === 'assessment'" class="content-card">
-      <div class="card-header">
-        <h2 class="section-title">考核计分系数配置</h2>
-      </div>
-
-      <div class="info-box">
-        <p>计分公式：score = ( (按期率 × 按时系数 + 超期率 × 超时系数) × 结案权重 + (1 - 延期率) × 延期权重 + (1 - 返工率) × 返工权重 ) × 100</p>
-      </div>
-
-      <div class="form-group">
-        <label class="form-label">选择考核部门</label>
-        <select v-model="selectedDept" class="form-select">
-          <option v-for="dept in assessmentDepartments" :key="dept" :value="dept">{{ dept }}</option>
-        </select>
-      </div>
-
-      <div class="coefficients-grid" v-if="currentCoefficients">
-        <div class="form-group">
-          <label class="form-label">按时结案系数 (on_time)</label>
-          <input v-model.number="currentCoefficients.on_time" type="number" step="0.1" class="form-input" />
-        </div>
-        <div class="form-group">
-          <label class="form-label">超时结案系数 (overdue)</label>
-          <input v-model.number="currentCoefficients.overdue" type="number" step="0.1" class="form-input" />
-        </div>
-        <div class="form-group">
-          <label class="form-label">结案率权重 (closure_weight)</label>
-          <input v-model.number="currentCoefficients.closure_weight" type="number" step="0.1" class="form-input" />
-        </div>
-        <div class="form-group">
-          <label class="form-label">延期率权重 (delay_weight)</label>
-          <input v-model.number="currentCoefficients.delay_weight" type="number" step="0.1" class="form-input" />
-        </div>
-        <div class="form-group">
-          <label class="form-label">返工率权重 (rework_weight)</label>
-          <input v-model.number="currentCoefficients.rework_weight" type="number" step="0.1" class="form-input" />
-        </div>
-      </div>
-
-      <div v-if="coefficientsMessage" class="message success">{{ coefficientsMessage }}</div>
-      <div v-if="coefficientsError" class="message error">{{ coefficientsError }}</div>
-
-      <div class="form-actions">
-        <button class="btn btn-primary" @click="saveCoefficients" :disabled="coefficientsLoading">
-          {{ coefficientsLoading ? '保存中...' : '保存系数' }}
-        </button>
-        <button class="btn btn-secondary" @click="resetCoefficients">重置默认</button>
-      </div>
-    </div>
-
     <!-- 知识库管理 -->
     <div v-else-if="activeTab === 'knowledge'" class="content-card">
       <div class="card-header">
@@ -783,270 +460,284 @@
         <button class="sub-tab" :class="{ active: knowledgeSubTab === 'general' }" @click="knowledgeSubTab = 'general'">
           通用知识库
         </button>
-        <button class="sub-tab" :class="{ active: knowledgeSubTab === 'standards' }" @click="knowledgeSubTab = 'standards'">
-          立结案标准库
-        </button>
       </div>
 
-      <!-- 通用知识库管理 -->
+      <!-- 通用知识库管理（对齐统一库 unified_kb） -->
       <div v-show="knowledgeSubTab === 'general'">
-        <!-- 统计信息 -->
-        <div class="stats-card">
-          <div class="stat-item">
-            <span class="stat-value">{{ generalKnowledgeStats.count || 0 }}</span>
-            <span class="stat-label">向量数</span>
+        <!-- 概览：5 类统计卡 -->
+        <div class="kb-stat-grid">
+          <div
+            v-for="t in kbTypeList"
+            :key="t.key"
+            class="kb-stat-card"
+            :style="{ '--kc': t.color }"
+          >
+            <span class="kb-stat-icon"><KbIcon :name="t.icon" :size="20" /></span>
+            <span class="kb-stat-num">{{ kbOverview.by_type[t.key] || 0 }}</span>
+            <span class="kb-stat-label">{{ t.label }}</span>
           </div>
-          <div class="stat-item">
-            <span class="stat-value">{{ generalKnowledgeDocs.length || 0 }}</span>
-            <span class="stat-label">文档数</span>
-          </div>
-          <div class="stat-item">
-            <span class="stat-value">{{ generalKnowledgeStats.exists ? (generalKnowledgeStats.mode === 'server' ? '服务器' : '本地') : '未初始化' }}</span>
-            <span class="stat-label">运行模式</span>
+          <div class="kb-stat-card kb-stat-total">
+            <span class="kb-stat-icon"><KbIcon name="landmark" :size="20" /></span>
+            <span class="kb-stat-num">{{ kbOverview.total || 0 }}</span>
+            <span class="kb-stat-label">向量总数</span>
           </div>
         </div>
 
-        <!-- 文档上传 -->
-        <div class="knowledge-upload-section">
-          <h3 class="subsection-title">上传文档</h3>
-          <div class="upload-row">
-            <input ref="knowledgeFileInput" type="file" accept=".txt,.md,.docx,.xlsx" @change="onKnowledgeFileSelect" hidden />
-            <button class="btn btn-secondary" @click="$refs.knowledgeFileInput.click()">
-              选择文件
-            </button>
-            <span class="file-name">{{ knowledgeSelectedFile?.name || '未选择' }}</span>
-          </div>
-          <div class="upload-row">
-            <input ref="knowledgeZipInput" type="file" accept=".zip" @change="onKnowledgeZipSelect" hidden />
-            <button class="btn btn-info" @click="$refs.knowledgeZipInput.click()">
-              批量上传(zip)
-            </button>
-            <span class="file-name">{{ knowledgeSelectedZip?.name || '未选择' }}</span>
-          </div>
-          <div class="upload-row">
-            <textarea v-model="knowledgeTextContent" placeholder="或直接输入文本内容..." rows="4" class="form-textarea"></textarea>
-            <input v-model="knowledgeTextSource" placeholder="来源名称（可选）" class="form-input" />
-          </div>
-          <button class="btn btn-primary" @click="uploadKnowledgeDoc" :disabled="knowledgeUploading">
-            {{ knowledgeUploading ? '上传中...' : '提交到知识库' }}
-          </button>
-
-          <!-- 上传结果 -->
-          <div v-if="knowledgeUploadResult" class="message" :class="knowledgeUploadResult.success ? 'success' : 'error'">
-            {{ knowledgeUploadResult.message }}
-          </div>
-
-          <!-- 批量上传进度 -->
-          <div v-if="knowledgeBatchProgress" class="standards-progress">
-            <div class="progress-text">处理中: {{ knowledgeBatchProgress.processed }} / {{ knowledgeBatchProgress.total }}</div>
-            <div class="progress-bar">
-              <div class="progress-fill" :style="{ width: (knowledgeBatchProgress.processed / knowledgeBatchProgress.total * 100) + '%' }"></div>
+        <!-- 重建索引 -->
+        <div class="kb-rebuild-box">
+          <div class="kb-rebuild-head">
+            <div>
+              <h3 class="subsection-title">重建索引</h3>
+              <p class="kb-rebuild-hint">
+                先把文件放入数据源目录（默认 <code>{{ kbOverview.source?.dir }}</code>）对应子目录，再点重建。
+                替代旧版「zip 批量上传」（旧接口已下线）。
+              </p>
             </div>
-            <div class="progress-summary">成功: {{ knowledgeBatchProgress.success }}，失败: {{ knowledgeBatchProgress.failed }}</div>
+            <button class="btn btn-primary" @click="rebuildKb" :disabled="kbRebuilding">
+              {{ kbRebuilding ? '重建中…' : '重建索引（全量）' }}
+            </button>
+          </div>
+          <div v-if="kbRebuildStatus" class="kb-rebuild-status" :class="kbRebuildStatus.status">
+            <div class="kb-rebuild-msg">{{ kbRebuildStatus.message }}</div>
+            <div v-if="kbRebuilding && kbRebuildStatus.total" class="kb-progress-bar">
+              <div class="kb-progress-fill" :style="{ width: pct(kbRebuildStatus.done, kbRebuildStatus.total) + '%' }"></div>
+            </div>
           </div>
         </div>
 
-        <!-- 已上传文档列表 -->
-        <div class="knowledge-docs-section">
+        <!-- 数据源信息 -->
+        <div v-if="kbOverview.source" class="kb-source-box">
+          <h3 class="subsection-title">数据源目录</h3>
+          <div class="kb-source-dir">
+            <KbIcon name="map-pin" :size="14" />
+            <span :class="{ 'kb-source-missing': !kbOverview.source.exists }">{{ kbOverview.source.dir }}</span>
+            <span class="kb-source-exists">{{ kbOverview.source.exists ? '目录存在' : '目录不存在' }}</span>
+          </div>
+          <div class="kb-source-subdirs">
+            <div v-for="(info, sub) in kbOverview.source.subdirs" :key="sub" class="kb-source-item">
+              <span class="kb-source-name">{{ sub }}</span>
+              <span class="kb-source-meta">{{ info.doc_type }} · {{ info.files }} 个文件</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 文档浏览 -->
+        <div class="kb-docs-section">
           <div class="section-header">
-            <h3 class="subsection-title">已上传文档</h3>
+            <h3 class="subsection-title">已入库文档</h3>
             <div class="section-actions">
-              <button class="btn btn-secondary" @click="loadKnowledgeDocs">刷新</button>
-              <button v-if="knowledgeSelectedDocs.length > 0" class="btn btn-danger" @click="batchDeleteKnowledgeDocs">
-                删除选中 ({{ knowledgeSelectedDocs.length }})
+              <div class="kb-filter-chips">
+                <button class="kb-chip" :class="{ active: kbDocFilter === '' }" @click="kbDocFilter = ''; loadKbDocs()">全部</button>
+                <button
+                  v-for="t in kbTypeList"
+                  :key="t.key"
+                  class="kb-chip"
+                  :class="{ active: kbDocFilter === t.key }"
+                  :style="{ '--kc': t.color }"
+                  @click="kbDocFilter = t.key; loadKbDocs()"
+                >{{ t.label }}</button>
+              </div>
+              <input v-model="kbDocKeyword" @keyup.enter="loadKbDocs" placeholder="搜索标题/来源…" class="kb-doc-search" />
+              <button class="btn btn-secondary" @click="loadKbDocs" :disabled="kbDocsLoading">刷新</button>
+              <button v-if="kbSelectedDocs.length > 0" class="btn btn-danger" @click="batchDeleteKbDocs">
+                删除选中 ({{ kbSelectedDocs.length }})
               </button>
             </div>
           </div>
 
-          <div v-if="generalKnowledgeDocs.length" class="docs-list">
+          <div v-if="kbDocsLoading" class="loading-state"><div class="loading-spinner"></div></div>
+          <div v-else-if="kbDocs.length" class="docs-list">
             <div class="docs-header">
               <label class="checkbox-label">
-                <input type="checkbox" :checked="knowledgeSelectedDocs.length === generalKnowledgeDocs.length" @change="toggleKnowledgeSelectAll">
+                <input type="checkbox" :checked="kbSelectedDocs.length === kbDocs.length && kbDocs.length" @change="toggleKbSelectAll">
                 全选
               </label>
-              <span class="docs-count">共 {{ generalKnowledgeDocs.length }} 个文档</span>
+              <span class="docs-count">共 {{ kbDocTotal }} 个文档（当前页 {{ kbDocs.length }}）</span>
             </div>
-            <div v-for="doc in generalKnowledgeDocs" :key="doc.doc_id" class="doc-row">
-              <input type="checkbox" :value="doc.doc_id" v-model="knowledgeSelectedDocs">
-              <span class="doc-id">{{ doc.doc_id }}</span>
-              <span class="doc-chunks">{{ doc.chunks }} 个片段</span>
-              <span class="doc-source">{{ doc.sources?.join(', ') }}</span>
-              <button class="btn-text danger" @click="deleteKnowledgeDoc(doc.doc_id)">删除</button>
+            <div v-for="doc in kbDocs" :key="doc.doc_id" class="doc-row" :style="{ '--c': typeColor(doc.doc_type) }">
+              <input type="checkbox" :value="doc.doc_id" v-model="kbSelectedDocs">
+              <span class="kb-doc-type-tag" :style="{ color: typeColor(doc.doc_type), background: typeBg(doc.doc_type) }">{{ typeLabel(doc.doc_type) }}</span>
+              <span class="doc-id" :title="doc.doc_id">{{ doc.title || doc.doc_id }}</span>
+              <span class="doc-chunks">{{ doc.chunks }} 块</span>
+              <span class="doc-source">{{ doc.source }}</span>
+              <button class="btn-text danger" @click="deleteKbDoc(doc.doc_id)">删除</button>
+            </div>
+            <!-- 分页 -->
+            <div v-if="kbDocTotal > kbDocPageSize" class="kb-pager">
+              <button class="btn btn-secondary" :disabled="kbDocPage <= 1" @click="kbDocPage--; loadKbDocs()">上一页</button>
+              <span class="kb-pager-info">第 {{ kbDocPage }} 页 / 共 {{ Math.ceil(kbDocTotal / kbDocPageSize) }} 页</span>
+              <button class="btn btn-secondary" :disabled="kbDocPage >= Math.ceil(kbDocTotal / kbDocPageSize)" @click="kbDocPage++; loadKbDocs()">下一页</button>
             </div>
           </div>
           <div v-else class="empty-state">暂无文档</div>
         </div>
       </div>
 
-      <!-- 立结案标准库管理 -->
-      <div v-show="knowledgeSubTab === 'standards'">
-        <!-- 统计信息 -->
-        <div class="stats-card">
-          <div class="stat-item">
-            <span class="stat-value">{{ standardsStats?.parents || 0 }}</span>
-            <span class="stat-label">父文档数</span>
-          </div>
-          <div class="stat-item">
-            <span class="stat-value">{{ standardsStats?.children || 0 }}</span>
-            <span class="stat-label">子文档数</span>
-          </div>
-          <div class="stat-item">
-            <span class="stat-value">{{ (standardsStats?.exists) ? (standardsStats?.mode || '本地') : '未初始化' }}</span>
-            <span class="stat-label">运行模式</span>
-          </div>
-        </div>
-
-        <!-- 操作区域 -->
-        <div class="standards-actions">
-          <button class="btn btn-primary" @click="fetchStandardsList" :disabled="standardsLoading">
-            {{ standardsLoading ? '加载中...' : '刷新列表' }}
-          </button>
-          <button class="btn btn-info" @click="startIncrementalIndex" :disabled="incrementalLoading">
-            {{ incrementalLoading ? '索引中...' : '增量索引' }}
-          </button>
-          <input ref="singleStandardsFileInput" type="file" accept=".txt" @change="onSingleStandardsFileSelect" hidden />
-          <button class="btn btn-secondary" @click="$refs.singleStandardsFileInput.click()">
-            上传单文件
-          </button>
-        </div>
-
-        <!-- 增量索引进度 -->
-        <div v-if="incrementalProgress.active" class="standards-progress">
-          <div class="progress-text">处理中: {{ incrementalProgress.filename }}</div>
-          <div class="progress-bar">
-            <div class="progress-fill" :style="{ width: (incrementalProgress.current / incrementalProgress.total * 100) + '%' }"></div>
-          </div>
-          <div class="progress-summary">已处理: {{ incrementalProgress.current }} / {{ incrementalProgress.total }}</div>
-        </div>
-
-        <!-- 增量索引结果 -->
-        <div v-if="incrementalResult" class="standards-result">
-          <p>新增 {{ incrementalResult.success }} 个，跳过 {{ incrementalResult.skipped }} 个，失败 {{ incrementalResult.failed }} 个</p>
-        </div>
-
-        <!-- 已索引标准列表 -->
-        <div v-if="standardsList.length" class="standards-table">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>文件名</th>
-                <th>案件类型</th>
-                <th>大类/小类</th>
-                <th>子文档数</th>
-                <th>操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="std in standardsList" :key="std.parent_id">
-                <td>{{ std.filename || '-' }}</td>
-                <td>{{ std.case_type || '-' }}</td>
-                <td>{{ std.big_category }} / {{ std.small_category }}</td>
-                <td>{{ std.child_count }}</td>
-                <td>
-                  <button class="btn-text danger" @click="deleteStandard(std.parent_id)" :disabled="standardsDeleteLoading">
-                    删除
-                  </button>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
-        <!-- 空状态 -->
-        <div v-else-if="!standardsLoading && standardsListFetched" class="empty-state">
-          <p>暂无已索引的标准，请执行增量索引或上传单个文件</p>
-        </div>
-
-        <!-- 单文件上传结果 -->
-        <div v-if="singleStandardsFileResult" class="standards-result">
-          <p :class="singleStandardsFileResult.success ? 'success' : 'error'">{{ singleStandardsFileResult.message }}</p>
-        </div>
-      </div>
     </div>
 
-    <!-- 小工具 -->
-    <div v-else-if="activeTab === 'tools'" class="content-card">
+    <!-- 报告模板管理 -->
+    <div v-else-if="activeTab === 'reports'" class="content-card">
       <div class="card-header">
-        <h2 class="section-title">小工具</h2>
-      </div>
-
-      <div class="tools-tabs">
-        <button class="tool-tab" :class="{ active: activeTool === 'huanwei' }" @click="activeTool = 'huanwei'">市容环卫案件分配</button>
-        <button class="tool-tab" :class="{ active: activeTool === 'location' }" @click="activeTool = 'location'">地址信息提取</button>
-        <button class="tool-tab" :class="{ active: activeTool === 'desensitization' }" @click="activeTool = 'desensitization'">数据脱敏</button>
-      </div>
-
-      <!-- 市容环卫案件分配 -->
-      <div v-if="activeTool === 'huanwei'" class="tool-section">
-        <div class="tool-description">
-          <p>该模块允许上传Excel文件，为市容环卫中心的案件分配到各环卫部门（添加"环卫"前缀）。</p>
-          <p class="hint">需要包含：处置部门、所属片区 列</p>
-        </div>
-        <div class="tool-upload">
-          <input type="file" accept=".xlsx" @change="handleToolFileSelect('huanwei', $event)" ref="huanweiFileInput" />
-          <span>{{ toolFiles.huanwei ? toolFiles.huanwei.name : '未选择文件' }}</span>
-          <button class="btn btn-primary" @click="processHuanwei" :disabled="toolLoading.huanwei || !toolFiles.huanwei">
-            {{ toolLoading.huanwei ? '处理中...' : '开始处理' }}
+        <h2 class="section-title">报告模板管理</h2>
+        <div class="card-header-actions">
+          <button class="btn btn-secondary" @click="showTemplateUploader = true">
+            <span class="btn-icon">📁</span> 上传Word模板
+          </button>
+          <button class="btn btn-primary" @click="openReportEditor(null)">
+            + 新建模板
           </button>
         </div>
-        <div v-if="toolMessages.huanwei" class="message success">{{ toolMessages.huanwei }}</div>
-        <div v-if="toolErrors.huanwei" class="message error">{{ toolErrors.huanwei }}</div>
       </div>
 
-      <!-- 地址信息提取 -->
-      <div v-if="activeTool === 'location'" class="tool-section">
-        <div class="tool-description">
-          <p>从问题描述中提取地址信息并替换原文件中的地址描述。</p>
-          <p class="hint">需要包含：问题描述、地址描述 列</p>
-        </div>
-        <div class="tool-upload">
-          <input type="file" accept=".xlsx" @change="handleToolFileSelect('location', $event)" ref="locationFileInput" />
-          <span>{{ toolFiles.location ? toolFiles.location.name : '未选择文件' }}</span>
-          <button class="btn btn-primary" @click="processLocation" :disabled="toolLoading.location || !toolFiles.location">
-            {{ toolLoading.location ? '处理中...' : '开始处理' }}
-          </button>
-        </div>
-        <div v-if="toolMessages.location" class="message success">{{ toolMessages.location }}</div>
-        <div v-if="toolErrors.location" class="message error">{{ toolErrors.location }}</div>
+      <div v-if="reportTemplatesLoading" class="loading-state">
+        <div class="loading-spinner"></div>
       </div>
 
-      <!-- 数据脱敏 -->
-      <div v-if="activeTool === 'desensitization'" class="tool-section">
-        <div class="tool-description">
-          <p>对Excel文件中的敏感数据进行脱敏处理，支持姓名、电话、地址等字段。</p>
-          <p class="hint">上传文件后选择需要脱敏的字段和类型</p>
-        </div>
-        <div class="tool-upload">
-          <input type="file" accept=".xlsx" @change="handleDesensitizationFileSelect($event)" ref="desensitizationFileInput" />
-          <span>{{ desensitizationFileName || '未选择文件' }}</span>
-        </div>
+      <div v-else-if="reportTemplates.length === 0" class="empty-state">
+        <p>暂无报告模板，点击"新建模板"开始创建</p>
+      </div>
 
-        <div v-if="desensitizationFields.length > 0" class="desensitization-fields">
-          <h4>选择脱敏字段和类型</h4>
-          <div class="field-list">
-            <div v-for="field in desensitizationFields" :key="field" class="field-row">
-              <span class="field-name">{{ field }}</span>
-              <select v-model="desensitizationConfig[field]" class="field-select">
-                <option value="">不处理</option>
-                <option value="name">姓名脱敏</option>
-                <option value="phone">手机号脱敏</option>
-                <option value="landline">座机号脱敏</option>
-                <option value="address">地址脱敏</option>
-                <option value="problem_description">问题描述清洗</option>
+      <div v-else class="report-grid">
+        <div v-for="tpl in reportTemplates" :key="tpl.id" class="report-card">
+          <div class="report-card-header">
+            <h3 class="report-card-title">{{ tpl.name }}</h3>
+            <span class="report-type-badge" :class="tpl.report_type">
+              {{ tpl.report_type === 'compare' ? '对比报告' : '单月报告' }}
+            </span>
+          </div>
+          <p class="report-card-desc">{{ tpl.description || '暂无描述' }}</p>
+          <div class="report-card-meta">
+            <span>{{ tpl.section_count }} 个章节</span>
+            <span>{{ tpl.updated_at?.slice(0, 10) }}</span>
+          </div>
+          <div class="report-card-actions">
+            <button class="btn btn-sm btn-secondary" @click="openReportEditor(tpl)">编辑</button>
+            <button class="btn btn-sm btn-primary" @click="executeReport(tpl)">执行</button>
+            <button class="btn btn-sm btn-danger" @click="deleteReport(tpl)">删除</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 模板编辑模态框 -->
+      <div class="modal-overlay" v-if="showReportEditor" @click.self="closeReportEditor">
+        <div class="modal-content report-editor-modal">
+          <div class="modal-header">
+            <h2>{{ editingReport ? '编辑报告模板' : '新建报告模板' }}</h2>
+            <button class="close-btn" @click="closeReportEditor">&times;</button>
+          </div>
+          <div class="modal-body">
+            <div class="form-group">
+              <label class="form-label">模板名称 *</label>
+              <input v-model="reportForm.name" type="text" class="form-input" placeholder="如：6月案件数据分析报告" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">模板描述</label>
+              <textarea v-model="reportForm.description" class="form-textarea" rows="2" placeholder="简要说明报告内容"></textarea>
+            </div>
+            <div class="form-group">
+              <label class="form-label">报告类型</label>
+              <select v-model="reportForm.report_type" class="form-select">
+                <option value="single">单月报告</option>
+                <option value="compare">对比报告</option>
               </select>
             </div>
+
+            <div class="sections-editor">
+              <div class="sections-header">
+                <label class="form-label">报告章节</label>
+                <button class="btn btn-sm btn-secondary" @click="addReportSection">+ 添加章节</button>
+              </div>
+
+              <div v-if="reportForm.sections.length === 0" class="empty-sections">
+                暂无章节，点击上方按钮添加
+              </div>
+
+              <div v-for="(sec, idx) in reportForm.sections" :key="idx" class="section-item">
+                <div class="section-item-header">
+                  <span class="section-num">{{ idx + 1 }}</span>
+                  <div class="section-controls">
+                    <button class="btn-icon-sm" @click="moveReportSection(idx, -1)" :disabled="idx === 0">↑</button>
+                    <button class="btn-icon-sm" @click="moveReportSection(idx, 1)" :disabled="idx === reportForm.sections.length - 1">↓</button>
+                    <button class="btn-icon-sm danger" @click="removeReportSection(idx)">×</button>
+                  </div>
+                </div>
+                <input v-model="sec.title" class="form-input" placeholder="章节标题，如：一、案件总览" />
+                <input v-model="sec.query" class="form-input" placeholder="分析需求，如：各片区案件数量统计" />
+                <select v-model="sec.chart_type" class="form-select form-select-sm">
+                  <option value="bar">柱状图</option>
+                  <option value="horizontal_bar">横向柱状图</option>
+                  <option value="pie">饼图</option>
+                  <option value="line">折线图</option>
+                </select>
+              </div>
+            </div>
           </div>
-          <div class="btn-group">
-            <button class="btn btn-primary" @click="processDesensitization" :disabled="toolLoading.desensitization">
-              {{ toolLoading.desensitization ? '处理中...' : '开始脱敏' }}
+          <div class="modal-footer">
+            <button class="btn btn-secondary" @click="closeReportEditor">取消</button>
+            <button class="btn btn-primary" @click="saveReport" :disabled="reportSaving">
+              {{ reportSaving ? '保存中...' : '保存' }}
             </button>
-            <button class="btn btn-secondary" @click="resetDesensitization">重置</button>
           </div>
         </div>
+      </div>
 
-        <div v-if="toolLoading.desensitization && desensitizationFields.length === 0" class="message info">读取文件字段中...</div>
-        <div v-if="toolMessages.desensitization" class="message success">{{ toolMessages.desensitization }}</div>
-        <div v-if="toolErrors.desensitization" class="message error">{{ toolErrors.desensitization }}</div>
+      <!-- Word模板上传模态框 -->
+      <div class="modal-overlay" v-if="showTemplateUploader" @click.self="closeTemplateUploader">
+        <div class="modal-content report-editor-modal">
+          <div class="modal-header">
+            <h2>上传Word模板</h2>
+            <button class="close-btn" @click="closeTemplateUploader">&times;</button>
+          </div>
+          <div class="modal-body">
+            <div class="upload-area" 
+                 @dragover.prevent 
+                 @drop.prevent="handleTemplateDrop"
+                 :class="{ 'drag-over': isDragging }">
+              <input type="file" 
+                     ref="templateFileInput" 
+                     accept=".docx" 
+                     @change="handleTemplateFileSelect"
+                     style="display: none" />
+              <div class="upload-content" @click="$refs.templateFileInput.click()">
+                <div class="upload-icon">📄</div>
+                <p class="upload-text">点击或拖拽 Word 文件到这里</p>
+                <p class="upload-hint">支持 .docx 格式</p>
+              </div>
+            </div>
+            
+            <div v-if="templateUploading" class="upload-progress">
+              <div class="loading-spinner"></div>
+              <span>正在上传和解析模板...</span>
+            </div>
+            
+            <div v-if="templateUploadResult" class="upload-result">
+              <div class="result-success">
+                <span class="success-icon">✓</span>
+                <span>模板解析成功！</span>
+              </div>
+              <div class="result-info">
+                <p><strong>文件名：</strong>{{ templateUploadResult.original_filename }}</p>
+                <p><strong>识别章节：</strong>{{ templateUploadResult.structure?.sections?.length || 0 }} 个</p>
+              </div>
+              <div class="result-sections">
+                <h4>识别到的章节：</h4>
+                <ul>
+                  <li v-for="(sec, idx) in templateUploadResult.structure?.sections || []" :key="idx">
+                    {{ sec.title }}
+                  </li>
+                </ul>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-secondary" @click="closeTemplateUploader">取消</button>
+            <button class="btn btn-primary" 
+                    @click="createFromTemplate" 
+                    :disabled="!templateUploadResult || templateSaving">
+              {{ templateSaving ? '创建中...' : '使用此模板创建' }}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -1248,20 +939,20 @@
 
 <script setup>
 import { ref, computed, onMounted, watch, shallowRef } from 'vue'
+import { useRouter } from 'vue-router'
 import axios from 'axios'
 import { Editor, Toolbar } from '@wangeditor/editor-for-vue'
 import '@wangeditor/editor/dist/css/style.css'
+import KbIcon from '../components/common/KbIcon.vue'
+
+const router = useRouter()
 
 const tabs = [
   { key: 'users', label: '用户管理' },
   { key: 'articles', label: '文章管理' },
-  { key: 'data', label: '数据管理' },
-  { key: 'dataEdit', label: '数据编辑' },
-  { key: 'logs', label: '操作日志' },
   { key: 'business', label: '业务平台' },
-  { key: 'assessment', label: '考核系数' },
   { key: 'knowledge', label: '知识库管理' },
-  { key: 'tools', label: '小工具' },
+  { key: 'reports', label: '报告模板' },
   { key: 'system', label: '系统设置' }
 ]
 
@@ -1284,75 +975,149 @@ const roleMap = {
   user: '普通用户'
 }
 
-// 数据管理
-const dataTables = ref([])
-const tableVisibility = ref({})
-const visibleTables = computed(() => {
-  // 只返回可见的表
-  return dataTables.value.filter(t => tableVisibility.value[t] !== false)
-})
-const uploadMode = ref('create')
-const targetTable = ref('')
-const dataMonth = ref('')
-const excelFile = ref(null)
-const uploadLoading = ref(false)
-const uploadMessage = ref('')
-const uploadError = ref('')
-const tablesLoading = ref(false)
-const visibilitySaving = ref(false)
-const visibilityMessage = ref('')
-const visibilityError = ref('')
-
-// 考核系数配置
-const assessmentDepartments = [
-  '城市综合行政执法队',
-  '市容环卫中心',
-  '园林绿化服务中心（片区）',
-  '园林绿化服务中心（公园广场）'
-]
-const selectedDept = ref(assessmentDepartments[0])
-const coefficients = ref({})
-const coefficientsLoading = ref(false)
-const coefficientsMessage = ref('')
-const coefficientsError = ref('')
-
 // 知识库管理
 const knowledgeSubTab = ref('general')
 
-// 通用知识库管理
-const generalKnowledgeStats = ref({ exists: false, count: 0 })
-const generalKnowledgeDocs = ref([])
-const knowledgeSelectedDocs = ref([])
-const knowledgeSelectedFile = ref(null)
-const knowledgeSelectedZip = ref(null)
-const knowledgeTextContent = ref('')
-const knowledgeTextSource = ref('')
-const knowledgeUploading = ref(false)
-const knowledgeUploadResult = ref(null)
-const knowledgeBatchProgress = ref(null)
+// 通用知识库管理（对齐统一库 unified_kb）
+const kbTypeMeta = {
+  standard: { label: '立结案标准', icon: 'standard', color: 'var(--primary-500)', bg: 'var(--primary-50)' },
+  org:      { label: '职责机构',   icon: 'org',      color: 'var(--warning)',    bg: 'var(--warning-light)' },
+  qa:       { label: '知识问答',   icon: 'qa',       color: 'var(--success)',    bg: 'var(--success-light)' },
+  general:  { label: '通用制度',   icon: 'general',  color: 'var(--info)',       bg: 'var(--info-light)' },
+  law:      { label: '法律法规',   icon: 'law',      color: 'var(--danger)',     bg: 'var(--danger-light)' },
+}
+const kbTypeList = Object.keys(kbTypeMeta).map(k => ({ key: k, ...kbTypeMeta[k] }))
+function typeLabel(k) { return (kbTypeMeta[k] || {}).label || k }
+function typeColor(k) { return (kbTypeMeta[k] || { color: 'var(--info)' }).color }
+function typeBg(k) { return (kbTypeMeta[k] || { bg: 'var(--info-light)' }).bg }
+function typeIcon(k) { return (kbTypeMeta[k] || { icon: 'file-text' }).icon }
 
-// 立结案标准库管理
-const standardsStats = ref(null)
-const standardsList = ref([])
-const standardsLoading = ref(false)
-const standardsListFetched = ref(false)
-const standardsDeleteLoading = ref(false)
-const incrementalLoading = ref(false)
-const incrementalProgress = ref({ active: false, current: 0, total: 0, filename: '', status: '' })
-const incrementalResult = ref(null)
-const singleStandardsFileResult = ref(null)
+const kbOverview = ref({ exists: false, total: 0, by_type: {}, source: null })
+const kbRebuilding = ref(false)
+const kbRebuildStatus = ref(null)
+const kbRebuildTimer = ref(null)
 
-// 小工具
-const activeTool = ref('huanwei')
-const toolFiles = ref({ huanwei: null, location: null, desensitization: null })
-const toolLoading = ref({ huanwei: false, location: false, desensitization: false })
-const toolMessages = ref({ huanwei: '', location: '', desensitization: '' })
-const toolErrors = ref({ huanwei: '', location: '', desensitization: '' })
+const kbDocs = ref([])
+const kbDocTotal = ref(0)
+const kbDocsLoading = ref(false)
+const kbSelectedDocs = ref([])
+const kbDocFilter = ref('')
+const kbDocKeyword = ref('')
+const kbDocPage = ref(1)
+const kbDocPageSize = 50
 
-// 数据脱敏
-const desensitizationFileName = ref('')
-const desensitizationFields = ref([])
-const desensitizationConfig = ref({})
+function pct(done, total) {
+  if (!total) return 0
+  return Math.min(100, Math.round((done / total) * 100))
+}
+
+async function loadKbOverview() {
+  try {
+    const res = await axios.get('/api/kb/admin/overview')
+    kbOverview.value = res.data || { exists: false, total: 0, by_type: {}, source: null }
+  } catch (e) {
+    console.error('加载知识库概览失败:', e)
+  }
+}
+
+async function rebuildKb() {
+  if (kbRebuilding.value) return
+  if (!confirm('确认重建索引？将删除并重新灌入统一库（约 6000+ 条），耗时约 1-2 分钟。')) return
+  kbRebuilding.value = true
+  kbRebuildStatus.value = { status: 'running', stage: 'pending', done: 0, total: 0, message: '正在启动重建任务…' }
+  try {
+    const res = await axios.post('/api/kb/admin/rebuild', {})
+    const taskId = res.data.task_id
+    if (kbRebuildTimer.value) clearInterval(kbRebuildTimer.value)
+    kbRebuildTimer.value = setInterval(async () => {
+      try {
+        const p = await axios.get(`/api/kb/admin/rebuild/${taskId}`)
+        kbRebuildStatus.value = p.data
+        if (p.data.status === 'success' || p.data.status === 'error') {
+          clearInterval(kbRebuildTimer.value)
+          kbRebuildTimer.value = null
+          kbRebuilding.value = false
+          loadKbOverview()
+          loadKbDocs()
+        }
+      } catch (e) {
+        clearInterval(kbRebuildTimer.value)
+        kbRebuildTimer.value = null
+        kbRebuilding.value = false
+      }
+    }, 1500)
+  } catch (e) {
+    kbRebuilding.value = false
+    kbRebuildStatus.value = { status: 'error', message: '重建请求失败: ' + (e.response?.data?.error || e.message) }
+  }
+}
+
+async function loadKbDocs() {
+  kbDocsLoading.value = true
+  try {
+    const params = { page: kbDocPage.value, page_size: kbDocPageSize, doc_type: kbDocFilter.value || undefined, keyword: kbDocKeyword.value || undefined }
+    const res = await axios.get('/api/kb/admin/documents', { params })
+    kbDocs.value = res.data.items || []
+    kbDocTotal.value = res.data.total || 0
+    kbSelectedDocs.value = []
+  } catch (e) {
+    console.error('加载文档列表失败:', e)
+    kbDocs.value = []
+  } finally {
+    kbDocsLoading.value = false
+  }
+}
+
+function toggleKbSelectAll(e) {
+  if (e.target.checked) kbSelectedDocs.value = kbDocs.value.map(d => d.doc_id)
+  else kbSelectedDocs.value = []
+}
+
+async function deleteKbDoc(docId) {
+  if (!confirm(`确认删除文档「${docId}」及其全部片段？`)) return
+  try {
+    await axios.delete(`/api/kb/admin/documents/${encodeURIComponent(docId)}`)
+    loadKbDocs()
+    loadKbOverview()
+  } catch (e) {
+    alert('删除失败: ' + (e.response?.data?.error || e.message))
+  }
+}
+
+async function batchDeleteKbDocs() {
+  if (kbSelectedDocs.value.length === 0) return
+  if (!confirm(`确认删除选中的 ${kbSelectedDocs.value.length} 个文档？`)) return
+  try {
+    await axios.post('/api/kb/admin/documents/batch-delete',
+      { doc_ids: kbSelectedDocs.value })
+    kbSelectedDocs.value = []
+    loadKbDocs()
+    loadKbOverview()
+  } catch (e) {
+    alert('批量删除失败: ' + (e.response?.data?.error || e.message))
+  }
+}
+
+
+// 数据管理
+const dataTables = ref([])
+const tablesLoading = ref(false)
+const tableVisibility = ref({})
+
+// 报告模板管理
+const reportTemplates = ref([])
+const reportTemplatesLoading = ref(false)
+const showReportEditor = ref(false)
+const editingReport = ref(null)
+const reportForm = ref({ name: '', description: '', report_type: 'single', sections: [] })
+const reportSaving = ref(false)
+
+// Word模板上传
+const showTemplateUploader = ref(false)
+const templateUploading = ref(false)
+const templateUploadResult = ref(null)
+const templateSaving = ref(false)
+const isDragging = ref(false)
 
 // 业务管理
 const platforms = ref([])
@@ -1426,24 +1191,190 @@ function formatDate(dateStr) {
   return new Date(dateStr).toLocaleDateString('zh-CN')
 }
 
-const currentCoefficients = computed({
-  get: () => {
-    if (!coefficients.value[selectedDept.value]) {
-      // 自动初始化该部门的系数
-      coefficients.value[selectedDept.value] = {
-        on_time: 1.0,
-        overdue: 0.4,
-        closure_weight: 0.8,
-        delay_weight: 0.1,
-        rework_weight: 0.1
-      }
-    }
-    return coefficients.value[selectedDept.value]
-  },
-  set: (val) => {
-    coefficients.value[selectedDept.value] = val
+
+// ===== 报告模板管理 =====
+async function loadReportTemplates() {
+  reportTemplatesLoading.value = true
+  try {
+    const res = await axios.get('/api/report-templates')
+    reportTemplates.value = res.data.templates || []
+  } catch (e) {
+    console.error('加载报告模板失败:', e)
+  } finally {
+    reportTemplatesLoading.value = false
   }
-})
+}
+
+function openReportEditor(template) {
+  if (template) {
+    editingReport.value = template
+    reportForm.value = {
+      name: template.name,
+      description: template.description || '',
+      report_type: template.report_type || 'single',
+      sections: JSON.parse(JSON.stringify(template.sections || [])),
+    }
+  } else {
+    editingReport.value = null
+    reportForm.value = { name: '', description: '', report_type: 'single', sections: [] }
+  }
+  showReportEditor.value = true
+}
+
+function closeReportEditor() {
+  showReportEditor.value = false
+  editingReport.value = null
+}
+
+function addReportSection() {
+  reportForm.value.sections.push({ title: '', query: '', chart_type: 'bar' })
+}
+
+function removeReportSection(index) {
+  reportForm.value.sections.splice(index, 1)
+}
+
+function moveReportSection(index, dir) {
+  const sections = reportForm.value.sections
+  const target = index + dir
+  if (target < 0 || target >= sections.length) return
+  const temp = sections[index]
+  sections[index] = sections[target]
+  sections[target] = temp
+}
+
+async function saveReport() {
+  if (!reportForm.value.name.trim()) return alert('请输入模板名称')
+  if (!reportForm.value.sections.length) return alert('请至少添加一个章节')
+
+  reportSaving.value = true
+  try {
+    const payload = { ...reportForm.value }
+    if (editingReport.value) {
+      await axios.put(`/api/report-templates/${editingReport.value.id}`, payload)
+    } else {
+      await axios.post('/api/report-templates', payload)
+    }
+    closeReportEditor()
+    await loadReportTemplates()
+  } catch (e) {
+    alert('保存失败: ' + (e.response?.data?.error || e.message))
+  } finally {
+    reportSaving.value = false
+  }
+}
+
+async function deleteReport(template) {
+  if (!confirm(`确定删除模板"${template.name}"？`)) return
+  try {
+    await axios.delete(`/api/report-templates/${template.id}`)
+    await loadReportTemplates()
+  } catch (e) {
+    alert('删除失败: ' + (e.response?.data?.error || e.message))
+  }
+}
+
+function executeReport(template) {
+  router.push(`/report/${template.id}`)
+}
+
+// Word模板上传相关函数
+function closeTemplateUploader() {
+  showTemplateUploader.value = false
+  templateUploadResult.value = null
+  templateUploading.value = false
+}
+
+function handleTemplateFileSelect(event) {
+  const file = event.target.files[0]
+  if (file) {
+    uploadTemplate(file)
+  }
+}
+
+function handleTemplateDrop(event) {
+  isDragging.value = false
+  const file = event.dataTransfer.files[0]
+  if (file && file.name.endsWith('.docx')) {
+    uploadTemplate(file)
+  } else {
+    alert('请上传 .docx 格式的文件')
+  }
+}
+
+async function uploadTemplate(file) {
+  if (!file.name.endsWith('.docx')) {
+    alert('只支持 .docx 格式文件')
+    return
+  }
+
+  templateUploading.value = true
+  templateUploadResult.value = null
+
+  try {
+    const formData = new FormData()
+    formData.append('file', file)
+
+    const res = await axios.post('/api/report-templates/upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
+
+    if (res.data.success) {
+      templateUploadResult.value = res.data
+    } else {
+      alert('上传失败: ' + (res.data.error || '未知错误'))
+    }
+  } catch (e) {
+    alert('上传失败: ' + (e.response?.data?.error || e.message))
+  } finally {
+    templateUploading.value = false
+  }
+}
+
+async function createFromTemplate() {
+  if (!templateUploadResult.value) return
+
+  templateSaving.value = true
+  try {
+    const result = templateUploadResult.value
+    const structure = result.structure || {}
+
+    // 从解析的结构创建模板
+    const sections = (structure.sections || []).map(sec => ({
+      title: sec.title || '',
+      query: '',
+      chart_type: sec.chart_type || 'bar',
+      image_paragraph_index: sec.image_paragraph_index,
+      caption_paragraph_index: sec.caption_paragraph_index,
+      table_index: sec.table_index,
+    }))
+
+    const payload = {
+      name: result.original_filename.replace('.docx', ''),
+      description: `从Word模板导入 - ${result.original_filename}`,
+      report_type: 'single',
+      sections: sections,
+      template_file: result.file_path,
+      template_structure: structure,
+    }
+
+    console.log('Creating template with payload:', payload)
+    const res = await axios.post('/api/report-templates', payload)
+    console.log('Create response:', res.data)
+    
+    if (res.data.success) {
+      closeTemplateUploader()
+      await loadReportTemplates()
+    } else {
+      alert('创建失败: ' + (res.data.error || '未知错误'))
+    }
+  } catch (e) {
+    console.error('Create template error:', e)
+    alert('创建失败: ' + (e.response?.data?.error || e.message))
+  } finally {
+    templateSaving.value = false
+  }
+}
 
 // ===== 数据管理方法 =====
 async function fetchDataTables() {
@@ -1542,300 +1473,8 @@ async function deleteDataTable(tableName) {
   }
 }
 
-// ===== 考核系数方法 =====
-async function fetchCoefficients() {
-  coefficientsLoading.value = true
-  try {
-    const response = await axios.get('/api/assessment-coefficients')
-    coefficients.value = response.data || {}
-  } catch (error) {
-    console.error('获取考核系数失败:', error)
-  } finally {
-    coefficientsLoading.value = false
-  }
-}
 
-async function saveCoefficients() {
-  coefficientsLoading.value = true
-  coefficientsMessage.value = ''
-  coefficientsError.value = ''
 
-  try {
-    const response = await axios.put('/api/assessment-coefficients', {
-      department: selectedDept.value,
-      ...currentCoefficients.value
-    })
-    // 更新本地系数数据
-    coefficients.value = response.data.coefficients || coefficients.value
-    coefficientsMessage.value = '保存成功'
-  } catch (error) {
-    coefficientsError.value = error.response?.data?.error || '保存失败'
-  } finally {
-    coefficientsLoading.value = false
-  }
-}
-
-function resetCoefficients() {
-  coefficients.value[selectedDept.value] = {
-    on_time: 1.0,
-    overdue: 0.4,
-    closure_weight: 0.8,
-    delay_weight: 0.1,
-    rework_weight: 0.1
-  }
-}
-
-// ===== 通用知识库管理方法 =====
-async function loadKnowledgeStats() {
-  try {
-    const res = await axios.get('/api/knowledge/stats')
-    generalKnowledgeStats.value = res.data
-  } catch (error) {
-    console.error('加载知识库统计失败:', error)
-  }
-}
-
-async function loadKnowledgeDocs() {
-  try {
-    const res = await axios.get('/api/knowledge/documents')
-    generalKnowledgeDocs.value = res.data.documents || []
-  } catch (error) {
-    console.error('加载文档列表失败:', error)
-  }
-}
-
-function onKnowledgeFileSelect(e) {
-  knowledgeSelectedFile.value = e.target.files[0] || null
-  knowledgeTextContent.value = ''
-  knowledgeUploadResult.value = null
-}
-
-function onKnowledgeZipSelect(e) {
-  knowledgeSelectedZip.value = e.target.files[0] || null
-  knowledgeUploadResult.value = null
-  if (knowledgeSelectedZip.value) {
-    uploadKnowledgeZip()
-  }
-}
-
-async function uploadKnowledgeZip() {
-  if (!knowledgeSelectedZip.value) return
-  knowledgeUploading.value = true
-  knowledgeUploadResult.value = null
-  knowledgeBatchProgress.value = null
-
-  try {
-    const formData = new FormData()
-    formData.append('file', knowledgeSelectedZip.value)
-    const res = await axios.post('/api/knowledge/batch-upload', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' }
-    })
-    knowledgeUploadResult.value = res.data
-    if (res.data.success && res.data.task_id) {
-      knowledgeSelectedZip.value = null
-      pollKnowledgeProgress(res.data.task_id, res.data.total_files)
-    }
-  } catch (error) {
-    knowledgeUploadResult.value = { success: false, message: '批量上传失败: ' + (error.response?.data?.error || error.message) }
-    knowledgeUploading.value = false
-  }
-}
-
-async function pollKnowledgeProgress(taskId, totalFiles) {
-  knowledgeBatchProgress.value = { total: totalFiles, processed: 0, success: 0, failed: 0 }
-
-  const poll = async () => {
-    try {
-      const res = await axios.get(`/api/knowledge/batch-upload/progress/${taskId}`)
-      if (res.data.status === 'completed') {
-        knowledgeBatchProgress.value = res.data
-        knowledgeUploading.value = false
-        knowledgeUploadResult.value = {
-          success: true,
-          message: `处理完成！成功 ${res.data.success} 个，失败 ${res.data.failed} 个`
-        }
-        loadKnowledgeStats()
-        loadKnowledgeDocs()
-      } else {
-        knowledgeBatchProgress.value = res.data
-        setTimeout(poll, 2000)
-      }
-    } catch (error) {
-      setTimeout(poll, 2000)
-    }
-  }
-  poll()
-}
-
-async function uploadKnowledgeDoc() {
-  if (!knowledgeSelectedFile.value && !knowledgeTextContent.value.trim()) {
-    knowledgeUploadResult.value = { success: false, message: '请选择文件或输入内容' }
-    return
-  }
-
-  knowledgeUploading.value = true
-  knowledgeUploadResult.value = null
-
-  try {
-    if (knowledgeSelectedFile.value) {
-      const formData = new FormData()
-      formData.append('file', knowledgeSelectedFile.value)
-      const res = await axios.post('/api/knowledge/upload', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      })
-      knowledgeUploadResult.value = res.data
-      if (res.data.success) {
-        knowledgeSelectedFile.value = null
-        loadKnowledgeStats()
-        loadKnowledgeDocs()
-      }
-    } else {
-      const res = await axios.post('/api/knowledge/upload', {
-        content: knowledgeTextContent.value,
-        source: knowledgeTextSource.value || '手动输入'
-      })
-      knowledgeUploadResult.value = res.data
-      if (res.data.success) {
-        knowledgeTextContent.value = ''
-        knowledgeTextSource.value = ''
-        loadKnowledgeStats()
-        loadKnowledgeDocs()
-      }
-    }
-  } catch (error) {
-    knowledgeUploadResult.value = { success: false, message: '上传失败: ' + (error.response?.data?.error || error.message) }
-  } finally {
-    knowledgeUploading.value = false
-  }
-}
-
-function toggleKnowledgeSelectAll() {
-  if (knowledgeSelectedDocs.value.length === generalKnowledgeDocs.value.length) {
-    knowledgeSelectedDocs.value = []
-  } else {
-    knowledgeSelectedDocs.value = generalKnowledgeDocs.value.map(d => d.doc_id)
-  }
-}
-
-async function batchDeleteKnowledgeDocs() {
-  if (knowledgeSelectedDocs.value.length === 0) return
-  if (!confirm(`确定删除选中的 ${knowledgeSelectedDocs.value.length} 个文档？`)) return
-
-  try {
-    const res = await axios.post('/api/knowledge/documents/batch-delete', { doc_ids: knowledgeSelectedDocs.value })
-    if (res.data.success) {
-      alert(res.data.message)
-      knowledgeSelectedDocs.value = []
-      loadKnowledgeStats()
-      loadKnowledgeDocs()
-    } else {
-      alert('删除失败: ' + res.data.error)
-    }
-  } catch (error) {
-    alert('删除失败: ' + (error.response?.data?.error || error.message))
-  }
-}
-
-async function deleteKnowledgeDoc(docId) {
-  if (!confirm('确定删除该文档？')) return
-
-  try {
-    const res = await axios.delete(`/api/knowledge/documents/${docId}`)
-    if (res.data.success) {
-      loadKnowledgeStats()
-      loadKnowledgeDocs()
-    } else {
-      alert('删除失败: ' + res.data.message)
-    }
-  } catch (error) {
-    alert('删除失败: ' + (error.response?.data?.error || error.message))
-  }
-}
-
-// ===== 立结案标准库管理方法 =====
-async function fetchStandardsList() {
-  standardsLoading.value = true
-  standardsListFetched.value = false
-  try {
-    const statsRes = await axios.get('/api/case-standards/stats')
-    standardsStats.value = statsRes.data
-    const listRes = await axios.get('/api/case-standards/list')
-    standardsList.value = listRes.data.standards || []
-    standardsListFetched.value = true
-  } catch (error) {
-    console.error('获取标准列表失败:', error)
-    alert('获取标准列表失败: ' + (error.response?.data?.error || error.message))
-  } finally {
-    standardsLoading.value = false
-  }
-}
-
-async function deleteStandard(parentId) {
-  if (!confirm('确认删除该标准？此操作不可恢复！')) return
-  standardsDeleteLoading.value = true
-  try {
-    const response = await axios.delete(`/api/case-standards/delete/${parentId}`)
-    if (response.data.success) {
-      await fetchStandardsList()
-      alert('删除成功')
-    } else {
-      alert('删除失败: ' + response.data.message)
-    }
-  } catch (error) {
-    alert('删除失败: ' + (error.response?.data?.error || error.message))
-  } finally {
-    standardsDeleteLoading.value = false
-  }
-}
-
-async function startIncrementalIndex() {
-  incrementalLoading.value = true
-  incrementalProgress.value = { active: true, current: 0, total: 0, filename: '准备开始...', status: '' }
-  incrementalResult.value = null
-  try {
-    const response = await axios.post('/api/case-standards/incremental', {
-      directory: 'D:/常用/立案结案标准'
-    })
-    incrementalResult.value = response.data
-    incrementalProgress.value.active = false
-    await fetchStandardsList()
-  } catch (error) {
-    incrementalProgress.value.active = false
-    alert('增量索引失败: ' + (error.response?.data?.error || error.message))
-  } finally {
-    incrementalLoading.value = false
-  }
-}
-
-function onSingleStandardsFileSelect(e) {
-  const file = e.target.files[0]
-  if (!file) return
-  if (!file.name.endsWith('.txt')) {
-    alert('只支持.txt文件')
-    return
-  }
-  uploadSingleStandardsFile(file)
-}
-
-async function uploadSingleStandardsFile(file) {
-  standardsLoading.value = true
-  singleStandardsFileResult.value = null
-  const formData = new FormData()
-  formData.append('file', file)
-  try {
-    const response = await axios.post('/api/case-standards/index-single', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' }
-    })
-    singleStandardsFileResult.value = response.data
-    if (response.data.success) {
-      await fetchStandardsList()
-    }
-  } catch (error) {
-    singleStandardsFileResult.value = { success: false, message: error.response?.data?.error || error.message }
-  } finally {
-    standardsLoading.value = false
-  }
-}
 
 // ===== 小工具方法 =====
 function handleToolFileSelect(tool, e) {
@@ -2058,7 +1697,6 @@ function openPermissionsEditor(user) {
   editingPermissions.value = {
     dashboard: Boolean(perms.dashboard),
     data_management: Boolean(perms.data_management),
-    assessment: Boolean(perms.assessment),
     data_analysis: Boolean(perms.data_analysis),
     spotcheck: Boolean(perms.spotcheck),
     cases: Boolean(perms.cases),
@@ -2083,7 +1721,6 @@ async function savePermissions() {
     const dataToSend = {
       dashboard: Boolean(editingPermissions.value.dashboard),
       data_management: Boolean(editingPermissions.value.data_management),
-      assessment: Boolean(editingPermissions.value.assessment),
       data_analysis: Boolean(editingPermissions.value.data_analysis),
       spotcheck: Boolean(editingPermissions.value.spotcheck),
       cases: Boolean(editingPermissions.value.cases),
@@ -2448,50 +2085,17 @@ async function deleteCategory(category) {
 }
 
 // ===== 数据编辑 =====
-const editTable = ref('')
-const editMonth = ref('')
-const editAvailableMonths = ref([])
 const editColumns = ref([])
-const displayColumns = ref([])
-const formFields = ref([])
-const editRecords = ref([])
-const editTotal = ref(0)
-const editPage = ref(1)
-const editTotalPages = ref(1)
-const editLoading = ref(false)
-const searchField = ref('')
-const searchValue = ref('')
-const selectedRecords = ref([])
-const selectAll = ref(false)
 
 // 记录弹窗
-const showRecordModal = ref(false)
 const isAddRecord = ref(true)
-const recordForm = ref({})
-const recordSaving = ref(false)
 
 // 批量修改弹窗
-const showBatchEditModal = ref(false)
-const batchEditField = ref('')
-const batchEditValue = ref('')
-const batchEditSaving = ref(false)
 
 // 删除确认
-const showDeleteConfirm = ref(false)
-const deleteConfirmMessage = ref('')
 const deleteTarget = ref(null)  // { type: 'single' | 'batch', taskNumber? }
-const deleteSaving = ref(false)
 
 // 操作日志
-const logs = ref([])
-const logTotal = ref(0)
-const logPage = ref(1)
-const logTotalPages = ref(1)
-const logsLoading = ref(false)
-const logTable = ref('')
-const logType = ref('')
-const showLogDetailModal = ref(false)
-const logDetail = ref(null)
 
 async function onEditTableChange() {
   editMonth.value = ''
@@ -2746,7 +2350,6 @@ onMounted(() => {
   fetchPlatforms()
   fetchSystemConfig()
   fetchDataTables()
-  fetchCoefficients()
   fetchCategories()
   fetchArticles()
 })
@@ -2754,24 +2357,18 @@ onMounted(() => {
 // 切换到知识库管理tab时自动加载列表
 watch(activeTab, (newTab) => {
   if (newTab === 'knowledge') {
-    if (knowledgeSubTab.value === 'general') {
-      loadKnowledgeStats()
-      loadKnowledgeDocs()
-    } else if (knowledgeSubTab.value === 'standards' && !standardsListFetched.value) {
-      fetchStandardsList()
-    }
+    loadKbOverview()
+    loadKbDocs()
+  } else if (newTab === 'reports') {
+    loadReportTemplates()
   }
 })
 
 // 切换知识库子标签时加载对应数据
 watch(knowledgeSubTab, (newSubTab) => {
-  if (activeTab.value === 'knowledge') {
-    if (newSubTab === 'general') {
-      loadKnowledgeStats()
-      loadKnowledgeDocs()
-    } else if (newSubTab === 'standards' && !standardsListFetched.value) {
-      fetchStandardsList()
-    }
+  if (activeTab.value === 'knowledge' && newSubTab === 'general') {
+    loadKbOverview()
+    loadKbDocs()
   }
 })
 
@@ -3302,32 +2899,6 @@ watch(articlesCurrentPage, fetchArticles)
   font-size: 14px;
 }
 
-/* 考核系数样式 */
-.info-box {
-  padding: var(--space-4);
-  background: var(--fill-light);
-  border: 1px solid var(--border-lighter);
-  border-radius: var(--radius-md);
-  margin-bottom: var(--space-6);
-}
-
-.info-box p {
-  margin: 0;
-  color: var(--text-secondary);
-  font-size: 14px;
-}
-
-.coefficients-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: var(--space-4);
-}
-
-.form-actions {
-  display: flex;
-  gap: var(--space-3);
-  margin-top: var(--space-4);
-}
 
 /* 小工具样式 */
 .tools-tabs {
@@ -3489,9 +3060,6 @@ watch(articlesCurrentPage, fetchArticles)
     grid-template-columns: 1fr;
   }
 
-  .coefficients-grid {
-    grid-template-columns: 1fr;
-  }
 
   .permissions-grid {
     grid-template-columns: 1fr;
@@ -3886,76 +3454,196 @@ watch(articlesCurrentPage, fetchArticles)
   margin-top: var(--space-1);
 }
 
-.standards-actions {
-  display: flex;
+/* ===== 通用知识库管理（统一库 unified_kb）样式 ===== */
+.kb-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
   gap: var(--space-3);
   margin-bottom: var(--space-4);
 }
-
-.btn-info {
-  background: #3498db;
-  color: white;
-}
-
-.btn-info:hover:not(:disabled) {
-  background: #2980b9;
-}
-
-.standards-progress {
-  padding: var(--space-4);
-  background: var(--fill-light);
+.kb-stat-card {
+  --kc: var(--info);
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-base);
+  border: 1px solid var(--border-lighter);
   border-radius: var(--radius-md);
-  margin-bottom: var(--space-4);
 }
-
-.standards-progress .progress-text {
-  font-size: 14px;
-  color: var(--text-primary);
-  margin-bottom: var(--space-2);
+.kb-stat-icon {
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  color: var(--kc);
+  background: color-mix(in srgb, var(--kc) 14%, transparent);
 }
-
-.standards-progress .progress-bar {
-  height: 8px;
-  background: var(--border-lighter);
-  border-radius: 4px;
-  overflow: hidden;
+.kb-stat-num {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--kc);
+  line-height: 1.1;
 }
-
-.standards-progress .progress-fill {
-  height: 100%;
-  background: var(--primary-500);
-  transition: width 0.3s;
-}
-
-.standards-progress .progress-summary {
+.kb-stat-label {
   font-size: 12px;
   color: var(--text-tertiary);
-  margin-top: var(--space-2);
+  margin-left: auto;
+  text-align: right;
 }
+.kb-stat-total .kb-stat-icon { color: var(--primary-500); background: var(--primary-50); }
+.kb-stat-total .kb-stat-num { color: var(--text-primary); }
 
-.standards-result {
-  padding: var(--space-3);
-  background: var(--fill-light);
+.kb-rebuild-box {
+  padding: var(--space-4);
+  background: var(--bg-base);
+  border: 1px solid var(--border-lighter);
   border-radius: var(--radius-md);
   margin-bottom: var(--space-4);
 }
-
-.standards-result p {
-  margin: 0;
-  font-size: 14px;
+.kb-rebuild-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+.kb-rebuild-hint {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  margin: 6px 0 0;
+  line-height: 1.6;
+  max-width: 560px;
+}
+.kb-rebuild-hint code {
+  padding: 1px 6px;
+  background: var(--fill-light);
+  border-radius: 4px;
+  font-size: 11px;
+  word-break: break-all;
+}
+.kb-rebuild-status {
+  margin-top: var(--space-3);
+}
+.kb-rebuild-status.success .kb-rebuild-msg { color: var(--success); }
+.kb-rebuild-status.error .kb-rebuild-msg { color: var(--danger); }
+.kb-rebuild-msg {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+.kb-progress-bar {
+  height: 8px;
+  background: var(--fill-light);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.kb-progress-fill {
+  height: 100%;
+  background: var(--primary-500);
+  transition: width 0.4s ease;
 }
 
-.standards-result p.success {
-  color: #67c23a;
+.kb-source-box {
+  padding: var(--space-4);
+  background: var(--bg-base);
+  border: 1px solid var(--border-lighter);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-4);
 }
+.kb-source-dir {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-primary);
+  margin-bottom: var(--space-3);
+}
+.kb-source-exists { color: var(--success); font-size: 12px; }
+.kb-source-missing { color: var(--danger); }
+.kb-source-subdirs {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: var(--space-2);
+}
+.kb-source-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  background: var(--fill-light);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+}
+.kb-source-name { color: var(--text-secondary); }
+.kb-source-meta { color: var(--text-tertiary); }
 
-.standards-result p.error {
-  color: #f56c6c;
+.kb-docs-section .section-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
 }
-
-.standards-table {
-  margin-top: var(--space-4);
+.kb-filter-chips {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
 }
+.kb-chip {
+  --kc: var(--info);
+  padding: 4px 10px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  background: var(--bg-base);
+  border: 1px solid var(--border-lighter);
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+.kb-chip:hover { border-color: var(--kc); color: var(--kc); }
+.kb-chip.active { color: #fff; background: var(--kc); border-color: var(--kc); }
+.kb-doc-search {
+  flex: 1;
+  min-width: 160px;
+  padding: 6px 12px;
+  font-size: 13px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  background: var(--bg-base);
+  color: var(--text-primary);
+  outline: none;
+}
+.kb-doc-search:focus { border-color: var(--primary-500); }
+.doc-row {
+  --c: var(--info);
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 8px 12px;
+  font-size: 13px;
+}
+.kb-doc-type-tag {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  font-size: 11px;
+  border-radius: var(--radius-sm);
+  font-weight: 500;
+}
+.doc-row .doc-id { flex: 1; min-width: 0; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.doc-row .doc-chunks { color: var(--text-tertiary); flex-shrink: 0; }
+.doc-row .doc-source { color: var(--text-tertiary); flex-shrink: 0; max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kb-pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.kb-pager-info { color: var(--text-tertiary); }
 
 /* 知识库子标签样式 */
 .knowledge-sub-tabs {
@@ -4088,5 +3776,273 @@ watch(articlesCurrentPage, fetchArticles)
 
 .doc-row .btn-text {
   margin-left: auto;
+}
+
+/* 报告模板管理 */
+.report-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: var(--space-4);
+  margin-top: var(--space-4);
+}
+
+.report-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
+  transition: box-shadow 0.2s;
+}
+.report-card:hover {
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+.report-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-2);
+}
+.report-card-title {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.report-type-badge {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-weight: 500;
+}
+.report-type-badge.single {
+  background: var(--primary-50);
+  color: var(--primary-600);
+}
+.report-type-badge.compare {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.report-card-desc {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin: 0 0 var(--space-3);
+}
+
+.report-card-meta {
+  display: flex;
+  gap: var(--space-4);
+  font-size: 12px;
+  color: var(--text-tertiary);
+  margin-bottom: var(--space-3);
+}
+
+.report-card-actions {
+  display: flex;
+  gap: var(--space-2);
+}
+.report-card-actions .btn-sm {
+  flex: 1;
+}
+
+/* 报告编辑模态框 */
+.report-editor-modal {
+  max-width: 700px;
+}
+
+.sections-editor {
+  margin-top: var(--space-4);
+}
+.sections-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-3);
+}
+.empty-sections {
+  text-align: center;
+  padding: var(--space-6);
+  color: var(--text-tertiary);
+  border: 1px dashed var(--border-color);
+  border-radius: var(--radius-md);
+}
+
+.section-item {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+.section-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-2);
+}
+.section-num {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--primary-500);
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--primary-50);
+  border-radius: 50%;
+}
+.section-controls {
+  display: flex;
+  gap: var(--space-1);
+}
+
+.btn-icon-sm {
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-primary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  color: var(--text-secondary);
+  transition: all 0.2s;
+}
+.btn-icon-sm:hover:not(:disabled) {
+  background: var(--bg-tertiary);
+  border-color: var(--primary-300);
+}
+.btn-icon-sm:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+.btn-icon-sm.danger:hover {
+  color: var(--danger-500);
+  border-color: var(--danger-300);
+}
+
+.section-item .form-input,
+.section-item .form-select {
+  width: 100%;
+  margin-bottom: var(--space-2);
+}
+.section-item .form-select-sm {
+  margin-bottom: 0;
+}
+
+/* Word模板上传样式 */
+.card-header-actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.upload-area {
+  border: 2px dashed var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: var(--space-8);
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.upload-area:hover,
+.upload-area.drag-over {
+  border-color: var(--primary-400);
+  background: var(--primary-50);
+}
+
+.upload-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.upload-icon {
+  font-size: 48px;
+}
+
+.upload-text {
+  font-size: 16px;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.upload-hint {
+  font-size: 13px;
+  color: var(--text-tertiary);
+  margin: 0;
+}
+
+.upload-progress {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  color: var(--text-secondary);
+}
+
+.upload-result {
+  margin-top: var(--space-4);
+  padding: var(--space-4);
+  background: var(--bg-secondary);
+  border-radius: var(--radius-md);
+}
+
+.result-success {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--success-500);
+  font-weight: 500;
+  margin-bottom: var(--space-3);
+}
+
+.success-icon {
+  width: 24px;
+  height: 24px;
+  background: var(--success-500);
+  color: white;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+}
+
+.result-info {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin-bottom: var(--space-3);
+}
+
+.result-info p {
+  margin: var(--space-1) 0;
+}
+
+.result-sections h4 {
+  font-size: 14px;
+  color: var(--text-primary);
+  margin-bottom: var(--space-2);
+}
+
+.result-sections ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.result-sections li {
+  padding: var(--space-2) var(--space-3);
+  background: var(--bg-primary);
+  border-radius: var(--radius-sm);
+  margin-bottom: var(--space-1);
+  font-size: 14px;
+  color: var(--text-secondary);
 }
 </style>

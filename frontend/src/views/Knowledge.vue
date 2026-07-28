@@ -1,116 +1,181 @@
 <template>
   <div class="knowledge-page">
-    <!-- 欢迎页（无对话时显示） -->
-    <div v-if="!chatHistory.length" class="welcome-container">
-      <div class="welcome-card">
-        <div class="welcome-icon">🏛️</div>
-        <h1 class="welcome-title">城市管理知识库</h1>
-        <p class="welcome-desc">我是城市管理AI助手，可以帮您解答城市管理相关问题，包括职责归属、处置时限、法律法规等</p>
+    <!-- ============ 左侧：知识检索 / 概览面板 ============ -->
+    <aside class="kb-aside">
+      <div class="kb-aside-head">
+        <div class="kb-search">
+          <span class="kb-search-icon"><KbIcon name="search" :size="16" /></span>
+          <input
+            v-model="searchQuery"
+            @keyup.enter="runSearch"
+            placeholder="搜索知识库：标准 / 职责 / 法规…"
+          />
+          <button v-if="searchQuery" class="kb-search-clear" @click="clearSearch" title="清空">×</button>
+          <button class="kb-search-btn" @click="runSearch" :disabled="searching">搜索</button>
+        </div>
+        <div class="kb-chips">
+          <button class="chip" :class="{ active: !activeType }" @click="selectType('')">全部</button>
+          <button
+            v-for="t in typeList"
+            :key="t.key"
+            class="chip"
+            :class="{ active: activeType === t.key }"
+            :style="{ '--c': t.color }"
+            @click="selectType(t.key)"
+          ><KbIcon :name="t.icon" :size="14" /><span>{{ t.label }}</span></button>
+        </div>
+      </div>
 
-        <div class="welcome-input">
-          <textarea
-            v-model="question"
-            placeholder="请输入城市管理相关问题..."
-            rows="2"
-            @keydown.enter.exact.prevent="askQuestion"
-          ></textarea>
-          <button class="send-btn" @click="askQuestion" :disabled="asking || !question.trim()">
-            <span v-if="asking">⏳</span>
-            <span v-else>↑</span>
-          </button>
+      <div class="kb-aside-body">
+        <!-- 检索结果 -->
+        <div v-if="hasSearched" class="sr-wrap">
+          <div class="sr-bar">
+            <span class="sr-count">检索到 <b>{{ searchResults.length }}</b> 条</span>
+            <button class="sr-back" @click="clearSearch">← 返回概览</button>
+          </div>
+
+          <div v-if="searchResults.length" class="sr-list">
+            <div
+              v-for="(r, i) in searchResults"
+              :key="i"
+              class="sr-card"
+              @click="askFromResult(r)"
+            >
+              <div class="sr-card-top">
+                <span class="type-tag" :style="tagStyle(r.doc_type)">{{ typeLabel(r.doc_type) }}</span>
+                <span class="sr-score" v-if="typeof r.score === 'number'">{{ Math.round(r.score * 100) }}%</span>
+              </div>
+              <div class="sr-title">{{ r.title }}</div>
+              <div class="sr-excerpt">{{ excerpt(r.text) }}</div>
+              <div class="sr-law" v-if="r.law_status"><KbIcon name="alert-triangle" :size="12" /> {{ r.law_status }}</div>
+              <div class="sr-foot">点击用 AI 进一步解答 →</div>
+            </div>
+          </div>
+          <div v-else class="sr-empty">
+            <span class="sr-empty-icon"><KbIcon name="search-x" :size="32" /></span>
+            <p>未找到相关内容，换个关键词或分类试试</p>
+          </div>
         </div>
 
-        <div class="quick-questions">
-          <p class="quick-title">或者试试这些热门问题</p>
-          <div class="quick-list">
+        <!-- 概览：统计 + 热门 -->
+        <div v-else class="ov-wrap">
+          <div class="ov-title">知识库概览</div>
+          <div class="stat-grid">
+            <div
+              v-for="t in typeList"
+              :key="t.key"
+              class="stat-card"
+              :style="{ '--c': t.color, '--cb': t.bg }"
+              @click="selectType(t.key)"
+            >
+              <div class="stat-icon"><KbIcon :name="t.icon" :size="20" /></div>
+              <div class="stat-num">{{ t.count }}</div>
+              <div class="stat-label">{{ t.label }}</div>
+            </div>
+          </div>
+
+          <div class="ov-title">热门问题</div>
+          <div class="hot-list">
             <button
               v-for="q in quickQuestions"
               :key="q"
-              class="quick-btn"
+              class="hot-btn"
               @click="askQuickQuestion(q)"
             >
-              {{ q }}
+              <span class="hot-dot">•</span>{{ q }}
             </button>
           </div>
         </div>
+      </div>
+    </aside>
 
-        <div class="stats-bar">
-          <span class="stat-item">
-            <span class="stat-num">{{ unifiedStats.total_vectors || 0 }}</span>
-            <span class="stat-label">知识条目</span>
-          </span>
-          <span class="stat-divider">|</span>
-          <span class="stat-item">
-            <span class="stat-num">{{ unifiedStats.standards?.parents || 0 }}</span>
-            <span class="stat-label">立结案标准</span>
-          </span>
-          <span class="stat-divider">|</span>
-          <span class="stat-item">
-            <span class="stat-num">{{ unifiedStats.general?.doc_count || 0 }}</span>
-            <span class="stat-label">通用文档</span>
-          </span>
+    <!-- ============ 右侧：问答对话 ============ -->
+    <section class="kb-main">
+      <!-- 欢迎页 -->
+      <div v-if="!chatHistory.length" class="welcome">
+        <div class="welcome-inner">
+          <div class="welcome-icon"><KbIcon name="landmark" :size="34" /></div>
+          <h1 class="welcome-title">城市管理知识库</h1>
+          <p class="welcome-desc">
+            我是城市管理 AI 助手，可解答职责归属、处置时限、法律法规等问题。
+            在左侧检索知识，或直接向我提问。
+          </p>
+          <div class="welcome-input">
+            <textarea
+              v-model="question"
+              placeholder="请输入城市管理相关问题…"
+              rows="2"
+              @keydown.enter.exact.prevent="askQuestion"
+            ></textarea>
+            <button class="send-btn" @click="askQuestion" :disabled="asking || !question.trim()">
+              <KbIcon v-if="asking" name="spinner" :size="18" />
+              <KbIcon v-else name="arrow-up" :size="18" />
+            </button>
+          </div>
+          <div class="welcome-hint">试试在左侧点击分类，或搜索「井盖」「环卫」「执法」</div>
         </div>
       </div>
-    </div>
 
-    <!-- 对话模式 -->
-    <div v-else class="chat-container">
-      <div class="chat-header">
-        <h2 class="chat-title">城市管理知识库</h2>
-        <button class="clear-btn" @click="clearChat">新建对话</button>
-      </div>
-
-      <!-- 对话消息列表 -->
-      <div class="chat-messages" ref="chatMessagesRef">
-        <div v-for="(msg, i) in chatHistory" :key="i" class="chat-msg" :class="msg.role">
-          <div class="msg-avatar" v-if="msg.role === 'assistant'">
-            <span class="avatar-icon">🤖</span>
+      <!-- 对话模式 -->
+      <template v-else>
+        <div class="chat-header">
+          <div class="chat-header-left">
+            <span class="chat-header-icon"><KbIcon name="headset" :size="18" /></span>
+            <h2 class="chat-title">知识问答</h2>
           </div>
-          <div class="msg-content">
-            <div class="chat-bubble" v-html="renderMarkdown(msg.content)"></div>
-            <div class="chat-sources" v-if="msg.sources && msg.sources.length">
-              <span class="source-label">来源：</span>
-              <span class="source-tag" v-for="s in msg.sources" :key="s">{{ s }}</span>
+          <button class="clear-btn" @click="clearChat">+ 新建对话</button>
+        </div>
+
+        <div class="chat-messages" ref="chatMessagesRef">
+          <div v-for="(msg, i) in chatHistory" :key="i" class="chat-msg" :class="msg.role">
+            <div class="msg-avatar" v-if="msg.role === 'assistant'">
+              <span class="avatar-icon"><KbIcon name="headset" :size="20" /></span>
             </div>
-            <div class="chat-actions" v-if="msg.role === 'assistant'">
-              <button class="action-btn" @click="copyMessage(msg.content)">复制</button>
+            <div class="msg-content">
+              <div class="chat-bubble" v-html="renderMarkdown(msg.content)"></div>
+              <div class="chat-sources" v-if="msg.sources && msg.sources.length">
+                <span class="source-label">来源：</span>
+                <span class="source-tag" v-for="s in msg.sources" :key="s">{{ s }}</span>
+              </div>
+              <div class="chat-actions" v-if="msg.role === 'assistant'">
+                <button class="action-btn" @click="copyMessage(msg.content)">复制</button>
+              </div>
+            </div>
+          </div>
+          <div v-if="asking" class="chat-msg assistant">
+            <div class="msg-avatar">
+              <span class="avatar-icon"><KbIcon name="headset" :size="20" /></span>
+            </div>
+            <div class="msg-content">
+              <div class="chat-bubble typing">
+                <span class="typing-text">思考中</span>
+                <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+              </div>
             </div>
           </div>
         </div>
-        <div v-if="asking" class="chat-msg assistant">
-          <div class="msg-avatar">
-            <span class="avatar-icon">🤖</span>
-          </div>
-          <div class="msg-content">
-            <div class="chat-bubble typing">
-              <span class="typing-text">思考中</span>
-              <span class="dot"></span><span class="dot"></span><span class="dot"></span>
-            </div>
-          </div>
-        </div>
-      </div>
 
-      <!-- 输入区域 -->
-      <div class="chat-input-area">
-        <div class="location-bar" v-if="hasLocation">
-          <span class="location-badge">📍 已定位: {{ selectedLng }}, {{ selectedLat }}</span>
-          <button class="location-clear" @click="clearLocation">×</button>
+        <div class="chat-input-area">
+          <div class="location-bar" v-if="hasLocation">
+            <span class="location-badge"><KbIcon name="map-pin" :size="14" /> 已定位: {{ selectedLng }}, {{ selectedLat }}</span>
+            <button class="location-clear" @click="clearLocation">×</button>
+          </div>
+          <div class="input-wrapper">
+            <textarea
+              v-model="question"
+              placeholder="输入城市管理相关问题…"
+              rows="2"
+              @keydown.enter.exact.prevent="askQuestion"
+              ref="textareaRef"
+            ></textarea>
+            <button class="send-btn" @click="askQuestion" :disabled="asking || !question.trim()">
+              <KbIcon v-if="asking" name="spinner" :size="18" />
+              <KbIcon v-else name="arrow-up" :size="18" />
+            </button>
+          </div>
         </div>
-        <div class="input-wrapper">
-          <textarea
-            v-model="question"
-            placeholder="输入城市管理相关问题..."
-            rows="2"
-            @keydown.enter.exact.prevent="askQuestion"
-            ref="textareaRef"
-          ></textarea>
-          <button class="send-btn" @click="askQuestion" :disabled="asking || !question.trim()">
-            <span v-if="asking" class="send-loading">⏳</span>
-            <span v-else class="send-icon">↑</span>
-          </button>
-        </div>
-      </div>
-    </div>
+      </template>
+    </section>
 
     <!-- 需要位置提示弹窗 -->
     <div class="location-modal" v-if="needLocation && !hasLocation">
@@ -139,9 +204,10 @@
 
 <script setup>
 import { ref, onMounted, onUnmounted, watch, nextTick, computed } from 'vue'
+import KbIcon from '../components/common/KbIcon.vue'
 
 // 统一统计
-const unifiedStats = ref({ total_vectors: 0, general: {}, standards: {} })
+const unifiedStats = ref({ total: 0, by_type: {} })
 
 // 问答状态
 const question = ref('')
@@ -149,6 +215,13 @@ const asking = ref(false)
 const chatHistory = ref([])
 const chatMessagesRef = ref(null)
 const textareaRef = ref(null)
+
+// 检索面板状态（此前为死代码，本次补齐声明并接好 UI）
+const searchQuery = ref('')
+const searching = ref(false)
+const searchResults = ref([])
+const activeType = ref('')          // '' = 全部；否则为某一 doc_type
+const hasSearched = ref(false)
 
 // 地图状态
 const modalMapRef = ref(null)
@@ -159,6 +232,32 @@ const needLocation = ref(false)
 
 let modalMapInstance = null
 let pointMarker = null
+
+// 文档类型元信息（颜色 / 图标 / 中文名）
+const TYPE_META = {
+  standard: { label: '立结案标准', icon: 'standard', color: 'var(--primary-500)', bg: 'var(--primary-50)' },
+  org:      { label: '职责机构',   icon: 'org',      color: 'var(--warning)',    bg: 'var(--warning-light)' },
+  qa:       { label: '知识问答',   icon: 'qa',       color: 'var(--success)',    bg: 'var(--success-light)' },
+  general:  { label: '通用制度',   icon: 'general',  color: 'var(--info)',       bg: 'var(--info-light)' },
+  law:      { label: '法律法规',   icon: 'law',      color: 'var(--danger)',     bg: 'var(--danger-light)' },
+}
+
+const typeList = computed(() => {
+  const bt = unifiedStats.value.by_type || {}
+  return Object.keys(TYPE_META).map(k => ({ key: k, ...TYPE_META[k], count: bt[k] || 0 }))
+})
+
+function typeLabel(k) {
+  return (TYPE_META[k] || {}).label || k
+}
+function tagStyle(k) {
+  const m = TYPE_META[k] || { color: 'var(--info)', bg: 'var(--info-light)' }
+  return { color: m.color, background: m.bg }
+}
+function excerpt(text) {
+  const t = (text || '').replace(/\s+/g, ' ').trim()
+  return t.length > 110 ? t.slice(0, 110) + '…' : t
+}
 
 // 快捷问题
 const quickQuestions = [
@@ -176,20 +275,26 @@ const hasLocation = computed(() => {
          !isNaN(Number(selectedLng.value)) && !isNaN(Number(selectedLat.value))
 })
 
-// Markdown渲染（简易版）
+// Markdown渲染（支持标题/有序无序列表，列表自动包裹 ul/ol）
 function renderMarkdown(text) {
   if (!text) return ''
-  return text
+  let html = text
     .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
     .replace(/\*(.*?)\*/g, '<em>$1</em>')
     .replace(/`(.*?)`/g, '<code>$1</code>')
-    .replace(/^### (.*$)/gm, '<h4>$1</h4>')
-    .replace(/^## (.*$)/gm, '<h3>$1</h3>')
-    .replace(/^# (.*$)/gm, '<h2>$1</h2>')
-    .replace(/^- (.*$)/gm, '<li>$1</li>')
-    .replace(/^(\d+)\. (.*$)/gm, '<li>$2</li>')
-    .replace(/\n\n/g, '<br><br>')
-    .replace(/\n/g, '<br>')
+    .replace(/^####\s+(.*)$/gm, '<h5>$1</h5>')
+    .replace(/^###\s+(.*)$/gm, '<h4>$1</h4>')
+    .replace(/^##\s+(.*)$/gm, '<h3>$1</h3>')
+    .replace(/^#\s+(.*)$/gm, '<h2>$1</h2>')
+  // 列表项
+  html = html
+    .replace(/^[-*]\s+(.*)$/gm, '<li>$1</li>')
+    .replace(/^\d+\.\s+(.*)$/gm, '<li>$1</li>')
+  // 连续 <li> 包裹为 <ul>
+  html = html.replace(/(?:<li>[\s\S]*?<\/li>)(?:\s*<li>[\s\S]*?<\/li>)*/g, m => '<ul>' + m + '</ul>')
+  // 换行转 <br>
+  html = html.replace(/\n/g, '<br>')
+  return html
 }
 
 // 获取token
@@ -210,7 +315,6 @@ function askQuickQuestion(q) {
 // 复制消息
 function copyMessage(content) {
   navigator.clipboard.writeText(content).catch(() => {
-    // fallback
     const textarea = document.createElement('textarea')
     textarea.value = content
     document.body.appendChild(textarea)
@@ -232,9 +336,7 @@ function scrollToBottom() {
 // 加载统一统计
 async function loadStats() {
   try {
-    const res = await fetch('/api/kb/stats', {
-      headers: getAuthHeaders()
-    })
+    const res = await fetch('/api/kb/stats', { headers: getAuthHeaders() })
     const data = await res.json()
     unifiedStats.value = data
   } catch (e) {
@@ -249,7 +351,6 @@ async function askQuestion() {
   asking.value = true
   const currentQuestion = question.value.trim()
 
-  // 追加用户消息到对话历史
   chatHistory.value.push({ role: 'user', content: currentQuestion })
   question.value = ''
   scrollToBottom()
@@ -260,7 +361,10 @@ async function askQuestion() {
       : null
 
     const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 90000)
+    // 后端 ask 需经 embedding 检索 + 至多两次 LLM 调用（各 50s 预算），首问还可能
+    // 触发本地 embedding 模型加载（约 10~30s），故前端硬超时设为 180s，避免慢 LLM
+    // 或首问加载被过早 abort 成“请求超时”。后端自身也有 50s/次的 LLM 超时兜底。
+    const timeoutId = setTimeout(() => controller.abort(), 180000)
 
     const res = await fetch('/api/kb/ask', {
       method: 'POST',
@@ -293,7 +397,6 @@ async function askQuestion() {
       throw new Error(`接口返回为空（状态码 ${res.status}）`)
     }
 
-    // 检查是否需要位置信息
     if (data.need_location) {
       needLocation.value = true
       chatHistory.value.push({
@@ -304,15 +407,16 @@ async function askQuestion() {
       return
     }
 
-    // 追加AI回答到对话历史
     chatHistory.value.push({
       role: 'assistant',
       content: data.answer,
-      sources: data.sources
+      sources: (data.citations || []).map(c => c.title || c.source || '')
     })
     scrollToBottom()
   } catch (e) {
-    const errMsg = e.name === 'AbortError' ? '请求超时，请稍后重试' : '查询失败: ' + e.message
+    const errMsg = e.name === 'AbortError'
+      ? '请求超时：当前回答生成较慢，请稍后重试，或换种问法再试一次'
+      : '查询失败: ' + e.message
     chatHistory.value.push({ role: 'assistant', content: errMsg })
     scrollToBottom()
   } finally {
@@ -336,29 +440,50 @@ function confirmLocation() {
   }
 }
 
-// 统一检索
-async function searchKnowledge() {
+// ================= 检索面板 =================
+function selectType(t) {
+  activeType.value = (activeType.value === t) ? '' : t
+  if (searchQuery.value.trim()) runSearch()
+}
+
+async function runSearch() {
   if (!searchQuery.value.trim()) return
   searching.value = true
+  hasSearched.value = true
   searchResults.value = []
   try {
+    const body = { query: searchQuery.value.trim() }
+    if (activeType.value) body.doc_type = activeType.value
     const res = await fetch('/api/kb/search', {
       method: 'POST',
       headers: getAuthHeaders(),
-      body: JSON.stringify({ query: searchQuery.value })
+      body: JSON.stringify(body)
     })
     const data = await res.json()
     if (!res.ok) throw new Error(data.error || '请求失败')
     searchResults.value = data.results || []
   } catch (e) {
     console.error('知识检索失败:', e)
+    searchResults.value = []
   } finally {
     searching.value = false
   }
 }
 
-// ================= 地图相关 =================
+function clearSearch() {
+  searchQuery.value = ''
+  searchResults.value = []
+  hasSearched.value = false
+  activeType.value = ''
+}
 
+// 点击检索结果 → 用 AI 进一步解答
+function askFromResult(r) {
+  question.value = r.title || ''
+  nextTick(() => askQuestion())
+}
+
+// ================= 地图相关 =================
 async function ensureAmapReady(timeoutMs = 8000) {
   const start = Date.now()
   while (!window.AMap && Date.now() - start < timeoutMs) {
@@ -440,177 +565,415 @@ onUnmounted(() => {
 
 <style scoped>
 .knowledge-page {
-  height: calc(100vh - 64px);
+  height: 100%;
+  display: flex;
+  overflow: hidden;
+  gap: var(--space-4);
+  padding: var(--space-2);
+}
+
+/* ============ 左侧面板 ============ */
+.kb-aside {
+  width: 340px;
+  flex-shrink: 0;
   display: flex;
   flex-direction: column;
+  background: var(--bg-card);
+  border: 1px solid var(--border-lighter);
+  border-radius: var(--radius-lg);
   overflow: hidden;
 }
 
-/* ========== 欢迎页 ========== */
-.welcome-container {
+.kb-aside-head {
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--border-lighter);
+}
+
+.kb-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px 4px 12px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  background: var(--bg-base);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+.kb-search:focus-within {
+  border-color: var(--primary-500);
+  box-shadow: 0 0 0 3px var(--primary-100);
+}
+[data-theme="dark"] .kb-search:focus-within {
+  box-shadow: 0 0 0 3px rgba(64, 158, 255, 0.2);
+}
+.kb-search-icon {
+  display: flex;
+  align-items: center;
+  color: var(--text-tertiary);
+}
+.kb-search input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  outline: none;
+  font-size: 13px;
+  color: var(--text-primary);
+  line-height: 1.6;
+}
+.kb-search-clear {
+  border: none;
+  background: none;
+  color: var(--text-tertiary);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 0 2px;
+}
+.kb-search-btn {
+  flex-shrink: 0;
+  padding: 5px 12px;
+  font-size: 13px;
+  color: #fff;
+  background: var(--primary-500);
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.kb-search-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.kb-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: var(--space-3);
+}
+.chip {
+  --c: var(--info);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  background: var(--bg-base);
+  border: 1px solid var(--border-lighter);
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+}
+.chip:hover {
+  border-color: var(--c);
+  color: var(--c);
+}
+.chip.active {
+  color: #fff;
+  background: var(--c);
+  border-color: var(--c);
+}
+
+.kb-aside-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-3);
+}
+
+/* 概览 */
+.ov-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin: var(--space-3) var(--space-1) var(--space-2);
+}
+.ov-title:first-child {
+  margin-top: 0;
+}
+.stat-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-2);
+}
+.stat-card {
+  --c: var(--info);
+  --cb: var(--info-light);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  background: var(--bg-base);
+  border: 1px solid var(--border-lighter);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+.stat-card:hover {
+  border-color: var(--c);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
+}
+.stat-icon {
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 17px;
+  border-radius: var(--radius-sm);
+  color: var(--c);
+  background: var(--cb);
+}
+.stat-num {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--c);
+  line-height: 1.1;
+}
+.stat-label {
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.hot-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.hot-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  text-align: left;
+  padding: 8px 12px;
+  font-size: 13px;
+  color: var(--text-primary);
+  background: var(--bg-base);
+  border: 1px solid var(--border-lighter);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+.hot-btn:hover {
+  border-color: var(--primary-500);
+  color: var(--primary-500);
+  background: var(--primary-50);
+}
+.hot-dot {
+  color: var(--primary-500);
+}
+
+/* 检索结果 */
+.sr-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-2);
+}
+.sr-count {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.sr-count b {
+  color: var(--primary-500);
+}
+.sr-back {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+.sr-back:hover {
+  color: var(--primary-500);
+}
+.sr-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.sr-card {
+  padding: var(--space-3);
+  background: var(--bg-base);
+  border: 1px solid var(--border-lighter);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+.sr-card:hover {
+  border-color: var(--primary-500);
+  box-shadow: var(--shadow-sm);
+}
+.sr-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+.type-tag {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  font-weight: 500;
+}
+.sr-score {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+.sr-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+.sr-excerpt {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.sr-law {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--warning-dark);
+}
+.sr-foot {
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--primary-500);
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+.sr-card:hover .sr-foot {
+  opacity: 1;
+}
+.sr-empty {
+  text-align: center;
+  padding: var(--space-10) var(--space-4);
+  color: var(--text-tertiary);
+}
+.sr-empty-icon {
+  font-size: 32px;
+  display: block;
+  margin-bottom: var(--space-2);
+}
+.sr-empty p {
+  font-size: 13px;
+}
+
+/* ============ 右侧对话 ============ */
+.kb-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-card);
+  border: 1px solid var(--border-lighter);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+/* 欢迎页 */
+.welcome {
   flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: var(--space-6);
 }
-
-.welcome-card {
+.welcome-inner {
   text-align: center;
-  max-width: 600px;
+  max-width: 560px;
+  width: 100%;
 }
-
 .welcome-icon {
-  font-size: 48px;
-  margin-bottom: var(--space-4);
+  width: 72px;
+  height: 72px;
+  border-radius: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--primary-500);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--primary-500) 22%, transparent), color-mix(in srgb, var(--primary-500) 8%, transparent));
+  box-shadow: 0 10px 28px -10px color-mix(in srgb, var(--primary-500) 60%, transparent);
+  margin: 0 auto var(--space-3);
 }
-
 .welcome-title {
-  font-size: 28px;
+  font-size: 24px;
   font-weight: 600;
   color: var(--text-primary);
   margin-bottom: var(--space-2);
 }
-
 .welcome-desc {
-  font-size: 15px;
+  font-size: 14px;
   color: var(--text-secondary);
-  line-height: 1.6;
-  margin-bottom: var(--space-6);
+  line-height: 1.7;
+  margin-bottom: var(--space-5);
 }
-
+/* 统一 composer 卡片（与对话框一致：浅色圆角容器 + 右下发送键） */
 .welcome-input {
   display: flex;
-  gap: var(--space-2);
   align-items: flex-end;
-  max-width: 500px;
-  margin: 0 auto var(--space-6);
+  gap: 8px;
+  background: var(--bg-base);
+  border: 1px solid var(--border-light);
+  border-radius: 24px;
+  padding: 10px 10px 10px 16px;
+  box-shadow: 0 2px 12px color-mix(in srgb, var(--text-primary) 6%, transparent);
+  transition: border-color 0.2s, box-shadow 0.2s;
 }
-
+.welcome-input:focus-within {
+  border-color: var(--primary-500);
+  box-shadow: 0 4px 18px color-mix(in srgb, var(--primary-500) 18%, transparent);
+}
 .welcome-input textarea {
   flex: 1;
-  padding: var(--space-3);
-  border: 1px solid var(--border-light);
-  border-radius: var(--radius-lg);
+  border: none;
+  background: transparent;
+  padding: 6px 0;
   font-size: 14px;
   resize: none;
-  background: var(--bg-card);
   color: var(--text-primary);
   line-height: 1.5;
-}
-
-.welcome-input textarea:focus {
   outline: none;
-  border-color: var(--primary-500);
+  max-height: 140px;
 }
-
-.welcome-input .send-btn {
-  width: 40px;
-  height: 40px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--primary-500);
-  color: white;
-  border: none;
-  border-radius: 50%;
-  cursor: pointer;
-  font-size: 18px;
-}
-
-.welcome-input .send-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.quick-questions {
-  margin-bottom: var(--space-6);
-}
-
-.quick-title {
-  font-size: 13px;
-  color: var(--text-tertiary);
-  margin-bottom: var(--space-3);
-}
-
-.quick-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  justify-content: center;
-}
-
-.quick-btn {
-  padding: var(--space-2) var(--space-3);
-  background: var(--bg-card);
-  border: 1px solid var(--border-lighter);
-  border-radius: var(--radius-lg);
-  font-size: 13px;
-  color: var(--text-primary);
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.quick-btn:hover {
-  border-color: var(--primary-500);
-  color: var(--primary-500);
-  background: var(--primary-50);
-}
-
-.stats-bar {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-4);
-  padding: var(--space-3) var(--space-4);
-  background: var(--fill-light);
-  border-radius: var(--radius-lg);
-}
-
-.stat-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-
-.stat-num {
-  font-size: 20px;
-  font-weight: 600;
-  color: var(--primary-500);
-}
-
-.stat-label {
+.welcome-hint {
+  margin-top: var(--space-4);
   font-size: 12px;
   color: var(--text-tertiary);
 }
 
-.stat-divider {
-  color: var(--border-light);
-}
-
-/* ========== 对话模式 ========== */
-.chat-container {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
+/* 对话头 */
 .chat-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: var(--space-3) var(--space-4);
   border-bottom: 1px solid var(--border-lighter);
-  background: var(--bg-card);
 }
-
+.chat-header-left {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.chat-header-icon {
+  font-size: 18px;
+}
 .chat-title {
   font-size: 16px;
   font-weight: 600;
   color: var(--text-primary);
 }
-
 .clear-btn {
   padding: var(--space-1) var(--space-3);
   font-size: 12px;
@@ -620,36 +983,32 @@ onUnmounted(() => {
   border-radius: var(--radius-md);
   cursor: pointer;
 }
-
 .clear-btn:hover {
   border-color: var(--primary-500);
   color: var(--primary-500);
 }
 
+/* 消息列表 */
 .chat-messages {
   flex: 1;
   overflow-y: auto;
   padding: var(--space-4);
   background: var(--bg-base);
 }
-
 .chat-msg {
   display: flex;
   gap: var(--space-3);
   margin-bottom: var(--space-4);
-  max-width: 800px;
+  max-width: 860px;
   margin-left: auto;
   margin-right: auto;
 }
-
 .chat-msg.user {
   flex-direction: row-reverse;
 }
-
 .msg-avatar {
   flex-shrink: 0;
 }
-
 .avatar-icon {
   display: flex;
   align-items: center;
@@ -660,62 +1019,59 @@ onUnmounted(() => {
   border-radius: var(--radius-md);
   font-size: 18px;
 }
-
 .msg-content {
   flex: 1;
   min-width: 0;
 }
-
 .chat-msg.user .msg-content {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
 }
-
 .chat-bubble {
   padding: var(--space-3) var(--space-4);
   border-radius: var(--radius-lg);
   line-height: 1.7;
   font-size: 14px;
+  word-break: break-word;
 }
-
 .chat-msg.user .chat-bubble {
   background: var(--primary-500);
   color: white;
   border-bottom-right-radius: 4px;
 }
-
 .chat-msg.assistant .chat-bubble {
   background: var(--bg-card);
   color: var(--text-primary);
   border: 1px solid var(--border-lighter);
   border-bottom-left-radius: 4px;
 }
-
 .chat-bubble :deep(h2),
 .chat-bubble :deep(h3),
-.chat-bubble :deep(h4) {
-  margin: var(--space-2) 0 var(--space-1);
+.chat-bubble :deep(h4),
+.chat-bubble :deep(h5) {
+  margin: var(--space-3) 0 var(--space-2);
   font-weight: 600;
+  line-height: 1.4;
 }
-
+.chat-bubble :deep(h2) { font-size: 18px; }
+.chat-bubble :deep(h3) { font-size: 16px; }
+.chat-bubble :deep(h4) { font-size: 15px; }
+.chat-bubble :deep(h5) { font-size: 14px; color: var(--text-secondary); }
 .chat-bubble :deep(ul),
 .chat-bubble :deep(ol) {
   margin: var(--space-2) 0;
-  padding-left: var(--space-4);
+  padding-left: var(--space-5);
 }
-
 .chat-bubble :deep(li) {
   margin-bottom: 4px;
 }
-
 .chat-bubble :deep(code) {
   padding: 2px 6px;
   background: var(--fill-light);
   border-radius: 4px;
   font-size: 13px;
 }
-
 .chat-bubble :deep(strong) {
   font-weight: 600;
 }
@@ -729,12 +1085,10 @@ onUnmounted(() => {
   padding-top: var(--space-2);
   border-top: 1px solid var(--border-lighter);
 }
-
 .source-label {
   font-size: 12px;
   color: var(--text-tertiary);
 }
-
 .source-tag {
   font-size: 11px;
   padding: 2px 8px;
@@ -742,13 +1096,11 @@ onUnmounted(() => {
   color: var(--primary-500);
   border-radius: var(--radius-sm);
 }
-
 .chat-actions {
   display: flex;
   gap: var(--space-2);
   margin-top: var(--space-2);
 }
-
 .action-btn {
   font-size: 12px;
   color: var(--text-tertiary);
@@ -757,7 +1109,6 @@ onUnmounted(() => {
   cursor: pointer;
   padding: 2px 8px;
 }
-
 .action-btn:hover {
   color: var(--primary-500);
 }
@@ -768,22 +1119,22 @@ onUnmounted(() => {
   background: var(--bg-card);
   border-top: 1px solid var(--border-lighter);
 }
-
 .location-bar {
   display: flex;
   align-items: center;
   gap: var(--space-2);
   margin-bottom: var(--space-2);
 }
-
 .location-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   font-size: 12px;
   padding: 4px 10px;
   background: var(--primary-50);
   color: var(--primary-500);
   border-radius: var(--radius-sm);
 }
-
 .location-clear {
   font-size: 14px;
   color: var(--text-tertiary);
@@ -791,57 +1142,62 @@ onUnmounted(() => {
   border: none;
   cursor: pointer;
 }
-
 .input-wrapper {
   display: flex;
-  gap: var(--space-2);
   align-items: flex-end;
+  gap: 8px;
+  background: var(--bg-base);
+  border: 1px solid var(--border-light);
+  border-radius: 24px;
+  padding: 10px 10px 10px 16px;
+  box-shadow: 0 2px 12px color-mix(in srgb, var(--text-primary) 6%, transparent);
+  transition: border-color 0.2s, box-shadow 0.2s;
 }
-
+.input-wrapper:focus-within {
+  border-color: var(--primary-500);
+  box-shadow: 0 4px 18px color-mix(in srgb, var(--primary-500) 18%, transparent);
+}
 .input-wrapper textarea {
   flex: 1;
-  padding: var(--space-3);
-  border: 1px solid var(--border-light);
-  border-radius: var(--radius-lg);
+  border: none;
+  background: transparent;
+  padding: 6px 0;
   font-size: 14px;
   resize: none;
-  background: var(--bg-base);
   color: var(--text-primary);
   line-height: 1.5;
-  max-height: 120px;
-}
-
-.input-wrapper textarea:focus {
   outline: none;
-  border-color: var(--primary-500);
+  max-height: 140px;
 }
-
 .send-btn {
-  width: 40px;
-  height: 40px;
-  display: flex;
+  width: 42px;
+  height: 42px;
+  flex-shrink: 0;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   background: var(--primary-500);
-  color: white;
+  color: #fff;
   border: none;
   border-radius: 50%;
   cursor: pointer;
-  transition: opacity 0.2s;
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--primary-500) 35%, transparent);
+  transition: background 0.2s, box-shadow 0.2s, transform 0.12s;
 }
-
+.send-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--primary-500) 88%, #000);
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--primary-500) 45%, transparent);
+  transform: translateY(-1px);
+}
+.send-btn:active:not(:disabled) {
+  transform: translateY(0) scale(0.94);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--primary-500) 30%, transparent);
+}
 .send-btn:disabled {
-  opacity: 0.5;
+  background: var(--border-light);
+  color: var(--text-tertiary);
+  box-shadow: none;
   cursor: not-allowed;
-}
-
-.send-icon {
-  font-size: 18px;
-  font-weight: bold;
-}
-
-.send-loading {
-  font-size: 16px;
 }
 
 /* 打字动画 */
@@ -850,13 +1206,11 @@ onUnmounted(() => {
   align-items: center;
   gap: 4px;
 }
-
 .typing-text {
   font-size: 13px;
   color: var(--text-tertiary);
   margin-right: 4px;
 }
-
 .dot {
   width: 6px;
   height: 6px;
@@ -864,16 +1218,14 @@ onUnmounted(() => {
   background: var(--text-tertiary);
   animation: bounce 1.2s infinite;
 }
-
 .dot:nth-child(2) { animation-delay: 0.2s; }
 .dot:nth-child(3) { animation-delay: 0.4s; }
-
 @keyframes bounce {
   0%, 60%, 100% { transform: translateY(0); }
   30% { transform: translateY(-4px); }
 }
 
-/* ========== 定位弹窗 ========== */
+/* ============ 定位弹窗 ============ */
 .location-modal {
   position: fixed;
   top: 0;
@@ -885,7 +1237,6 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
 }
-
 .modal-mask {
   position: absolute;
   top: 0;
@@ -894,7 +1245,6 @@ onUnmounted(() => {
   bottom: 0;
   background: rgba(0, 0, 0, 0.5);
 }
-
 .modal-content {
   position: relative;
   width: 500px;
@@ -904,20 +1254,17 @@ onUnmounted(() => {
   padding: var(--space-4);
   z-index: 1;
 }
-
 .modal-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   margin-bottom: var(--space-3);
 }
-
 .modal-header h3 {
   font-size: 16px;
   font-weight: 600;
   color: var(--text-primary);
 }
-
 .modal-close {
   font-size: 20px;
   color: var(--text-tertiary);
@@ -925,31 +1272,26 @@ onUnmounted(() => {
   border: none;
   cursor: pointer;
 }
-
 .modal-content p {
   font-size: 14px;
   color: var(--text-secondary);
   margin-bottom: var(--space-3);
 }
-
 .modal-map {
   border-radius: var(--radius-md);
   overflow: hidden;
   margin-bottom: var(--space-3);
 }
-
 .modal-map .amap {
   height: 300px;
   width: 100%;
   cursor: crosshair;
 }
-
 .location-row {
   display: flex;
   gap: var(--space-2);
   margin-bottom: var(--space-3);
 }
-
 .location-row input {
   flex: 1;
   padding: var(--space-2);
@@ -959,13 +1301,11 @@ onUnmounted(() => {
   background: var(--bg-base);
   color: var(--text-primary);
 }
-
 .modal-actions {
   display: flex;
   justify-content: flex-end;
   gap: var(--space-2);
 }
-
 .btn-cancel {
   padding: var(--space-2) var(--space-3);
   border: 1px solid var(--border-light);
@@ -975,7 +1315,6 @@ onUnmounted(() => {
   color: var(--text-primary);
   cursor: pointer;
 }
-
 .btn-confirm {
   padding: var(--space-2) var(--space-3);
   background: var(--primary-500);
@@ -985,9 +1324,23 @@ onUnmounted(() => {
   font-size: 14px;
   cursor: pointer;
 }
-
 .btn-confirm:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* ============ 响应式 ============ */
+@media (max-width: 860px) {
+  .knowledge-page {
+    flex-direction: column;
+    overflow-y: auto;
+  }
+  .kb-aside {
+    width: 100%;
+    max-height: 45vh;
+  }
+  .kb-main {
+    min-height: 55vh;
+  }
 }
 </style>

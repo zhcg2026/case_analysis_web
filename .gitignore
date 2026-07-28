@@ -1,9 +1,58 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+
+# 虚拟环境
+.venv/
+venv/
+env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# 环境变量（敏感配置）
+.env
+.env.*
+!.env.example
+
+# MiMoCode/Claude配置
+.claude/
+.mimocode/
+
+# 调试日志
+*.log
+debug.log
+
+# 上传文件
+uploads/
+
+# ChromaDB（已废弃，系统使用Milvus）
+chroma_db/
+
+# Node.js
+node_modules/
+
+# 前端构建产物
+frontend/dist/
+
+# gstack工具
+.gstack/
+
 # 测试/调试脚本
 test_*.py
 debug_*.py
 check_*.py
 fix_*.py
-bug.md
+verify_*.py
 
 # 临时文件
 _distill_*.py
@@ -14,7 +63,6 @@ upload_*.py
 upload_*.sh
 extract.py
 find_road_point.py
-verify_*.py
 
 # 截图
 flood_screenshot*.png
@@ -27,11 +75,25 @@ flood_screenshot*.png
 海埂街视E-Home对接需求.md
 汛情值守-待研究功能.md
 
-# MiMoCode/Claude配置
-.claude/
-.mimocode/
+# 系统清理报告
+存在的问题.txt
 
-# ���������ļ�������������Ϣ��
-.env
-.env.*
-!.env.example
+# Milvus Lite 本地向量库（运行时数据，不进仓库）
+backend/local_milvus.db/
+
+# WorkBuddy 工作目录（含 memory/skills，本地用）
+.workbuddy/
+
+# Vite 构建临时文件
+frontend/vite.config.js.timestamp-*.mjs
+frontend/dist_new/
+
+# 误创建的空文件
+datetime
+
+# 数据文件（非代码）
+*.xlsx
+
+# 待删除暂存目录（清理死代码用）
+_trash_pending/
+backend/_trash_pending/

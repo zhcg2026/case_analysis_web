@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="home-page">
     <!-- 欢迎横幅 -->
     <div class="welcome-banner">
@@ -9,78 +9,6 @@
       <div class="welcome-time">
         <div class="time-display">{{ currentTime }}</div>
         <div class="date-display">{{ currentDate }}</div>
-      </div>
-    </div>
-
-    <!-- 快捷操作 -->
-    <div class="quick-actions">
-      <div class="actions-grid">
-        <router-link to="/cases" class="action-card">
-          <span class="action-icon cases">
-            <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/>
-              <path d="M14 2v4a2 2 0 0 0 2 2h4"/>
-            </svg>
-          </span>
-          <span class="action-text">案件录入</span>
-        </router-link>
-        <router-link to="/ai-apps" class="action-card">
-          <span class="action-icon ai">
-            <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M12 8V4H8"/>
-              <rect width="16" height="12" x="4" y="8" rx="2"/>
-              <path d="M2 14h2"/>
-              <path d="M20 14h2"/>
-              <path d="M15 13v2"/>
-              <path d="M9 13v2"/>
-            </svg>
-          </span>
-          <span class="action-text">AI分析</span>
-        </router-link>
-        <router-link to="/huiwentai" class="action-card">
-          <span class="action-icon huiwentai">
-            <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <rect width="18" height="18" x="3" y="3" rx="2"/>
-              <path d="M7 7h10"/>
-              <path d="M7 12h10"/>
-              <path d="M7 17h10"/>
-            </svg>
-          </span>
-          <span class="action-text">汇问台</span>
-        </router-link>
-        <router-link to="/assessment" class="action-card">
-          <span class="action-icon assessment">
-            <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M3 3v18h18"/>
-              <path d="m19 9-5 5-4-4-3 3"/>
-            </svg>
-          </span>
-          <span class="action-text">考核计分</span>
-        </router-link>
-        <router-link to="/map" class="action-card">
-          <span class="action-icon map">
-            <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/>
-              <line x1="8" y1="2" x2="8" y2="18"/>
-              <line x1="16" y1="6" x2="16" y2="22"/>
-            </svg>
-          </span>
-          <span class="action-text">地图服务</span>
-        </router-link>
-        <router-link to="/business" class="action-card">
-          <span class="action-icon business">
-            <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/>
-              <path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/>
-              <path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/>
-              <path d="M10 6h4"/>
-              <path d="M10 10h4"/>
-              <path d="M10 14h4"/>
-              <path d="M10 18h4"/>
-            </svg>
-          </span>
-          <span class="action-text">业务平台</span>
-        </router-link>
       </div>
     </div>
 
@@ -126,22 +54,18 @@ import axios from 'axios'
 const userStore = useUserStore()
 const router = useRouter()
 
-// 当前时间
 const currentTime = ref('')
 const currentDate = ref('')
 let timeInterval = null
 
-// 栏目文章
 const columns = ref([])
 
-// 更新时间
 function updateTime() {
   const now = new Date()
   currentTime.value = now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
   currentDate.value = now.toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' })
 }
 
-// 获取栏目文章
 async function fetchColumns() {
   try {
     const response = await axios.get('/api/cms/home-columns')
@@ -151,19 +75,16 @@ async function fetchColumns() {
   }
 }
 
-// 格式化日期
 function formatDate(dateStr) {
   if (!dateStr) return ''
   const date = new Date(dateStr)
   return `${date.getMonth() + 1}-${date.getDate()}`
 }
 
-// 查看文章
 function viewArticle(article) {
   router.push(`/article/${article.id}`)
 }
 
-// 查看更多
 function viewMore(column) {
   router.push(`/category/${column.id}`)
 }
@@ -171,7 +92,6 @@ function viewMore(column) {
 onMounted(() => {
   updateTime()
   timeInterval = setInterval(updateTime, 1000)
-
   fetchColumns()
 })
 
@@ -189,7 +109,6 @@ onUnmounted(() => {
   margin: 0 auto;
 }
 
-/* 欢迎横幅 */
 .welcome-banner {
   display: flex;
   justify-content: space-between;
@@ -231,67 +150,6 @@ onUnmounted(() => {
   margin-top: var(--space-1);
 }
 
-/* 快捷操作 */
-.quick-actions {
-  margin-bottom: var(--space-6);
-}
-
-.actions-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-  gap: var(--space-3);
-}
-
-.action-card {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-4);
-  background: var(--bg-card);
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--border-lighter);
-  text-decoration: none;
-  transition: all var(--transition-fast);
-}
-
-.action-card:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-md);
-  border-color: var(--primary-200);
-}
-
-.action-icon {
-  width: 48px;
-  height: 48px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--radius-md);
-  transition: all var(--transition-fast);
-}
-
-.action-icon.cases { background: rgba(64, 158, 255, 0.1); color: #409eff; }
-.action-icon.ai { background: rgba(144, 147, 153, 0.1); color: #909399; }
-.action-icon.huiwentai { background: rgba(103, 194, 58, 0.1); color: #67c23a; }
-.action-icon.assessment { background: rgba(230, 162, 60, 0.1); color: #e6a23c; }
-.action-icon.map { background: rgba(64, 158, 255, 0.1); color: #409eff; }
-.action-icon.business { background: rgba(103, 194, 58, 0.1); color: #67c23a; }
-
-.action-card:hover .action-icon.cases { background: rgba(64, 158, 255, 0.2); }
-.action-card:hover .action-icon.ai { background: rgba(144, 147, 153, 0.2); }
-.action-card:hover .action-icon.huiwentai { background: rgba(103, 194, 58, 0.2); }
-.action-card:hover .action-icon.assessment { background: rgba(230, 162, 60, 0.2); }
-.action-card:hover .action-icon.map { background: rgba(64, 158, 255, 0.2); }
-.action-card:hover .action-icon.business { background: rgba(103, 194, 58, 0.2); }
-
-.action-text {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text-primary);
-}
-
-/* 栏目文章区域 */
 .cms-section {
   margin-bottom: var(--space-6);
 }
@@ -400,7 +258,6 @@ onUnmounted(() => {
   font-size: 14px;
 }
 
-/* 响应式 */
 @media (max-width: 768px) {
   .welcome-banner {
     flex-direction: column;
@@ -410,10 +267,6 @@ onUnmounted(() => {
 
   .welcome-time {
     text-align: center;
-  }
-
-  .actions-grid {
-    grid-template-columns: repeat(4, 1fr);
   }
 
   .cms-columns {

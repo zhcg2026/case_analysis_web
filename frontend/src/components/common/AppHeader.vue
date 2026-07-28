@@ -22,7 +22,7 @@
         <Transition name="fade">
           <div v-if="showUserDropdown" class="user-dropdown">
             <div class="dropdown-item danger" @click="handleLogout">
-              <span>🚪</span> 退出登录
+              <KbIcon name="log-out" :size="16" /> 退出登录
             </div>
           </div>
         </Transition>
@@ -36,6 +36,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '../../stores/user'
 import ThemeSwitch from './ThemeSwitch.vue'
+import KbIcon from './KbIcon.vue'
 
 const emit = defineEmits(['toggleSidebar'])
 const router = useRouter()

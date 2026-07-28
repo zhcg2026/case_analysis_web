@@ -9,8 +9,14 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from flask import request, jsonify, send_file
 
-def register_report_routes(app, engine, protected, admin_required, call_llm_api):
+try:
+    from common import protected as _protected
+except ImportError:
+    from helpers import protected as _protected
+
+def register_report_routes(app, engine, protected=None, admin_required=None, call_llm_api=None):
     """注册智能报告与视频报告相关路由"""
+    protected = protected or _protected
 
     @app.route('/api/smart-report', methods=['POST'])
     @protected

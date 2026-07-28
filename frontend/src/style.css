@@ -115,17 +115,6 @@ select option {
 }
 
 /* 针对App.vue中的select元素 */
-#table-select, #analysis-select, #table-select-v2, #model-select, #department-select, #table-select-assessment, #department-select-v2, #table-select-assessment-v2, #new-role, #article-category, select:not([id]) {
-  background-color: rgba(30, 58, 138, 0.6) !important;
-  color: white !important;
-  border: 1px solid rgba(100, 149, 237, 0.5) !important;
-}
-
-#table-select option, #analysis-select option, #table-select-v2 option, #model-select option, #department-select option, #table-select-assessment option, #department-select-v2 option, #table-select-assessment-v2 option, #new-role option, #article-category option, select:not([id]) option {
-  background-color: rgba(25, 40, 80, 0.95) !important;
-  color: white !important;
-}
-
 /* 管理员管理标签栏样式 */
 .admin-tabs {
   display: flex;
@@ -336,35 +325,6 @@ select option {
   color: rgba(255, 255, 255, 0.4) !important;
 }
 
-.ai-apps-tabs {
-  display: flex;
-  margin-bottom: 20px;
-  border-bottom: 1px solid rgba(100, 149, 237, 0.3);
-}
-
-.ai-apps-tab {
-  padding: 12px 24px;
-  cursor: pointer;
-  border-bottom: 3px solid transparent;
-  margin-right: 10px;
-  font-weight: 600;
-  color: rgba(255, 255, 255, 0.7) !important;
-  transition: all 0.3s ease;
-  background: transparent !important;
-  border-radius: 6px 6px 0 0;
-}
-
-.ai-apps-tab:hover {
-  color: #6495ed !important;
-  background: rgba(100, 149, 237, 0.1) !important;
-}
-
-.ai-apps-tab.active {
-  border-bottom-color: #6495ed !important;
-  color: #6495ed !important;
-  background: rgba(100, 149, 237, 0.15) !important;
-}
-
 .data-analysis-section {
   background: linear-gradient(135deg, rgba(30, 58, 138, 0.4) 0%, rgba(45, 74, 154, 0.4) 100%);
   backdrop-filter: blur(10px);
@@ -374,88 +334,7 @@ select option {
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
 }
 
-.spotcheck-section, .chengguantong-section {
-  background: linear-gradient(135deg, rgba(30, 58, 138, 0.4) 0%, rgba(45, 74, 154, 0.4) 100%);
-  backdrop-filter: blur(10px);
-  border-radius: 12px;
-  padding: 20px;
-  border: 1px solid rgba(100, 149, 237, 0.3);
-  margin-top: 20px;
-  color: rgba(255, 255, 255, 0.9);
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
-}
-
-.spotcheck-section h3, .chengguantong-section h3 {
-  color: white;
-  margin-top: 0;
-  margin-bottom: 15px;
-  font-size: 18px;
-  border-bottom: 1px solid rgba(100, 149, 237, 0.3);
-  padding-bottom: 10px;
-}
-
-.spotcheck-section input[type="file"],
-.spotcheck-section button,
-.chengguantong-section textarea,
-.chengguantong-section button {
-  background: rgba(30, 58, 138, 0.6) !important;
-  border: 1px solid rgba(100, 149, 237, 0.5) !important;
-  color: white !important;
-  border-radius: 6px !important;
-  padding: 10px 15px !important;
-  transition: all 0.3s ease !important;
-}
-
-.spotcheck-section input[type="file"]:hover,
-.spotcheck-section button:hover,
-.chengguantong-section textarea:hover,
-.chengguantong-section button:hover {
-  background: rgba(30, 58, 138, 0.8) !important;
-  border-color: rgba(100, 149, 237, 0.8) !important;
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-}
-
 /* 汇问台样式优化 */
-.huiwentai-tabs {
-  display: flex;
-  margin-bottom: 20px;
-  border-bottom: 1px solid rgba(100, 149, 237, 0.3);
-}
-
-.huiwentai-tab {
-  padding: 12px 24px;
-  cursor: pointer;
-  border-bottom: 3px solid transparent;
-  margin-right: 10px;
-  font-weight: 600;
-  color: rgba(255, 255, 255, 0.7) !important;
-  transition: all 0.3s ease;
-  background: transparent !important;
-  border-radius: 6px 6px 0 0;
-}
-
-.huiwentai-tab:hover {
-  color: #6495ed !important;
-  background: rgba(100, 149, 237, 0.1) !important;
-}
-
-.huiwentai-tab.active {
-  border-bottom-color: #6495ed !important;
-  color: #6495ed !important;
-  background: rgba(100, 149, 237, 0.15) !important;
-}
-
-.huiwentai-section {
-  background: linear-gradient(135deg, rgba(30, 58, 138, 0.4) 0%, rgba(45, 74, 154, 0.4) 100%);
-  backdrop-filter: blur(10px);
-  border-radius: 12px;
-  padding: 20px;
-  border: 1px solid rgba(100, 149, 237, 0.3);
-  color: rgba(255, 255, 255, 0.9);
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
-}
-
 .tasks-table {
   margin-top: 20px;
   overflow-x: auto;
@@ -498,127 +377,7 @@ select option {
 }
 
 /* 案件管理样式优化 */
-.cases-section {
-  background: linear-gradient(135deg, rgba(30, 58, 138, 0.4) 0%, rgba(45, 74, 154, 0.4) 100%);
-  backdrop-filter: blur(10px);
-  border-radius: 12px;
-  padding: 20px;
-  border: 1px solid rgba(100, 149, 237, 0.3);
-  margin-top: 20px;
-  color: rgba(255, 255, 255, 0.9);
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
-}
-
-.cases-section h3 {
-  color: white;
-  margin-top: 0;
-  margin-bottom: 15px;
-  font-size: 18px;
-  border-bottom: 1px solid rgba(100, 149, 237, 0.3);
-  padding-bottom: 10px;
-}
-
-.cases-section input[type="text"],
-.cases-section input[type="file"],
-.cases-section button {
-  background: rgba(30, 58, 138, 0.6) !important;
-  border: 1px solid rgba(100, 149, 237, 0.5) !important;
-  color: white !important;
-  border-radius: 6px !important;
-  padding: 10px 15px !important;
-  transition: all 0.3s ease !important;
-}
-
-.cases-section input[type="text"]:hover,
-.cases-section input[type="file"]:hover,
-.cases-section button:hover {
-  background: rgba(30, 58, 138, 0.8) !important;
-  border-color: rgba(100, 149, 237, 0.8) !important;
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-}
-
-.cases-section table {
-  width: 100%;
-  border-collapse: collapse;
-  background: rgba(30, 58, 138, 0.3);
-  backdrop-filter: blur(10px);
-  border-radius: 12px;
-  overflow: hidden;
-  color: rgba(255, 255, 255, 0.9);
-  border: 1px solid rgba(100, 149, 237, 0.3);
-  margin-top: 15px;
-}
-
-.cases-section th {
-  background: rgba(30, 58, 138, 0.6) !important;
-  padding: 14px 12px !important;
-  border: 1px solid rgba(100, 149, 237, 0.3) !important;
-  text-align: left !important;
-  font-weight: 600 !important;
-  color: white !important;
-}
-
-.cases-section td {
-  padding: 12px !important;
-  border: 1px solid rgba(100, 149, 237, 0.2) !important;
-  background: rgba(30, 58, 138, 0.2) !important;
-  color: rgba(255, 255, 255, 0.9) !important;
-}
-
-.cases-section tr:nth-child(even) td {
-  background: rgba(30, 58, 138, 0.25) !important;
-}
-
-.cases-section tr:hover td {
-  background: rgba(100, 149, 237, 0.2) !important;
-}
-
 /* 小工具样式优化 */
-.tools-section {
-  background: linear-gradient(135deg, rgba(30, 58, 138, 0.4) 0%, rgba(45, 74, 154, 0.4) 100%);
-  backdrop-filter: blur(10px);
-  border-radius: 12px;
-  padding: 20px;
-  border: 1px solid rgba(100, 149, 237, 0.3);
-  margin-top: 20px;
-  color: rgba(255, 255, 255, 0.9);
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
-}
-
-.tools-section h3 {
-  color: white;
-  margin-top: 0;
-  margin-bottom: 15px;
-  font-size: 18px;
-  border-bottom: 1px solid rgba(100, 149, 237, 0.3);
-  padding-bottom: 10px;
-}
-
-.tools-section input[type="text"],
-.tools-section input[type="file"],
-.tools-section textarea,
-.tools-section select,
-.tools-section button {
-  background: rgba(30, 58, 138, 0.6) !important;
-  border: 1px solid rgba(100, 149, 237, 0.5) !important;
-  color: white !important;
-  border-radius: 6px !important;
-  padding: 10px 15px !important;
-  transition: all 0.3s ease !important;
-}
-
-.tools-section input[type="text"]:hover,
-.tools-section input[type="file"]:hover,
-.tools-section textarea:hover,
-.tools-section select:hover,
-.tools-section button:hover {
-  background: rgba(30, 58, 138, 0.8) !important;
-  border-color: rgba(100, 149, 237, 0.8) !important;
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-}
-
 /* 管理员管理样式优化 */
 .admin-section {
   background: linear-gradient(135deg, rgba(30, 58, 138, 0.4) 0%, rgba(45, 74, 154, 0.4) 100%);
@@ -686,35 +445,6 @@ select option {
 }
 
 /* 考核评估标签页样式 */
-.assessment-tabs {
-  display: flex;
-  margin-bottom: 20px;
-  border-bottom: 1px solid rgba(100, 149, 237, 0.3);
-}
-
-.assessment-tab {
-  padding: 12px 24px;
-  cursor: pointer;
-  border-bottom: 3px solid transparent;
-  margin-right: 10px;
-  font-weight: 600;
-  color: rgba(255, 255, 255, 0.7) !important;
-  transition: all 0.3s ease;
-  background: transparent !important;
-  border-radius: 6px 6px 0 0;
-}
-
-.assessment-tab:hover {
-  color: #6495ed !important;
-  background: rgba(100, 149, 237, 0.1) !important;
-}
-
-.assessment-tab.active {
-  border-bottom-color: #6495ed !important;
-  color: #6495ed !important;
-  background: rgba(100, 149, 237, 0.15) !important;
-}
-
 /* 统一输入框和文本域样式 */
 input[type="text"],
 input[type="password"],
@@ -810,19 +540,6 @@ tr:hover td {
 /* 统一消息提示样式 */
 .login-error,
 .analysisMessage,
-.assessmentMessage,
-.caseImportMessage,
-.casesError,
-.huiwentaiError {
-  margin-top: 10px;
-  padding: 12px 15px;
-  border-radius: 8px;
-  backdrop-filter: blur(5px);
-  color: rgba(255, 255, 255, 0.9);
-  background: rgba(30, 58, 138, 0.4);
-  border: 1px solid rgba(100, 149, 237, 0.3);
-}
-
 /* 统一加载状态样式 */
 .loading,
 .loading-state {
@@ -847,16 +564,6 @@ tr:hover td {
 @keyframes spin {
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
-}
-
-/* 数据分析结果区域样式 */
-.analysis-result, .assessment-result {
-  background: rgba(30, 58, 138, 0.3);
-  border: 1px solid rgba(100, 149, 237, 0.3);
-  border-radius: 8px;
-  padding: 15px;
-  margin-top: 15px;
-  color: rgba(255, 255, 255, 0.9);
 }
 
 /* 分页样式 */
