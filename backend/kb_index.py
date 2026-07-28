@@ -35,6 +35,10 @@ load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 from kb_common import USE_LOCAL_MODE, LOCAL_MILVUS_FILE, MILVUS_HOST, MILVUS_PORT  # noqa: E402
 from kb_embed import embed  # noqa: E402
 
+# jieba 分词：供 BM25 关键词召回用（混合检索的关键词一路）。
+# 灌库时对每条 text 分词存 text_tokens 字段，检索时对 query 分词后算 BM25 分。
+import jieba  # noqa: E402
+
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s [kb_index] %(levelname)s %(message)s")
 logger = logging.getLogger("kb_index")
@@ -89,6 +93,10 @@ def define_schema():
         # 用于用户点名某标准时确定性召回，不依赖语义排名。
         FieldSchema(name="case_type", dtype=DataType.VARCHAR, max_length=128),
         FieldSchema(name="metadata", dtype=DataType.VARCHAR, max_length=8192),
+        # BM25 关键词召回用：对 text 做 jieba 分词后的 token 列表（JSON 数组字符串）。
+        # 混合检索（向量语义 + BM25 关键词）的关键词一路，解决纯向量对「站亭↔站台」
+        # 字序不同、「报修↔处置」同义不同字的漏召，无需手工维护别名表。
+        FieldSchema(name="text_tokens", dtype=DataType.VARCHAR, max_length=8192),
         FieldSchema(name="embedding", dtype=DataType.FLOAT_VECTOR, dim=DIM),
     ]
     return CollectionSchema(fields, description="统一知识库：立结案标准/职责/问答/制度/法律法规")
@@ -302,17 +310,22 @@ def make_row(doc_id, idx, chunk, doc_type, source):
         logger.warning(f"embedding 失败，跳过：{doc_id}#{idx}")
         return None
     mid = hashlib.md5(f"{doc_id}|{idx}".encode("utf-8")).hexdigest()[:16]
+    # jieba 分词：供 BM25 关键词召回用。title 也拼进去（标题含实体词，如"公交站亭"），
+    # 提升关键词一路对实体的命中率。去重保序，避免重复 token 稀释 BM25 的 tf 分。
+    title = chunk.get("title") or ""
+    tokens = list(dict.fromkeys(jieba.lcut(f"{title} {text}")))
     return {
         "id": mid,
         "doc_id": doc_id[:256],
         "chunk_id": str(idx),
         "doc_type": doc_type,
         "source": source[:512],
-        "title": (chunk.get("title") or "")[:512],
+        "title": title[:512],
         "text": text[:16000],
         "law_status": (chunk.get("law_status") or "")[:16],
         "case_type": (chunk.get("case_type") or "")[:128],
         "metadata": json.dumps(chunk.get("meta", {}) or {}, ensure_ascii=False)[:8192],
+        "text_tokens": json.dumps(tokens, ensure_ascii=False)[:8192],
         "embedding": vec,
     }
 

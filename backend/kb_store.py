@@ -18,6 +18,9 @@ import logging
 import re
 from typing import List, Dict, Any, Optional
 
+import jieba
+from rank_bm25 import BM25Okapi
+
 from kb_common import USE_LOCAL_MODE, LOCAL_MILVUS_FILE, MILVUS_HOST, MILVUS_PORT  # noqa: E402
 from kb_embed import embed  # noqa: E402
 from kb_dispatch import match_department_dispatch, is_dispatch_question  # noqa: E402
@@ -140,244 +143,129 @@ def _raw_search(client, qvec, limit, flt) -> List[Dict[str, Any]]:
     return results
 
 
-# 立结案标准「案件类型」实体缓存：首次 search 时从集合加载一次，
-# 用于用户点名某标准（如“污水井盖”“路灯”）时确定性召回，不依赖语义排名。
-_STANDARD_CASE_TYPES = None  # list of (实体词, 完整案件类型)
+# ------------------------- BM25 关键词召回（混合检索的关键词一路） -------------------------
+# 背景：纯向量（MiniLM）对「站亭↔站台」字序不同、「报修↔处置」同义不同字的匹配很弱，
+# 导致市民口语叫法查不出对应标准/问答。此前靠手工维护别名表/主题词表兜底，
+# 但 202 个标准 × 市民自由叫法是无底洞（"碰一个改一个"）。
+# 改为业界标准的「向量语义 + BM25 关键词」混合检索：BM25 对字面匹配天然友好，
+# 字序不同、同义不同字都能命中，且无需维护任何别名表。两路召回用 RRF 融合排序。
+
+_BM25_INDEX = None  # BM25Okapi 实例（对全库 text_tokens 建索引）
+_BM25_ROWS = None   # 与索引平行的原始行数据（doc_id/chunk_id/doc_type/...）
 
 
-def _load_standard_case_types(client):
-    """加载所有 standard 的 (实体词, 完整案件类型) 列表。"""
+def _load_bm25_index(client):
+    """从集合加载所有记录的 text_tokens，构建 BM25 索引（首次 search 时执行一次）。
+
+    返回 (BM25Okapi, rows)。rows 与索引平行，存每条的 doc_id/chunk_id/doc_type/
+    source/title/text/law_status/case_type/metadata，供命中后还原结构化结果。
+    """
+    global _BM25_INDEX, _BM25_ROWS
+    if _BM25_INDEX is not None and _BM25_ROWS is not None:
+        return _BM25_INDEX, _BM25_ROWS
     try:
         rows = client.query(
             UNIFIED_COLLECTION,
-            filter='doc_type == "standard"',
-            output_fields=["case_type"],
-            limit=10000,
+            filter="",  # 全量（BM25 索引需覆盖所有 doc_type）
+            output_fields=["doc_id", "chunk_id", "doc_type", "source", "title",
+                           "text", "law_status", "case_type", "metadata", "text_tokens"],
+            limit=100000,
         )
     except Exception as e:
-        logger.warning(f"[kb_store] 加载标准案件类型失败: {e}")
-        return []
-    out, seen = [], set()
+        logger.error(f"[kb_store] 加载 BM25 语料失败: {e}")
+        return None, None
+    corpus, meta_rows = [], []
     for r in rows:
-        ct = (r.get("case_type") or "").strip()
-        if not ct or ct in seen:
+        try:
+            tokens = json.loads(r.get("text_tokens") or "[]")
+        except Exception:
+            tokens = []
+        if not tokens:
             continue
-        seen.add(ct)
-        entity = ct.split(" - ")[-1].strip()
-        out.append((entity, ct))
-    # 实体别名映射：市民口语叫法 → 库内标准实体词（仅增强召回、不阻断）。
-    # 例："公交站亭（牌）"常被称为"公交站台/公交候车亭/公交站牌"，后者与前者同素异序，
-    # 纯连续子串匹配失败，故显式列出别名，使其确定性命中对应立结案标准。
-    _STANDARD_ENTITY_ALIASES = {
-        "公交站亭（牌）": ("公交站台", "公交候车亭", "公交站牌", "公交车站台"),
-        "公交站亭": ("公交站台", "公交候车亭", "公交站牌", "公交车站台"),
-    }
-    for std_entity, aliases in _STANDARD_ENTITY_ALIASES.items():
-        for alias in aliases:
-            if alias and alias not in seen:
-                seen.add(alias)
-                out.append((alias, _alias_to_ct(std_entity, out)))
-    return out
+        corpus.append(tokens)
+        meta_rows.append({
+            "doc_id": r.get("doc_id"),
+            "chunk_id": r.get("chunk_id"),
+            "doc_type": r.get("doc_type"),
+            "source": r.get("source"),
+            "title": r.get("title"),
+            "text": r.get("text"),
+            "law_status": r.get("law_status") or "",
+            "case_type": r.get("case_type") or "",
+            "metadata": json.loads(r.get("metadata") or "{}"),
+        })
+    if not corpus:
+        logger.warning("[kb_store] BM25 语料为空（text_tokens 全缺失），降级为纯向量检索")
+        return None, None
+    _BM25_INDEX = BM25Okapi(corpus)
+    _BM25_ROWS = meta_rows
+    logger.info(f"[kb_store] BM25 索引已构建：{len(corpus)} 条语料")
+    return _BM25_INDEX, _BM25_ROWS
 
 
-def _alias_to_ct(std_entity: str, pairs) -> str:
-    """从已加载的 (实体, 案件类型) 列表中找回标准实体的完整案件类型。"""
-    for entity, ct in pairs:
-        if entity == std_entity:
-            return ct
-    return std_entity
+def _bm25_search(client, query: str, top_k: int = 12) -> List[Dict[str, Any]]:
+    """BM25 关键词召回：对 query 分词后算 BM25 分，取 top_k。
 
-
-def _row_to_dict(row):
-    """把 client.query 的标量结果行转成与 _hit_to_dict 一致的结构。"""
-    meta_raw = row.get("metadata") or "{}"
-    try:
-        meta = json.loads(meta_raw) if meta_raw else {}
-    except Exception:
-        meta = {}
-    return {
-        "id": row.get("id"),
-        "score": None,
-        "doc_id": row.get("doc_id"),
-        "chunk_id": row.get("chunk_id"),
-        "doc_type": row.get("doc_type"),
-        "source": row.get("source"),
-        "title": row.get("title"),
-        "text": row.get("text"),
-        "law_status": row.get("law_status") or "",
-        "case_type": row.get("case_type") or "",
-        "metadata": meta,
-    }
-
-
-def _fetch_standard_by_case_type(client, ct):
-    """按完整案件类型精确取出对应标准块（确定性召回）。"""
-    try:
-        rows = client.query(
-            UNIFIED_COLLECTION,
-            filter=f'doc_type == "standard" and case_type == "{ct}"',
-            output_fields=["doc_id", "chunk_id", "doc_type", "source", "title",
-                           "text", "law_status", "case_type", "metadata"],
-            limit=50,
-        )
-    except Exception as e:
-        logger.warning(f"[kb_store] 按案件类型召回失败 {ct}: {e}")
-        return []
-    return [_row_to_dict(r) for r in rows]
-
-
-# 局属单位/科室「单位名」缓存：用户点名某单位（如“市容环卫中心”“市容秩序科”）时确定性召回，
-# 不依赖语义排名——org 类仅 14 块，点名单位若没进 org 桶 top_k 就会漏答“主要职责”类问题。
-_ORG_UNIT_NAMES = None  # list of (核心单位名, 完整标题)
-
-
-def _load_org_unit_names(client):
-    """加载所有 org 的 (核心单位名, 完整标题) 列表。
-
-    核心单位名 = 去掉「运城市」前缀后的标题（如「市容环卫中心」），便于子串匹配 query。
+    返回与 _hit_to_dict 一致的结构（score 为 BM25 原始分，仅用于 RRF 排名，不直接展示）。
     """
-    try:
-        rows = client.query(
-            UNIFIED_COLLECTION,
-            filter='doc_type == "org"',
-            output_fields=["title"],
-            limit=10000,
-        )
-    except Exception as e:
-        logger.warning(f"[kb_store] 加载单位名失败: {e}")
+    bm25, rows = _load_bm25_index(client)
+    if bm25 is None or rows is None:
         return []
-    out, seen = [], set()
-    for r in rows:
-        title = (r.get("title") or "").strip()
-        if not title or title in seen:
-            continue
-        seen.add(title)
-        core = title[3:].strip() if title.startswith("运城市") else title
-        if core:
-            out.append((core, title))
-    return out
-
-
-def _fetch_org_by_title(client, title):
-    """按完整标题精确取出对应单位职责块（确定性召回）。"""
-    try:
-        rows = client.query(
-            UNIFIED_COLLECTION,
-            filter=f'doc_type == "org" and title == "{title}"',
-            output_fields=["doc_id", "chunk_id", "doc_type", "source", "title",
-                           "text", "law_status", "case_type", "metadata"],
-            limit=50,
-        )
-    except Exception as e:
-        logger.warning(f"[kb_store] 按单位名召回失败 {title}: {e}")
+    q_tokens = list(jieba.lcut(query))
+    if not q_tokens:
         return []
-    return [_row_to_dict(r) for r in rows]
+    scores = bm25.get_scores(q_tokens)
+    # 取 top_k 个最高分（BM25 分非负，0 分即无关键词重叠，不纳入）
+    top_idx = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)[:top_k]
+    results = []
+    for rank, i in enumerate(top_idx):
+        if scores[i] <= 0:
+            break
+        r = dict(rows[i])
+        r["id"] = None  # BM25 召回无向量 id，用 doc_id+chunk_id 唯一标识
+        r["score"] = float(scores[i])
+        r["bm25_rank"] = rank + 1  # RRF 融合用：BM25 一路的排名（1-based）
+        results.append(r)
+    return results
 
 
-def _fetch_org_by_category(client, category: str):
-    """按 org_category 精确取出某类机构块（如「架构总览」「内设科室」「下属单位」）。
+def _rrf_fuse(vector_hits: List[Dict[str, Any]],
+              bm25_hits: List[Dict[str, Any]],
+              k: int = 60,
+              bm25_weight: float = 1.5) -> List[Dict[str, Any]]:
+    """Reciprocal Rank Fusion 融合两路召回结果。
 
-    利用 metadata VARCHAR 里的 JSON 字符串做 like 匹配；category 取值唯一，
-    不会误召回其它类。用于「组织架构」类查询确定性前置总览文档。
+    RRF 公式：score = Σ weight/(k + rank)，k=60 是业界经验值（原论文推荐）。
+    对每条命中的 (doc_id, chunk_id)，把它在向量一路和 BM25 一路的排名分别代入求和。
+    只出现在一路的命中，另一路排名视为无穷大（贡献 0）。
+
+    bm25_weight=1.5：给 BM25 一路更高权重。背景：向量（MiniLM）对「字序不同」
+    （公交站亭↔公交站台）、「同义不同字」（报修↔处置）匹配弱，且易把语义相近但
+    主题无关的法规顶到前面；BM25 对关键词匹配更可靠，提高其权重可让字面匹配强的
+    结果（如含"公交站亭"的标准条目）在融合后稳定排在泛法规之前。
+    返回按 RRF 分降序的合并列表，每条带 rrf_score / vector_rank / bm25_rank。
     """
-    try:
-        rows = client.query(
-            UNIFIED_COLLECTION,
-            filter=f'doc_type == "org" and metadata like "%{category}%"',
-            output_fields=["doc_id", "chunk_id", "doc_type", "source", "title",
-                           "text", "law_status", "case_type", "metadata"],
-            limit=200,
-        )
-    except Exception as e:
-        logger.warning(f"[kb_store] 按机构类别召回失败 {category}: {e}")
-        return []
-    return [_row_to_dict(r) for r in rows]
+    fused = {}
+    # 向量一路：按 score（COSINE 相似度）降序排名
+    for rank, h in enumerate(sorted(vector_hits, key=lambda x: x.get("score") or 0, reverse=True), 1):
+        key = (h["doc_id"], h["chunk_id"])
+        if key not in fused:
+            fused[key] = dict(h)
+            fused[key]["rrf_score"] = 0.0
+        fused[key]["rrf_score"] += 1.0 / (k + rank)
+        fused[key]["vector_rank"] = rank
+    # BM25 一路：按 bm25_rank（已按 BM25 分降序）排名，权重 bm25_weight
+    for h in bm25_hits:
+        key = (h["doc_id"], h["chunk_id"])
+        rank = h.get("bm25_rank") or 999
+        if key not in fused:
+            fused[key] = dict(h)
+            fused[key]["rrf_score"] = 0.0
+        fused[key]["rrf_score"] += bm25_weight / (k + rank)
+        fused[key]["bm25_rank"] = rank
+    # 按 RRF 分降序
+    return sorted(fused.values(), key=lambda x: x["rrf_score"], reverse=True)
 
-
-# 12345 知识问答（qa）「业务主题词 → 文本关键词」映射：市民口语问法（怎么/在哪交水费）
-# 纯语义分极低（实测“怎么缴纳水费”↔ qa#159 仅 0.34，而供暖缴费类 qa 0.5+ 把水费淹没），
-# 无法靠语义区分“水费”与“供暖缴费”。故对高频办事主题做【确定性召回增强】：
-# 命中业务词时，直接把 qa 库里正文含对应关键词的条目（如“水费”）强制前置，不依赖语义分。
-# 仅提升排名、永不阻断召回，符合“不用同义词硬门控”的约束；且沿用 standard/org 已有的
-# 确定性召回成熟模式。关键词匹配 text 全文（含答案正文），如 qa#158/#159 正文含“水费/首创”。
-_QA_TOPIC_KEYWORDS = {
-    "水费": ("水费", "首创水务", "首创水"),
-    "供暖": ("供暖", "采暖", "供热", "热力", "热电", "晋建", "暖气"),
-    "燃气": ("燃气", "天然气", "民生天然气", "购气", "燃气卡"),
-    "电费": ("电费", "供电", "电力"),
-    "社保": ("社保", "养老保险", "医保"),
-    "医保": ("医保", "医疗保险"),
-    "公积金": ("公积金", "住房公积金"),
-    "户籍": ("户籍", "户口", "身份证"),
-    "居住证": ("居住证", "暂住证"),
-    "停车": ("停车", "泊车", "车位"),
-    # 注：公交类不在此表——qa 库无独立公交办事问答（12345 仅顺带提及），
-    # 公交站亭/站台归属应由 doc_type=standard 立结案标准回答，故交给 standard 实体召回，
-    # 此处若配「公交」反而会把无关 qa 片段强制前置、干扰正确来源。
-    "垃圾": ("垃圾", "分类", "环卫"),
-}
-
-
-def _fetch_qa_by_text_kw(client, kw: str, limit: int = 8) -> List[Dict[str, Any]]:
-    """按 text 全文 like 关键词，确定性取出 qa 类条目（业务主题召回）。
-
-    用于「市民办事主题」命中时强制前置对应 qa 直答（如“水费”→ qa#158/#159 缴费流程），
-    解决纯语义被同主题近义（供暖缴费）淹没、导致答非所问/暂无的问题。
-    """
-    try:
-        rows = client.query(
-            UNIFIED_COLLECTION,
-            filter=f'doc_type == "qa" and text like "%{kw}%"',
-            output_fields=["doc_id", "chunk_id", "doc_type", "source", "title",
-                           "text", "law_status", "case_type", "metadata"],
-            limit=limit,
-        )
-    except Exception as e:
-        logger.warning(f"[kb_store] 按 qa 业务词召回失败 {kw}: {e}")
-        return []
-    return [_row_to_dict(r) for r in rows]
-
-
-# 制度（general）「文件标题」缓存：用户问「XX 相关制度/办法/规定」时，把标题含 query
-# 核心实体的制度文档确定性前置，避免局里/平台的制度汇编被 law 类法规淹没导致漏召。
-_GENERAL_TITLES = None  # list of 去重标题
-
-
-def _load_general_titles(client):
-    """加载所有 general（制度）的去重标题。"""
-    try:
-        rows = client.query(
-            UNIFIED_COLLECTION,
-            filter='doc_type == "general"',
-            output_fields=["title"],
-            limit=10000,
-        )
-    except Exception as e:
-        logger.warning(f"[kb_store] 加载制度标题失败: {e}")
-        return []
-    out, seen = [], set()
-    for r in rows:
-        t = (r.get("title") or "").strip()
-        if t and t not in seen:
-            seen.add(t)
-            out.append(t)
-    return out
-
-
-def _fetch_general_by_title(client, title):
-    """按完整标题精确取出对应制度文档的所有块（确定性召回）。"""
-    try:
-        rows = client.query(
-            UNIFIED_COLLECTION,
-            filter=f'doc_type == "general" and title == "{title}"',
-            output_fields=["doc_id", "chunk_id", "doc_type", "source", "title",
-                           "text", "law_status", "case_type", "metadata"],
-            limit=200,
-        )
-    except Exception as e:
-        logger.warning(f"[kb_store] 按制度标题召回失败 {title}: {e}")
-        return []
-    return [_row_to_dict(r) for r in rows]
 
 
 def search(query: str,
@@ -385,13 +273,13 @@ def search(query: str,
            doc_type: Optional[str] = None,
            include_invalid_laws: bool = False,
            per_type_top_k: int = 6) -> List[Dict[str, Any]]:
-    """纯语义 COSINE 召回（按类别分桶，避免大类淹没小类）。
+    """混合检索：向量语义召回 + BM25 关键词召回，RRF 融合排序。
 
-    修复背景：law 类 5674 块、standard 类仅 202 块，在单一向量空间里，
-    含“污水/排水”等词的 query 会唤醒海量 law 条文，把唯一相关的
-    standard（如“污水井盖.txt”）挤出 top_k，导致“查不到立案条件”。
-    改为按 doc_type 各取 per_type_top_k 再合并排序，保证每类都有代表进入候选。
-    桶内仍是纯语义 COSINE，未引入关键词门控，符合“不用同义词/纯语义”的设计约束。
+    架构演进（回应"碰一个改一个"的痛点）：
+    - 旧版：纯向量 + 手工别名表/主题词表兜底，市民每换一种叫法就得加一条规则。
+    - 新版：向量（语义）+ BM25（关键词）双路并行，RRF 融合。字序不同（站亭↔站台）、
+      同义不同字（报修↔处置）、口语叫法，BM25 一路天然兜住，无需维护任何别名表。
+    保留：分桶召回（避免 law 大类淹没小类）、法律防误用（排除废止法规）。
     """
     qvec = embed(query)
     if qvec is None:
@@ -404,199 +292,58 @@ def search(query: str,
     except Exception as e:
         logger.warning(f"load_collection 可能已加载，忽略: {e}")
 
-    # 指定单类时，走原逻辑（不做分桶）
+    # 指定单类时，走原逻辑（不做分桶/混合）
     if doc_type:
         flt = build_filter(doc_type, include_invalid_laws)
         return _raw_search(client, qvec, top_k, flt)
 
-    # 分桶召回：每个 doc_type 各取 per_type_top_k，合并去重
-    q_norm = re.sub(r"\s+", "", query)  # 提前定义：标签提权与实体召回都要用
-    # 标准实体词匹配：支持「完整实体」或「去业务后缀后的核心词」命中，
-    # 避免自然问法把实体与动词/疑问词穿插（如『共享单车归哪个部门管理』）时
-    # 连续子串匹配失败导致漏召。纯匹配增强，不阻断召回、不影响“暂无相关”判据。
-    _STD_SUFFIXES = ("管理", "处置", "问题", "情况", "标准", "规范",
-                     "条例", "规定", "事项", "要求", "处理", "投诉", "处罚")
-
-    def _std_entity_hit(entity, q):
-        if not entity:
-            return False
-        if entity in q:
-            return True
-        core = entity
-        for s in _STD_SUFFIXES:
-            if core.endswith(s) and len(core) > len(s):
-                core = core[: -len(s)]
-                if len(core) >= 2 and core in q:
-                    return True
-        # 字符级重叠兜底：实体核心词与 query 共享「非停用字」≥3 个且互为子集式重叠，
-        # 兜住「站亭」↔「站台」这类同素异序/近义叫法（如"公交站亭" vs "公交站台"）。
-        # 仅做召回增强、不阻断，符合"不用同义词硬门控"约束。
-        if len(core) >= 3:
-            qset = set(q)
-            shared = sum(1 for ch in core if ch in qset)
-            # 排除过于通用的单字（如"公""交"本身），要求核心词里≥2个【非首字】字符也在 query 中
-            meaningful = [ch for ch in core[1:]]  # 去掉首字（常为"公交/道路"等大类的首字）
-            m_shared = sum(1 for ch in meaningful if ch in qset)
-            if shared >= 3 and m_shared >= 2:
-                return True
-        return False
-
-    merged = {}
+    # ---- 第一路：向量语义召回（按 doc_type 分桶，避免大类淹没小类） ----
+    vector_merged = {}
     for t in DOC_TYPES:
         flt = build_filter(t, include_invalid_laws)
         for h in _raw_search(client, qvec, per_type_top_k, flt):
             key = (h["doc_id"], h["chunk_id"])
-            if key not in merged or h["score"] > merged[key]["score"]:
-                merged[key] = h
+            if key not in vector_merged or h["score"] > vector_merged[key]["score"]:
+                vector_merged[key] = h
+    vector_hits = list(vector_merged.values())
 
-    # ---- 结构化标签字面重叠提权（仅 standard）----
-    # 背景：MiniLM 对"水管破裂"↔"供水管道破裂"这类同义不同字面语义对不上（0.385），
-    # 反而更近"雨水井盖"。用 query 与标准自带 case_type 核心词的字面重叠度做提权：
-    # 共享字多则提权。这是对文档自带结构化标签的字面匹配，**非同义词表门控**——
-    # 只提升排名、永不阻断召回，不会造成"暂无相关"误判，符合"不用同义词硬门控"的设计约束。
-    q_chars = set(q_norm)
-    for h in merged.values():
-        if h.get("doc_type") != "standard":
-            continue
-        ct = h.get("case_type") or ""
-        core = ct.split(" - ")[-1].strip()
-        if len(core) < 2:
-            continue
-        overlap = sum(1 for ch in core if ch in q_chars)
-        ratio = overlap / len(core)
-        if overlap >= 2 and ratio >= 0.5:
-            h["score"] = max(h["score"] or 0, 0.82)  # 提权到高于纯语义，低于确定性命中 0.99
-            h["label_boosted"] = True
+    # ---- 第二路：BM25 关键词召回（对 query 分词后算 BM25 分） ----
+    # 字序不同（公交站亭↔公交站台）、同义不同字（报修↔处置）都能命中，
+    # 无需手工别名表。BM25 索引首次 search 时从 text_tokens 构建并缓存。
+    bm25_hits = _bm25_search(client, query, top_k=max(top_k * 2, 12))
 
-    # ---- 确定性召回：query 点名某实体时直接取出并前置 ----
-    global _STANDARD_CASE_TYPES, _ORG_UNIT_NAMES, _GENERAL_TITLES
-    boosted = []
-    boosted_keys = set()
+    # ---- RRF 融合：两路召回按排名加权融合 ----
+    # RRF 公式 score = Σ 1/(60 + rank)，k=60 是业界经验值。
+    # 向量一路按 COSINE 相似度排名，BM25 一路按 BM25 分排名，融合后按 RRF 分降序。
+    fused = _rrf_fuse(vector_hits, bm25_hits, k=60)
 
-    # 1) standard：query 含某标准「案件类型」实体（如“污水井盖”“路灯”）→ 按 case_type 精确取
-    if _STANDARD_CASE_TYPES is None:
-        _STANDARD_CASE_TYPES = _load_standard_case_types(client)
-    for entity, ct in _STANDARD_CASE_TYPES:
-        if _std_entity_hit(entity, q_norm):
-            for r in _fetch_standard_by_case_type(client, ct):
-                key = (r["doc_id"], r["chunk_id"])
-                r["score"] = merged.get(key, {}).get("score") or 0.99
-                r["boosted"] = True
-                merged.pop(key, None)
-                if key not in boosted_keys:
-                    boosted.append(r); boosted_keys.add(key)
+    # ---- 法律防误用：排除已废止/已修改法规（若非显式包含） ----
+    if not include_invalid_laws:
+        fused = [h for h in fused if not (
+            h.get("doc_type") == "law" and h.get("law_status") in LAW_EXCLUDE_STATUS
+        )]
 
-    # 2) org：query 含某单位核心名（如“市容环卫中心”“市容秩序科”）→ 按标题精确取
-    if _ORG_UNIT_NAMES is None:
-        _ORG_UNIT_NAMES = _load_org_unit_names(client)
-    for core, title in _ORG_UNIT_NAMES:
-        if core and core in q_norm:
-            for r in _fetch_org_by_title(client, title):
-                key = (r["doc_id"], r["chunk_id"])
-                r["score"] = merged.get(key, {}).get("score") or 0.99
-                r["boosted"] = True
-                merged.pop(key, None)
-                if key not in boosted_keys:
-                    boosted.append(r); boosted_keys.add(key)
-
-    # 3) org 架构意图：query 问「组织架构/内设机构/下属单位/科室设置」时，
-    #    确定性取出「架构总览」文档并前置，保证完整机构清单不被语义排名淹没。
-    _ORG_STRUCTURE_KEYWORDS = ("组织架构", "内设机构", "下属单位", "科室设置", "机构设置", "组织机构")
-    if any(k in q_norm for k in _ORG_STRUCTURE_KEYWORDS):
-        for r in _fetch_org_by_category(client, "架构总览"):
-            key = (r["doc_id"], r["chunk_id"])
-            r["score"] = merged.get(key, {}).get("score") or 0.99
-            r["boosted"] = True
-            merged.pop(key, None)
-            if key not in boosted_keys:
-                boosted.append(r); boosted_keys.add(key)
-
-    # 3.5) qa 业务主题确定性召回：市民口语办事问法（怎么/在哪里交水费）纯语义分极低
-    # （实测“怎么缴纳水费”↔ qa#159 仅 0.34，而供暖缴费类 qa 0.5+ 把水费淹没），
-    # 无法靠语义区分“水费”与“供暖缴费”。命中业务主题词时，直接把 qa 库里正文含
-    # 对应关键词的条目（如“水费”→ qa#158/#159 缴费流程）强制前置，保证市民拿到
-    # 正确主题的直答（含微信/支付宝/线下营业厅等办理方法），而非泛法规或错主题。
-    for topic, kws in _QA_TOPIC_KEYWORDS.items():
-        if topic in q_norm:
-            for kw in kws:
-                for r in _fetch_qa_by_text_kw(client, kw):
-                    key = (r["doc_id"], r["chunk_id"])
-                    r["score"] = merged.get(key, {}).get("score") or 0.99
-                    r["boosted"] = True
-                    merged.pop(key, None)
-                    if key not in boosted_keys:
-                        boosted.append(r); boosted_keys.add(key)
-
-    # 4) 制度意图：query 含「制度/办法/规定/细则/汇编/规程/规则」时，
-    #    把 general 类里标题包含 query 核心实体的制度文档确定性前置，
-    #    避免局里/平台的制度汇编被 law 类法规淹没导致漏召“XX相关制度”类问题。
-    _GENERAL_RULE_KEYWORDS = ("制度", "办法", "规定", "细则", "汇编", "规程", "规则")
-    if any(k in q_norm for k in _GENERAL_RULE_KEYWORDS):
-        if _GENERAL_TITLES is None:
-            _GENERAL_TITLES = _load_general_titles(client)
-        # 从 query 提炼核心实体：去掉中性/制度类词后剩余，再判断是否在标题子串中
-        core = q_norm
-        for w in ("相关", "梳理", "列举", "有哪些", "我们", "单位", "的", "了", "一下",
-                  "请问", "关于", "方面", "情况", "内容", "信息", "系统", "制度", "办法",
-                  "规定", "细则", "汇编", "规程", "规则", "主要", "涉及", "哪些", "要求"):
-            core = core.replace(w, "")
-        if len(core) >= 2:
-            for title in _GENERAL_TITLES:
-                if core in title:
-                    blocks = _fetch_general_by_title(client, title)
-                    blocks.sort(key=lambda x: x.get("chunk_id") or "")
-                    for r in blocks[:3]:   # 每份制度文档最多前置 3 块，避免单文档切块过多占满 top_k 挤掉同主题其他文档
-                        key = (r["doc_id"], r["chunk_id"])
-                        r["score"] = merged.get(key, {}).get("score") or 0.99
-                        r["boosted"] = True
-                        merged.pop(key, None)
-                        if key not in boosted_keys:
-                            boosted.append(r); boosted_keys.add(key)
-
-    # ---- qa 类别温和加权：市民问答直答优先于泛法规 ----
-    # 背景：12345 知识问答（qa）是人工整理的高信噪比「市民高频问答直答」，对
-    # 「怎么/在哪里/如何 X」这类口语办事问法，本就是最优答案源（含微信/支付宝/
-    # 线下营业厅等具体办理方法）。但 MiniLM 对「缴费流程」↔「缴纳水费（法规）」
-    # 的语义分常被 law 条文压过，导致「怎么交水费」答成法规原则、甚至「在哪里交
-    # 水费」因字面偏离被判暂无、白白浪费已召回的 qa 片段。
-    # 故对 qa 片段做温和乘权，使其在同等/略低语义分时稳定排在 law 之前；
-    # 只对【已有语义分】的 qa 提权，不设无条件兜底值，避免弱相关 qa 被强行抬入
-    # 候选（不引入关键词门控，符合纯语义约束）。
-    QA_BOOST = 1.15
-    for h in merged.values():
-        if h.get("doc_type") != "qa":
-            continue
-        base = h.get("score") or 0.0
-        if base > 0:
-            h["score"] = base * QA_BOOST
-            h["qa_boosted"] = True
-
-    # ---- 最终选择：确定性召回置顶 + 按类均衡采样 + 全局分数兜底 ----
-    # 均衡采样保证 standard/org/qa 各至少 1 个代表进 top_k（分数 > MIN_TYPE_SCORE 才纳入，
-    # 避免注入纯噪声）。背景：分桶只保证候选池多样，最终若纯按分数排序，小类低分项
-    # （如 standard 0.385）仍会被 law/qa 0.45+ 挤出 top_k，导致“查不到处置要求”。
-    MIN_TYPE_SCORE = 0.30
-    final = sorted(boosted, key=lambda x: x["score"] or 0, reverse=True)
-    final_keys = set((h["doc_id"], h["chunk_id"]) for h in final)
-
+    # ---- 按类均衡采样：保证 standard/org/qa 各至少 1 个代表进 top_k ----
+    # 背景：RRF 融合后若纯按分数排序，小类低分项仍可能被 law/qa 高分挤出 top_k。
+    # 给 standard/org/qa 各保留 1 个代表（RRF 分 > 阈值才纳入，避免注入纯噪声）。
+    MIN_RRF_SCORE = 0.008  # RRF 分经验阈值（约等于两路都在 top50 内）
+    final = []
+    final_keys = set()
     rest_by_type = {t: [] for t in DOC_TYPES}
-    for h in sorted(merged.values(), key=lambda x: x["score"] or 0, reverse=True):
-        key = (h["doc_id"], h["chunk_id"])
-        if key in final_keys:
-            continue
-        rest_by_type[h["doc_type"]].append(h)
+    for h in fused:
+        rest_by_type[h.get("doc_type")].append(h)
 
-    # 给 standard / org / qa 各保留 1 个代表（若该类有 > MIN_TYPE_SCORE 的候选且未被 boosted 命中）
+    # 先给 standard/org/qa 各塞 1 个最高分代表
     for t in ("standard", "org", "qa"):
-        if any((h["doc_id"], h["chunk_id"]) not in final_keys for h in rest_by_type.get(t, [])):
-            for h in rest_by_type.get(t, []):
-                if (h["score"] or 0) > MIN_TYPE_SCORE and (h["doc_id"], h["chunk_id"]) not in final_keys:
-                    final.append(h)
-                    final_keys.add((h["doc_id"], h["chunk_id"]))
-                    break
+        for h in rest_by_type.get(t, []):
+            key = (h["doc_id"], h["chunk_id"])
+            if h["rrf_score"] > MIN_RRF_SCORE and key not in final_keys:
+                final.append(h)
+                final_keys.add(key)
+                break
 
-    # 剩余位置按全局分数填满
-    for h in sorted(merged.values(), key=lambda x: x["score"] or 0, reverse=True):
+    # 剩余位置按 RRF 分全局填满
+    for h in fused:
         if len(final) >= top_k:
             break
         key = (h["doc_id"], h["chunk_id"])
@@ -605,6 +352,7 @@ def search(query: str,
             final_keys.add(key)
 
     return final[:top_k]
+
 
 
 # ------------------------- 问答（LLM + citations） -------------------------
