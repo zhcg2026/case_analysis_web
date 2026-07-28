@@ -165,7 +165,27 @@ def _load_standard_case_types(client):
         seen.add(ct)
         entity = ct.split(" - ")[-1].strip()
         out.append((entity, ct))
+    # 实体别名映射：市民口语叫法 → 库内标准实体词（仅增强召回、不阻断）。
+    # 例："公交站亭（牌）"常被称为"公交站台/公交候车亭/公交站牌"，后者与前者同素异序，
+    # 纯连续子串匹配失败，故显式列出别名，使其确定性命中对应立结案标准。
+    _STANDARD_ENTITY_ALIASES = {
+        "公交站亭（牌）": ("公交站台", "公交候车亭", "公交站牌", "公交车站台"),
+        "公交站亭": ("公交站台", "公交候车亭", "公交站牌", "公交车站台"),
+    }
+    for std_entity, aliases in _STANDARD_ENTITY_ALIASES.items():
+        for alias in aliases:
+            if alias and alias not in seen:
+                seen.add(alias)
+                out.append((alias, _alias_to_ct(std_entity, out)))
     return out
+
+
+def _alias_to_ct(std_entity: str, pairs) -> str:
+    """从已加载的 (实体, 案件类型) 列表中找回标准实体的完整案件类型。"""
+    for entity, ct in pairs:
+        if entity == std_entity:
+            return ct
+    return std_entity
 
 
 def _row_to_dict(row):
@@ -291,7 +311,9 @@ _QA_TOPIC_KEYWORDS = {
     "户籍": ("户籍", "户口", "身份证"),
     "居住证": ("居住证", "暂住证"),
     "停车": ("停车", "泊车", "车位"),
-    "公交": ("公交", "班车", "公共交通"),
+    # 注：公交类不在此表——qa 库无独立公交办事问答（12345 仅顺带提及），
+    # 公交站亭/站台归属应由 doc_type=standard 立结案标准回答，故交给 standard 实体召回，
+    # 此处若配「公交」反而会把无关 qa 片段强制前置、干扰正确来源。
     "垃圾": ("垃圾", "分类", "环卫"),
 }
 
@@ -406,6 +428,17 @@ def search(query: str,
                 core = core[: -len(s)]
                 if len(core) >= 2 and core in q:
                     return True
+        # 字符级重叠兜底：实体核心词与 query 共享「非停用字」≥3 个且互为子集式重叠，
+        # 兜住「站亭」↔「站台」这类同素异序/近义叫法（如"公交站亭" vs "公交站台"）。
+        # 仅做召回增强、不阻断，符合"不用同义词硬门控"约束。
+        if len(core) >= 3:
+            qset = set(q)
+            shared = sum(1 for ch in core if ch in qset)
+            # 排除过于通用的单字（如"公""交"本身），要求核心词里≥2个【非首字】字符也在 query 中
+            meaningful = [ch for ch in core[1:]]  # 去掉首字（常为"公交/道路"等大类的首字）
+            m_shared = sum(1 for ch in meaningful if ch in qset)
+            if shared >= 3 and m_shared >= 2:
+                return True
         return False
 
     merged = {}
