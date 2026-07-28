@@ -149,14 +149,41 @@ def _raw_search(client, qvec, limit, flt) -> List[Dict[str, Any]]:
 # 但 202 个标准 × 市民自由叫法是无底洞（"碰一个改一个"）。
 # 改为业界标准的「向量语义 + BM25 关键词」混合检索：BM25 对字面匹配天然友好，
 # 字序不同、同义不同字都能命中，且无需维护任何别名表。两路召回用 RRF 融合排序。
+#
+# 2026-07-29 修正：BM25 的 token 改为「jieba 词 + 中文 bigram」混合。
+# 原因：纯 jieba 词级分词有粒度陷阱——「公交站亭」被切成「公交站/亭」，
+# 而 query「公交站台」切成「公交/站台」，两边零重叠（"公交"≠"公交站"），
+# BM25 分为 0，正确条目照样召回不到。bigram 下「公交站台」={公交,交站,站台}、
+# 「公交站亭」={公交,交站,站亭}，有 2/3 重叠，可稳定命中（Lucene CJK 同款做法）。
+# 同时索引语料改为现场对 title+text 分词（不再读灌库时存的 text_tokens 字段），
+# 以后调整分词策略无需重灌库。
 
-_BM25_INDEX = None  # BM25Okapi 实例（对全库 text_tokens 建索引）
+_BM25_INDEX = None  # BM25Okapi 实例（对全库 title+text 建索引）
 _BM25_ROWS = None   # 与索引平行的原始行数据（doc_id/chunk_id/doc_type/...）
+
+_CJK_RE = re.compile(r"[\u4e00-\u9fff]+")
+
+
+def _tokenize_for_bm25(text: str) -> List[str]:
+    """BM25 专用分词：jieba 词 + 中文连续段的字符 bigram（单字段保留单字）。
+
+    bigram 解决中文词级分词的字序/粒度零重叠问题（站亭↔站台、候车亭↔站亭）。
+    """
+    text = text or ""
+    tokens = list(jieba.lcut(text))
+    for seg in _CJK_RE.findall(text):
+        if len(seg) == 1:
+            tokens.append(seg)
+        else:
+            tokens.extend(seg[i:i + 2] for i in range(len(seg) - 1))
+    return tokens
 
 
 def _load_bm25_index(client):
-    """从集合加载所有记录的 text_tokens，构建 BM25 索引（首次 search 时执行一次）。
+    """从集合加载所有记录的 title+text，现场分词构建 BM25 索引（首次 search 时执行一次）。
 
+    语料用 title+text 现场 _tokenize_for_bm25（而非灌库时存的 text_tokens 字段），
+    这样分词策略升级不需要重灌库。
     返回 (BM25Okapi, rows)。rows 与索引平行，存每条的 doc_id/chunk_id/doc_type/
     source/title/text/law_status/case_type/metadata，供命中后还原结构化结果。
     """
@@ -168,7 +195,7 @@ def _load_bm25_index(client):
             UNIFIED_COLLECTION,
             filter="",  # 全量（BM25 索引需覆盖所有 doc_type）
             output_fields=["doc_id", "chunk_id", "doc_type", "source", "title",
-                           "text", "law_status", "case_type", "metadata", "text_tokens"],
+                           "text", "law_status", "case_type", "metadata"],
             limit=100000,
         )
     except Exception as e:
@@ -176,10 +203,7 @@ def _load_bm25_index(client):
         return None, None
     corpus, meta_rows = [], []
     for r in rows:
-        try:
-            tokens = json.loads(r.get("text_tokens") or "[]")
-        except Exception:
-            tokens = []
+        tokens = _tokenize_for_bm25(f"{r.get('title') or ''} {r.get('text') or ''}")
         if not tokens:
             continue
         corpus.append(tokens)
@@ -195,23 +219,23 @@ def _load_bm25_index(client):
             "metadata": json.loads(r.get("metadata") or "{}"),
         })
     if not corpus:
-        logger.warning("[kb_store] BM25 语料为空（text_tokens 全缺失），降级为纯向量检索")
+        logger.warning("[kb_store] BM25 语料为空，降级为纯向量检索")
         return None, None
     _BM25_INDEX = BM25Okapi(corpus)
     _BM25_ROWS = meta_rows
-    logger.info(f"[kb_store] BM25 索引已构建：{len(corpus)} 条语料")
+    logger.info(f"[kb_store] BM25 索引已构建：{len(corpus)} 条语料（jieba词+bigram）")
     return _BM25_INDEX, _BM25_ROWS
 
 
 def _bm25_search(client, query: str, top_k: int = 12) -> List[Dict[str, Any]]:
-    """BM25 关键词召回：对 query 分词后算 BM25 分，取 top_k。
+    """BM25 关键词召回：对 query 分词（jieba词+bigram）后算 BM25 分，取 top_k。
 
     返回与 _hit_to_dict 一致的结构（score 为 BM25 原始分，仅用于 RRF 排名，不直接展示）。
     """
     bm25, rows = _load_bm25_index(client)
     if bm25 is None or rows is None:
         return []
-    q_tokens = list(jieba.lcut(query))
+    q_tokens = _tokenize_for_bm25(query)
     if not q_tokens:
         return []
     scores = bm25.get_scores(q_tokens)
