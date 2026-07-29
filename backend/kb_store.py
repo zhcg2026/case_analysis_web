@@ -179,6 +179,56 @@ def _tokenize_for_bm25(text: str) -> List[str]:
     return tokens
 
 
+# ------------------------- 受控实体别名扩展（解决"市民口语/品牌词 → 库内标准实体"） -------------------------
+# 背景：部分市民高频叫法在库内**完全没有字面**（如库里只有「共享单车管理」，
+# 没有「小蓝车/共享电动车/哈啰/青桔」字样）。纯向量（语义泛化）与 BM25（靠字面）
+# 都接不住，召回只能落到上位类（如「非机动车乱停放」），答非所问。
+# 与 2026-07 已废弃的 kb_synonyms（硬门槛同义词：必须命中否则判无内容，导致误判）
+# 本质不同：本表只做 **query 扩展**（把别名展开成标准实体词后再检索），
+# 仅提高召回概率，不强制命中、不阻断、不影响"无内容"判定。
+#
+# 收录铁律（防滑回"无限别名表"）：① 库内该实体无字面对应；② 指向单一明确实体、无歧义；
+# ③ 高频（市民日常叫法/常见品牌）。只放这一类封闭词集，不覆盖千变万化的同义改写。
+ENTITY_ALIASES = {
+    # —— 共享出行：运城市民口语/品牌词 → 共享单车（电瓶车）实体 ——
+    "小蓝车": "共享单车 电瓶车 共享电动车",
+    "小绿车": "共享单车 电瓶车",
+    "共享单车": "共享单车 电瓶车",
+    "共享电动车": "共享电动车 电瓶车",
+    "共享电瓶车": "共享电动车 电瓶车",
+    "哈啰": "共享单车 电瓶车 哈啰出行",
+    "哈啰单车": "共享单车 电瓶车",
+    "哈啰电单车": "共享电动车 电瓶车",
+    "青桔": "共享单车 电瓶车 青桔单车",
+    "青桔单车": "共享单车 电瓶车",
+    "美团单车": "共享单车 电瓶车 美团电单车",
+    "美团电单车": "共享电动车 电瓶车",
+    "ofo": "共享单车 电瓶车 小黄车",
+    "小黄车": "共享单车 电瓶车 ofo",
+    "摩拜": "共享单车 电瓶车",
+}
+
+
+def expand_query(q: str) -> str:
+    """把 query 中的市民口语/品牌别名，扩展为对应的标准实体词，提升召回。
+
+    例如「小蓝车乱摆放归谁管理」→「小蓝车乱摆放归谁管理 共享单车 电瓶车 共享电动车」。
+    返回扩展后的 query（未命中别名则原样返回）。
+    """
+    if not q:
+        return q
+    extra = []
+    for alias, canonical in ENTITY_ALIASES.items():
+        if alias in q and alias not in extra:
+            extra.append(alias)
+            for c in canonical.split():
+                if c not in extra:
+                    extra.append(c)
+    if not extra:
+        return q
+    return q + " " + " ".join(extra)
+
+
 def _load_bm25_index(client):
     """从集合加载所有记录的 title+text，现场分词构建 BM25 索引（首次 search 时执行一次）。
 
@@ -305,7 +355,7 @@ def search(query: str,
       同义不同字（报修↔处置）、口语叫法，BM25 一路天然兜住，无需维护任何别名表。
     保留：分桶召回（避免 law 大类淹没小类）、法律防误用（排除废止法规）。
     """
-    qvec = embed(query)
+    qvec = embed(expand_query(query))
     if qvec is None:
         logger.error("[kb_store] query embedding 失败")
         return []
@@ -333,8 +383,9 @@ def search(query: str,
 
     # ---- 第二路：BM25 关键词召回（对 query 分词后算 BM25 分） ----
     # 字序不同（公交站亭↔公交站台）、同义不同字（报修↔处置）都能命中，
-    # 无需手工别名表。BM25 索引首次 search 时从 text_tokens 构建并缓存。
-    bm25_hits = _bm25_search(client, query, top_k=max(top_k * 2, 12))
+    # 市民口语/品牌别名（如「小蓝车」）已在 search 入口经 expand_query 展开为标准实体词。
+    # BM25 索引首次 search 时现场对 title+text 分词并缓存（不读灌库时的 text_tokens 字段）。
+    bm25_hits = _bm25_search(client, expand_query(query), top_k=max(top_k * 2, 12))
 
     # ---- RRF 融合：两路召回按排名加权融合 ----
     # RRF 公式 score = Σ 1/(60 + rank)，k=60 是业界经验值。
