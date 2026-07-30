@@ -36,6 +36,7 @@ import { useRouter } from 'vue-router'
 import { useUserStore } from './stores/user'
 import { useThemeStore } from './stores/theme'
 import { setupApiInterceptors } from './composables/useAuth'
+import { useSystemConfig } from './composables/useSystemConfig'
 import AppHeader from './components/common/AppHeader.vue'
 import AppSidebar from './components/common/AppSidebar.vue'
 
@@ -45,9 +46,14 @@ const themeStore = useThemeStore()
 
 const sidebarCollapsed = ref(false)
 
+const { loadSystemConfig } = useSystemConfig()
+
 onMounted(() => {
   // 设置 API 拦截器
   setupApiInterceptors()
+
+  // 加载系统配置（名称 / Logo），驱动全站品牌展示
+  loadSystemConfig()
 
   // 如果未登录，跳转到登录页
   if (!userStore.isLoggedIn) {

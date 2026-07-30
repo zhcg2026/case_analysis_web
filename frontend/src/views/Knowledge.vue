@@ -699,9 +699,11 @@ onUnmounted(() => {
 .stat-card {
   --c: var(--info);
   --cb: var(--info-light);
-  display: flex;
+  display: grid;
+  grid-template-columns: 34px 1fr;
+  grid-template-rows: auto auto;
   align-items: center;
-  gap: var(--space-2);
+  gap: 0 var(--space-2);
   padding: var(--space-3);
   background: var(--bg-base);
   border: 1px solid var(--border-lighter);
@@ -726,16 +728,21 @@ onUnmounted(() => {
   color: var(--c);
   /* 图标块背景：用主色 15% 透明自动算 —— 亮色卡片上是浅彩块、深色卡片上是深彩块，统一自适应 */
   background: color-mix(in srgb, var(--c) 15%, transparent);
+  grid-row: 1 / 3;
+  align-self: center;
 }
 .stat-num {
   font-size: 18px;
   font-weight: 700;
   color: var(--c);
   line-height: 1.1;
+  align-self: end;
 }
 .stat-label {
   font-size: 12px;
   color: var(--text-tertiary);
+  align-self: start;
+  white-space: nowrap;
 }
 
 .hot-list {

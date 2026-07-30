@@ -10,19 +10,9 @@
       <div class="login-card">
         <div class="login-header">
           <div class="login-logo">
-            <svg viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <rect width="60" height="60" rx="12" fill="url(#loginGrad)"/>
-              <path d="M18 30L27 39L42 21" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
-              <circle cx="30" cy="30" r="24" stroke="white" stroke-width="2" stroke-dasharray="6 6" opacity="0.4"/>
-              <defs>
-                <linearGradient id="loginGrad" x1="0" y1="0" x2="60" y2="60">
-                  <stop offset="0%" stop-color="#409eff"/>
-                  <stop offset="100%" stop-color="#00c6fb"/>
-                </linearGradient>
-              </defs>
-            </svg>
+            <AppLogo :size="60" />
           </div>
-          <h1 class="login-title">智慧平台一站通</h1>
+          <h1 class="login-title">{{ config.name }}</h1>
           <p class="login-subtitle">智能数据分析平台</p>
         </div>
 
@@ -102,6 +92,8 @@
 import { ref, reactive, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '../stores/user'
+import { useSystemConfig } from '../composables/useSystemConfig'
+import AppLogo from '../components/common/AppLogo.vue'
 import axios from 'axios'
 
 const router = useRouter()
@@ -112,6 +104,7 @@ const form = reactive({
   password: ''
 })
 
+const { config } = useSystemConfig()
 const loading = ref(false)
 const error = ref('')
 const showPassword = ref(false)

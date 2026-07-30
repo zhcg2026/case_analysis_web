@@ -4,19 +4,9 @@
       <!-- 顶部标题 -->
       <div class="sidebar-header">
         <div class="header-logo">
-          <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <rect width="40" height="40" rx="8" fill="url(#grad1)"/>
-            <path d="M12 20L18 26L28 14" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-            <circle cx="20" cy="20" r="16" stroke="white" stroke-width="2" stroke-dasharray="4 4" opacity="0.5"/>
-            <defs>
-              <linearGradient id="grad1" x1="0" y1="0" x2="40" y2="40">
-                <stop offset="0%" stop-color="#409eff"/>
-                <stop offset="100%" stop-color="#00c6fb"/>
-              </linearGradient>
-            </defs>
-          </svg>
+          <AppLogo :size="40" />
         </div>
-        <span class="header-text" v-show="!isCollapsed">智慧平台一站通</span>
+        <span class="header-text" v-show="!isCollapsed">{{ config.name }}</span>
       </div>
 
       <nav class="sidebar-nav">
@@ -50,6 +40,8 @@
 import { ref, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { useUserStore } from '../../stores/user'
+import { useSystemConfig } from '../../composables/useSystemConfig'
+import AppLogo from './AppLogo.vue'
 
 const props = defineProps({
   collapsed: {
@@ -61,6 +53,7 @@ const props = defineProps({
 const emit = defineEmits(['update:collapsed'])
 const route = useRoute()
 const userStore = useUserStore()
+const { config } = useSystemConfig()
 
 const isCollapsed = ref(props.collapsed)
 

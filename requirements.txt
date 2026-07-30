@@ -33,6 +33,7 @@ pymilvus>=2.3.0
 milvus_lite>=2.3.0
 jieba>=0.42.1
 rank-bm25>=0.2.2
+zhconv>=1.4.0  # 繁->简转换：处理部分繁体法规 md（缺包时降级保留原文，kb_index.py 已做软依赖）
 
 # 视频报告依赖
 matplotlib>=3.5.0

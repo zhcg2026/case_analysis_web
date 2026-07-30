@@ -276,6 +276,61 @@ def serve_upload(filename):
     upload_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
     return send_from_directory(upload_dir, filename)
 
+# ===================== 系统配置（系统名称 / Logo） =====================
+# GET 公开：仅用于前端展示品牌，不含敏感信息；POST 需管理员
+@app.route('/api/system/config', methods=['GET'])
+def get_system_config():
+    default = {'system_name': '智慧平台一站通', 'system_logo': ''}
+    try:
+        if Session is None:
+            return jsonify(default)
+        with Session() as session:
+            rows = session.query(SystemConfig).all()
+            cfg = {r.config_key: r.config_value for r in rows}
+            result = {
+                'system_name': (cfg.get('system_name') or default['system_name']),
+                'system_logo': (cfg.get('system_logo') or default['system_logo']),
+            }
+            # 首次访问补种默认值，保证设置页有可读写数据
+            need_seed = []
+            if 'system_name' not in cfg:
+                need_seed.append(('system_name', default['system_name']))
+            if 'system_logo' not in cfg:
+                need_seed.append(('system_logo', default['system_logo']))
+            if need_seed:
+                for k, v in need_seed:
+                    session.add(SystemConfig(config_key=k, config_value=v))
+                session.commit()
+            return jsonify(result)
+    except Exception as e:
+        print(f"获取系统配置失败: {e}")
+        return jsonify(default)
+
+
+@app.route('/api/system/config', methods=['POST'])
+@admin_required
+def update_system_config():
+    try:
+        data = request.get_json(force=True, silent=True) or {}
+        name = (data.get('system_name') or '').strip()
+        logo = (data.get('system_logo') or '').strip()
+        if not name:
+            return jsonify({'error': '系统名称不能为空'}), 400
+        if Session is None:
+            return jsonify({'error': '数据库未连接'}), 503
+        with Session() as session:
+            for key, val in (('system_name', name), ('system_logo', logo)):
+                row = session.query(SystemConfig).filter_by(config_key=key).first()
+                if row:
+                    row.config_value = val
+                else:
+                    session.add(SystemConfig(config_key=key, config_value=val))
+            session.commit()
+        return jsonify({'system_name': name, 'system_logo': logo, 'message': '保存成功'})
+    except Exception as e:
+        print(f"更新系统配置失败: {e}")
+        return jsonify({'error': '保存失败'}), 500
+
 # 前端静态文件路由
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')

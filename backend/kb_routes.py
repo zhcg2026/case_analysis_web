@@ -15,6 +15,7 @@
 import os
 from dotenv import load_dotenv
 from flask import request, jsonify
+from kb_store import get_client  # 复用 milvus 单例连接，避免同进程对本地 db 重复开 MilvusClient 触发 500
 
 # 确保 kb_common 读取 USE_LOCAL_MODE 等时使用正确的 .env
 load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
@@ -82,8 +83,7 @@ def register_kb_routes(app, protected=None, admin_required=None):
         try:
             from pymilvus import MilvusClient
             from kb_common import USE_LOCAL_MODE, LOCAL_MILVUS_FILE, MILVUS_HOST, MILVUS_PORT
-            client = MilvusClient(LOCAL_MILVUS_FILE) if USE_LOCAL_MODE \
-                else MilvusClient(uri=f"http://{MILVUS_HOST}:{MILVUS_PORT}")
+            client = get_client()
 
             if not client.has_collection(UNIFIED_COLLECTION):
                 return jsonify({"exists": False, "total": 0, "by_type": {}, "by_law_status": {}}), 200
@@ -133,8 +133,7 @@ def register_kb_routes(app, protected=None, admin_required=None):
             from kb_common import USE_LOCAL_MODE, LOCAL_MILVUS_FILE, MILVUS_HOST, MILVUS_PORT
             from kb_index import KB_SOURCE_DIR, DIR_DOC_TYPE, UNIFIED_COLLECTION
             import os
-            client = MilvusClient(LOCAL_MILVUS_FILE) if USE_LOCAL_MODE \
-                else MilvusClient(uri=f"http://{MILVUS_HOST}:{MILVUS_PORT}")
+            client = get_client()
 
             by_type = {t: 0 for t in DOC_TYPES}
             total = 0
@@ -221,8 +220,7 @@ def register_kb_routes(app, protected=None, admin_required=None):
         try:
             from pymilvus import MilvusClient
             from kb_common import USE_LOCAL_MODE, LOCAL_MILVUS_FILE, MILVUS_HOST, MILVUS_PORT
-            client = MilvusClient(LOCAL_MILVUS_FILE) if USE_LOCAL_MODE \
-                else MilvusClient(uri=f"http://{MILVUS_HOST}:{MILVUS_PORT}")
+            client = get_client()
 
             doc_type = request.args.get('doc_type') or None
             keyword = (request.args.get('keyword') or '').strip()
@@ -281,8 +279,7 @@ def register_kb_routes(app, protected=None, admin_required=None):
         try:
             from pymilvus import MilvusClient
             from kb_common import USE_LOCAL_MODE, LOCAL_MILVUS_FILE, MILVUS_HOST, MILVUS_PORT
-            client = MilvusClient(LOCAL_MILVUS_FILE) if USE_LOCAL_MODE \
-                else MilvusClient(uri=f"http://{MILVUS_HOST}:{MILVUS_PORT}")
+            client = get_client()
 
             if not client.has_collection(UNIFIED_COLLECTION):
                 return jsonify({"error": "集合不存在"}), 404
@@ -313,8 +310,7 @@ def register_kb_routes(app, protected=None, admin_required=None):
             from pymilvus import MilvusClient
             from urllib.parse import unquote
             from kb_common import USE_LOCAL_MODE, LOCAL_MILVUS_FILE, MILVUS_HOST, MILVUS_PORT
-            client = MilvusClient(LOCAL_MILVUS_FILE) if USE_LOCAL_MODE \
-                else MilvusClient(uri=f"http://{MILVUS_HOST}:{MILVUS_PORT}")
+            client = get_client()
             if not client.has_collection(UNIFIED_COLLECTION):
                 return jsonify({"error": "集合不存在"}), 404
             try:

@@ -4,7 +4,7 @@
     <div class="welcome-banner">
       <div class="welcome-content">
         <h1 class="welcome-title">欢迎回来，{{ userStore.username }}</h1>
-        <p class="welcome-subtitle">智慧平台一站通 v2.0 - 智能数据分析平台</p>
+        <p class="welcome-subtitle">{{ config.name }} v2.0 - 智能数据分析平台</p>
       </div>
       <div class="welcome-time">
         <div class="time-display">{{ currentTime }}</div>
@@ -49,9 +49,11 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '../stores/user'
+import { useSystemConfig } from '../composables/useSystemConfig'
 import axios from 'axios'
 
 const userStore = useUserStore()
+const { config } = useSystemConfig()
 const router = useRouter()
 
 const currentTime = ref('')

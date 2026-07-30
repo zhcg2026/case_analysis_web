@@ -580,11 +580,8 @@
       <div class="card-header">
         <h2 class="section-title">报告模板管理</h2>
         <div class="card-header-actions">
-          <button class="btn btn-secondary" @click="showTemplateUploader = true">
+          <button class="btn btn-primary" @click="showTemplateUploader = true">
             <span class="btn-icon">📁</span> 上传Word模板
-          </button>
-          <button class="btn btn-primary" @click="openReportEditor(null)">
-            + 新建模板
           </button>
         </div>
       </div>
@@ -594,7 +591,7 @@
       </div>
 
       <div v-else-if="reportTemplates.length === 0" class="empty-state">
-        <p>暂无报告模板，点击"新建模板"开始创建</p>
+        <p>暂无报告模板，点击上方"上传Word模板"按钮导入</p>
       </div>
 
       <div v-else class="report-grid">
@@ -622,7 +619,7 @@
       <div class="modal-overlay" v-if="showReportEditor" @click.self="closeReportEditor">
         <div class="modal-content report-editor-modal">
           <div class="modal-header">
-            <h2>{{ editingReport ? '编辑报告模板' : '新建报告模板' }}</h2>
+            <h2>编辑报告模板</h2>
             <button class="close-btn" @click="closeReportEditor">&times;</button>
           </div>
           <div class="modal-body">
@@ -655,20 +652,31 @@
               <div v-for="(sec, idx) in reportForm.sections" :key="idx" class="section-item">
                 <div class="section-item-header">
                   <span class="section-num">{{ idx + 1 }}</span>
+                  <input v-model="sec.title" class="form-input section-title-input" placeholder="章节标题，如：一、案件总览" />
                   <div class="section-controls">
                     <button class="btn-icon-sm" @click="moveReportSection(idx, -1)" :disabled="idx === 0">↑</button>
                     <button class="btn-icon-sm" @click="moveReportSection(idx, 1)" :disabled="idx === reportForm.sections.length - 1">↓</button>
                     <button class="btn-icon-sm danger" @click="removeReportSection(idx)">×</button>
                   </div>
                 </div>
-                <input v-model="sec.title" class="form-input" placeholder="章节标题，如：一、案件总览" />
-                <input v-model="sec.query" class="form-input" placeholder="分析需求，如：各片区案件数量统计" />
-                <select v-model="sec.chart_type" class="form-select form-select-sm">
-                  <option value="bar">柱状图</option>
-                  <option value="horizontal_bar">横向柱状图</option>
-                  <option value="pie">饼图</option>
-                  <option value="line">折线图</option>
-                </select>
+
+                <div class="section-charts">
+                  <div class="charts-header">
+                    <span class="charts-label">图表配置</span>
+                  </div>
+                  <div v-for="(chart, cidx) in sec.charts || []" :key="cidx" class="chart-item">
+                    <input v-model="chart.name" class="form-input chart-name-input" placeholder="图表名称，如：每日上报趋势" />
+                    <select v-model="chart.chart_type" class="form-select form-select-sm">
+                      <option value="bar">柱状图</option>
+                      <option value="horizontal_bar">横向柱状图</option>
+                      <option value="pie">饼图</option>
+                      <option value="line">折线图</option>
+                    </select>
+                    <input v-model="chart.query" class="form-input chart-query-input" placeholder="自定义SQL（留空自动匹配，支持 {month_filter} 占位符）" />
+                    <button class="btn-icon-sm danger" @click="removeChart(idx, cidx)" title="删除图表">×</button>
+                  </div>
+                  <button class="btn btn-xs btn-secondary" @click="addChart(idx)">+ 添加图表</button>
+                </div>
               </div>
             </div>
           </div>
@@ -944,6 +952,7 @@ import axios from 'axios'
 import { Editor, Toolbar } from '@wangeditor/editor-for-vue'
 import '@wangeditor/editor/dist/css/style.css'
 import KbIcon from '../components/common/KbIcon.vue'
+import { useSystemConfig } from '../composables/useSystemConfig'
 
 const router = useRouter()
 
@@ -1130,8 +1139,8 @@ const platformForm = ref({
 })
 const platformSaving = ref(false)
 
-// 系统设置
-const systemConfig = ref({ name: '', logo: '' })
+// 系统设置：直接使用全局共享配置（与侧边栏/登录页同一份，保存后全站实时生效）
+const { config: systemConfig, loadSystemConfig, saveSystemConfig: _saveSystemConfig } = useSystemConfig()
 
 // 文章管理
 const articles = ref([])
@@ -1206,17 +1215,12 @@ async function loadReportTemplates() {
 }
 
 function openReportEditor(template) {
-  if (template) {
-    editingReport.value = template
-    reportForm.value = {
-      name: template.name,
-      description: template.description || '',
-      report_type: template.report_type || 'single',
-      sections: JSON.parse(JSON.stringify(template.sections || [])),
-    }
-  } else {
-    editingReport.value = null
-    reportForm.value = { name: '', description: '', report_type: 'single', sections: [] }
+  editingReport.value = template
+  reportForm.value = {
+    name: template.name,
+    description: template.description || '',
+    report_type: template.report_type || 'single',
+    sections: JSON.parse(JSON.stringify(template.sections || [])),
   }
   showReportEditor.value = true
 }
@@ -1227,7 +1231,28 @@ function closeReportEditor() {
 }
 
 function addReportSection() {
-  reportForm.value.sections.push({ title: '', query: '', chart_type: 'bar' })
+  reportForm.value.sections.push({
+    title: '',
+    query: '',
+    chart_type: 'bar',
+    charts: [{ name: '', chart_type: 'bar', query: '' }]
+  })
+}
+
+function addChart(sectionIdx) {
+  const sec = reportForm.value.sections[sectionIdx]
+  if (!sec.charts) sec.charts = []
+  sec.charts.push({ name: '', chart_type: 'bar', query: '' })
+}
+
+function removeChart(sectionIdx, chartIdx) {
+  const sec = reportForm.value.sections[sectionIdx]
+  if (!sec.charts) return
+  sec.charts.splice(chartIdx, 1)
+  // 至少保留一个图表
+  if (sec.charts.length === 0) {
+    sec.charts.push({ name: '', chart_type: 'bar', query: '' })
+  }
 }
 
 function removeReportSection(index) {
@@ -1246,15 +1271,12 @@ function moveReportSection(index, dir) {
 async function saveReport() {
   if (!reportForm.value.name.trim()) return alert('请输入模板名称')
   if (!reportForm.value.sections.length) return alert('请至少添加一个章节')
+  if (!editingReport.value) return
 
   reportSaving.value = true
   try {
     const payload = { ...reportForm.value }
-    if (editingReport.value) {
-      await axios.put(`/api/report-templates/${editingReport.value.id}`, payload)
-    } else {
-      await axios.post('/api/report-templates', payload)
-    }
+    await axios.put(`/api/report-templates/${editingReport.value.id}`, payload)
     closeReportEditor()
     await loadReportTemplates()
   } catch (e) {
@@ -1339,11 +1361,18 @@ async function createFromTemplate() {
     const result = templateUploadResult.value
     const structure = result.structure || {}
 
-    // 从解析的结构创建模板
+    // 从解析的结构创建模板（保留 Word 中识别出的多图表层级）
     const sections = (structure.sections || []).map(sec => ({
       title: sec.title || '',
-      query: '',
+      query: sec.query || '',
       chart_type: sec.chart_type || 'bar',
+      charts: (sec.charts || []).map(c => ({
+        name: c.name || '',
+        chart_type: c.chart_type || 'bar',
+        query: c.query || '',
+        description: c.description || '',
+        image_paragraph_index: c.image_paragraph_index,
+      })),
       image_paragraph_index: sec.image_paragraph_index,
       caption_paragraph_index: sec.caption_paragraph_index,
       table_index: sec.table_index,
@@ -1352,7 +1381,7 @@ async function createFromTemplate() {
     const payload = {
       name: result.original_filename.replace('.docx', ''),
       description: `从Word模板导入 - ${result.original_filename}`,
-      report_type: 'single',
+      report_type: ('对比' in (result.original_filename || '') || 'compare' in (result.original_filename || '').toLowerCase()) ? 'compare' : 'single',
       sections: sections,
       template_file: result.file_path,
       template_structure: structure,
@@ -1854,10 +1883,10 @@ function removePlatformImage() {
 }
 
 // ===== 系统设置方法 =====
+// 配置已由 App.vue 启动时统一加载（全局共享），此处打开设置页时再拉取一次确保为最新落库值
 async function fetchSystemConfig() {
   try {
-    const response = await axios.get('/api/system/config')
-    systemConfig.value = response.data || {}
+    await loadSystemConfig()
   } catch (error) {
     console.error('获取系统配置失败:', error)
   }
@@ -1865,8 +1894,8 @@ async function fetchSystemConfig() {
 
 async function saveSystemConfig() {
   try {
-    await axios.post('/api/system/config', systemConfig.value)
-    alert('保存成功')
+    await _saveSystemConfig({ name: systemConfig.name, logo: systemConfig.logo })
+    alert('保存成功，全站名称与图标已更新')
   } catch (error) {
     console.error('保存系统配置失败:', error)
     alert('保存失败')
@@ -3457,15 +3486,17 @@ watch(articlesCurrentPage, fetchArticles)
 /* ===== 通用知识库管理（统一库 unified_kb）样式 ===== */
 .kb-stat-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
   gap: var(--space-3);
   margin-bottom: var(--space-4);
 }
 .kb-stat-card {
   --kc: var(--info);
-  display: flex;
+  display: grid;
+  grid-template-columns: 38px 1fr;
+  grid-template-rows: auto auto;
   align-items: center;
-  gap: var(--space-3);
+  gap: 0 var(--space-3);
   padding: var(--space-3) var(--space-4);
   background: var(--bg-base);
   border: 1px solid var(--border-lighter);
@@ -3481,18 +3512,21 @@ watch(articlesCurrentPage, fetchArticles)
   border-radius: var(--radius-sm);
   color: var(--kc);
   background: color-mix(in srgb, var(--kc) 14%, transparent);
+  grid-row: 1 / 3;
+  align-self: center;
 }
 .kb-stat-num {
   font-size: 20px;
   font-weight: 700;
   color: var(--kc);
   line-height: 1.1;
+  align-self: end;
 }
 .kb-stat-label {
   font-size: 12px;
   color: var(--text-tertiary);
-  margin-left: auto;
-  text-align: right;
+  align-self: start;
+  white-space: nowrap;
 }
 .kb-stat-total .kb-stat-icon { color: var(--primary-500); background: var(--primary-50); }
 .kb-stat-total .kb-stat-num { color: var(--text-primary); }
@@ -3848,7 +3882,7 @@ watch(articlesCurrentPage, fetchArticles)
 
 /* 报告编辑模态框 */
 .report-editor-modal {
-  max-width: 700px;
+  max-width: 900px;
 }
 
 .sections-editor {
@@ -3877,9 +3911,13 @@ watch(articlesCurrentPage, fetchArticles)
 }
 .section-item-header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  gap: var(--space-2);
   margin-bottom: var(--space-2);
+}
+.section-title-input {
+  flex: 1;
+  margin-bottom: 0 !important;
 }
 .section-num {
   font-size: 14px;
@@ -3932,6 +3970,53 @@ watch(articlesCurrentPage, fetchArticles)
 }
 .section-item .form-select-sm {
   margin-bottom: 0;
+}
+
+.section-charts {
+  background: var(--bg-primary);
+  border: 1px dashed var(--border-color);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  margin-top: var(--space-2);
+}
+.charts-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-2);
+}
+.charts-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.chart-item {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+.chart-item .form-input,
+.chart-item .form-select {
+  margin-bottom: 0;
+  width: auto;
+  min-width: 0;
+}
+.chart-name-input {
+  flex: 1.2;
+  min-width: 120px;
+}
+.chart-query-input {
+  flex: 2;
+  min-width: 200px;
+}
+.chart-item .btn-icon-sm {
+  flex-shrink: 0;
+}
+.btn-xs {
+  padding: 4px 10px;
+  font-size: 12px;
 }
 
 /* Word模板上传样式 */

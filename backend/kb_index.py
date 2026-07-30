@@ -39,6 +39,19 @@ from kb_embed import embed  # noqa: E402
 # 灌库时对每条 text 分词存 text_tokens 字段，检索时对 query 分词后算 BM25 分。
 import jieba  # noqa: E402
 
+# zhconv：繁->简。部分法规 md 正文为繁体（源站抓取，如「第二十條」「大氣污染」），
+# 转入库时统一转简体，使 BM25 字面匹配（权重 1.5）对简体查询生效、展示也给一线人员简体。
+# 注意：只转【入库文本】，md 源文件保持原样（忠实源）。
+# 软依赖：未安装时降级保留原文，不影响主流程与接口可用性。
+try:
+    import zhconv
+    _HAS_ZHCONV = True
+except ImportError:
+    zhconv = None
+    _HAS_ZHCONV = False
+    print("[kb_index] 警告：zhconv 未安装，繁体法规将保留原文（BM25 简体查询可能弱召回）。"
+          "  修复：pip install zhconv")
+
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s [kb_index] %(levelname)s %(message)s")
 logger = logging.getLogger("kb_index")
@@ -258,7 +271,9 @@ def parse_law_md(path):
                     k, v = line.split(":", 1)
                     meta[k.strip()] = v.strip().strip('"')
 
-    pat = re.compile(r"第[一二三四五六七八九十百零0-9]+条")
+    # 兼容简繁「条/條」：部分法规 md 正文为繁体（源站抓取），如「第二十條」，
+    # 仅匹配简体「条」会导致整部法切块失败、退化成「全文」单块（且被 embed 截断）。
+    pat = re.compile(r"第[一二三四五六七八九十百零0-9]+[条條]")
     matches = list(pat.finditer(body))
     articles = []
     if not matches:
@@ -280,12 +295,19 @@ def parse_law_md(path):
     for label, txt in articles:
         if not txt:
             continue
+        # 繁->简（仅入库文本，md 源不动）；缺 zhconv 时保留原文
+        if _HAS_ZHCONV:
+            s_title = zhconv.convert(title, "zh-cn")
+            s_label = zhconv.convert(label, "zh-cn")
+            s_txt = zhconv.convert(txt, "zh-cn")
+        else:
+            s_title, s_label, s_txt = title, label, txt
         chunks.append({
-            "text": f"{title} {label} {txt}",
-            "title": f"{title} {label}",
+            "text": f"{s_title} {s_label} {s_txt}",
+            "title": f"{s_title} {s_label}",
             "meta": {
-                "article_no": label,
-                "title": title,
+                "article_no": s_label,
+                "title": s_title,
                 "level": meta.get("level", ""),
                 "authority": meta.get("authority", ""),
                 "effective_date": meta.get("effective_date", ""),

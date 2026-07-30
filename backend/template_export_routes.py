@@ -264,6 +264,68 @@ def infer_query_from_title(title):
     return f"分析{title}相关数据"
 
 
+def _resolve_chart_configs_from_structure(section_title, charts, selected_months, report_type='single'):
+    """根据 template_structure 中的 charts 数组，生成实际可用的 chart configs。
+    如果 chart 自带 query 则直接使用；否则按名称在硬编码配置中模糊匹配；
+    仍匹配不到则根据 chart_type 返回一个兜底查询。
+    """
+    from difflib import SequenceMatcher
+
+    def _similar(a, b):
+        return SequenceMatcher(None, a, b).ratio()
+
+    # 获取硬编码的该章节配置
+    base_configs = _get_chart_configs_with_month(section_title, selected_months, report_type)
+
+    result = []
+    for chart in charts:
+        name = chart.get('name', '')
+        chart_type = chart.get('chart_type', 'bar')
+        query = chart.get('query', '')
+
+        # 1. 如果前端已写 query，直接透传
+        if query:
+            result.append({"title": name, "chart_type": chart_type, "query": query})
+            continue
+
+        # 2. 在硬编码配置里按名称相似度匹配
+        best_cfg = None
+        best_score = 0.0
+        for cfg in base_configs:
+            cfg_title = cfg.get('title', '')
+            score = _similar(name, cfg_title)
+            # 互相包含给更高权重
+            if name in cfg_title or cfg_title in name:
+                score = max(score, 0.6)
+            if score > best_score:
+                best_score = score
+                best_cfg = cfg
+
+        if best_cfg and best_score >= 0.5:
+            entry = {"title": name, "chart_type": best_cfg.get('chart_type', chart_type)}
+            if "queries" in best_cfg:
+                entry["queries"] = best_cfg["queries"]
+            if "query" in best_cfg:
+                entry["query"] = best_cfg["query"]
+            result.append(entry)
+            continue
+
+        # 3. 兜底：按 chart_type 返回一个通用查询
+        fallback_queries = {
+            "line": "SELECT DATE(report_time) AS 日期, COUNT(*) AS 案件数 FROM case_data {month_filter} GROUP BY DATE(report_time) ORDER BY 日期",
+            "bar": "SELECT big_category AS 分类, COUNT(*) AS 案件数 FROM case_data {month_filter} GROUP BY big_category ORDER BY 案件数 DESC LIMIT 15",
+            "horizontal_bar": "SELECT small_category AS 分类, COUNT(*) AS 案件数 FROM case_data {month_filter} GROUP BY small_category ORDER BY 案件数 DESC LIMIT 15",
+            "pie": "SELECT big_category AS 分类, COUNT(*) AS 案件数 FROM case_data {month_filter} GROUP BY big_category ORDER BY 案件数 DESC",
+        }
+        month_filter = _build_month_filter(selected_months)
+        month_filter_and = month_filter.replace('WHERE', 'AND', 1) if month_filter.startswith('WHERE') else month_filter
+        q = fallback_queries.get(chart_type, fallback_queries["bar"])
+        q = q.replace("{month_filter_and}", month_filter_and).replace("{month_filter}", month_filter if month_filter else "")
+        result.append({"title": name, "chart_type": chart_type, "query": q})
+
+    return result
+
+
 # ============================================================
 # LLM helper
 # ============================================================
@@ -1116,6 +1178,8 @@ def _fill_placeholders(doc, year, month_num, summary_data, engine=None, selected
             new_text = new_text.replace('（）月 vs （）月', f'{earlier_num}月 vs {later_num}月')
             new_text = new_text.replace('（）年（）月-（）月', f'{earlier_month[:4]}年{earlier_num}月-{later_num}月')
             new_text = new_text.replace('（）月较（）月', f'{later_num}月较{earlier_num}月')
+            # "（）月案件量较（）月" 语义是"后月较前月"，须在通用（）月替换前处理，否则方向会反
+            new_text = new_text.replace('（）月案件量较（）月', f'{later_num}月案件量较{earlier_num}月')
 
             # 替换月份数字（前月在前，后月在后）
             new_text = new_text.replace('（）月', f'{earlier_num}月', 1)  # 第一个（）月=前月
@@ -1127,23 +1191,29 @@ def _fill_placeholders(doc, year, month_num, summary_data, engine=None, selected
             new_text = new_text.replace('从（）延长至（）', f'从{avg1}h延长至{avg2}h')
             new_text = new_text.replace('从（）h延长至（）h', f'从{avg1}h延长至{avg2}h')
 
-            # 替换重复案件数据
+            # 替换重复案件数据（"共发现 （）组"与"共发现 组"两种写法都兼容）
             import re
-            new_text = re.sub(r'共发现\s+组', f'共发现 {total_r:,} 组', new_text)
+            new_text = re.sub(r'共发现\s*（）?\s*组', f'共发现 {total_r:,} 组', new_text)
+            new_text = new_text.replace('共发现（）组', f'共发现 {total_r:,} 组')
             new_text = new_text.replace('持续存在 （）组', f'持续存在 {persist_r:,} 组')
             new_text = new_text.replace('持续存在（）组', f'持续存在 {persist_r:,} 组')
             new_text = new_text.replace('已解决 （）组', f'已解决 {resolved_r:,} 组')
             new_text = new_text.replace('已解决（）组', f'已解决 {resolved_r:,} 组')
             new_text = new_text.replace('新增 （）组', f'新增 {new_r:,} 组')
             new_text = new_text.replace('新增（）组', f'新增 {new_r:,} 组')
+            # 重复案件：（）处持续存在 / （）处已解决 / （）处新增（数在前、词在后的写法，区别于上面的"持续存在（）组"）
+            new_text = new_text.replace('（）处持续存在', f'{persist_r}处持续存在')
+            new_text = new_text.replace('（）处已解决', f'{resolved_r}处已解决')
+            new_text = new_text.replace('（）处新增', f'{new_r}处新增')
 
             # 替换总结中的数据（前月→后月）
             new_text = new_text.replace(f'{earlier_num}月（）件', f'{earlier_num}月{t1:,}件')
             new_text = new_text.replace(f'{later_num}月（）件', f'{later_num}月{t2:,}件')
             new_text = new_text.replace('（）件→', f'{t1:,}件→')
             new_text = new_text.replace('→（）件', f'→{t2:,}件')
-            new_text = new_text.replace('→（）h', f'→{avg2}h')
+            # 先处理"前月→后月"整体（避免先填后段把前段吃掉）
             new_text = new_text.replace('（）→（）h', f'{avg1}h→{avg2}h')
+            new_text = new_text.replace('→（）h', f'→{avg2}h')
             new_text = new_text.replace('办结率（）%', f'办结率{cr2}%')
             new_text = new_text.replace('延期（）→（）', f'延期{d1}→{d2}')
             new_text = new_text.replace('返工（）→（）', f'返工{r1}→{r2}')
@@ -1193,8 +1263,8 @@ def _fill_placeholders(doc, year, month_num, summary_data, engine=None, selected
 # Chart insertion (uses python-docx standard API)
 # ============================================================
 
-def _insert_image_after_paragraph(doc, paragraph, img_bytes, width_inches=6.8):
-    """Insert image after a paragraph using python-docx standard API, centered"""
+def _insert_image_after_element(doc, anchor_elem, img_bytes, width_inches=6.8):
+    """Insert a centered image paragraph AFTER the given XML element; returns the new <w:p> element."""
     from docx.shared import Inches
     from docx.enum.text import WD_ALIGN_PARAGRAPH
     from docx.oxml.ns import qn
@@ -1210,7 +1280,7 @@ def _insert_image_after_paragraph(doc, paragraph, img_bytes, width_inches=6.8):
     drawing_elements = temp_para._element.findall('.//' + qn('w:drawing'))
     if not drawing_elements:
         temp_para._element.getparent().remove(temp_para._element)
-        return
+        return None
 
     drawing = drawing_elements[0]
     new_para = OxmlElement('w:p')
@@ -1223,8 +1293,14 @@ def _insert_image_after_paragraph(doc, paragraph, img_bytes, width_inches=6.8):
     new_run = OxmlElement('w:r')
     new_run.append(copy.deepcopy(drawing))
     new_para.append(new_run)
-    paragraph._element.addnext(new_para)
+    anchor_elem.addnext(new_para)
     temp_para._element.getparent().remove(temp_para._element)
+    return new_para
+
+
+def _insert_image_after_paragraph(doc, paragraph, img_bytes, width_inches=6.8):
+    """Insert image after a paragraph using python-docx standard API, centered"""
+    return _insert_image_after_element(doc, paragraph._element, img_bytes, width_inches)
 
 
 # ============================================================
@@ -1260,11 +1336,13 @@ def _add_caption_after(doc, reference_element, caption_text):
     new_run.append(t_elem)
     new_para.append(new_run)
     reference_element.addnext(new_para)
+    return new_para
 
 
-def _fill_section_charts(doc, engine, selected_months, report_type='single'):
+def _fill_section_charts(doc, engine, selected_months, report_type='single', template_structure=None):
     """Generate charts and replace description paragraphs. Two-pass: collect then insert forwards for correct numbering."""
     paragraphs = list(doc.paragraphs)
+    structured_sections = (template_structure or {}).get('sections', [])
 
     # Pass 1 (backwards): collect work items and generate chart images
     work_items = []  # each: (desc_para, [(cfg, img_bytes), ...])
@@ -1272,7 +1350,26 @@ def _fill_section_charts(doc, engine, selected_months, report_type='single'):
         para = paragraphs[i]
         if para.style.name == 'Heading 1':
             section_title = para.text.strip()
-            chart_configs = _get_chart_configs_with_month(section_title, selected_months, report_type)
+
+            # 对比报告：优先用硬编码配置（每章 1 张合成图，内部自带"两图并列"子图），
+            # 与模板章节一一对应；结构解析会把"图1/图2"逐子图展开成多张散图，仅作兜底。
+            chart_configs = []
+            if report_type == 'compare':
+                chart_configs = _get_chart_configs_with_month(section_title, selected_months, report_type)
+
+            # 回退到 template_structure 里解析出的 charts 数组
+            if not chart_configs:
+                for sec in structured_sections:
+                    if sec.get('title', '').strip() == section_title:
+                        charts = sec.get('charts', [])
+                        if charts:
+                            chart_configs = _resolve_chart_configs_from_structure(section_title, charts, selected_months, report_type)
+                        break
+
+            # 再回退到硬编码配置
+            if not chart_configs:
+                chart_configs = _get_chart_configs_with_month(section_title, selected_months, report_type)
+
             if chart_configs:
                 desc_para = None
                 for j in range(i + 1, min(i + 3, len(paragraphs))):
@@ -1302,15 +1399,15 @@ def _fill_section_charts(doc, engine, selected_months, report_type='single'):
     work_items.reverse()
     fig_num = 0
     for desc_para, charts in work_items:
+        # 移动锚点：每张图插到上一张图/图题之后，保证 图1,图2 顺序正确（否则倒序）
+        anchor_elem = desc_para._element
         for cfg, img_bytes in charts:
             fig_num += 1
             try:
-                _insert_image_after_paragraph(doc, desc_para, img_bytes)
-                img_elem = desc_para._element.getnext()
+                img_elem = _insert_image_after_element(doc, anchor_elem, img_bytes)
                 if img_elem is not None:
-                    from docx.oxml.ns import qn as _qn
-                    if img_elem.findall('.//' + _qn('w:drawing')):
-                        _add_caption_after(doc, img_elem, f"图{fig_num}: {cfg['title']}")
+                    cap_elem = _add_caption_after(doc, img_elem, f"图{fig_num}: {cfg['title']}")
+                    anchor_elem = cap_elem if cap_elem is not None else img_elem
             except Exception as e:
                 print(f"  Chart insert error for '{cfg.get('title')}': {e}")
         try:
@@ -1846,6 +1943,26 @@ def _update_document_title(doc, report_title, original_template_name):
 # Main Word generation function
 # ============================================================
 
+def _extract_title_suffix(doc, fallback):
+    """从模板 Title 段提取副标题（如"案件对比分析报告"），去掉开头'（）月 vs （）月'占位。
+
+    让报告标题忠实于模板自身的文案，而不是用 DB 模板名（可能少字，如"对比分析报告"）。
+    """
+    import re
+    try:
+        for p in doc.paragraphs:
+            if p.style.name in ('Title', 'Title 1', 'Title 2') and p.text.strip():
+                t = p.text.strip()
+                # 去掉开头的"X月 vs X月"/"（）月 vs （）月"前缀
+                m = re.sub(r'^.*?月\s*vs\s*.*?月\s*', '', t).strip()
+                if m:
+                    return m
+                break
+    except Exception:
+        pass
+    return fallback
+
+
 def _generate_word_from_template(template_file, title, results, template_structure=None, engine=None, selected_months=None, report_type='single'):
     """Generate Word report from template - placeholder fill, chart gen, table fill, summary gen"""
     from docx import Document
@@ -1860,9 +1977,12 @@ def _generate_word_from_template(template_file, title, results, template_structu
 
     # Step 1.5: Update document title with actual report period
     if report_type == 'compare' and len(selected_months) >= 2:
-        m1 = str(int(selected_months[0][4:6])) if len(selected_months[0]) >= 6 else "?"
-        m2 = str(int(selected_months[1][4:6])) if len(selected_months[1]) >= 6 else "?"
-        report_title = f"{m1}月 vs {m2}月 {title.replace('模板', '').strip()}"
+        # 月份升序显示（5月 vs 6月），副标题沿用模板自身文案（如"案件对比分析报告"）
+        ms = sorted([m for m in selected_months if len(m) >= 6])
+        m1 = str(int(ms[0][4:6])) if len(ms) >= 1 else "?"
+        m2 = str(int(ms[1][4:6])) if len(ms) >= 2 else "?"
+        subtitle = _extract_title_suffix(doc, title.replace('模板', '').strip())
+        report_title = f"{m1}月 vs {m2}月 {subtitle}"
     else:
         report_title = _build_report_title(title, year, month_num, selected_months)
     _update_document_title(doc, report_title, title)
@@ -1871,7 +1991,7 @@ def _generate_word_from_template(template_file, title, results, template_structu
     _fill_placeholders(doc, year, month_num, summary_data, engine=engine, selected_months=selected_months, report_type=report_type)
 
     # Step 3: Generate charts and replace description paragraphs
-    _fill_section_charts(doc, engine, selected_months, report_type)
+    _fill_section_charts(doc, engine, selected_months, report_type, template_structure)
 
     # Step 4: Fill table data
     _fill_tables(doc, engine, selected_months, summary_data=summary_data, report_type=report_type)
@@ -1888,6 +2008,36 @@ def _generate_word_from_template(template_file, title, results, template_structu
 # ============================================================
 # Route registration
 # ============================================================
+
+def _find_template_docx(template_name):
+    """template_file 为空时的兜底：在 uploads/templates 按模板名匹配最新 docx。
+
+    上传保存格式为 {uuid}_{原始文件名}.docx，原始文件名即模板名；
+    去掉 32 位 uuid 前缀后与原模板名比对，取修改时间最新者。
+    """
+    try:
+        upload_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'uploads', 'templates')
+        if not os.path.isdir(upload_dir):
+            return None
+        best = None
+        best_mtime = -1
+        for fn in os.listdir(upload_dir):
+            if not fn.lower().endswith('.docx'):
+                continue
+            stem = os.path.splitext(fn)[0]
+            # 去掉可能的 uuid_ 前缀
+            if '_' in stem and len(stem.split('_', 1)[0]) == 32:
+                stem = stem.split('_', 1)[1]
+            if template_name and template_name in stem or (stem and stem in (template_name or '')):
+                fp = os.path.join(upload_dir, fn)
+                mtime = os.path.getmtime(fp)
+                if mtime > best_mtime:
+                    best_mtime = mtime
+                    best = fp
+        return best
+    except Exception:
+        return None
+
 
 def register_template_export_routes(app, engine, protected=None):
     """Register template export routes"""
@@ -1956,6 +2106,16 @@ def register_template_export_routes(app, engine, protected=None):
         try:
             data = request.json
             with engine.connect() as conn:
+                # 若前端未携带 template_structure，保持原值，避免 Word 解析出的元数据被清空
+                tstruct_in = data.get('template_structure')
+                if tstruct_in is None:
+                    row = conn.execute(sa_text(
+                        "SELECT template_structure FROM report_templates WHERE id=:id"
+                    ), {"id": tid}).fetchone()
+                    tstruct = row[0] if row and row[0] else None
+                else:
+                    tstruct = json.dumps(tstruct_in, ensure_ascii=False)
+
                 conn.execute(sa_text(
                     "UPDATE report_templates SET name=:name, description=:desc, report_type=:rtype, sections=:sections, "
                     "template_file=:tfile, template_structure=:tstruct WHERE id=:id"
@@ -1963,7 +2123,7 @@ def register_template_export_routes(app, engine, protected=None):
                      "rtype": data.get('report_type', 'single'),
                      "sections": json.dumps(data.get('sections', []), ensure_ascii=False),
                      "tfile": data.get('template_file'),
-                     "tstruct": json.dumps(data.get('template_structure'), ensure_ascii=False) if data.get('template_structure') else None,
+                     "tstruct": tstruct,
                      "id": tid})
                 conn.commit()
             return jsonify({"success": True})
@@ -2097,22 +2257,46 @@ def register_template_export_routes(app, engine, protected=None):
 
             template_name = row[0]
             report_type = row[1] or 'single'
+            sections_json = row[2]
+            template_file = row[3]
+            template_structure_json = row[4]
             # Smart detection: if template name suggests comparison, treat as compare
             if report_type != 'compare' and ('对比' in template_name or 'compare' in template_name.lower()):
                 report_type = 'compare'
-            template_file = row[3]
+
+            # 优先使用模板结构里的 sections（含 Word 解析出的多图表层级）
+            template_structure = None
+            if template_structure_json:
+                try:
+                    template_structure = json.loads(template_structure_json) if isinstance(template_structure_json, str) else template_structure_json
+                except Exception:
+                    pass
+            if not template_structure and sections_json:
+                try:
+                    secs = json.loads(sections_json) if isinstance(sections_json, str) else sections_json
+                    template_structure = {"sections": secs}
+                except Exception:
+                    pass
 
             # Validate month selection for comparison reports
             if report_type == 'compare' and len(selected_months) < 2:
                 return jsonify({"error": "对比分析报告至少需要选择2个月的数据"}), 400
 
+            # 兜底：template_file 为空时，按模板名在 uploads/templates 自动匹配 docx，避免字段缺失导致 404
             if not template_file or not os.path.exists(template_file):
-                return jsonify({"error": "模板文件不存在"}), 404
+                candidate = _find_template_docx(template_name)
+                if candidate:
+                    template_file = candidate
+
+            if not template_file or not os.path.exists(template_file):
+                return jsonify({"error": "模板文件不存在，请重新上传模板"}), 404
 
             # Build proper report title with month info
             if report_type == 'compare' and len(selected_months) >= 2:
-                m1 = str(int(selected_months[0][4:6])) if len(selected_months[0]) >= 6 else "?"
-                m2 = str(int(selected_months[1][4:6])) if len(selected_months[1]) >= 6 else "?"
+                # 月份升序（5月 vs 6月），文件名与文档标题保持一致
+                ms = sorted([m for m in selected_months if len(m) >= 6])
+                m1 = str(int(ms[0][4:6])) if len(ms) >= 1 else "?"
+                m2 = str(int(ms[1][4:6])) if len(ms) >= 2 else "?"
                 report_title = f"{m1}月 vs {m2}月 {template_name.replace('模板', '').strip()}"
             else:
                 month_str = selected_months[0] if selected_months else ""
@@ -2121,7 +2305,7 @@ def register_template_export_routes(app, engine, protected=None):
                 report_title = _build_report_title(template_name, year, month_num, selected_months)
 
             docx_bytes = _generate_word_from_template(
-                template_file, template_name, [], None, engine, selected_months, report_type
+                template_file, template_name, [], template_structure, engine, selected_months, report_type
             )
 
             return send_file(

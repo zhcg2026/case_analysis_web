@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useUserStore } from '../stores/user'
+import { useSystemConfig } from '../composables/useSystemConfig'
 
 // 路由懒加载
 const Home = () => import('../views/Home.vue')
@@ -89,8 +90,9 @@ const router = createRouter({
 router.beforeEach((to, from, next) => {
   const userStore = useUserStore()
 
-  // 设置页面标题
-  document.title = to.meta.title ? `${to.meta.title} - 智慧平台一站通` : '智慧平台一站通'
+  // 设置页面标题（品牌名取自系统配置，默认“智慧平台一站通”）
+  const brandName = useSystemConfig().config.name || '智慧平台一站通'
+  document.title = to.meta.title ? `${to.meta.title} - ${brandName}` : brandName
 
   // 检查是否需要登录
   if (to.meta.requiresAuth !== false && !userStore.isLoggedIn) {
