@@ -65,7 +65,7 @@
               v-for="t in typeList"
               :key="t.key"
               class="stat-card"
-              :style="{ '--c': t.color, '--cb': t.bg }"
+              :style="{ '--c': t.color }"
               @click="selectType(t.key)"
             >
               <div class="stat-icon"><KbIcon :name="t.icon" :size="20" /></div>
@@ -724,7 +724,8 @@ onUnmounted(() => {
   font-size: 17px;
   border-radius: var(--radius-sm);
   color: var(--c);
-  background: var(--cb);
+  /* 图标块背景：用主色 15% 透明自动算 —— 亮色卡片上是浅彩块、深色卡片上是深彩块，统一自适应 */
+  background: color-mix(in srgb, var(--c) 15%, transparent);
 }
 .stat-num {
   font-size: 18px;

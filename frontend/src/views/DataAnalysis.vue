@@ -2,6 +2,11 @@
   <div class="analysis-page">
     <!-- 左侧面板 -->
     <aside class="analysis-sidebar">
+      <div class="sidebar-head">
+        <KbIcon name="bar-chart" :size="16" />
+        <span>数据分析</span>
+      </div>
+      <div class="sidebar-body">
       <div class="sidebar-section">
         <h3 class="section-title">数据上传</h3>
         <div class="upload-area" @dragover.prevent @drop.prevent="handleDrop">
@@ -55,6 +60,7 @@
             </div>
           </div>
         </div>
+      </div>
       </div>
     </aside>
 
@@ -400,82 +406,57 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-  /* 数据分析面板：语义变量（深色为默认，浅色由 [data-theme="light"] 覆盖） */
-  .analysis-page {
-    --da-bg: #0a1628;
-    --da-panel: rgba(13, 31, 60, 0.8);
-    --da-text: #e6edf3;
-    --da-heading: #ffffff;
-    --da-text-dim: rgba(255, 255, 255, 0.62);
-    --da-text-faint: rgba(255, 255, 255, 0.4);
-    --da-border: rgba(64, 158, 255, 0.15);
-    --da-border-soft: rgba(255, 255, 255, 0.08);
-    --da-dashed: rgba(64, 158, 255, 0.3);
-    --da-accent: #409eff;
-    --da-accent-soft: rgba(64, 158, 255, 0.08);
-    --da-accent-soft2: rgba(64, 158, 255, 0.15);
-    --da-accent-soft3: rgba(64, 158, 255, 0.2);
-    --da-accent-strong: rgba(64, 158, 255, 0.6);
-    --da-success: #22c55e;
-    --da-success-soft: rgba(34, 197, 94, 0.15);
-    --da-danger: #ef4444;
-    --da-danger-soft: rgba(239, 68, 68, 0.15);
-    --da-surface-soft: rgba(255, 255, 255, 0.05);
-    --da-grid: rgba(255, 255, 255, 0.04);
-    --da-on-accent: #ffffff;
-  }
-  [data-theme="light"] .analysis-page {
-    --da-bg: #f4f7fb;
-    --da-panel: #ffffff;
-    --da-text: #1f2d3d;
-    --da-heading: #16202c;
-    --da-text-dim: rgba(31, 45, 61, 0.62);
-    --da-text-faint: rgba(31, 45, 61, 0.42);
-    --da-border: rgba(64, 158, 255, 0.22);
-    --da-border-soft: rgba(31, 45, 61, 0.1);
-    --da-dashed: rgba(64, 158, 255, 0.45);
-    --da-accent: #2b8cf0;
-    --da-accent-soft: rgba(64, 158, 255, 0.08);
-    --da-accent-soft2: rgba(64, 158, 255, 0.14);
-    --da-accent-soft3: rgba(64, 158, 255, 0.22);
-    --da-accent-strong: rgba(64, 158, 255, 0.7);
-    --da-success: #16a34a;
-    --da-success-soft: rgba(34, 197, 94, 0.12);
-    --da-danger: #dc2626;
-    --da-danger-soft: rgba(239, 68, 68, 0.1);
-    --da-surface-soft: rgba(31, 45, 61, 0.03);
-    --da-grid: rgba(31, 45, 61, 0.04);
-    --da-on-accent: #ffffff;
-  }
 .analysis-page {
+  height: 100%;
   display: flex;
-  height: calc(100vh - 50px);
-  background: var(--da-bg);
-  color: var(--da-text);
+  overflow: hidden;
+  gap: var(--space-4);
+  padding: var(--space-2);
 }
 
 /* 左侧面板 */
 .analysis-sidebar {
-  width: 260px;
-  background: var(--da-panel);
-  border-right: 1px solid var(--da-border);
+  width: 340px;
+  flex-shrink: 0;
   display: flex;
   flex-direction: column;
+  background: var(--bg-card);
+  border: 1px solid var(--border-lighter);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.sidebar-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border-lighter);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.sidebar-body {
+  flex: 1;
   overflow-y: auto;
-  padding: 16px;
-  gap: 20px;
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
 }
 
 .section-title {
   font-size: 13px;
-  color: var(--da-text-dim);
+  color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 1px;
   margin-bottom: 10px;
 }
 
 .upload-area {
-  border: 2px dashed var(--da-dashed);
+  border: 2px dashed color-mix(in srgb, var(--primary-500) 40%, transparent);
   border-radius: 8px;
   padding: 16px;
   text-align: center;
@@ -483,8 +464,8 @@ onUnmounted(() => {
   transition: all 0.2s;
 }
 .upload-area:hover {
-  border-color: var(--da-accent-strong);
-  background: var(--da-accent-soft);
+  border-color: var(--primary-600);
+  background: var(--primary-50);
 }
 
 .upload-content {
@@ -492,11 +473,11 @@ onUnmounted(() => {
   flex-direction: column;
   align-items: center;
   gap: 8px;
-  color: var(--da-text-dim);
+  color: var(--text-secondary);
   font-size: 13px;
 }
 .upload-icon {
-  color: var(--da-accent);
+  color: var(--primary-500);
   opacity: 0.9;
   transition: transform 0.2s, opacity 0.2s;
 }
@@ -507,7 +488,7 @@ onUnmounted(() => {
 
 .upload-progress {
   margin-top: 8px;
-  color: var(--da-accent);
+  color: var(--primary-500);
   font-size: 12px;
 }
 .upload-result {
@@ -517,12 +498,12 @@ onUnmounted(() => {
   border-radius: 4px;
 }
 .upload-result.success {
-  background: var(--da-success-soft);
-  color: var(--da-success);
+  background: var(--success-light);
+  color: var(--success);
 }
 .upload-result.error {
-  background: var(--da-danger-soft);
-  color: var(--da-danger);
+  background: var(--danger-light);
+  color: var(--danger);
 }
 
 .month-item {
@@ -536,15 +517,15 @@ onUnmounted(() => {
   transition: background 0.2s;
 }
 .month-item:hover {
-  background: var(--da-accent-soft2);
+  background: var(--primary-100);
 }
 .month-item.active {
-  background: var(--da-accent-soft3);
-  color: var(--da-accent);
+  background: var(--primary-50);
+  color: var(--primary-500);
 }
 .month-count {
   font-size: 11px;
-  color: var(--da-text-faint);
+  color: var(--text-tertiary);
 }
 .month-actions {
   display: flex;
@@ -554,7 +535,7 @@ onUnmounted(() => {
 .btn-text {
   background: none;
   border: none;
-  color: var(--da-accent);
+  color: var(--primary-500);
   cursor: pointer;
   font-size: 12px;
   padding: 2px 6px;
@@ -564,7 +545,7 @@ onUnmounted(() => {
 }
 
 .empty-hint {
-  color: var(--da-text-faint);
+  color: var(--text-tertiary);
   font-size: 13px;
   padding: 8px 0;
 }
@@ -575,9 +556,9 @@ onUnmounted(() => {
   gap: 6px;
 }
 .quick-btn {
-  background: var(--da-accent-soft);
-  border: 1px solid var(--da-accent-soft3);
-  color: var(--da-text-dim);
+  background: var(--primary-50);
+  border: 1px solid var(--primary-50);
+  color: var(--text-secondary);
   padding: 8px 12px;
   border-radius: 6px;
   cursor: pointer;
@@ -586,13 +567,13 @@ onUnmounted(() => {
   transition: all 0.2s;
 }
 .quick-btn:hover {
-  background: var(--da-accent-soft2);
-  color: var(--da-on-accent);
+  background: var(--primary-100);
+  color: #ffffff;
 }
 
 /* 报告模板 */
 .loading-hint {
-  color: var(--da-text-faint);
+  color: var(--text-tertiary);
   font-size: 12px;
   padding: 8px 0;
 }
@@ -608,8 +589,8 @@ onUnmounted(() => {
   align-items: center;
   justify-content: space-between;
   padding: 8px 10px;
-  background: var(--da-accent-soft);
-  border: 1px solid var(--da-border);
+  background: var(--primary-50);
+  border: 1px solid var(--border-light);
   border-radius: 6px;
   cursor: pointer;
   transition: all 0.2s;
@@ -617,7 +598,7 @@ onUnmounted(() => {
 
 .template-item:hover {
   background: rgba(64, 158, 255, 0.12);
-  border-color: var(--da-dashed);
+  border-color: color-mix(in srgb, var(--primary-500) 40%, transparent);
 }
 
 .template-info {
@@ -630,7 +611,7 @@ onUnmounted(() => {
 
 .template-name {
   font-size: 12px;
-  color: var(--da-text);
+  color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -638,16 +619,16 @@ onUnmounted(() => {
 
 .template-meta {
   font-size: 10px;
-  color: var(--da-text-faint);
+  color: var(--text-tertiary);
 }
 
 .template-exec-btn {
   height: 26px;
   padding: 0 10px;
   border-radius: 13px;
-  background: var(--da-accent-soft3);
+  background: var(--primary-50);
   border: none;
-  color: var(--da-accent);
+  color: var(--primary-500);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -660,8 +641,8 @@ onUnmounted(() => {
 }
 
 .template-exec-btn:hover:not(:disabled) {
-  background: var(--da-accent);
-  color: var(--da-on-accent);
+  background: var(--primary-500);
+  color: #ffffff;
 }
 
 .template-exec-btn:disabled {
@@ -677,18 +658,22 @@ onUnmounted(() => {
 /* 主聊天区域 */
 .analysis-main {
   flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
+  background: var(--bg-card);
+  border: 1px solid var(--border-lighter);
+  border-radius: var(--radius-lg);
   overflow: hidden;
 }
 
 .chat-messages {
   flex: 1;
   overflow-y: auto;
-  padding: 24px;
+  padding: var(--space-4);
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: var(--space-4);
 }
 
 .welcome-screen {
@@ -707,22 +692,22 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--da-accent);
-  background: linear-gradient(135deg, var(--da-accent-soft3), var(--da-accent-soft));
-  box-shadow: 0 10px 28px -10px var(--da-accent-strong);
+  color: var(--primary-500);
+  background: linear-gradient(135deg, var(--primary-50), var(--primary-50));
+  box-shadow: 0 10px 28px -10px var(--primary-600);
   margin-bottom: 4px;
 }
 .welcome-screen h2 {
   font-size: 24px;
-  color: var(--da-heading);
+  color: var(--text-primary);
   margin: 0;
 }
 .welcome-screen p {
-  color: var(--da-text-dim);
+  color: var(--text-secondary);
   font-size: 14px;
 }
 .welcome-hint {
-  color: var(--da-accent);
+  color: var(--primary-500);
   font-size: 13px;
   margin-top: -4px;
 }
@@ -734,13 +719,13 @@ onUnmounted(() => {
   align-items: center;
 }
 .welcome-examples span {
-  color: var(--da-text-faint);
+  color: var(--text-tertiary);
   font-size: 13px;
 }
 .welcome-examples button {
-  background: var(--da-accent-soft2);
+  background: var(--primary-100);
   border: 1px solid rgba(64, 158, 255, 0.25);
-  color: var(--da-accent);
+  color: var(--primary-500);
   padding: 6px 14px;
   border-radius: 16px;
   cursor: pointer;
@@ -748,7 +733,7 @@ onUnmounted(() => {
   transition: all 0.2s;
 }
 .welcome-examples button:hover {
-  background: var(--da-accent-soft3);
+  background: var(--primary-50);
 }
 
 .message {
@@ -765,25 +750,25 @@ onUnmounted(() => {
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  background: var(--da-accent-soft2);
+  background: var(--fill-light);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--da-text);
+  color: var(--text-secondary);
   flex-shrink: 0;
-  border: 1px solid var(--da-border-soft);
+  border: 1px solid var(--border-lighter);
 }
 .message.user .message-avatar {
-  color: var(--da-text-dim);
+  color: var(--text-tertiary);
 }
 .message.assistant .message-avatar {
-  color: var(--da-accent);
-  background: var(--da-accent-soft3);
-  border-color: var(--da-accent-soft2);
+  color: #fff;
+  background: var(--primary-500);
+  border-color: var(--primary-500);
 }
 .message-content {
-  background: var(--da-surface-soft);
-  border: 1px solid var(--da-border-soft);
+  background: var(--fill-light);
+  border: 1px solid var(--border-lighter);
   border-radius: 12px;
   padding: 12px 16px;
   font-size: 14px;
@@ -793,8 +778,8 @@ onUnmounted(() => {
   min-width: 0;
 }
 .message.user .message-content {
-  background: var(--da-accent-soft2);
-  border-color: var(--da-accent-soft3);
+  background: var(--primary-100);
+  border-color: var(--primary-50);
 }
 
 .message-chart {
@@ -810,7 +795,7 @@ onUnmounted(() => {
   max-height: 320px;
   overflow-y: auto;
   border-radius: 8px;
-  border: 1px solid var(--da-border-soft);
+  border: 1px solid var(--border-lighter);
 }
 
 .message-table {
@@ -820,25 +805,25 @@ onUnmounted(() => {
 }
 .message-table th {
   background: rgba(64, 158, 255, 0.12);
-  color: var(--da-text);
+  color: var(--text-primary);
   padding: 8px 12px;
   text-align: left;
   font-weight: 500;
   position: sticky;
   top: 0;
   z-index: 1;
-  border-bottom: 1px solid var(--da-border-soft);
+  border-bottom: 1px solid var(--border-lighter);
 }
 .message-table td {
   padding: 6px 12px;
-  color: var(--da-text-dim);
-  border-bottom: 1px solid var(--da-grid);
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border-lighter);
 }
 .message-table tbody tr:nth-child(even) {
-  background: var(--da-grid);
+  background: var(--border-lighter);
 }
 .message-table tbody tr:hover {
-  background: var(--da-accent-soft);
+  background: var(--primary-50);
 }
 .message-table td.num-cell {
   text-align: right;
@@ -847,21 +832,21 @@ onUnmounted(() => {
 .table-more {
   text-align: center;
   padding: 8px;
-  color: var(--da-text-faint);
+  color: var(--text-tertiary);
   font-size: 12px;
 }
 
 /* 输入区域 */
 .chat-input-area {
-  padding: 16px 24px;
-  border-top: 1px solid var(--da-border-soft);
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--border-lighter);
 }
 .input-wrapper {
   display: flex;
   align-items: flex-end;
   gap: 8px;
-  background: var(--da-surface-soft);
-  border: 1px solid var(--da-border);
+  background: var(--fill-light);
+  border: 1px solid var(--border-light);
   border-radius: 12px;
   padding: 8px 12px;
 }
@@ -869,7 +854,7 @@ onUnmounted(() => {
   flex: 1;
   background: none;
   border: none;
-  color: var(--da-text);
+  color: var(--text-primary);
   font-size: 14px;
   line-height: 1.5;
   resize: none;
@@ -878,15 +863,15 @@ onUnmounted(() => {
   max-height: 120px;
 }
 .input-wrapper textarea::placeholder {
-  color: var(--da-text-faint);
+  color: var(--text-tertiary);
 }
 .send-btn {
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  background: var(--da-accent);
+  background: var(--primary-500);
   border: none;
-  color: var(--da-on-accent);
+  color: #ffffff;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -895,7 +880,7 @@ onUnmounted(() => {
   transition: background 0.2s;
 }
 .send-btn:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--da-accent) 85%, #000);
+  background: color-mix(in srgb, var(--primary-500) 85%, #000);
 }
 .send-btn:disabled {
   opacity: 0.4;
@@ -920,5 +905,20 @@ onUnmounted(() => {
 @keyframes typing {
   0%, 60%, 100% { transform: translateY(0); opacity: 0.3; }
   30% { transform: translateY(-6px); opacity: 1; }
+}
+
+/* ============ 响应式（与知识库一致） ============ */
+@media (max-width: 860px) {
+  .analysis-page {
+    flex-direction: column;
+    overflow-y: auto;
+  }
+  .analysis-sidebar {
+    width: 100%;
+    max-height: 45vh;
+  }
+  .analysis-main {
+    min-height: 55vh;
+  }
 }
 </style>
