@@ -276,6 +276,69 @@ def serve_upload(filename):
     upload_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
     return send_from_directory(upload_dir, filename)
 
+
+# ===================== 图片上传（系统 Logo / 文章配图等） =====================
+# 接收 multipart 文件（字段名 file），保存至 backend/uploads/，返回可访问 URL。
+# 返回字段兼容前端：location（wangEditor 文章配图用）与 url（系统设置回填用）。
+ALLOWED_IMAGE_EXT = {'.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg'}
+
+@app.route('/api/upload/image', methods=['POST'])
+@admin_required
+def upload_image():
+    try:
+        if 'file' not in request.files:
+            return jsonify({'error': '请选择图片文件'}), 400
+        file = request.files['file']
+        if not file or not file.filename:
+            return jsonify({'error': '请选择图片文件'}), 400
+        ext = os.path.splitext(file.filename)[1].lower()
+        if ext not in ALLOWED_IMAGE_EXT:
+            return jsonify({'error': '仅支持 jpg/png/gif/webp/bmp/svg 图片格式'}), 400
+        upload_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
+        os.makedirs(upload_dir, exist_ok=True)
+        import uuid
+        save_name = f"{uuid.uuid4().hex}{ext}"
+        save_path = os.path.join(upload_dir, save_name)
+        file.save(save_path)
+        url = f"/uploads/{save_name}"
+        return jsonify({'success': True, 'location': url, 'url': url})
+    except Exception as e:
+        print(f"上传图片失败: {e}")
+        return jsonify({'error': '上传失败'}), 500
+
+
+# ===================== 附件上传（文章附件等） =====================
+# 接收 multipart 文件（字段名 file），保存至 backend/uploads/，返回 file_path。
+# 前端 Admin.vue handleFileUpload 期望 response.data.file_path。
+ALLOWED_FILE_EXT = {'.doc', '.docx', '.xls', '.xlsx', '.pdf', '.ppt', '.pptx',
+                    '.txt', '.csv', '.zip', '.rar', '.md',
+                    '.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg'}
+
+@app.route('/api/upload/file', methods=['POST'])
+@admin_required
+def upload_file():
+    try:
+        if 'file' not in request.files:
+            return jsonify({'error': '请选择文件'}), 400
+        file = request.files['file']
+        if not file or not file.filename:
+            return jsonify({'error': '请选择文件'}), 400
+        ext = os.path.splitext(file.filename)[1].lower()
+        if ext not in ALLOWED_FILE_EXT:
+            return jsonify({'error': '不支持的文件类型，仅允许文档/表格/压缩包/图片'}), 400
+        upload_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
+        os.makedirs(upload_dir, exist_ok=True)
+        import uuid
+        save_name = f"{uuid.uuid4().hex}{ext}"
+        save_path = os.path.join(upload_dir, save_name)
+        file.save(save_path)
+        url = f"/uploads/{save_name}"
+        return jsonify({'success': True, 'file_path': url, 'url': url})
+    except Exception as e:
+        print(f"上传文件失败: {e}")
+        return jsonify({'error': '上传失败'}), 500
+
+
 # ===================== 系统配置（系统名称 / Logo） =====================
 # GET 公开：仅用于前端展示品牌，不含敏感信息；POST 需管理员
 @app.route('/api/system/config', methods=['GET'])

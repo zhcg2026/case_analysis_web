@@ -759,7 +759,22 @@
         </div>
         <div class="form-group">
           <label class="form-label">系统Logo</label>
-          <input type="text" class="form-input" v-model="systemConfig.logo" />
+          <div class="logo-upload">
+            <div class="logo-preview" v-if="systemConfig.logo">
+              <img :src="systemConfig.logo" alt="Logo 预览" />
+            </div>
+            <div class="logo-preview logo-preview--empty" v-else>
+              <span>暂无 Logo</span>
+            </div>
+            <div class="logo-upload__actions">
+              <input ref="logoInput" type="file" accept="image/*" hidden @change="handleLogoUpload" />
+              <button type="button" class="btn btn-secondary" :disabled="uploadingLogo" @click="$refs.logoInput.click()">
+                {{ uploadingLogo ? '上传中…' : '选择图片上传' }}
+              </button>
+              <button type="button" class="btn btn-link" v-if="systemConfig.logo" @click="systemConfig.logo = ''">移除</button>
+            </div>
+          </div>
+          <input type="text" class="form-input" v-model="systemConfig.logo" placeholder="或粘贴图片链接（如 https://…/logo.png）" />
         </div>
         <button class="btn btn-primary" @click="saveSystemConfig">保存设置</button>
       </div>
@@ -1159,6 +1174,7 @@ const newCategoryName = ref('')
 const articleSaving = ref(false)
 const uploadingImage = ref(false)
 const uploadingFile = ref(false)
+const uploadingLogo = ref(false)
 const articleForm = ref({
   title: '',
   category_id: '',
@@ -1902,6 +1918,28 @@ async function saveSystemConfig() {
   }
 }
 
+// 系统 Logo 上传：选本地图片 → 调 /api/upload/image → 回填 URL
+async function handleLogoUpload(e) {
+  const file = e.target.files[0]
+  if (!file) return
+  uploadingLogo.value = true
+  const formData = new FormData()
+  formData.append('file', file)
+  try {
+    const response = await axios.post('/api/upload/image', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
+    systemConfig.logo = response.data.location || response.data.url
+    alert('Logo 已上传，点击"保存设置"即可全站生效')
+  } catch (error) {
+    console.error('上传 Logo 失败:', error)
+    alert('上传 Logo 失败：' + (error.response?.data?.error || error.message))
+  } finally {
+    uploadingLogo.value = false
+    e.target.value = ''
+  }
+}
+
 // ===== 文章管理方法 =====
 async function fetchCategories() {
   try {
@@ -2405,6 +2443,40 @@ watch(articlesCurrentPage, fetchArticles)
 </script>
 
 <style scoped>
+/* ===== 系统 Logo 上传 ===== */
+.logo-upload {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 10px;
+}
+.logo-preview {
+  width: 64px;
+  height: 64px;
+  border-radius: 10px;
+  border: 1px solid var(--border-color, #e3e8ef);
+  background: #f7f9fc;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.logo-preview img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+.logo-preview--empty {
+  color: #9aa5b5;
+  font-size: 12px;
+}
+.logo-upload__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .page-container {
   padding: var(--space-6);
   max-width: 1400px;

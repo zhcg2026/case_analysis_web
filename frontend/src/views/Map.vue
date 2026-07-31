@@ -219,8 +219,10 @@
 <script setup>
 import { ref, reactive, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useUserStore } from '../stores/user'
+import { useThemeStore } from '../stores/theme'
 
 const userStore = useUserStore()
+const themeStore = useThemeStore()
 
 // ========== 地图状态 ==========
 const mapContainer = ref(null)
@@ -848,7 +850,7 @@ function initMap() {
       zoom: 13,
       center: [110.976935, 35.06161],
       resizeEnable: true,
-      mapStyle: 'amap://styles/dark'
+      mapStyle: themeStore.theme === 'light' ? 'amap://styles/normal' : 'amap://styles/dark'
     })
 
     mapInstance.on('click', handleMapClick)
@@ -868,6 +870,13 @@ function zoomIn() {
 function zoomOut() {
   if (mapInstance) mapInstance.zoomOut()
 }
+
+// ========== 主题跟随：切换全站深浅模式时同步地图底图样式 ==========
+watch(() => themeStore.theme, (t) => {
+  if (mapInstance && typeof mapInstance.setMapStyle === 'function') {
+    mapInstance.setMapStyle(t === 'light' ? 'amap://styles/normal' : 'amap://styles/dark')
+  }
+})
 
 // ========== 生命周期 ==========
 
@@ -1555,5 +1564,144 @@ onUnmounted(() => {
 
 .modal-enter-from, .modal-leave-to {
   opacity: 0;
+}
+
+/* ============ 浅色模式覆盖：数图城管跟随全站主题（默认深色，浅色下翻转） ============ */
+[data-theme="light"] .urban-map-page {
+  background: #eef1f6;
+}
+[data-theme="light"] .urban-header {
+  background: rgba(255, 255, 255, 0.95);
+  border-bottom: 1px solid rgba(64, 158, 255, 0.25);
+}
+[data-theme="light"] .back-btn {
+  color: rgba(0, 0, 0, 0.6);
+}
+[data-theme="light"] .back-btn:hover {
+  color: #409eff;
+}
+[data-theme="light"] .header-subtitle {
+  color: rgba(0, 0, 0, 0.45);
+}
+[data-theme="light"] .toolbar-btn {
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(64, 158, 255, 0.4);
+  color: rgba(0, 0, 0, 0.7);
+}
+[data-theme="light"] .panel-toggle-btn {
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(64, 158, 255, 0.4);
+  color: rgba(0, 0, 0, 0.7);
+}
+[data-theme="light"] .floating-panel {
+  background: rgba(255, 255, 255, 0.8);
+  border: 1px solid rgba(64, 158, 255, 0.2);
+}
+[data-theme="light"] .floating-panel::-webkit-scrollbar-thumb {
+  background: rgba(64, 158, 255, 0.3);
+}
+[data-theme="light"] .panel-header {
+  border-bottom: 1px solid rgba(64, 158, 255, 0.2);
+  color: #303133;
+}
+[data-theme="light"] .search-box {
+  border-bottom: 1px solid rgba(64, 158, 255, 0.15);
+}
+[data-theme="light"] .search-input {
+  background: rgba(0, 0, 0, 0.04);
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  color: #303133;
+}
+[data-theme="light"] .search-input::placeholder {
+  color: rgba(0, 0, 0, 0.4);
+}
+[data-theme="light"] .layer-group {
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+[data-theme="light"] .layer-group-header {
+  color: rgba(0, 0, 0, 0.75);
+}
+[data-theme="light"] .layer-group-header:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+[data-theme="light"] .group-count {
+  color: rgba(0, 0, 0, 0.45);
+  background: rgba(0, 0, 0, 0.06);
+}
+[data-theme="light"] .layer-item {
+  color: rgba(0, 0, 0, 0.7);
+}
+[data-theme="light"] .layer-item:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+[data-theme="light"] .layer-count {
+  color: rgba(0, 0, 0, 0.4);
+}
+[data-theme="light"] .detail-type {
+  color: rgba(0, 0, 0, 0.6);
+}
+[data-theme="light"] .detail-name {
+  color: #303133;
+}
+[data-theme="light"] .detail-desc {
+  color: rgba(0, 0, 0, 0.7);
+}
+[data-theme="light"] .detail-image {
+  border: 1px solid rgba(0, 0, 0, 0.1);
+}
+[data-theme="light"] .detail-info {
+  background: rgba(0, 0, 0, 0.03);
+}
+[data-theme="light"] .info-label {
+  color: rgba(0, 0, 0, 0.5);
+}
+[data-theme="light"] .info-value {
+  color: rgba(0, 0, 0, 0.85);
+}
+[data-theme="light"] .empty-detail {
+  color: rgba(0, 0, 0, 0.3);
+}
+[data-theme="light"] .marker-form-panel {
+  background: #ffffff;
+  border: 1px solid rgba(64, 158, 255, 0.3);
+}
+[data-theme="light"] .modal-header {
+  border-bottom: 1px solid rgba(64, 158, 255, 0.2);
+}
+[data-theme="light"] .modal-header h3 {
+  color: #303133;
+}
+[data-theme="light"] .modal-close {
+  color: rgba(0, 0, 0, 0.5);
+}
+[data-theme="light"] .modal-close:hover {
+  color: #303133;
+}
+[data-theme="light"] .modal-footer {
+  border-top: 1px solid rgba(64, 158, 255, 0.2);
+}
+[data-theme="light"] .form-group label {
+  color: rgba(0, 0, 0, 0.7);
+}
+[data-theme="light"] .form-select,
+[data-theme="light"] .form-input,
+[data-theme="light"] .form-textarea {
+  background: rgba(0, 0, 0, 0.03);
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  color: #303133;
+}
+[data-theme="light"] .form-select option {
+  background: #ffffff;
+  color: #303133;
+}
+[data-theme="light"] .btn-cancel {
+  background: rgba(0, 0, 0, 0.06);
+  color: rgba(0, 0, 0, 0.7);
+}
+[data-theme="light"] .btn-cancel:hover {
+  background: rgba(0, 0, 0, 0.1);
+}
+[data-theme="light"] .image-preview-item img {
+  border: 1px solid rgba(0, 0, 0, 0.1);
 }
 </style>
