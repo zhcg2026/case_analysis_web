@@ -1,8 +1,9 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """智慧平台一站通 v2.0 - 精简版后端"""
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 import os
+import logging
 import urllib.parse
 import json
 import requests
@@ -10,6 +11,8 @@ from sqlalchemy import create_engine, text
 import datetime
 from functools import wraps
 import bcrypt
+
+logger = logging.getLogger(__name__)
 
 from dotenv import load_dotenv
 if os.path.exists('.env.local'):
@@ -82,6 +85,7 @@ if not SECRET_KEY:
 TOKEN_EXPIRATION = int(os.getenv('TOKEN_EXPIRATION_SECONDS', str(24 * 60 * 60)))
 
 app = Flask(__name__)
+app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB 文件上传限制
 CORS_ORIGINS = os.getenv('CORS_ORIGINS', '*')
 if CORS_ORIGINS == '*':
     CORS(app, resources={r"/*": {"origins": "*", "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"], "allow_headers": ["Content-Type", "Authorization"], "expose_headers": ["Content-Disposition"]}})
@@ -105,18 +109,18 @@ Session = None
 Base = None
 
 try:
-    from sqlalchemy.ext.declarative import declarative_base
+    from sqlalchemy.orm import declarative_base
     from sqlalchemy import Column, Integer, String, DateTime, Text, Boolean
     from sqlalchemy.sql import func
     from sqlalchemy.orm import sessionmaker
 
     if not all([DB_USER, DB_PASSWORD, DB_HOST]):
-        print("警告: 数据库配置不完整")
+        logger.warning("数据库配置不完整")
         raise Exception("数据库配置缺失")
 
     encoded_password = urllib.parse.quote_plus(DB_PASSWORD)
     engine = create_engine(f'mysql+pymysql://{DB_USER}:{encoded_password}@{DB_HOST}:{DB_PORT}/{DB_NAME}?charset=utf8mb4', pool_pre_ping=True, pool_recycle=3600)
-    print("数据库连接成功")
+    logger.info("数据库连接成功")
 
     Base = declarative_base()
 
@@ -135,7 +139,6 @@ try:
         user_id = Column(Integer, nullable=False, unique=True)
         data_management = Column(Integer, nullable=False, default=0)
         data_analysis = Column(Integer, nullable=False, default=0)
-        spotcheck = Column(Integer, nullable=False, default=0)
         map = Column(Integer, nullable=False, default=0)
         business = Column(Integer, nullable=False, default=0)
         created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -207,7 +210,7 @@ try:
                 if _retry < 4:
                     _time.sleep(1 + _retry)
                     continue
-                print(f"数据库表创建跳过: {e}")
+                logger.warning(f"数据库表创建跳过: {e}")
             else:
                 raise
 
@@ -215,13 +218,13 @@ try:
 
     # 注册认证路由
     register_auth_routes(app=app, Session=Session, User=User, engine=engine)
-    print("认证路由注册成功")
+    logger.info("认证路由注册成功")
 
 
 
     # 注册CMS路由
     register_cms_routes(app=app, Session=Session, Category=Category, Article=Article)
-    print("CMS路由注册成功")
+    logger.info("CMS路由注册成功")
 
 
     # 旧通用知识库路由（knowledge_routes / rag.knowledge_base）与立结案标准库路由
@@ -233,42 +236,41 @@ try:
     # 注册地图路由
     try:
         register_map_routes(app=app)
-        print("地图路由注册成功")
+        logger.info("地图路由注册成功")
     except Exception as e:
-        print(f"地图路由注册失败: {e}")
+        logger.warning(f"地图路由注册失败: {e}")
 
     # 注册数据分析路由
     try:
         register_analysis_routes(app=app, engine=engine)
-        print("数据分析路由注册成功")
+        logger.info("数据分析路由注册成功")
     except Exception as e:
-        print(f"数据分析路由注册失败: {e}")
+        logger.warning(f"数据分析路由注册失败: {e}")
 
     # 注册报告模板路由
     try:
         register_report_routes(app=app, engine=engine)
     except Exception as e:
-        print(f"报告模板路由注册失败: {e}")
+        logger.warning(f"报告模板路由注册失败: {e}")
 
     # 注册模板导出路由
     try:
         register_template_export_routes(app=app, engine=engine)
-        print("模板导出路由注册成功")
+        logger.info("模板导出路由注册成功")
     except Exception as e:
-        print(f"模板导出路由注册失败: {e}")
-        print(f"报告模板路由注册失败: {e}")
+        logger.warning(f"模板导出路由注册失败: {e}")
 
 except Exception as e:
-    print(f"数据库初始化失败: {e}")
+    logger.error(f"数据库初始化失败: {e}")
     engine = None
     Session = None
 
 # 注册统一知识库路由（不依赖 MySQL，独立可用，便于本地单独测试 KB 模块）
 try:
     register_kb_routes(app=app, protected=protected, admin_required=admin_required)
-    print("统一知识库路由注册成功")
+    logger.info("统一知识库路由注册成功")
 except Exception as e:
-    print(f"统一知识库路由注册失败: {e}")
+    logger.warning(f"统一知识库路由注册失败: {e}")
 
 # 文件上传路由
 @app.route('/uploads/<path:filename>')
@@ -280,7 +282,7 @@ def serve_upload(filename):
 # ===================== 图片上传（系统 Logo / 文章配图等） =====================
 # 接收 multipart 文件（字段名 file），保存至 backend/uploads/，返回可访问 URL。
 # 返回字段兼容前端：location（wangEditor 文章配图用）与 url（系统设置回填用）。
-ALLOWED_IMAGE_EXT = {'.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg'}
+ALLOWED_IMAGE_EXT = {'.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'}
 
 @app.route('/api/upload/image', methods=['POST'])
 @admin_required
@@ -293,7 +295,7 @@ def upload_image():
             return jsonify({'error': '请选择图片文件'}), 400
         ext = os.path.splitext(file.filename)[1].lower()
         if ext not in ALLOWED_IMAGE_EXT:
-            return jsonify({'error': '仅支持 jpg/png/gif/webp/bmp/svg 图片格式'}), 400
+            return jsonify({'error': '仅支持 jpg/png/gif/webp/bmp 图片格式'}), 400
         upload_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
         os.makedirs(upload_dir, exist_ok=True)
         import uuid
@@ -303,7 +305,7 @@ def upload_image():
         url = f"/uploads/{save_name}"
         return jsonify({'success': True, 'location': url, 'url': url})
     except Exception as e:
-        print(f"上传图片失败: {e}")
+        logger.warning(f"上传图片失败: {e}")
         return jsonify({'error': '上传失败'}), 500
 
 
@@ -312,7 +314,7 @@ def upload_image():
 # 前端 Admin.vue handleFileUpload 期望 response.data.file_path。
 ALLOWED_FILE_EXT = {'.doc', '.docx', '.xls', '.xlsx', '.pdf', '.ppt', '.pptx',
                     '.txt', '.csv', '.zip', '.rar', '.md',
-                    '.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg'}
+                    '.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'}
 
 @app.route('/api/upload/file', methods=['POST'])
 @admin_required
@@ -335,7 +337,7 @@ def upload_file():
         url = f"/uploads/{save_name}"
         return jsonify({'success': True, 'file_path': url, 'url': url})
     except Exception as e:
-        print(f"上传文件失败: {e}")
+        logger.warning(f"上传文件失败: {e}")
         return jsonify({'error': '上传失败'}), 500
 
 
@@ -366,7 +368,7 @@ def get_system_config():
                 session.commit()
             return jsonify(result)
     except Exception as e:
-        print(f"获取系统配置失败: {e}")
+        logger.warning(f"获取系统配置失败: {e}")
         return jsonify(default)
 
 
@@ -391,7 +393,7 @@ def update_system_config():
             session.commit()
         return jsonify({'system_name': name, 'system_logo': logo, 'message': '保存成功'})
     except Exception as e:
-        print(f"更新系统配置失败: {e}")
+        logger.warning(f"更新系统配置失败: {e}")
         return jsonify({'error': '保存失败'}), 500
 
 # 前端静态文件路由
@@ -414,7 +416,7 @@ def serve_frontend(path):
 
 if __name__ == '__main__':
     app.run(
-        debug=os.getenv('FLASK_DEBUG', '1') == '1',
+        debug=os.getenv('FLASK_DEBUG', '0') == '1',
         host=os.getenv('FLASK_HOST', '0.0.0.0'),
         port=int(os.getenv('FLASK_PORT', '5000'))
     )

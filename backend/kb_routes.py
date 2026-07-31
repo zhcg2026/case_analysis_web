@@ -51,9 +51,9 @@ def register_kb_routes(app, protected=None, admin_required=None):
             result = _ask(question, location=location, top_k=top_k)
             return jsonify(result), 200
         except Exception as e:
-            import traceback
-            traceback.print_exc()
-            return jsonify({'error': str(e)}), 500
+            import logging
+            logging.exception("KB route error")
+            return jsonify({"error": "知识库操作失败"}), 500
 
     @app.route('/api/kb/search', methods=['POST'])
     @_protected
@@ -72,9 +72,9 @@ def register_kb_routes(app, protected=None, admin_required=None):
             results = _search(query, top_k=top_k, doc_type=doc_type)
             return jsonify({'results': results, 'total': len(results)}), 200
         except Exception as e:
-            import traceback
-            traceback.print_exc()
-            return jsonify({'error': str(e)}), 500
+            import logging
+            logging.exception("KB route error")
+            return jsonify({"error": "知识库操作失败"}), 500
 
     @app.route('/api/kb/stats', methods=['GET'])
     @_protected
@@ -116,9 +116,9 @@ def register_kb_routes(app, protected=None, admin_required=None):
                 "by_law_status": by_law_status,
             }), 200
         except Exception as e:
-            import traceback
-            traceback.print_exc()
-            return jsonify({'error': str(e)}), 500
+            import logging
+            logging.exception("KB route error")
+            return jsonify({"error": "知识库操作失败"}), 500
 
     # ================= 管理端接口（系统管理 - 知识库管理，对齐统一库 unified_kb） =================
     # 重建索引任务状态保存在进程内存（单进程 Flask，够用）；后台线程执行，前端轮询进度。
@@ -168,9 +168,9 @@ def register_kb_routes(app, protected=None, admin_required=None):
                 "source": source_info,
             }), 200
         except Exception as e:
-            import traceback
-            traceback.print_exc()
-            return jsonify({'error': str(e)}), 500
+            import logging
+            logging.exception("KB route error")
+            return jsonify({"error": "知识库操作失败"}), 500
 
     @app.route('/api/kb/admin/rebuild', methods=['POST'])
     @_admin
@@ -200,9 +200,9 @@ def register_kb_routes(app, protected=None, admin_required=None):
             t.start()
             return jsonify({"task_id": task_id, "status": "running"}), 200
         except Exception as e:
-            import traceback
-            traceback.print_exc()
-            return jsonify({'error': str(e)}), 500
+            import logging
+            logging.exception("KB route error")
+            return jsonify({"error": "知识库操作失败"}), 500
 
     @app.route('/api/kb/admin/rebuild/<task_id>', methods=['GET'])
     @_admin
@@ -268,9 +268,9 @@ def register_kb_routes(app, protected=None, admin_required=None):
                 "items": page_items, "total": total, "page": page, "page_size": page_size
             }), 200
         except Exception as e:
-            import traceback
-            traceback.print_exc()
-            return jsonify({'error': str(e)}), 500
+            import logging
+            logging.exception("KB route error")
+            return jsonify({"error": "知识库操作失败"}), 500
 
     @app.route('/api/kb/admin/documents/<path:doc_id>', methods=['DELETE'])
     @_admin
@@ -289,14 +289,14 @@ def register_kb_routes(app, protected=None, admin_required=None):
                 pass
             # doc_id 可能是 URL 编码，还原
             from urllib.parse import unquote
-            real_doc_id = unquote(doc_id)
+            real_doc_id = unquote(doc_id).replace('"', '\\"')
             res = client.delete(UNIFIED_COLLECTION, filter=f'doc_id == "{real_doc_id}"')
             client.flush(UNIFIED_COLLECTION)
             return jsonify({"deleted": True, "doc_id": real_doc_id, "result": str(res)}), 200
         except Exception as e:
-            import traceback
-            traceback.print_exc()
-            return jsonify({'error': str(e)}), 500
+            import logging
+            logging.exception("KB route error")
+            return jsonify({"error": "知识库操作失败"}), 500
 
     @app.route('/api/kb/admin/documents/batch-delete', methods=['POST'])
     @_admin
@@ -317,11 +317,11 @@ def register_kb_routes(app, protected=None, admin_required=None):
                 client.load_collection(UNIFIED_COLLECTION)
             except Exception:
                 pass
-            expr = ' or '.join([f'doc_id == "{unquote(i)}"' for i in ids])
+            expr = ' or '.join([f'doc_id == "{unquote(i).replace(chr(34), chr(92)+chr(34))}"' for i in ids])
             res = client.delete(UNIFIED_COLLECTION, filter=expr)
             client.flush(UNIFIED_COLLECTION)
             return jsonify({"deleted": True, "count": len(ids), "result": str(res)}), 200
         except Exception as e:
-            import traceback
-            traceback.print_exc()
-            return jsonify({'error': str(e)}), 500
+            import logging
+            logging.exception("KB route error")
+            return jsonify({"error": "知识库操作失败"}), 500

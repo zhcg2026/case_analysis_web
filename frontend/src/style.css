@@ -334,49 +334,6 @@ select option {
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
 }
 
-/* 汇问台样式优化 */
-.tasks-table {
-  margin-top: 20px;
-  overflow-x: auto;
-}
-
-.tasks-table table {
-  width: 100%;
-  border-collapse: collapse;
-  background: rgba(30, 58, 138, 0.3);
-  backdrop-filter: blur(10px);
-  border-radius: 12px;
-  overflow: hidden;
-  color: rgba(255, 255, 255, 0.9);
-  border: 1px solid rgba(100, 149, 237, 0.3);
-}
-
-.tasks-table th {
-  background: rgba(30, 58, 138, 0.6) !important;
-  padding: 14px 12px !important;
-  border: 1px solid rgba(100, 149, 237, 0.3) !important;
-  text-align: left !important;
-  font-weight: 600 !important;
-  color: white !important;
-  white-space: nowrap;
-}
-
-.tasks-table td {
-  padding: 12px !important;
-  border: 1px solid rgba(100, 149, 237, 0.2) !important;
-  background: rgba(30, 58, 138, 0.2) !important;
-  color: rgba(255, 255, 255, 0.9) !important;
-}
-
-.tasks-table tr:nth-child(even) td {
-  background: rgba(30, 58, 138, 0.25) !important;
-}
-
-.tasks-table tr:hover td {
-  background: rgba(100, 149, 237, 0.2) !important;
-}
-
-/* 案件管理样式优化 */
 /* 小工具样式优化 */
 /* 管理员管理样式优化 */
 .admin-section {
@@ -444,7 +401,7 @@ select option {
   background: rgba(100, 149, 237, 0.2) !important;
 }
 
-/* 考核评估标签页样式 */
+/* 全局表单样式 */
 /* 统一输入框和文本域样式 */
 input[type="text"],
 input[type="password"],

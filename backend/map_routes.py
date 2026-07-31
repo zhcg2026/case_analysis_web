@@ -77,8 +77,7 @@ def register_map_routes(app, protected=None):
                                 'properties': props
                             })
                 except Exception as e:
-                    print(f"[Jurisdiction] 读取{info['path']}失败: {e}")
-
+                    logging.warning(f"[Jurisdiction] 读取{info['path']}失败: {e}")
             if matched:
                 return jsonify({
                     'matched': True,
@@ -93,26 +92,38 @@ def register_map_routes(app, protected=None):
                 }), 200
 
         except Exception as e:
-            import traceback
-            traceback.print_exc()
-            return jsonify({'error': str(e)}), 500
+            import logging
+            logging.exception("Error in check_jurisdiction")
+            return jsonify({'error': '管辖范围查询失败'}), 500
 
     @app.route('/api/wms-proxy', methods=['GET'])
     def wms_proxy():
-        """WMS 代理接口，转发 GeoServer WMS 请求以绕过 CORS"""
+        """WMS 代理接口，转发 GeoServer WMS 请求以绕过 CORS。
+
+        注意：地图瓦片由 AMap 以 <img> 方式请求，浏览器无法携带 Authorization
+        头，因此该接口不做登录鉴权（与线上正常版本一致）。若需限制来源，请通过
+        Nginx/网关层按 referer 或 IP 做防护，而非在此加 @protected。
+        """
         try:
-            # 获取请求参数
             wms_url = request.args.get('url', '')
             if not wms_url:
                 return jsonify({'error': '缺少 url 参数'}), 400
 
-            # 构建 WMS 请求参数
+            # URL 主机白名单：GeoServer 云主机证书为自签，需放行目标域名。
+            # 默认含生产 GeoServer 域名；可通过 WMS_ALLOWED_HOSTS 追加。
+            from urllib.parse import urlparse
+            parsed = urlparse(wms_url)
+            default_hosts = 'localhost,127.0.0.1,192.168.101.3,ycfhpl.cloudhw.cn'
+            allowed_hosts = os.getenv('WMS_ALLOWED_HOSTS', default_hosts).split(',')
+            if parsed.hostname not in allowed_hosts:
+                return jsonify({'error': '不允许的目标地址'}), 403
+
             params = {}
             for key in request.args:
                 if key != 'url':
                     params[key] = request.args.get(key)
 
-            # 发送请求到 GeoServer
+            # verify=False：目标 GeoServer 使用自签证书，否则 SSL 验证会失败。
             resp = http_requests.get(
                 wms_url,
                 params=params,
@@ -121,7 +132,6 @@ def register_map_routes(app, protected=None):
                 headers={'User-Agent': 'Mozilla/5.0'}
             )
 
-            # 返回图片响应
             return Response(
                 resp.content,
                 status=resp.status_code,
@@ -132,4 +142,6 @@ def register_map_routes(app, protected=None):
                 }
             )
         except Exception as e:
-            return jsonify({'error': str(e)}), 500
+            import logging
+            logging.exception("WMS proxy error")
+            return jsonify({'error': 'WMS 请求失败'}), 500

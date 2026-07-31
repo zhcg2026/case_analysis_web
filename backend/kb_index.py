@@ -49,9 +49,8 @@ try:
 except ImportError:
     zhconv = None
     _HAS_ZHCONV = False
-    print("[kb_index] 警告：zhconv 未安装，繁体法规将保留原文（BM25 简体查询可能弱召回）。"
+    logging.warning("[kb_index] 警告：zhconv 未安装，繁体法规将保留原文（BM25 简体查询可能弱召回）。"
           "  修复：pip install zhconv")
-
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s [kb_index] %(levelname)s %(message)s")
 logger = logging.getLogger("kb_index")

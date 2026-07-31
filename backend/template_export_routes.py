@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """Report template export system - placeholder fill, chart gen, table fill, summary gen."""
+import logging
 import os
 import io
 import json
@@ -164,8 +165,9 @@ def _build_month_filter(selected_months):
         return ""
     conditions = []
     for m in selected_months:
-        if len(m) >= 6:
-            conditions.append(f"upload_batch='{m[:6]}'")
+        month_str = str(m)[:6]
+        if len(month_str) >= 6 and month_str.isdigit():
+            conditions.append(f"upload_batch='{month_str}'")
     if not conditions:
         return ""
     if len(conditions) == 1:
@@ -183,9 +185,11 @@ def _build_time_filter(selected_months):
         return ""
     conditions = []
     for m in selected_months:
-        if len(m) >= 6:
-            year, month = m[:4], m[4:6]
-            conditions.append(f"(YEAR(report_time)={year} AND MONTH(report_time)={month})")
+        m_str = str(m)
+        if len(m_str) >= 6:
+            year, month = m_str[:4], m_str[4:6]
+            if year.isdigit() and month.isdigit():
+                conditions.append(f"(YEAR(report_time)={year} AND MONTH(report_time)={month})")
     if not conditions:
         return ""
     if len(conditions) == 1:
@@ -195,7 +199,6 @@ def _build_time_filter(selected_months):
 
 def _get_chart_configs_with_month(section_title, selected_months, report_type='single'):
     """Get chart configs with month filter applied to all queries."""
-    import re
     config_source = SECTION_CHART_CONFIG_COMPARE if report_type == 'compare' else SECTION_CHART_CONFIG
     configs = config_source.get(section_title, None)
     if configs is None:
@@ -360,11 +363,11 @@ def _call_llm(messages, timeout=120, max_retries=3):
                     return choices[0]["message"]["content"]
                 return None
             else:
-                print(f"[TemplateExport] API error (attempt {attempt+1}/{max_retries}): HTTP {response.status_code}")
+                logging.warning(f"[TemplateExport] API error (attempt {attempt+1}/{max_retries}): HTTP {response.status_code}")
                 if attempt < max_retries - 1:
                     time.sleep(2 * (attempt + 1))
         except Exception as e:
-            print(f"[TemplateExport] LLM exception: {e}")
+            logging.warning(f"[TemplateExport] LLM exception: {e}")
             if attempt < max_retries - 1:
                 time.sleep(2 * (attempt + 1))
     return None
@@ -387,7 +390,7 @@ def _get_summary_data(engine, selected_months):
                         result[key] = int(result[key])
                 return result
     except Exception as e:
-        print(f"获取汇总数据失败: {e}")
+        logging.warning(f"获取汇总数据失败: {e}")
     return {"案件总量": "-", "平均处置时长": "-", "办结率": "-", "延期案件": "-", "返工案件": "-"}
 
 
@@ -469,7 +472,7 @@ def _get_repeat_analysis(engine, selected_months):
         return total, len(persist), len(resolved), len(new), top15_data
 
     except Exception as e:
-        print(f"重复案件分析失败: {e}")
+        logging.warning(f"重复案件分析失败: {e}")
         import traceback
         traceback.print_exc()
         return 0, 0, 0, 0, []
@@ -522,7 +525,7 @@ def _get_single_month_repeat_count(engine, selected_months):
         return repeat_count, top15_data
         
     except Exception as e:
-        print(f"单月重复案件统计失败: {e}")
+        logging.warning(f"单月重复案件统计失败: {e}")
         return 0, []
 
 
@@ -714,8 +717,7 @@ def _generate_composite_chart(chart_configs, engine, ncols=None):
         except Exception as e:
             ax.text(0.5, 0.5, '查询失败', ha='center', va='center', fontsize=10)
             ax.set_title(config['title'], fontsize=13, fontweight='bold')
-            print(f"  Sub-chart error: {e}")
-
+            logging.warning(f"  Sub-chart error: {e}")
     for i in range(num_charts, len(axes)):
         fig.delaxes(axes[i])
 
@@ -1117,7 +1119,7 @@ def _generate_comparison_chart(chart_config, engine, selected_months):
         buf.seek(0)
         return buf.read()
     except Exception as e:
-        print(f"Comparison chart error: {e}")
+        logging.warning(f"Comparison chart error: {e}")
         plt.close('all')
         return None
 
@@ -1127,7 +1129,6 @@ def _generate_comparison_chart(chart_config, engine, selected_months):
 
 def _fill_placeholders(doc, year, month_num, summary_data, engine=None, selected_months=None, report_type='single'):
     """Replace placeholders in document - handles cross-run placeholders"""
-    import re
 
     def _do_replacements(text):
         new_text = text
@@ -1152,7 +1153,7 @@ def _fill_placeholders(doc, year, month_num, summary_data, engine=None, selected
                     earlier_data = earlier_df.iloc[0].to_dict() if not earlier_df.empty else {}
                     later_data = later_df.iloc[0].to_dict() if not later_df.empty else {}
             except Exception as e:
-                print(f"获取对比数据失败: {e}")
+                logging.warning(f"获取对比数据失败: {e}")
                 earlier_data, later_data = {}, {}
 
             # 前月数据
@@ -1192,7 +1193,6 @@ def _fill_placeholders(doc, year, month_num, summary_data, engine=None, selected
             new_text = new_text.replace('从（）h延长至（）h', f'从{avg1}h延长至{avg2}h')
 
             # 替换重复案件数据（"共发现 （）组"与"共发现 组"两种写法都兼容）
-            import re
             new_text = re.sub(r'共发现\s*（）?\s*组', f'共发现 {total_r:,} 组', new_text)
             new_text = new_text.replace('共发现（）组', f'共发现 {total_r:,} 组')
             new_text = new_text.replace('持续存在 （）组', f'持续存在 {persist_r:,} 组')
@@ -1226,7 +1226,6 @@ def _fill_placeholders(doc, year, month_num, summary_data, engine=None, selected
         if report_type == 'single' and engine and selected_months:
             single_repeat_count, _ = _get_single_month_repeat_count(engine, selected_months)
             # 使用正则表达式匹配"共发现"和"组"之间的任意空格
-            import re
             new_text = re.sub(r'共发现\s+组', f'共发现 {single_repeat_count:,} 组', new_text)
 
         # 通用占位符替换
@@ -1391,7 +1390,7 @@ def _fill_section_charts(doc, engine, selected_months, report_type='single', tem
                             if img_bytes:
                                 charts.append((chart_configs[0], img_bytes))
                     except Exception as e:
-                        print(f"  Chart gen error for {section_title}: {e}")
+                        logging.warning(f"  Chart gen error for {section_title}: {e}")
                     if charts:
                         work_items.append((desc_para, charts))
 
@@ -1409,13 +1408,12 @@ def _fill_section_charts(doc, engine, selected_months, report_type='single', tem
                     cap_elem = _add_caption_after(doc, img_elem, f"图{fig_num}: {cfg['title']}")
                     anchor_elem = cap_elem if cap_elem is not None else img_elem
             except Exception as e:
-                print(f"  Chart insert error for '{cfg.get('title')}': {e}")
+                logging.warning(f"  Chart insert error for '{cfg.get('title')}': {e}")
         try:
             desc_para._element.getparent().remove(desc_para._element)
         except Exception:
             pass
-    print(f"  Total charts inserted: {fig_num}")
-
+    logging.info(f"  Total charts inserted: {fig_num}")
 # ============================================================
 # Table data filling
 # ============================================================
@@ -1488,8 +1486,7 @@ def _fill_tables(doc, engine, selected_months, summary_data=None, report_type='s
                         })
                     _replace_table_data(doc, table_idx, table_data)
             except Exception as e:
-                print(f"  Repeat cases table error: {e}")
-
+                logging.warning(f"  Repeat cases table error: {e}")
         elif '指标' in header and '变化' in header and len(selected_months) >= 2:
             # 确保月份按时间顺序排列
             sorted_months = sorted(selected_months)
@@ -1536,8 +1533,7 @@ def _fill_tables(doc, engine, selected_months, summary_data=None, report_type='s
                             header_row.cells[1].text = f'{earlier_num}月'
                             header_row.cells[2].text = f'{later_num}月'
             except Exception as e:
-                print(f"  Comparison table error: {e}")
-
+                logging.warning(f"  Comparison table error: {e}")
         elif ('顽固' in ' '.join(header) or 'Top8' in ' '.join(header)) and len(selected_months) >= 2:
             m1_label = f"{int(selected_months[0][4:6])}月" if len(selected_months[0]) >= 6 else "月1"
             m2_label = f"{int(selected_months[1][4:6])}月" if len(selected_months[1]) >= 6 else "月2"
@@ -1570,10 +1566,9 @@ def _fill_tables(doc, engine, selected_months, summary_data=None, report_type='s
                             row.cells[1].text = rd['大类']
                             row.cells[2].text = str(rd[m1_label])
                             row.cells[3].text = str(rd[m2_label])
-                        print(f"  顽固案件 Top8 table filled ({len(pivot_data)} rows)")
+                        logging.info(f"  顽固案件 Top8 table filled ({len(pivot_data)} rows)")
             except Exception as e:
-                print(f"  顽固案件 table error: {e}")
-
+                logging.warning(f"  顽固案件 table error: {e}")
 # ============================================================
 # Summary section generation (LLM-powered)
 # ============================================================
@@ -1623,8 +1618,7 @@ def _fill_summary_section(doc, engine, selected_months, summary_data, report_typ
                 key_data['repeat_resolved'] = resolved_r
                 key_data['repeat_new'] = new_r
         except Exception as e:
-            print(f"  Comparison data error: {e}")
-
+            logging.warning(f"  Comparison data error: {e}")
         m1 = key_data.get('m1', {})  # 前月数据
         m2 = key_data.get('m2', {})  # 后月数据
 
@@ -1752,14 +1746,14 @@ def _fill_summary_section(doc, engine, selected_months, summary_data, report_typ
                     p = _make_text_para(line)
                     last_elem.addnext(p)
                     last_elem = p
-                print(f"  Summary inserted: {key} ({len(lines)} lines)")
+                logging.info(f"  Summary inserted: {key} ({len(lines)} lines)")
             elif key == '下月关注':
                 last_elem = heading_para._element
                 for s in suggestions:
                     p = _make_text_para(f"• {s}")
                     last_elem.addnext(p)
                     last_elem = p
-                print(f"  Summary inserted: {key} ({len(suggestions)} suggestions)")
+                logging.info(f"  Summary inserted: {key} ({len(suggestions)} suggestions)")
         return
 
     # --- Single month summary (original logic) ---
@@ -1770,16 +1764,14 @@ def _fill_summary_section(doc, engine, selected_months, summary_data, report_typ
             if not df.empty:
                 key_data['top_categories'] = df.to_dict('records')
     except Exception as e:
-        print(f"  Category data error: {e}")
-
+        logging.warning(f"  Category data error: {e}")
     try:
         with engine.connect() as conn:
             df = pd.read_sql(sa_text(f"SELECT department, COUNT(*) as cnt, ROUND(AVG(TIMESTAMPDIFF(MINUTE, report_time, close_time))/60.0,1) as avg_hours FROM case_data {month_filter} AND close_time IS NOT NULL GROUP BY department ORDER BY avg_hours DESC LIMIT 5"), conn)
             if not df.empty:
                 key_data['slow_departments'] = df.to_dict('records')
     except Exception as e:
-        print(f"  Department data error: {e}")
-
+        logging.warning(f"  Department data error: {e}")
     total = summary_data.get('案件总量', '-')
     avg_time = summary_data.get('平均处置时长', '-')
     closure = summary_data.get('办结率', '-')
@@ -1890,8 +1882,7 @@ def _fill_summary_section(doc, engine, selected_months, summary_data, report_typ
         new_run.append(new_text_elem)
         new_para.append(new_run)
         heading_para._element.addnext(new_para)
-        print(f"  Summary inserted: {key} ({len(content)} chars)")
-
+        logging.info(f"  Summary inserted: {key} ({len(content)} chars)")
 # ============================================================
 # Report title helpers
 # ============================================================
@@ -1948,7 +1939,6 @@ def _extract_title_suffix(doc, fallback):
 
     让报告标题忠实于模板自身的文案，而不是用 DB 模板名（可能少字，如"对比分析报告"）。
     """
-    import re
     try:
         for p in doc.paragraphs:
             if p.style.name in ('Title', 'Title 1', 'Title 2') and p.text.strip():
@@ -2056,8 +2046,7 @@ def register_template_export_routes(app, engine, protected=None):
                 except Exception:
                     pass
         except Exception as e:
-            print(f"report_templates table check failed: {e}")
-
+            logging.warning(f"report_templates table check failed: {e}")
     @app.route('/api/report-templates', methods=['GET'])
     @protected
     def list_report_templates():

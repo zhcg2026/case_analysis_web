@@ -347,10 +347,6 @@
               <span>数据分析</span>
             </label>
             <label class="permission-item">
-              <input type="checkbox" v-model="editingPermissions.spotcheck" />
-              <span>案件抽查</span>
-            </label>
-            <label class="permission-item">
               <input type="checkbox" v-model="editingPermissions.map" />
               <span>数图城管</span>
             </label>
@@ -1403,10 +1399,8 @@ async function createFromTemplate() {
       template_structure: structure,
     }
 
-    console.log('Creating template with payload:', payload)
     const res = await axios.post('/api/report-templates', payload)
-    console.log('Create response:', res.data)
-    
+
     if (res.data.success) {
       closeTemplateUploader()
       await loadReportTemplates()
@@ -1740,15 +1734,10 @@ function openPermissionsEditor(user) {
   // 确保所有权限字段都有值，并将整数转换为布尔值
   const perms = user.permissions || {}
   editingPermissions.value = {
-    dashboard: Boolean(perms.dashboard),
     data_management: Boolean(perms.data_management),
     data_analysis: Boolean(perms.data_analysis),
-    spotcheck: Boolean(perms.spotcheck),
-    cases: Boolean(perms.cases),
     map: Boolean(perms.map),
-    huiwentai: Boolean(perms.huiwentai),
-    business: Boolean(perms.business),
-    flood_monitor: Boolean(perms.flood_monitor)
+    business: Boolean(perms.business)
   }
   showPermissionsEditor.value = true
 }
@@ -1764,15 +1753,10 @@ async function savePermissions() {
   try {
     // 确保发送布尔值
     const dataToSend = {
-      dashboard: Boolean(editingPermissions.value.dashboard),
       data_management: Boolean(editingPermissions.value.data_management),
       data_analysis: Boolean(editingPermissions.value.data_analysis),
-      spotcheck: Boolean(editingPermissions.value.spotcheck),
-      cases: Boolean(editingPermissions.value.cases),
       map: Boolean(editingPermissions.value.map),
-      huiwentai: Boolean(editingPermissions.value.huiwentai),
-      business: Boolean(editingPermissions.value.business),
-      flood_monitor: Boolean(editingPermissions.value.flood_monitor)
+      business: Boolean(editingPermissions.value.business)
     }
     await axios.put(`/api/users/${editingPermissionsUser.value.id}/permissions`, dataToSend)
     closePermissionsEditor()

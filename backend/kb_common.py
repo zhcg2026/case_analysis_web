@@ -37,7 +37,7 @@ MILVUS_PORT = os.getenv('MILVUS_PORT', '19530')
 LOCAL_MILVUS_FILE = os.getenv('LOCAL_MILVUS_FILE', './local_milvus.db')
 LOCAL_EMBED_MODEL = os.getenv('LOCAL_EMBED_MODEL', 'paraphrase-multilingual-MiniLM-L12-v2')
 
-DOUBAO_API_KEY = os.getenv('DOUBAO_API_KEY', '58a51ac5-3b75-4c5e-85ac-1fb4ef652bd0')
+DOUBAO_API_KEY = os.getenv('DOUBAO_API_KEY', '')
 DOUBAO_API_URL = os.getenv('DOUBAO_API_URL', 'https://ark.cn-beijing.volces.com/api/v3/chat/completions')
 DOUBAO_MODEL = os.getenv('DOUBAO_MODEL', 'doubao-seed-1-8-251228')
 
@@ -63,20 +63,20 @@ def connect_milvus():
             from pymilvus import MilvusClient
             _milvus_client = MilvusClient(LOCAL_MILVUS_FILE)
             _milvus_connected = True
-            print(f"[KB] 本地模式：已连接 Milvus Lite，文件: {LOCAL_MILVUS_FILE}")
+            logger.info(f"[KB] 本地模式：已连接 Milvus Lite，文件: {LOCAL_MILVUS_FILE}")
             return True
         except Exception as e:
-            print(f"[KB] Milvus Lite 连接失败: {e}")
+            logger.warning(f"[KB] Milvus Lite 连接失败: {e}")
             return False
     else:
         try:
             from pymilvus import connections
             connections.connect(alias="default", host=MILVUS_HOST, port=MILVUS_PORT)
             _milvus_connected = True
-            print(f"[KB] 已连接 Milvus: {MILVUS_HOST}:{MILVUS_PORT}")
+            logger.info(f"[KB] 已连接 Milvus: {MILVUS_HOST}:{MILVUS_PORT}")
             return True
         except Exception as e:
-            print(f"[KB] Milvus 连接失败: {e}")
+            logger.warning(f"[KB] Milvus 连接失败: {e}")
             return False
 
 
@@ -92,7 +92,7 @@ def disconnect_milvus():
                 connections.disconnect("default")
             _milvus_connected = False
             _milvus_client = None
-        except:
+        except Exception:
             pass
 
 
@@ -102,7 +102,7 @@ def get_local_embed_model():
     if _local_embed_model is None:
         try:
             from sentence_transformers import SentenceTransformer
-            print(f"[KB] 加载本地 embedding 模型: {LOCAL_EMBED_MODEL}")
+            logger.info(f"[KB] 加载本地 embedding 模型: {LOCAL_EMBED_MODEL}")
             try:
                 # 优先离线加载：仅用本地缓存，避免运行期联网校验 HuggingFace
                 # 导致首问卡顿 / 超时（尤其在出网受限的环境）。
@@ -111,12 +111,12 @@ def get_local_embed_model():
                 # 本地无缓存时退回联网下载（首次灌库场景）。
                 logger.warning("[KB] 本地 embedding 缓存未命中，回退联网下载模型")
                 _local_embed_model = SentenceTransformer(LOCAL_EMBED_MODEL)
-            print(f"[KB] 本地 embedding 模型加载完成")
+            logger.info(f"[KB] 本地 embedding 模型加载完成")
         except ImportError:
-            print("[KB] sentence-transformers 未安装")
+            logger.warning("[KB] sentence-transformers 未安装")
             return None
         except Exception as e:
-            print(f"[KB] 本地 embedding 模型加载失败: {e}")
+            logger.warning(f"[KB] 本地 embedding 模型加载失败: {e}")
             return None
     return _local_embed_model
 
@@ -136,7 +136,7 @@ def get_embedding(text: str, max_retries: int = 3, max_chars: int = 1500) -> Opt
             embedding = model.encode(text, convert_to_numpy=True)
             return embedding.tolist()
         except Exception as e:
-            print(f"[KB] 本地 embedding 失败: {e}")
+            logger.warning(f"[KB] 本地 embedding 失败: {e}")
             return None
     else:
         import time
@@ -174,15 +174,15 @@ def get_embedding(text: str, max_retries: int = 3, max_chars: int = 1500) -> Opt
                         elif all(isinstance(x, (int, float)) for x in emb):
                             return emb
 
-                print(f"[KB] Embedding 失败: {response.status_code}, 尝试 {attempt + 1}/{max_retries}")
+                logger.warning(f"[KB] Embedding 失败: {response.status_code}, 尝试 {attempt + 1}/{max_retries}")
                 if attempt < max_retries - 1:
                     time.sleep(1)
             except Exception as e:
-                print(f"[KB] Embedding 异常: {e}, 尝试 {attempt + 1}/{max_retries}")
+                logger.warning(f"[KB] Embedding 异常: {e}, 尝试 {attempt + 1}/{max_retries}")
                 if attempt < max_retries - 1:
                     time.sleep(1)
 
-        print(f"[KB] Embedding 最终失败，文本长度: {len(text)}")
+        logger.warning(f"[KB] Embedding 最终失败，文本长度: {len(text)}")
         return None
 
 
@@ -216,7 +216,7 @@ def call_llm(prompt: str, provider: str = None, timeout: int = 120) -> Optional[
             if response.status_code == 200:
                 return response.json().get("choices", [{}])[0].get("message", {}).get("content", "")
             else:
-                print(f"[KB] 豆包 API 调用失败: {response.status_code}")
+                logger.warning(f"[KB] 豆包 API 调用失败: {response.status_code}")
                 return None
         else:
             response = requests.post(
@@ -232,8 +232,8 @@ def call_llm(prompt: str, provider: str = None, timeout: int = 120) -> Optional[
             if response.status_code == 200:
                 return response.json().get("response", "")
             else:
-                print(f"[KB] Ollama 调用失败: {response.status_code}")
+                logger.warning(f"[KB] Ollama 调用失败: {response.status_code}")
                 return None
     except Exception as e:
-        print(f"[KB] LLM 调用异常: {e}")
+        logger.warning(f"[KB] LLM 调用异常: {e}")
         return None

@@ -11,7 +11,6 @@ RUN pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     build-essential \
-    ffmpeg \
     fonts-wqy-zenhei \
     fonts-wqy-microhei \
     tzdata \

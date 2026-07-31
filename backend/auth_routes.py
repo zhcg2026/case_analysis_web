@@ -2,6 +2,7 @@
 """认证路由模块 - 用户登录、注册、权限管理"""
 from flask import request, jsonify
 from sqlalchemy import text
+import logging
 from helpers import (
     protected, admin_required, hash_password, verify_password,
     is_strong_password, check_login_attempts, record_failed_login,
@@ -9,8 +10,8 @@ from helpers import (
 )
 
 # 当前保留的权限列
-PERMISSION_COLUMNS = 'data_management, data_analysis, spotcheck, map, business'
-PERMISSION_KEYS = ['data_management', 'data_analysis', 'spotcheck', 'map', 'business']
+PERMISSION_COLUMNS = 'data_management, data_analysis, map, business'
+PERMISSION_KEYS = ['data_management', 'data_analysis', 'map', 'business']
 
 def register_auth_routes(app, Session, User, engine):
     """注册认证相关路由"""
@@ -61,10 +62,8 @@ def register_auth_routes(app, Session, User, engine):
                 }), 200
         except Exception as e:
             session.rollback()
-            print(f"Error in login: {str(e)}")
-            import traceback
-            traceback.print_exc()
-            return jsonify({'error': str(e)}), 500
+            logging.exception("Error in login")
+            return jsonify({"error": "操作失败，请稍后重试"}), 500
         finally:
             session.close()
 
@@ -97,10 +96,8 @@ def register_auth_routes(app, Session, User, engine):
             }), 200
         except Exception as e:
             session.rollback()
-            print(f"Error in get_current_user: {str(e)}")
-            import traceback
-            traceback.print_exc()
-            return jsonify({'error': str(e)}), 500
+            logging.exception("Error in get_current_user")
+            return jsonify({"error": "操作失败，请稍后重试"}), 500
         finally:
             session.close()
 
@@ -139,10 +136,8 @@ def register_auth_routes(app, Session, User, engine):
             return jsonify({'users': user_list}), 200
         except Exception as e:
             session.rollback()
-            print(f"Error in get_users: {str(e)}")
-            import traceback
-            traceback.print_exc()
-            return jsonify({'error': str(e)}), 500
+            logging.exception("Error in get_users")
+            return jsonify({"error": "操作失败，请稍后重试"}), 500
         finally:
             session.close()
 
@@ -195,10 +190,8 @@ def register_auth_routes(app, Session, User, engine):
             }), 201
         except Exception as e:
             session.rollback()
-            print(f"Error in create_user: {str(e)}")
-            import traceback
-            traceback.print_exc()
-            return jsonify({'error': str(e)}), 500
+            logging.exception("Error in create_user")
+            return jsonify({"error": "操作失败，请稍后重试"}), 500
         finally:
             session.close()
 
@@ -235,10 +228,8 @@ def register_auth_routes(app, Session, User, engine):
             }), 200
         except Exception as e:
             session.rollback()
-            print(f"Error in update_user: {str(e)}")
-            import traceback
-            traceback.print_exc()
-            return jsonify({'error': str(e)}), 500
+            logging.exception("Error in update_user")
+            return jsonify({"error": "操作失败，请稍后重试"}), 500
         finally:
             session.close()
 
@@ -275,10 +266,8 @@ def register_auth_routes(app, Session, User, engine):
             }), 200
         except Exception as e:
             session.rollback()
-            print(f"Error in update_user_permissions: {str(e)}")
-            import traceback
-            traceback.print_exc()
-            return jsonify({'error': str(e)}), 500
+            logging.exception("Error in update_user_permissions")
+            return jsonify({"error": "操作失败，请稍后重试"}), 500
         finally:
             session.close()
 
@@ -303,9 +292,7 @@ def register_auth_routes(app, Session, User, engine):
             return jsonify({'message': 'User deleted successfully'}), 200
         except Exception as e:
             session.rollback()
-            print(f"Error in delete_user: {str(e)}")
-            import traceback
-            traceback.print_exc()
-            return jsonify({'error': str(e)}), 500
+            logging.exception("Error in delete_user")
+            return jsonify({"error": "操作失败，请稍后重试"}), 500
         finally:
             session.close()

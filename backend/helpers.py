@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """工具函数模块 - 从app.py提取的通用工具函数"""
 import os
 import re
@@ -77,7 +77,7 @@ def verify_token(token):
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
         return payload
-    except:
+    except Exception:
         return None
 
 

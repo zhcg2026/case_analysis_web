@@ -1,13 +1,11 @@
 # -*- coding: utf-8 -*-
-"""智能报告与视频报告路由模块"""
-import os
-import json
+"""智能报告路由模块"""
 import pandas as pd
 import numpy as np
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-from flask import request, jsonify, send_file
+from flask import request, jsonify
 
 try:
     from common import protected as _protected
@@ -15,7 +13,7 @@ except ImportError:
     from helpers import protected as _protected
 
 def register_report_routes(app, engine, protected=None, admin_required=None, call_llm_api=None):
-    """注册智能报告与视频报告相关路由"""
+    """注册智能报告相关路由"""
     protected = protected or _protected
 
     @app.route('/api/smart-report', methods=['POST'])
@@ -34,8 +32,7 @@ def register_report_routes(app, engine, protected=None, admin_required=None, cal
             if not table_name or not template_type:
                 return jsonify({'error': 'Missing required parameters'}), 400
 
-            print(f"[智能报告] 开始生成报告, 表: {table_name}, 模板: {template_type}")
-
+            logging.info(f"[智能报告] 开始生成报告, 表: {table_name}, 模板: {template_type}")
             df = pd.read_sql_table(table_name, engine)
             original_count = len(df)
 
@@ -88,429 +85,13 @@ def register_report_routes(app, engine, protected=None, admin_required=None, cal
                 filtered_count=filtered_count
             )
 
-            print(f"[智能报告] 报告生成完成")
+            logging.info(f"[智能报告] 报告生成完成")
             return jsonify({'html': html_report}), 200
 
         except Exception as e:
-            print(f"Error in smart_report: {str(e)}")
-            import traceback
-            traceback.print_exc()
-            return jsonify({'error': str(e), 'details': traceback.format_exc()}), 500
-
-    @app.route('/api/video-test', methods=['GET'])
-    def video_test():
-        """视频生成测试端点 - 不需要认证"""
-        try:
-            print("[视频测试] 开始测试...")
-
-            from video_report import VideoReportGenerator
-            import tempfile
-
-            generator = VideoReportGenerator()
-            output_path = tempfile.mktemp(suffix='.mp4')
-
-            charts_data = []
-            try:
-                import io
-                import base64
-
-                fig, ax = plt.subplots(figsize=(10, 6))
-                ax.bar(['A', 'B', 'C'], [100, 150, 80])
-                ax.set_title('测试图表')
-                buf = io.BytesIO()
-                fig.savefig(buf, format='png', dpi=100)
-                buf.seek(0)
-                img_b64 = base64.b64encode(buf.read()).decode('utf-8')
-                charts_data.append(('测试图表', img_b64))
-                plt.close(fig)
-            except Exception as e:
-                print(f"[视频测试] 图表生成失败: {e}")
-
-            print("[视频测试] 生成视频...")
-            video_path = generator.generate_video(
-                report_title="测试报告",
-                charts_data=charts_data,
-                insights={'summary': '这是一个测试视频报告', 'key_findings': ['发现一：测试数据正常', '发现二：视频生成成功']},
-                output_path=output_path
-            )
-
-            print(f"[视频测试] 视频生成完成: {video_path}")
-
-            if video_path and os.path.exists(video_path):
-                response = send_file(
-                    video_path,
-                    mimetype='video/mp4',
-                    as_attachment=True,
-                    download_name='test_report.mp4'
-                )
-
-                @response.call_on_close
-                def cleanup():
-                    try:
-                        if os.path.exists(video_path):
-                            os.remove(video_path)
-                    except:
-                        pass
-
-                return response
-            else:
-                return jsonify({'success': False, 'error': '视频生成失败'})
-
-        except Exception as e:
-            print(f"[视频测试] 错误: {e}")
-            import traceback
-            traceback.print_exc()
-            return jsonify({'error': str(e), 'traceback': traceback.format_exc()}), 500
-
-    @app.route('/api/video-debug', methods=['GET'])
-    def video_debug():
-        """视频报告调试端点 - 模拟完整流程，不需要认证"""
-        try:
-            print("[视频调试] 开始调试...")
-            from video_report import VideoReportGenerator
-            import tempfile
-
-            table_name = 'cases'
-            template_type = 'monthly_comparison'
-            months = ['202603', '202602']
-
-            print(f"[视频调试] 参数: table={table_name}, template={template_type}")
-            report_title = f"{months[0]}与{months[1]}对比分析报告"
-
-            try:
-                df = pd.read_sql_table(table_name, engine)
-                print(f"[视频调试] 数据库读取成功: {len(df)} 条记录")
-            except Exception as e:
-                print(f"[视频调试] 数据库读取失败: {e}")
-                df = pd.DataFrame({
-                    '大类名称': ['市容环境', '市容环境', '市政设施'],
-                    '所属片区': ['片区A', '片区B', '片区A'],
-                    '当前阶段名称': ['[办结]', '[办结]', '处置中']
-                })
-
-            try:
-                charts_base64 = generate_smart_report_charts(df, template_type, months, '', [])
-                print(f"[视频调试] 图表生成成功: {len(charts_base64)} 个")
-            except Exception as e:
-                print(f"[视频调试] 图表生成失败: {e}")
-                charts_base64 = []
-
-            if '当前阶段名称' in df.columns:
-                completion_rate = (df['当前阶段名称'] == '[办结]').sum() / len(df) * 100
-            else:
-                completion_rate = 0
-
-            insights = {
-                'summary': f'共分析{len(df)}条数据',
-                'key_findings': [],
-                'chart_insights': {}
-            }
-            if '大类名称' in df.columns:
-                top = df['大类名称'].value_counts().head(1)
-                if len(top) > 0:
-                    insights['key_findings'].append(f"主要问题: {top.index[0]}")
-
-            for chart_name, _ in charts_base64:
-                if '综合仪表盘' in chart_name:
-                    insight = f"综合仪表盘展示了整体数据概况。共{len(df)}条数据，结案率{completion_rate:.1f}%。"
-                elif '案件总量对比' in chart_name:
-                    insight = f"案件总量对比图表展示了两个月的数据对比情况。"
-                elif '问题类型' in chart_name:
-                    if '大类名称' in df.columns and len(df['大类名称'].value_counts()) > 0:
-                        top = df['大类名称'].value_counts().head(3)
-                        insight = f"问题类型分布显示，{top.index[0]}占比最高，共{top.values[0]}件。"
-                    else:
-                        insight = f"问题类型分布图表展示了各类问题的占比情况。"
-                elif 'TOP10小类' in chart_name:
-                    if '小类名称' in df.columns and len(df['小类名称'].value_counts()) > 0:
-                        top5 = df['小类名称'].value_counts().head(3)
-                        insight = f"排名前五的小类问题分别是：{top5.index[0]}、{top5.index[1] if len(top5)>1 else ''}等。"
-                    else:
-                        insight = f"排名图表展示了高频小类问题的分布情况。"
-                elif '片区案件' in chart_name:
-                    if '所属片区' in df.columns and len(df['所属片区'].value_counts()) > 0:
-                        top = df['所属片区'].value_counts().head(3)
-                        insight = f"片区案件分布显示，{top.index[0]}案件最多，共{top.values[0]}件。"
-                    else:
-                        insight = f"片区案件分布图表展示了各区域的案件分布情况。"
-                elif '问题来源' in chart_name:
-                    if '问题来源' in df.columns and len(df['问题来源'].value_counts()) > 0:
-                        top = df['问题来源'].value_counts().head(3)
-                        insight = f"问题来源分布显示，主要来源为{top.index[0]}。"
-                    else:
-                        insight = f"问题来源分布图表展示了案件的来源渠道。"
-                elif '街道案件' in chart_name:
-                    if '所属街道' in df.columns and len(df['所属街道'].value_counts()) > 0:
-                        top = df['所属街道'].value_counts().head(3)
-                        insight = f"街道案件分布显示，{top.index[0]}案件最多。"
-                    else:
-                        insight = f"街道案件分布图表展示了各街道的案件分布情况。"
-                elif '处置部门' in chart_name:
-                    if '处置部门' in df.columns and len(df['处置部门'].value_counts()) > 0:
-                        top = df['处置部门'].value_counts().head(3)
-                        insight = f"处置部门排名显示，{top.index[0]}处理案件最多。"
-                    else:
-                        insight = f"处置部门排名图表展示了各部门的工作量。"
-                elif '案件状态' in chart_name:
-                    insight = f"案件状态分布显示，已办结{(df['当前阶段名称'] == '[办结]').sum() if '当前阶段名称' in df.columns else 0}件。"
-                else:
-                    insight = f"该图表展示了数据分析结果。"
-                insights['chart_insights'][chart_name] = insight
-
-            print(f"[视频调试] 洞察生成完成")
-
-            print("[视频调试] 开始生成视频...")
-            generator = VideoReportGenerator()
-            output_path = tempfile.mktemp(suffix='.mp4')
-
-            video_path = generator.generate_video(
-                report_title=report_title,
-                charts_data=charts_base64,
-                insights=insights,
-                output_path=output_path
-            )
-
-            print(f"[视频调试] 视频完成: {video_path}, 大小: {os.path.getsize(video_path) if video_path else 0}")
-
-            if video_path and os.path.exists(video_path):
-                response = send_file(
-                    video_path,
-                    mimetype='video/mp4',
-                    as_attachment=True,
-                    download_name='debug_report.mp4'
-                )
-                @response.call_on_close
-                def cleanup():
-                    try:
-                        if os.path.exists(video_path):
-                            os.remove(video_path)
-                    except:
-                        pass
-                return response
-            else:
-                return jsonify({'error': '视频生成失败'}), 500
-
-        except Exception as e:
-            print(f"[视频调试] 总错误: {e}")
-            import traceback
-            traceback.print_exc()
-            return jsonify({'error': str(e), 'traceback': traceback.format_exc()}), 500
-
-    @app.route('/api/video-report', methods=['POST'])
-    @protected
-    def video_report():
-        """视频报告生成API"""
-        try:
-            from video_report import VideoReportGenerator
-            import tempfile
-
-            data = request.json
-            table_name = data.get('table_name')
-            template_type = data.get('template_type')
-            months = data.get('months', [])
-            year = data.get('year', '')
-            dimension = data.get('dimension', '')
-            dimension_values = data.get('dimension_values', [])
-
-            print(f"[视频报告] 请求参数: table={table_name}, template={template_type}, months={months}")
-
-            if not table_name or not template_type:
-                return jsonify({'error': 'Missing required parameters'}), 400
-
-            print(f"[视频报告] 开始生成视频, 表: {table_name}, 模板: {template_type}")
-
-            try:
-                df = pd.read_sql_table(table_name, engine)
-                original_count = len(df)
-                print(f"[视频报告] 读取数据: {original_count} 条")
-            except Exception as e:
-                print(f"[视频报告] 数据库读取失败: {e}")
-                return jsonify({'error': f'数据库读取失败: {str(e)}'}), 500
-
-            filter_desc = ""
-            if template_type == 'monthly_comparison' and months:
-                month_col = None
-                for col in ['月份', 'data_month']:
-                    if col in df.columns:
-                        month_col = col
-                        break
-                if month_col:
-                    df = df[df[month_col].isin(months)]
-                    filter_desc = f"筛选月份: {', '.join(months)}"
-
-            elif template_type == 'yearly_summary' and year:
-                time_col = None
-                for col in ['上报时间', '捆绑处置截止时间', 'created_time']:
-                    if col in df.columns:
-                        time_col = col
-                        break
-                if time_col:
-                    df[time_col] = pd.to_datetime(df[time_col], errors='coerce')
-                    df = df[df[time_col].dt.year == int(year)]
-                    filter_desc = f"筛选年份: {year}年"
-
-            elif template_type == 'special_analysis' and dimension and dimension_values:
-                if dimension in df.columns:
-                    df = df[df[dimension].isin(dimension_values)]
-                    filter_desc = f"筛选{dimension}: {', '.join(dimension_values)}"
-
-            filtered_count = len(df)
-            print(f"[视频报告] 数据筛选: {original_count} -> {filtered_count} 条")
-
-            if filtered_count == 0:
-                return jsonify({'error': '筛选后无数据，请调整筛选条件'}), 400
-
-            try:
-                charts_base64 = generate_smart_report_charts(df, template_type, months, dimension, dimension_values)
-                print(f"[视频报告] 图表生成完成: {len(charts_base64)} 个")
-            except Exception as e:
-                print(f"[视频报告] 图表生成失败: {e}")
-                charts_base64 = []
-
-            try:
-                insights = {
-                    'summary': f'共分析{filtered_count}条数据' + (f'，{filter_desc}' if filter_desc else ''),
-                    'key_findings': [],
-                    'chart_insights': {}
-                }
-
-                if '大类名称' in df.columns:
-                    top_type = df['大类名称'].value_counts().head(1)
-                    if len(top_type) > 0:
-                        insights['key_findings'].append(f"主要问题类型: {top_type.index[0]}, 共{top_type.values[0]}件")
-
-                if '所属片区' in df.columns:
-                    top_district = df['所属片区'].value_counts().head(1)
-                    if len(top_district) > 0:
-                        insights['key_findings'].append(f"案件集中区域: {top_district.index[0]}, 共{top_district.values[0]}件")
-
-                if '当前阶段名称' in df.columns:
-                    completion_rate = (df['当前阶段名称'] == '[办结]').sum() / len(df) * 100
-                else:
-                    completion_rate = 0
-
-                is_monthly_comparison = template_type == 'monthly_comparison' and months and len(months) >= 2
-
-                for chart_name, _ in charts_base64:
-                    chart_display = chart_name
-                    if len(chart_name) > 3 and chart_name[2] == '_':
-                        chart_display = chart_name[3:]
-
-                    if '综合仪表盘' in chart_name:
-                        insight = f"综合仪表盘展示了整体数据概况。共{filtered_count}条数据，结案率{completion_rate:.1f}%。"
-                    elif '案件总量对比' in chart_name:
-                        if is_monthly_comparison and months:
-                            insight = f"案件总量对比图表展示了两个月的数据对比情况。左侧为{months[0]}，右侧为{months[1]}。"
-                        else:
-                            insight = f"案件总量图表展示了数据的基本情况。"
-                    elif '问题类型对比' in chart_name or '问题类型分布' in chart_name:
-                        if '大类名称' in df.columns and len(df['大类名称'].value_counts()) > 0:
-                            top = df['大类名称'].value_counts().head(3)
-                            insight = f"问题类型分布显示，{top.index[0]}占比最高，共{top.values[0]}件。"
-                        else:
-                            insight = f"问题类型分布图表展示了各类问题的占比情况。"
-                    elif 'TOP10小类' in chart_name:
-                        if '小类名称' in df.columns and len(df['小类名称'].value_counts()) > 0:
-                            top5 = df['小类名称'].value_counts().head(5)
-                            insight = f"排名前五的小类问题分别是：{top5.index[0]}、{top5.index[1] if len(top5)>1 else ''}、{top5.index[2] if len(top5)>2 else ''}。"
-                        else:
-                            insight = f"排名图表展示了高频小类问题的分布情况。"
-                    elif '片区案件' in chart_name:
-                        if '所属片区' in df.columns and len(df['所属片区'].value_counts()) > 0:
-                            top = df['所属片区'].value_counts().head(3)
-                            insight = f"片区案件分布显示，{top.index[0]}案件最多，共{top.values[0]}件，其次是{top.index[1] if len(top)>1 else '其他'}。"
-                        else:
-                            insight = f"片区案件分布图表展示了各区域的案件分布情况。"
-                    elif '问题来源' in chart_name:
-                        if '问题来源' in df.columns and len(df['问题来源'].value_counts()) > 0:
-                            top = df['问题来源'].value_counts().head(3)
-                            insight = f"问题来源分布显示，主要来源为{top.index[0]}，占比{top.values[0]/filtered_count*100:.1f}%。"
-                        else:
-                            insight = f"问题来源分布图表展示了案件的来源渠道。"
-                    elif '街道案件' in chart_name:
-                        if '所属街道' in df.columns and len(df['所属街道'].value_counts()) > 0:
-                            top = df['所属街道'].value_counts().head(3)
-                            insight = f"街道案件分布显示，{top.index[0]}案件最多，共{top.values[0]}件。"
-                        else:
-                            insight = f"街道案件分布图表展示了各街道的案件分布情况。"
-                    elif '处置部门' in chart_name:
-                        if '处置部门' in df.columns and len(df['处置部门'].value_counts()) > 0:
-                            top = df['处置部门'].value_counts().head(3)
-                            insight = f"处置部门排名显示，{top.index[0]}处理案件最多，共{top.values[0]}件。"
-                        else:
-                            insight = f"处置部门排名图表展示了各部门的工作量。"
-                    elif '案件状态' in chart_name:
-                        if '当前阶段名称' in df.columns:
-                            done_count = (df['当前阶段名称'] == '[办结]').sum()
-                            insight = f"案件状态分布显示，已办结{done_count}件，结案率{completion_rate:.1f}%。"
-                        else:
-                            insight = f"案件状态分布图表展示了案件的处理进度。"
-                    else:
-                        insight = f"该图表展示了{chart_display}的分析结果。"
-
-                    insights['chart_insights'][chart_name] = insight
-
-                print(f"[视频报告] 洞察生成完成，含{len(insights['chart_insights'])}个图表结论")
-            except Exception as e:
-                print(f"[视频报告] 洞察生成失败: {e}")
-                insights = {'summary': f'数据分析报告，共{filtered_count}条数据', 'key_findings': []}
-
-            if template_type == 'monthly_comparison' and months:
-                report_title = f"{months[0]}与{months[1]}对比分析报告"
-            elif template_type == 'yearly_summary' and year:
-                report_title = f"{year}年度数据分析报告"
-            elif template_type == 'special_analysis' and dimension:
-                report_title = f"{dimension}专项分析报告"
-            elif template_type == 'full_analysis':
-                report_title = "全量数据分析报告"
-            else:
-                report_title = "数据分析报告"
-
-            print("[视频报告] 开始生成视频文件...")
-            generator = VideoReportGenerator()
-            output_path = tempfile.mktemp(suffix='.mp4')
-
-            try:
-                video_path = generator.generate_video(
-                    report_title=report_title,
-                    charts_data=charts_base64,
-                    insights=insights,
-                    output_path=output_path
-                )
-            except Exception as e:
-                print(f"[视频报告] 视频生成失败: {e}")
-                import traceback
-                traceback.print_exc()
-                return jsonify({'error': f'视频生成失败: {str(e)}'}), 500
-
-            if not video_path or not os.path.exists(video_path):
-                return jsonify({'error': '视频生成失败'}), 500
-
-            print(f"[视频报告] 视频生成完成: {video_path}, 大小: {os.path.getsize(video_path)} bytes")
-
-            response = send_file(
-                video_path,
-                mimetype='video/mp4',
-                as_attachment=True,
-                download_name=f'{report_title}.mp4'
-            )
-
-            @response.call_on_close
-            def cleanup():
-                try:
-                    if os.path.exists(video_path):
-                        os.remove(video_path)
-                except:
-                    pass
-
-            return response
-
-        except Exception as e:
-            print(f"Error in video_report: {str(e)}")
-            import traceback
-            traceback.print_exc()
-            return jsonify({'error': str(e), 'details': traceback.format_exc()}), 500
-
+            import logging
+            logging.exception("Error in smart_report")
+            return jsonify({'error': '报告生成失败，请稍后重试'}), 500
 
 def fig_to_base64(fig):
     """将matplotlib图表转换为base64字符串"""
@@ -888,9 +469,8 @@ def generate_smart_report_charts(df, template_type, months, dimension, dimension
             charts.append(('08_案件状态对比', fig_to_base64(fig)))
 
     except Exception as e:
-        print(f"[图表生成] 错误: {e}")
-        import traceback
-        traceback.print_exc()
+        import logging
+        logging.exception("[图表生成] 错误")
 
     return charts
 

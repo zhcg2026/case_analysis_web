@@ -35,8 +35,5 @@ jieba>=0.42.1
 rank-bm25>=0.2.2
 zhconv>=1.4.0  # 繁->简转换：处理部分繁体法规 md（缺包时降级保留原文，kb_index.py 已做软依赖）
 
-# 视频报告依赖
+# 图表生成（智能报告 / 模板导出）
 matplotlib>=3.5.0
-imageio>=2.9.0
-edge-tts>=6.1.0
-moviepy>=1.0.3

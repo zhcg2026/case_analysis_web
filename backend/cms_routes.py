@@ -2,7 +2,9 @@
 """CMS路由模块 - 文章管理、分类管理"""
 import datetime
 from flask import request, jsonify
+import logging
 from helpers import protected, generate_slug
+logger = logging.getLogger(__name__)
 
 def register_cms_routes(app, Session, Category, Article):
     """注册CMS相关路由"""
@@ -35,7 +37,8 @@ def register_cms_routes(app, Session, Category, Article):
             return jsonify({'categories': categories_list}), 200
         except Exception as e:
             session.rollback()
-            return jsonify({'error': str(e)}), 500
+            logging.exception('Error in get_categories')
+            return jsonify({'error': '操作失败'}), 500
         finally:
             session.close()
 
@@ -96,7 +99,7 @@ def register_cms_routes(app, Session, Category, Article):
                         article_dict['file_path'] = None
                     articles_list.append(article_dict)
                 except Exception as article_error:
-                    print(f"Error processing article {article.id}: {str(article_error)}")
+                    logging.warning(f"Error processing article {article.id}: {str(article_error)}")
                     continue
 
             session.commit()
@@ -109,10 +112,8 @@ def register_cms_routes(app, Session, Category, Article):
             }), 200
         except Exception as e:
             session.rollback()
-            print(f"Error in get_articles: {str(e)}")
-            import traceback
-            traceback.print_exc()
-            return jsonify({'error': str(e)}), 500
+            logging.exception("Error in get_articles")
+            return jsonify({"error": "操作失败，请稍后重试"}), 500
         finally:
             session.close()
 
@@ -149,10 +150,8 @@ def register_cms_routes(app, Session, Category, Article):
             return jsonify(article_dict), 200
         except Exception as e:
             session.rollback()
-            print(f"Error in get_article_detail: {str(e)}")
-            import traceback
-            traceback.print_exc()
-            return jsonify({'error': str(e)}), 500
+            logging.exception("Error in get_article_detail")
+            return jsonify({"error": "操作失败，请稍后重试"}), 500
         finally:
             session.close()
 
@@ -202,10 +201,8 @@ def register_cms_routes(app, Session, Category, Article):
             }), 201
         except Exception as e:
             session.rollback()
-            print(f"Error in create_article: {str(e)}")
-            import traceback
-            traceback.print_exc()
-            return jsonify({'error': str(e)}), 500
+            logging.exception("Error in create_article")
+            return jsonify({"error": "操作失败，请稍后重试"}), 500
         finally:
             session.close()
 
@@ -251,10 +248,8 @@ def register_cms_routes(app, Session, Category, Article):
             }), 200
         except Exception as e:
             session.rollback()
-            print(f"Error in update_article: {str(e)}")
-            import traceback
-            traceback.print_exc()
-            return jsonify({'error': str(e)}), 500
+            logging.exception("Error in update_article")
+            return jsonify({"error": "操作失败，请稍后重试"}), 500
         finally:
             session.close()
 
@@ -274,10 +269,8 @@ def register_cms_routes(app, Session, Category, Article):
             return jsonify({'message': '删除成功'}), 200
         except Exception as e:
             session.rollback()
-            print(f"Error in delete_article: {str(e)}")
-            import traceback
-            traceback.print_exc()
-            return jsonify({'error': str(e)}), 500
+            logging.exception("Error in delete_article")
+            return jsonify({"error": "操作失败，请稍后重试"}), 500
         finally:
             session.close()
 
@@ -320,9 +313,7 @@ def register_cms_routes(app, Session, Category, Article):
             return jsonify(result), 200
         except Exception as e:
             session.rollback()
-            print(f"Error in get_home_columns: {str(e)}")
-            import traceback
-            traceback.print_exc()
-            return jsonify({'error': str(e)}), 500
+            logging.exception("Error in get_home_columns")
+            return jsonify({"error": "操作失败，请稍后重试"}), 500
         finally:
             session.close()
