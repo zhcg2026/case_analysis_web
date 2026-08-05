@@ -97,3 +97,14 @@ datetime
 # 待删除暂存目录（清理死代码用）
 _trash_pending/
 backend/_trash_pending/
+
+# 数据导出/临时文件
+*.sql
+*.jsonl
+*.jsonl.gz
+*.tar.gz
+*.whl
+pip_cache/
+bug.txt
+nginx.conf
+docs/

@@ -111,14 +111,14 @@ def _split_chart_specs(text):
                             或 '案件总量对比，5月案件数，6月案件数，柱状图'
     """
     text = (text or "").strip()
-    # 去掉尾部"N图并排/并列/一列/一行"等排版说明
-    text = re.sub(r"[（(]?[一二两三四五六七八九十\d]+图.*?(并排|并列|一列|一行).*?[）)]?$", "", text).strip()
-    text = re.sub(r"[一二两三四五六七八九十\d]+图.*?(并排|并列|一列|一行)$", "", text).strip()
+    # 去掉尾部"N图并排/并列/一列/一行"等排版说明（前面可能有空格、括号等）
+    text = re.sub(r"[）)\s]*[（(]?[一二两三四五六七八九十\d]+图.*?(并排|并列|一列|一行).*?[）)]?$", "", text).strip()
+    text = re.sub(r"\s*[一二两三四五六七八九十\d]+图.*?(并排|并列|一列|一行)$", "", text).strip()
     if not text:
         return []
 
-    # —— 格式A：存在"图N"标记 ——
-    fig_pattern = re.compile(r"图\s*[0-9一二三四五六七八九十]+")
+    # —— 格式A：存在"图N"标记（图+数字/中文数字，且前面是句首/分号/空格，排除"单图一列"等排版词） ——
+    fig_pattern = re.compile(r"(?:^|[；;，,\s])图\s*([0-9一二三四五六七八九十]+)")
     fig_matches = list(fig_pattern.finditer(text))
     if fig_matches:
         specs = []

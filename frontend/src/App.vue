@@ -1,7 +1,12 @@
 <template>
   <div class="app-container" :data-theme="themeStore.theme">
+    <!-- 初始化中 -->
+    <div v-if="initializing" class="app-loading">
+      <div class="loading-spinner"></div>
+    </div>
+
     <!-- 登录页面 -->
-    <template v-if="!userStore.isLoggedIn">
+    <template v-else-if="!userStore.isLoggedIn">
       <router-view />
     </template>
 
@@ -45,17 +50,32 @@ const userStore = useUserStore()
 const themeStore = useThemeStore()
 
 const sidebarCollapsed = ref(false)
+const initializing = ref(true)
 
 const { loadSystemConfig } = useSystemConfig()
 
-onMounted(() => {
-  // 设置 API 拦截器
+onMounted(async () => {
   setupApiInterceptors()
+  await loadSystemConfig()
 
-  // 加载系统配置（名称 / Logo），驱动全站品牌展示
-  loadSystemConfig()
+  // 如果 localStorage 有 token 但没有 userInfo，清理无效状态
+  if (userStore.token && !userStore.userInfo) {
+    userStore.logout()
+  }
 
-  // 如果未登录，跳转到登录页
+  // 如果有 token，验证是否有效
+  if (userStore.isLoggedIn) {
+    try {
+      await axios.get('/api/verify-token', {
+        headers: { Authorization: `Bearer ${userStore.token}` }
+      })
+    } catch {
+      userStore.logout()
+    }
+  }
+
+  initializing.value = false
+
   if (!userStore.isLoggedIn) {
     router.push('/login')
   }
@@ -63,5 +83,24 @@ onMounted(() => {
 </script>
 
 <style>
-/* App.vue 不需要额外样式，所有样式在 styles/ 目录下 */
+.app-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  background: var(--bg-primary, #f5f7fa);
+}
+
+.loading-spinner {
+  width: 36px;
+  height: 36px;
+  border: 3px solid var(--border-lighter, #e4e7ed);
+  border-top-color: var(--primary-500, #409eff);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
 </style>

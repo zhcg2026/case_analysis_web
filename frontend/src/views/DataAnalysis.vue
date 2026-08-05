@@ -7,20 +7,7 @@
         <span>数据分析</span>
       </div>
       <div class="sidebar-body">
-      <div class="sidebar-section">
-        <h3 class="section-title">数据上传</h3>
-        <div class="upload-area" @dragover.prevent @drop.prevent="handleDrop">
-          <input type="file" ref="fileInput" accept=".xlsx,.xls" @change="handleFileSelect" hidden />
-          <div class="upload-content" @click="$refs.fileInput.click()">
-            <KbIcon name="upload" :size="32" :stroke-width="1.5" class="upload-icon" />
-            <span>点击或拖拽上传Excel</span>
-          </div>
-          <div v-if="uploading" class="upload-progress">上传中...</div>
-          <div v-if="uploadResult" class="upload-result" :class="uploadResult.success ? 'success' : 'error'">
-            {{ uploadResult.message }}
-          </div>
-        </div>
-      </div>
+      
 
       <div class="sidebar-section">
         <h3 class="section-title">已上传数据</h3>
@@ -150,11 +137,8 @@ const inputText = ref('')
 const loading = ref(false)
 const months = ref([])
 const selectedMonths = ref([])
-const uploading = ref(false)
-const uploadResult = ref(null)
 const chatContainer = ref(null)
 let msgSeq = 0
-const fileInput = ref(null)
 
 const quickQueries = [
   '各片区案件数量统计',
@@ -197,42 +181,11 @@ function selectAllMonths() {
 }
 
 // 上传文件
-async function handleFileSelect(e) {
-  const file = e.target.files[0]
-  if (file) await uploadFile(file)
-}
 
-function handleDrop(e) {
-  const file = e.dataTransfer.files[0]
-  if (file) uploadFile(file)
-}
 
-async function uploadFile(file) {
-  uploading.value = true
-  uploadResult.value = null
-  try {
-    const token = localStorage.getItem('token')
-    const formData = new FormData()
-    formData.append('file', file)
-    const res = await axios.post(`${API_BASE}/upload`, formData, {
-      headers: { 'Authorization': `Bearer ${token}` }
-    })
-    const data = res.data
-    uploadResult.value = data
-    if (data.success) {
-      await loadMonths()
-      // 自动选中新上传的月份
-      if (data.batch && !selectedMonths.value.includes(data.batch)) {
-        selectedMonths.value.push(data.batch)
-      }
-    }
-  } catch (e) {
-    uploadResult.value = { success: false, message: '上传失败: ' + e.message }
-  } finally {
-    uploading.value = false
-    if (fileInput.value) fileInput.value.value = ''
-  }
-}
+
+
+
 
 // 发送查询
 function sendQuery(text) {
@@ -455,56 +408,8 @@ onUnmounted(() => {
   margin-bottom: 10px;
 }
 
-.upload-area {
-  border: 2px dashed color-mix(in srgb, var(--primary-500) 40%, transparent);
-  border-radius: 8px;
-  padding: 16px;
-  text-align: center;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-.upload-area:hover {
-  border-color: var(--primary-600);
-  background: var(--primary-50);
-}
 
-.upload-content {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  color: var(--text-secondary);
-  font-size: 13px;
-}
-.upload-icon {
-  color: var(--primary-500);
-  opacity: 0.9;
-  transition: transform 0.2s, opacity 0.2s;
-}
-.upload-area:hover .upload-icon {
-  transform: translateY(-2px);
-  opacity: 1;
-}
 
-.upload-progress {
-  margin-top: 8px;
-  color: var(--primary-500);
-  font-size: 12px;
-}
-.upload-result {
-  margin-top: 8px;
-  font-size: 12px;
-  padding: 6px 8px;
-  border-radius: 4px;
-}
-.upload-result.success {
-  background: var(--success-light);
-  color: var(--success);
-}
-.upload-result.error {
-  background: var(--danger-light);
-  color: var(--danger);
-}
 
 .month-item {
   display: flex;

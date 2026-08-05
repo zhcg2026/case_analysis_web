@@ -746,6 +746,9 @@
     </div>
 
     <!-- 系统设置 -->
+    <div v-else-if="activeTab === 'data'" class="content-card" style="padding:0;border:none;background:transparent">
+      <DataManagementTab />
+    </div>
     <div v-else-if="activeTab === 'system'" class="content-card">
       <h2 class="section-title">系统设置</h2>
       <div class="settings-form">
@@ -963,6 +966,7 @@ import axios from 'axios'
 import { Editor, Toolbar } from '@wangeditor/editor-for-vue'
 import '@wangeditor/editor/dist/css/style.css'
 import KbIcon from '../components/common/KbIcon.vue'
+import DataManagementTab from '../components/admin/DataManagementTab.vue'
 import { useSystemConfig } from '../composables/useSystemConfig'
 
 const router = useRouter()
@@ -970,9 +974,9 @@ const router = useRouter()
 const tabs = [
   { key: 'users', label: '用户管理' },
   { key: 'articles', label: '文章管理' },
-  { key: 'business', label: '业务平台' },
-  { key: 'knowledge', label: '知识库管理' },
+  { key: 'data', label: '数据管理' },
   { key: 'reports', label: '报告模板' },
+  { key: 'knowledge', label: '知识库管理' },
   { key: 'system', label: '系统设置' }
 ]
 
@@ -1120,9 +1124,6 @@ async function batchDeleteKbDocs() {
 
 
 // 数据管理
-const dataTables = ref([])
-const tablesLoading = ref(false)
-const tableVisibility = ref({})
 
 // 报告模板管理
 const reportTemplates = ref([])
@@ -1393,7 +1394,7 @@ async function createFromTemplate() {
     const payload = {
       name: result.original_filename.replace('.docx', ''),
       description: `从Word模板导入 - ${result.original_filename}`,
-      report_type: ('对比' in (result.original_filename || '') || 'compare' in (result.original_filename || '').toLowerCase()) ? 'compare' : 'single',
+      report_type: ((result.original_filename || '').includes('对比') || (result.original_filename || '').toLowerCase().includes('compare')) ? 'compare' : 'single',
       sections: sections,
       template_file: result.file_path,
       template_structure: structure,
@@ -1416,101 +1417,14 @@ async function createFromTemplate() {
 }
 
 // ===== 数据管理方法 =====
-async function fetchDataTables() {
-  tablesLoading.value = true
-  try {
-    // 管理员获取所有表（用于配置）
-    const response = await axios.get('/api/tables/all')
-    dataTables.value = response.data.tables || []
 
-    // 获取已保存的可见性配置
-    try {
-      const visibilityResponse = await axios.get('/api/config/table-visibility')
-      const savedVisibility = visibilityResponse.data.config || {}
 
-      // 初始化可见性
-      const visibility = {}
-      dataTables.value.forEach(table => {
-        visibility[table] = savedVisibility[table] !== false // 默认可见
-      })
-      tableVisibility.value = visibility
-    } catch (e) {
-      // 如果获取配置失败，默认全部可见
-      const visibility = {}
-      dataTables.value.forEach(table => {
-        visibility[table] = true
-      })
-      tableVisibility.value = visibility
-    }
-  } catch (error) {
-    console.error('获取数据表失败:', error)
-  } finally {
-    tablesLoading.value = false
-  }
-}
 
-function handleFileSelect(e) {
-  excelFile.value = e.target.files[0] || null
-}
 
-async function uploadExcel() {
-  if (!excelFile.value) return
-  if (uploadMode.value === 'append' && !targetTable.value) {
-    uploadError.value = '请选择目标表'
-    return
-  }
 
-  uploadLoading.value = true
-  uploadMessage.value = ''
-  uploadError.value = ''
 
-  const formData = new FormData()
-  formData.append('file', excelFile.value)
-  if (uploadMode.value === 'append') {
-    formData.append('target_table', targetTable.value)
-    formData.append('data_month', dataMonth.value)
-  }
 
-  try {
-    const endpoint = uploadMode.value === 'append' ? '/api/append-data' : '/api/upload'
-    const response = await axios.post(endpoint, formData, {
-      headers: { 'Content-Type': 'multipart/form-data' }
-    })
-    uploadMessage.value = response.data.message || '上传成功'
-    fetchDataTables()
-  } catch (error) {
-    uploadError.value = error.response?.data?.error || '上传失败'
-  } finally {
-    uploadLoading.value = false
-  }
-}
 
-async function saveTableVisibility() {
-  visibilitySaving.value = true
-  visibilityMessage.value = ''
-  visibilityError.value = ''
-
-  try {
-    await axios.post('/api/config/table-visibility', { config: tableVisibility.value })
-    visibilityMessage.value = '保存成功'
-  } catch (error) {
-    console.error('保存可见性配置失败:', error)
-    visibilityError.value = error.response?.data?.error || '保存失败'
-  } finally {
-    visibilitySaving.value = false
-  }
-}
-
-async function deleteDataTable(tableName) {
-  if (!confirm(`确定删除数据表「${tableName}」？此操作不可恢复！`)) return
-
-  try {
-    await axios.delete(`/api/tables/${tableName}`)
-    fetchDataTables()
-  } catch (error) {
-    alert(error.response?.data?.error || '删除失败')
-  }
-}
 
 
 
@@ -2148,211 +2062,31 @@ const deleteTarget = ref(null)  // { type: 'single' | 'batch', taskNumber? }
 
 // 操作日志
 
-async function onEditTableChange() {
-  editMonth.value = ''
-  editAvailableMonths.value = []
-  editRecords.value = []
-  editColumns.value = []
-  displayColumns.value = []
-  formFields.value = []
-  selectedRecords.value = []
-  searchField.value = ''
-  searchValue.value = ''
 
-  if (editTable.value) {
-    // 获取可用月份
-    try {
-      const response = await axios.get(`/api/available-months?table_name=${editTable.value}`)
-      editAvailableMonths.value = response.data.months || []
-    } catch (error) {
-      console.error('获取月份失败:', error)
-    }
 
-    // 自动加载数据
-    await fetchEditRecords()
-  }
-}
 
-async function fetchEditRecords() {
-  if (!editTable.value) return
-  editLoading.value = true
-  try {
-    const params = new URLSearchParams({
-      table_name: editTable.value,
-      page: editPage.value,
-      page_size: 20
-    })
-    if (editMonth.value) params.append('month', editMonth.value)
-    if (searchField.value && searchValue.value) {
-      params.append('search_field', searchField.value)
-      params.append('search_value', searchValue.value)
-    }
-    const response = await axios.get(`/api/data-edit/records?${params}`)
-    editRecords.value = response.data.records || []
-    editTotal.value = response.data.total || 0
-    editColumns.value = response.data.columns || []
-    displayColumns.value = response.data.display_fields || []
-    formFields.value = response.data.edit_fields || []
-    editTotalPages.value = Math.ceil(editTotal.value / 20)
-    selectedRecords.value = []
-    selectAll.value = false
-  } catch (error) {
-    console.error('获取数据失败:', error)
-    alert(error.response?.data?.error || '获取数据失败')
-  } finally {
-    editLoading.value = false
-  }
-}
 
-function resetEditFilters() {
-  editMonth.value = ''
-  searchField.value = ''
-  searchValue.value = ''
-  editPage.value = 1
-  fetchEditRecords()
-}
 
-function toggleSelectAll() {
-  if (selectAll.value) {
-    selectedRecords.value = editRecords.value.map(r => r['任务号'])
-  } else {
-    selectedRecords.value = []
-  }
-}
 
-async function openAddRecordModal() {
-  if (!editTable.value) {
-    alert('请先选择数据表')
-    return
-  }
 
-  // 如果没有列信息，先获取
-  if (formFields.value.length === 0) {
-    await fetchEditRecords()
-  }
 
-  // 如果还是没有列信息，报错
-  if (formFields.value.length === 0) {
-    alert('无法获取表结构，请检查数据表')
-    return
-  }
 
-  isAddRecord.value = true
-  recordForm.value = {}
-  formFields.value.forEach(col => {
-    recordForm.value[col] = ''
-  })
-  showRecordModal.value = true
-}
 
-function openEditRecordModal(record) {
-  isAddRecord.value = false
-  recordForm.value = { ...record }
-  showRecordModal.value = true
-}
 
-function closeRecordModal() {
-  showRecordModal.value = false
-  recordForm.value = {}
-}
 
-async function saveRecord() {
-  if (!recordForm.value['任务号']) {
-    alert('任务号不能为空')
-    return
-  }
-  recordSaving.value = true
-  try {
-    if (isAddRecord.value) {
-      await axios.post('/api/data-edit/record', {
-        table_name: editTable.value,
-        record_data: recordForm.value
-      })
-      alert('新增成功')
-    } else {
-      await axios.put(`/api/data-edit/record/${recordForm.value['任务号']}`, {
-        table_name: editTable.value,
-        record_data: recordForm.value
-      })
-      alert('修改成功')
-    }
-    closeRecordModal()
-    fetchEditRecords()
-  } catch (error) {
-    alert(error.response?.data?.error || '保存失败')
-  } finally {
-    recordSaving.value = false
-  }
-}
 
-function confirmDeleteRecord(record) {
-  deleteTarget.value = { type: 'single', taskNumber: record['任务号'] }
-  deleteConfirmMessage.value = `确定删除记录「${record['任务号']}」？此操作不可恢复。`
-  showDeleteConfirm.value = true
-}
 
-function confirmBatchDelete() {
-  if (selectedRecords.value.length === 0) return
-  deleteTarget.value = { type: 'batch', taskNumbers: [...selectedRecords.value] }
-  deleteConfirmMessage.value = `确定删除选中的 ${selectedRecords.value.length} 条记录？此操作不可恢复。`
-  showDeleteConfirm.value = true
-}
 
-async function executeDelete() {
-  deleteSaving.value = true
-  try {
-    if (deleteTarget.value.type === 'single') {
-      await axios.delete(`/api/data-edit/record/${deleteTarget.value.taskNumber}?table_name=${editTable.value}`)
-      alert('删除成功')
-    } else {
-      await axios.post('/api/data-edit/batch-delete', {
-        table_name: editTable.value,
-        task_numbers: deleteTarget.value.taskNumbers
-      })
-      alert('批量删除成功')
-    }
-    showDeleteConfirm.value = false
-    selectedRecords.value = []
-    fetchEditRecords()
-  } catch (error) {
-    alert(error.response?.data?.error || '删除失败')
-  } finally {
-    deleteSaving.value = false
-  }
-}
 
-function openBatchEditModal() {
-  if (selectedRecords.value.length === 0) {
-    alert('请先选择要修改的记录')
-    return
-  }
-  batchEditField.value = ''
-  batchEditValue.value = ''
-  showBatchEditModal.value = true
-}
 
-async function batchUpdateRecords() {
-  if (!batchEditField.value) {
-    alert('请选择要修改的字段')
-    return
-  }
-  batchEditSaving.value = true
-  try {
-    await axios.post('/api/data-edit/batch-update', {
-      table_name: editTable.value,
-      task_numbers: selectedRecords.value,
-      update_data: { [batchEditField.value]: batchEditValue.value }
-    })
-    alert('批量修改成功')
-    showBatchEditModal.value = false
-    selectedRecords.value = []
-    fetchEditRecords()
-  } catch (error) {
-    alert(error.response?.data?.error || '批量修改失败')
-  } finally {
-    batchEditSaving.value = false
-  }
-}
+
+
+
+
+
+
+
+
 
 // ===== 操作日志 =====
 async function fetchLogs() {
@@ -2400,7 +2134,6 @@ onMounted(() => {
   fetchUsers()
   fetchPlatforms()
   fetchSystemConfig()
-  fetchDataTables()
   fetchCategories()
   fetchArticles()
 })

@@ -56,7 +56,23 @@ logging.basicConfig(level=logging.INFO,
 logger = logging.getLogger("kb_index")
 
 UNIFIED_COLLECTION = "unified_kb"
-DIM = 384  # paraphrase-multilingual-MiniLM-L12-v2 实际输出维度
+# DIM 由实际 embedding 模型决定：本地 MiniLM=384，Ollama nomic-embed-text=768
+# 在 define_schema() 和 _ensure_collection() 中延迟探测，避免模块加载时触发模型下载
+_DIM_CACHE = None
+
+def _get_dim():
+    """探测 embedding 维度（首次调用时 embed 一条测试文本，缓存结果）。"""
+    global _DIM_CACHE
+    if _DIM_CACHE is not None:
+        return _DIM_CACHE
+    test_vec = embed("维度探测")
+    if test_vec is not None:
+        _DIM_CACHE = len(test_vec)
+    else:
+        _DIM_CACHE = 384  # fallback
+        logger.warning(f"[kb_index] embedding 探测失败，回退 DIM={_DIM_CACHE}")
+    logger.info(f"[kb_index] 探测 embedding 维度: {_DIM_CACHE}")
+    return _DIM_CACHE
 KB_SOURCE_DIR = os.getenv("KB_SOURCE_DIR", r"D:/常用/知识库")
 
 # 子目录 -> doc_type
@@ -109,7 +125,7 @@ def define_schema():
         # 混合检索（向量语义 + BM25 关键词）的关键词一路，解决纯向量对「站亭↔站台」
         # 字序不同、「报修↔处置」同义不同字的漏召，无需手工维护别名表。
         FieldSchema(name="text_tokens", dtype=DataType.VARCHAR, max_length=8192),
-        FieldSchema(name="embedding", dtype=DataType.FLOAT_VECTOR, dim=DIM),
+        FieldSchema(name="embedding", dtype=DataType.FLOAT_VECTOR, dim=_get_dim()),
     ]
     return CollectionSchema(fields, description="统一知识库：立结案标准/职责/问答/制度/法律法规")
 
@@ -449,7 +465,7 @@ def _ensure_collection(client, reset):
         # FLAT 暴力检索零召回损失、毫秒级完成，本地场景最优。
         idx.add_index("embedding", index_type="FLAT", metric_type="COSINE")
         client.create_index(UNIFIED_COLLECTION, idx)
-        logger.info(f"已创建集合 {UNIFIED_COLLECTION}（dim={DIM}, COSINE, FLAT 精确索引）")
+        logger.info(f"已创建集合 {UNIFIED_COLLECTION}（dim={_get_dim()}, COSINE, FLAT 精确索引）")
         created = True
     return created
 

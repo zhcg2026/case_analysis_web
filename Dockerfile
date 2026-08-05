@@ -23,7 +23,12 @@ RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 # 复制后端需求文件
 COPY requirements.txt .
 
-# 安装 Python 依赖
+# 先安装 CPU 版 PyTorch（避免拉取 2GB+ 的 CUDA 包，服务器无 GPU）
+# 从本地 whl 文件安装，保持原始文件名（pip 要求文件名合法）
+COPY torch-2.13.0+cpu-cp311-cp311-manylinux_2_28_x86_64.whl /tmp/
+RUN pip install --no-cache-dir /tmp/torch-2.13.0+cpu-cp311-cp311-manylinux_2_28_x86_64.whl && rm /tmp/torch-2.13.0+cpu-cp311-cp311-manylinux_2_28_x86_64.whl
+
+# 安装其余 Python 依赖（torch 已装好，sentence-transformers 不会重装 CUDA 版）
 RUN pip install --no-cache-dir -r requirements.txt
 
 # 复制后端代码

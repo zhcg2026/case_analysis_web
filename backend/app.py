@@ -78,6 +78,16 @@ try:
     from backend.template_export_routes import register_template_export_routes
 except ImportError:
     from template_export_routes import register_template_export_routes
+
+try:
+    from backend.case_map_routes import register_case_map_routes
+except ImportError:
+    from case_map_routes import register_case_map_routes
+# 数据管理路由
+try:
+    from backend.data_management_routes import register_data_management_routes
+except ImportError:
+    from data_management_routes import register_data_management_routes
 # JWT配置
 SECRET_KEY = os.getenv('JWT_SECRET_KEY')
 if not SECRET_KEY:
@@ -259,6 +269,19 @@ try:
         logger.info("模板导出路由注册成功")
     except Exception as e:
         logger.warning(f"模板导出路由注册失败: {e}")
+
+    try:
+        register_case_map_routes(app=app, engine=engine, protected=protected)
+        logger.info("案件地图路由注册成功")
+    except Exception as e:
+        logger.warning(f"案件地图路由注册失败: {e}")
+
+    # 数据管理路由
+    try:
+        register_data_management_routes(app=app, engine=engine, protected=protected, admin_required=admin_required)
+        logger.info("数据管理路由注册成功")
+    except Exception as e:
+        logger.warning(f"数据管理路由注册失败: {e}")
 
 except Exception as e:
     logger.error(f"数据库初始化失败: {e}")

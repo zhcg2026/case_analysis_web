@@ -14,6 +14,9 @@ const ArticleDetail = () => import('../views/ArticleDetail.vue')
 const CategoryArticles = () => import('../views/CategoryArticles.vue')
 const ReportView = () => import('../views/ReportView.vue')
 
+const CaseMap = () => import('../views/CaseMap.vue')
+
+
 const routes = [
   {
     path: '/login',
@@ -44,6 +47,12 @@ const routes = [
     name: 'Map',
     component: Map,
     meta: { requiresAuth: true, title: '数图城管', permission: 'map' }
+  },
+  {
+    path: '/case-map',
+    name: 'CaseMap',
+    component: CaseMap,
+    meta: { requiresAuth: true, title: '案件地图', permission: 'map' }
   },
   {
     path: '/business',
@@ -97,6 +106,12 @@ router.beforeEach((to, from, next) => {
   // 检查是否需要登录
   if (to.meta.requiresAuth !== false && !userStore.isLoggedIn) {
     next({ name: 'Login' })
+    return
+  }
+
+  // 已登录用户访问登录页，重定向到首页
+  if (to.name === 'Login' && userStore.isLoggedIn) {
+    next({ name: 'Home' })
     return
   }
 

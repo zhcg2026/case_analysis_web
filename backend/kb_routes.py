@@ -94,21 +94,33 @@ def register_kb_routes(app, protected=None, admin_required=None):
             except Exception:
                 pass
 
-            rows = client.query(
-                UNIFIED_COLLECTION,
-                filter="",
-                output_fields=["doc_type", "law_status"],
-                limit=20000,
-            )
+            # 分页查询全量数据（Milvus 单次 query 限制 offset+limit<=16384）
+            all_rows = []
+            _batch = 16000
+            _offset = 0
+            while True:
+                batch = client.query(
+                    UNIFIED_COLLECTION,
+                    filter="",
+                    output_fields=["doc_type", "law_status"],
+                    limit=_batch,
+                    offset=_offset,
+                )
+                all_rows.extend(batch)
+                if len(batch) < _batch:
+                    break
+                _offset += _batch
             by_type = {t: 0 for t in DOC_TYPES}
             by_law_status = {}
-            for r in rows:
+            for r in all_rows:
                 t = r.get("doc_type") or "unknown"
                 by_type[t] = by_type.get(t, 0) + 1
                 ls = r.get("law_status") or "(空)"
                 by_law_status[ls] = by_law_status.get(ls, 0) + 1
 
-            total = client.get_collection_stats(UNIFIED_COLLECTION).get("row_count", len(rows))
+            # 用实际查询行数之和，而非 get_collection_stats().row_count：
+            # row_count 含已删除但未物理清理的幽灵行，导致 total 远大于各类之和。
+            total = sum(by_type.values())
             return jsonify({
                 "exists": True,
                 "total": total,
@@ -143,12 +155,23 @@ def register_kb_routes(app, protected=None, admin_required=None):
                     client.load_collection(UNIFIED_COLLECTION)
                 except Exception:
                     pass
-                rows = client.query(UNIFIED_COLLECTION, filter="",
-                                    output_fields=["doc_type"], limit=20000)
-                for r in rows:
+                # 分页查询全量数据（Milvus 单次 query 限制 offset+limit<=16384）
+                all_rows = []
+                _batch = 16000
+                _offset = 0
+                while True:
+                    batch = client.query(UNIFIED_COLLECTION, filter="",
+                                        output_fields=["doc_type"], limit=_batch, offset=_offset)
+                    all_rows.extend(batch)
+                    if len(batch) < _batch:
+                        break
+                    _offset += _batch
+                for r in all_rows:
                     t = r.get("doc_type") or "unknown"
                     by_type[t] = by_type.get(t, 0) + 1
-                total = client.get_collection_stats(UNIFIED_COLLECTION).get("row_count", len(rows))
+                # 用实际查询行数之和，而非 get_collection_stats().row_count：
+                # row_count 含已删除但未物理清理的幽灵行，导致 total 远大于各类之和。
+                total = sum(by_type.values())
 
             # 数据源：各子目录文件数
             source_dir = KB_SOURCE_DIR
@@ -235,11 +258,20 @@ def register_kb_routes(app, protected=None, admin_required=None):
             except Exception:
                 pass
 
-            # 拉全量（库仅 6k+ 条，安全），按 doc_id 聚合
-            rows = client.query(UNIFIED_COLLECTION, filter="",
-                                output_fields=["doc_id", "title", "doc_type", "source"], limit=20000)
+            # 分页查询全量数据（Milvus 单次 query 限制 offset+limit<=16384）
+            all_rows = []
+            _batch = 16000
+            _offset = 0
+            while True:
+                batch = client.query(UNIFIED_COLLECTION, filter="",
+                                    output_fields=["doc_id", "title", "doc_type", "source"],
+                                    limit=_batch, offset=_offset)
+                all_rows.extend(batch)
+                if len(batch) < _batch:
+                    break
+                _offset += _batch
             docs = {}
-            for r in rows:
+            for r in all_rows:
                 did = r.get("doc_id") or ""
                 if did not in docs:
                     docs[did] = {

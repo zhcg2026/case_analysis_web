@@ -44,6 +44,8 @@ COLUMN_MAP = {
     '处置截止时间': 'deadline',
     '延期案件': 'is_delayed',
     '返工案件': 'is_rework',
+    'X坐标': 'longitude',
+    'Y坐标': 'latitude',
 }
 
 # 数据库表创建SQL
@@ -70,6 +72,8 @@ CREATE TABLE IF NOT EXISTS case_data (
     deadline DATETIME COMMENT '处置截止时间',
     is_delayed TINYINT DEFAULT 0 COMMENT '延期案件',
     is_rework TINYINT DEFAULT 0 COMMENT '返工案件',
+    longitude DECIMAL(10,6) DEFAULT NULL COMMENT '经度(X坐标)',
+    latitude DECIMAL(10,6) DEFAULT NULL COMMENT '纬度(Y坐标)',
     upload_time DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '上传时间',
     uploader VARCHAR(50) COMMENT '上传人',
     INDEX idx_batch (upload_batch),
@@ -77,7 +81,8 @@ CREATE TABLE IF NOT EXISTS case_data (
     INDEX idx_district (district),
     INDEX idx_department (department),
     INDEX idx_street (street),
-    INDEX idx_report_time (report_time)
+    INDEX idx_report_time (report_time),
+    INDEX idx_coordinates (longitude, latitude)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='城市管理案件数据';
 """
 
@@ -104,6 +109,42 @@ def _normalize_bool(x):
     return 0
 
 
+
+def process_excel_upload(file_stream, batch_override, username, engine):
+    df = pd.read_excel(io.BytesIO(file_stream))
+    required_cols = {k: v for k, v in COLUMN_MAP.items() if k not in ('坐标', 'Y坐标')}
+    missing_cols = [col for col in required_cols.keys() if col not in df.columns]
+    if missing_cols:
+        raise ValueError('缺少列: ' + ', '.join(missing_cols))
+    batch = (batch_override or '').strip()
+    if not batch:
+        # 优先用"捆绑处置截止时间"众数推断月份（考核依据），回退到"上报时间"
+        for col_cn in ['捆绑处置截止时间', '上报时间']:
+            if col_cn in df.columns and len(df) > 0:
+                parsed = pd.to_datetime(df[col_cn], errors='coerce').dropna()
+                if not parsed.empty:
+                    batch = parsed.dt.strftime('%Y%m').mode().iloc[0]
+                    break
+        if not batch:
+            batch = datetime.datetime.now().strftime('%Y%m')
+    df = df.rename(columns=COLUMN_MAP)
+    df = df[[col for col in COLUMN_MAP.values() if col in df.columns]]
+    df['upload_batch'] = batch
+    df['uploader'] = username or 'system'
+    for col in ['is_delayed', 'is_rework']:
+        if col in df.columns:
+            df[col] = df[col].apply(_normalize_bool).astype(int)
+    for col in ['report_time', 'close_time', 'deadline', 'deadline_bundled']:
+        if col in df.columns:
+            df[col] = pd.to_datetime(df[col], errors='coerce')
+    if not engine:
+        raise ValueError('数据库未连接')
+    with engine.connect() as conn:
+        conn.execute(text("DELETE FROM case_data WHERE upload_batch = :batch"), {'batch': batch})
+        conn.commit()
+    df.to_sql('case_data', engine, if_exists='append', index=False, method='multi', chunksize=500)
+    return {'batch': batch, 'count': len(df)}
+
 def register_analysis_routes(app, engine=None, protected=None):
     """注册数据分析相关路由"""
     protected = protected or _protected
@@ -118,6 +159,27 @@ def register_analysis_routes(app, engine=None, protected=None):
         except Exception as e:
             logger.error(f"case_data 表创建失败: {e}")
 
+        # 为已有表添加经纬度字段（如果不存在）
+        try:
+            with engine.connect() as conn:
+                for col_name, col_def in [
+                    ('longitude', "ADD COLUMN longitude DECIMAL(10,6) DEFAULT NULL COMMENT '经度(X坐标)'"),
+                    ('latitude', "ADD COLUMN latitude DECIMAL(10,6) DEFAULT NULL COMMENT '纬度(Y坐标)'"),
+                ]:
+                    result = conn.execute(text(f"SHOW COLUMNS FROM case_data LIKE '{col_name}'"))
+                    if not result.fetchone():
+                        conn.execute(text(f"ALTER TABLE case_data {col_def}"))
+                        conn.commit()
+                        logger.info(f"case_data 表添加 {col_name} 字段成功")
+                try:
+                    conn.execute(text("ALTER TABLE case_data ADD INDEX idx_coordinates (longitude, latitude)"))
+                    conn.commit()
+                    logger.info("case_data 表添加坐标索引成功")
+                except Exception:
+                    pass
+        except Exception as e:
+            logger.error(f"case_data 表添加经纬度字段失败: {e}")
+
     @app.route('/api/analysis/upload', methods=['POST'])
     @protected
     def upload_case_data():
@@ -130,67 +192,21 @@ def register_analysis_routes(app, engine=None, protected=None):
             if not file.filename.endswith(('.xlsx', '.xls')):
                 return jsonify({'error': '仅支持Excel文件(.xlsx/.xls)'}), 400
 
-            # 读取Excel
-            df = pd.read_excel(io.BytesIO(file.read()))
-
-            # 验证必需列
-            missing_cols = [col for col in COLUMN_MAP.keys() if col not in df.columns]
-            if missing_cols:
-                return jsonify({'error': f'缺少列: {", ".join(missing_cols)}'}), 400
-
-            # 从文件名或数据推断批次月份（优先用上报时间众数，避免单行异常导致错判）
-            batch = (request.form.get('batch', '') or '').strip()
-            if not batch:
-                if '上报时间' in df.columns and len(df) > 0:
-                    parsed = pd.to_datetime(df['上报时间'], errors='coerce').dropna()
-                    if not parsed.empty:
-                        batch = parsed.dt.strftime('%Y%m').mode().iloc[0]
-                    else:
-                        batch = datetime.datetime.now().strftime('%Y%m')
-                else:
-                    batch = datetime.datetime.now().strftime('%Y%m')
-
-            # 重命名列
-            df = df.rename(columns=COLUMN_MAP)
-
-            # 只保留映射中的列
-            df = df[[col for col in COLUMN_MAP.values() if col in df.columns]]
-
-            # 数据清洗
-            df['upload_batch'] = batch
-            # 上传人从登录凭证获取，避免客户端伪造；protected 已注入 request.username
-            df['uploader'] = getattr(request, 'username', 'system')
-
-            # 处理"是/否"和布尔值混合的情况（统一规范化）
-            for col in ['is_delayed', 'is_rework']:
-                if col in df.columns:
-                    df[col] = df[col].apply(_normalize_bool).astype(int)
-
-            # 处理时间列
-            for col in ['report_time', 'close_time', 'deadline', 'deadline_bundled']:
-                if col in df.columns:
-                    df[col] = pd.to_datetime(df[col], errors='coerce')
-
-            if not engine:
-                return jsonify({'error': '数据库未连接'}), 500
-
-            # 删除同批次旧数据（覆盖模式）
-            with engine.connect() as conn:
-                conn.execute(text("DELETE FROM case_data WHERE upload_batch = :batch"), {'batch': batch})
-                conn.commit()
-
-            # 写入数据库
-            df.to_sql('case_data', engine, if_exists='append', index=False, method='multi', chunksize=500)
+            batch_override = (request.form.get('batch', '') or '').strip()
+            username = getattr(request, 'username', 'system')
+            result = process_excel_upload(file.read(), batch_override, username, engine)
 
             return jsonify({
                 'success': True,
-                'batch': batch,
-                'rows': len(df),
-                'message': f'成功导入 {len(df)} 条数据（批次: {batch}）'
+                'batch': result['batch'],
+                'rows': result['count'],
+                'message': f'成功导入 {result["count"]} 条数据（批次: {result["batch"]}）'
             })
 
+        except ValueError as e:
+            return jsonify({'error': str(e)}), 400
         except Exception as e:
-            logger.exception("上传案件数据失败")
+            logger.exception('上传案件数据失败')
             return jsonify({'error': f'上传失败: {str(e)}'}), 500
 
     @app.route('/api/analysis/months', methods=['GET'])

@@ -247,13 +247,24 @@ def _load_bm25_index(client):
     if _BM25_INDEX is not None and _BM25_ROWS is not None:
         return _BM25_INDEX, _BM25_ROWS
     try:
-        rows = client.query(
-            UNIFIED_COLLECTION,
-            filter="",  # 全量（BM25 索引需覆盖所有 doc_type）
-            output_fields=["doc_id", "chunk_id", "doc_type", "source", "title",
-                           "text", "law_status", "case_type", "metadata"],
-            limit=100000,
-        )
+        # Milvus Standalone 限制 offset+limit <= 16384，需分批查询
+        all_rows = []
+        batch_size = 16000
+        offset = 0
+        while True:
+            batch = client.query(
+                UNIFIED_COLLECTION,
+                filter="",  # 全量（BM25 索引需覆盖所有 doc_type）
+                output_fields=["doc_id", "chunk_id", "doc_type", "source", "title",
+                               "text", "law_status", "case_type", "metadata"],
+                limit=batch_size,
+                offset=offset,
+            )
+            all_rows.extend(batch)
+            if len(batch) < batch_size:
+                break
+            offset += batch_size
+        rows = all_rows
     except Exception as e:
         logger.error(f"[kb_store] 加载 BM25 语料失败: {e}")
         return None, None
