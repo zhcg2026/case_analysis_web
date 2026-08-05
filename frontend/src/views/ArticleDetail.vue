@@ -41,22 +41,50 @@
 
       <div class="article-content" v-html="formattedContent"></div>
 
-      <!-- 附件下载区域 -->
+      <!-- 附件区域 -->
       <div class="attachment-section" v-if="article.file_path">
         <h3 class="attachment-title">
           <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
           </svg>
-          附件下载
+          附件
         </h3>
-        <button class="download-btn" @click="downloadFile">
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-            <polyline points="7 10 12 15 17 10"/>
-            <line x1="12" y1="15" x2="12" y2="3"/>
-          </svg>
-          下载附件
-        </button>
+        <div class="attachment-actions">
+          <button v-if="isPdf" class="preview-btn" @click="togglePreview">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+              <circle cx="12" cy="12" r="3"/>
+            </svg>
+            {{ showPreview ? '收起预览' : '预览文档' }}
+          </button>
+          <button class="download-btn" @click="downloadFile">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="7 10 12 15 17 10"/>
+              <line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+            下载附件
+          </button>
+        </div>
+        <!-- PDF 预览区域 -->
+        <div v-if="isPdf && showPreview" class="pdf-preview-container">
+          <iframe
+            :src="pdfPreviewUrl"
+            class="pdf-preview-frame"
+            frameborder="0"
+          ></iframe>
+          <div class="pdf-preview-actions">
+            <button class="pdf-action-btn" @click="openFullscreen">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="15 3 21 3 21 9"/>
+                <polyline points="9 21 3 21 3 15"/>
+                <line x1="21" y1="3" x2="14" y2="10"/>
+                <line x1="3" y1="21" x2="10" y2="14"/>
+              </svg>
+              全屏查看
+            </button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -86,6 +114,20 @@ const route = useRoute()
 const article = ref(null)
 const loading = ref(true)
 const categoryName = ref('')
+const showPreview = ref(false)
+
+// 判断是否为 PDF 文件
+const isPdf = computed(() => {
+  const filePath = article.value?.file_path || ''
+  return filePath.toLowerCase().endsWith('.pdf')
+})
+
+// PDF 预览 URL（确保路径以 / 开头）
+const pdfPreviewUrl = computed(() => {
+  if (!article.value?.file_path) return ''
+  const path = article.value.file_path
+  return path.startsWith('/') ? path : '/' + path
+})
 
 async function fetchArticle() {
   const articleId = route.params.id
@@ -138,6 +180,15 @@ const formattedContent = computed(() => {
 
   return content
 })
+
+function togglePreview() {
+  showPreview.value = !showPreview.value
+}
+
+function openFullscreen() {
+  if (!pdfPreviewUrl.value) return
+  window.open(pdfPreviewUrl.value, '_blank')
+}
 
 function downloadFile() {
   if (!article.value?.file_path) return
@@ -289,6 +340,12 @@ onMounted(fetchArticle)
   color: var(--primary-500);
 }
 
+.attachment-actions {
+  display: flex;
+  gap: var(--space-3);
+}
+
+.preview-btn,
 .download-btn {
   display: inline-flex;
   align-items: center;
@@ -305,9 +362,52 @@ onMounted(fetchArticle)
   transition: all var(--transition-fast);
 }
 
+.preview-btn:hover,
 .download-btn:hover {
   background: var(--primary-100);
   color: var(--primary-700);
+}
+
+.pdf-preview-container {
+  margin-top: var(--space-4);
+  border: 1px solid var(--border-lighter);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--bg-secondary);
+}
+
+.pdf-preview-frame {
+  width: 100%;
+  height: 600px;
+  border: none;
+}
+
+.pdf-preview-actions {
+  display: flex;
+  justify-content: center;
+  padding: var(--space-3);
+  border-top: 1px solid var(--border-lighter);
+  background: var(--bg-card);
+}
+
+.pdf-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-lighter);
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.pdf-action-btn:hover {
+  border-color: var(--primary-500);
+  color: var(--primary-500);
+  background: var(--primary-50);
 }
 
 .loading-state,
@@ -355,6 +455,14 @@ onMounted(fetchArticle)
 
   .article-title {
     font-size: 22px;
+  }
+
+  .attachment-actions {
+    flex-direction: column;
+  }
+
+  .pdf-preview-frame {
+    height: 400px;
   }
 }
 </style>

@@ -485,8 +485,12 @@
             <div>
               <h3 class="subsection-title">重建索引</h3>
               <p class="kb-rebuild-hint">
-                先把文件放入数据源目录（默认 <code>{{ kbOverview.source?.dir }}</code>）对应子目录，再点重建。
-                替代旧版「zip 批量上传」（旧接口已下线）。
+                <strong>重建步骤：</strong>① 本地打包知识库目录 → ② 上传到服务器 → ③ 配置环境变量 → ④ 点击重建。<br/>
+                1. 本地执行 <code>Compress-Archive -Path "D:\常用\知识库" -DestinationPath "D:\kb_source.zip"</code> 打包<br/>
+                2. 执行 <code>scp D:\kb_source.zip ubuntu@192.168.101.3:/tmp/kb_source.zip</code> 上传<br/>
+                3. 服务器上解压：<code>sudo mkdir -p /home/ubuntu/kb_data && sudo unzip -o /tmp/kb_source.zip -d /home/ubuntu/kb_data</code><br/>
+                4. 在 docker-compose 的 environment 中设置 <code>KB_SOURCE_DIR=/home/ubuntu/kb_data/知识库</code>，或挂载 volume 后指向容器内路径<br/>
+                5. 重启容器后，点击下方「重建索引（全量）」按钮执行重建
               </p>
             </div>
             <button class="btn btn-primary" @click="rebuildKb" :disabled="kbRebuilding">
@@ -497,22 +501,6 @@
             <div class="kb-rebuild-msg">{{ kbRebuildStatus.message }}</div>
             <div v-if="kbRebuilding && kbRebuildStatus.total" class="kb-progress-bar">
               <div class="kb-progress-fill" :style="{ width: pct(kbRebuildStatus.done, kbRebuildStatus.total) + '%' }"></div>
-            </div>
-          </div>
-        </div>
-
-        <!-- 数据源信息 -->
-        <div v-if="kbOverview.source" class="kb-source-box">
-          <h3 class="subsection-title">数据源目录</h3>
-          <div class="kb-source-dir">
-            <KbIcon name="map-pin" :size="14" />
-            <span :class="{ 'kb-source-missing': !kbOverview.source.exists }">{{ kbOverview.source.dir }}</span>
-            <span class="kb-source-exists">{{ kbOverview.source.exists ? '目录存在' : '目录不存在' }}</span>
-          </div>
-          <div class="kb-source-subdirs">
-            <div v-for="(info, sub) in kbOverview.source.subdirs" :key="sub" class="kb-source-item">
-              <span class="kb-source-name">{{ sub }}</span>
-              <span class="kb-source-meta">{{ info.doc_type }} · {{ info.files }} 个文件</span>
             </div>
           </div>
         </div>
@@ -977,6 +965,7 @@ const tabs = [
   { key: 'data', label: '数据管理' },
   { key: 'reports', label: '报告模板' },
   { key: 'knowledge', label: '知识库管理' },
+  { key: 'business', label: '业务平台' },
   { key: 'system', label: '系统设置' }
 ]
 

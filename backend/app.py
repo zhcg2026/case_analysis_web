@@ -364,6 +364,110 @@ def upload_file():
         return jsonify({'error': '上传失败'}), 500
 
 
+# ===================== 业务平台管理 =====================
+@app.route('/api/business-platforms', methods=['GET'])
+@protected
+def get_business_platforms():
+    try:
+        if Session is None:
+            return jsonify({'platforms': []})
+        with Session() as session:
+            platforms = session.query(BusinessPlatform).order_by(BusinessPlatform.created_at.desc()).all()
+            result = []
+            for p in platforms:
+                result.append({
+                    'id': p.id,
+                    'name': p.name,
+                    'url': p.url,
+                    'image_path': p.image_path,
+                    'created_at': p.created_at.strftime('%Y-%m-%d %H:%M:%S') if p.created_at else None,
+                    'updated_at': p.updated_at.strftime('%Y-%m-%d %H:%M:%S') if p.updated_at else None
+                })
+            return jsonify({'platforms': result})
+    except Exception as e:
+        logger.warning(f"获取业务平台失败: {e}")
+        return jsonify({'error': '获取失败'}), 500
+
+
+@app.route('/api/business-platforms', methods=['POST'])
+@protected
+def create_business_platform():
+    try:
+        data = request.get_json()
+        name = data.get('name', '').strip()
+        url = data.get('url', '').strip()
+        image_path = data.get('image_path', '')
+
+        if not name:
+            return jsonify({'error': '平台名称不能为空'}), 400
+        if not url:
+            return jsonify({'error': '链接地址不能为空'}), 400
+
+        if Session is None:
+            return jsonify({'error': '数据库未连接'}), 503
+
+        with Session() as session:
+            existing = session.query(BusinessPlatform).filter_by(name=name).first()
+            if existing:
+                return jsonify({'error': '平台名称已存在'}), 400
+
+            platform = BusinessPlatform(name=name, url=url, image_path=image_path)
+            session.add(platform)
+            session.commit()
+
+            return jsonify({'id': platform.id, 'name': platform.name, 'message': '创建成功'}), 201
+    except Exception as e:
+        logger.warning(f"创建业务平台失败: {e}")
+        return jsonify({'error': '创建失败'}), 500
+
+
+@app.route('/api/business-platforms/<int:id>', methods=['PUT'])
+@protected
+def update_business_platform(id):
+    try:
+        if Session is None:
+            return jsonify({'error': '数据库未连接'}), 503
+
+        with Session() as session:
+            platform = session.query(BusinessPlatform).filter_by(id=id).first()
+            if not platform:
+                return jsonify({'error': '平台不存在'}), 404
+
+            data = request.get_json()
+            if 'name' in data:
+                platform.name = data['name'].strip()
+            if 'url' in data:
+                platform.url = data['url'].strip()
+            if 'image_path' in data:
+                platform.image_path = data['image_path']
+
+            session.commit()
+            return jsonify({'message': '更新成功'})
+    except Exception as e:
+        logger.warning(f"更新业务平台失败: {e}")
+        return jsonify({'error': '更新失败'}), 500
+
+
+@app.route('/api/business-platforms/<int:id>', methods=['DELETE'])
+@protected
+def delete_business_platform(id):
+    try:
+        if Session is None:
+            return jsonify({'error': '数据库未连接'}), 503
+
+        with Session() as session:
+            platform = session.query(BusinessPlatform).filter_by(id=id).first()
+            if not platform:
+                return jsonify({'error': '平台不存在'}), 404
+
+            session.delete(platform)
+            session.commit()
+            return jsonify({'message': '删除成功'})
+    except Exception as e:
+        logger.warning(f"删除业务平台失败: {e}")
+        return jsonify({'error': '删除失败'}), 500
+
+
 # ===================== 系统配置（系统名称 / Logo） =====================
 # GET 公开：仅用于前端展示品牌，不含敏感信息；POST 需管理员
 @app.route('/api/system/config', methods=['GET'])

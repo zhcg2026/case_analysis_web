@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="home-page">
     <!-- 欢迎横幅 -->
     <div class="welcome-banner">
@@ -158,7 +158,7 @@ onUnmounted(() => {
 
 .cms-columns {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  grid-template-columns: repeat(3, minmax(280px, 1fr));
   gap: var(--space-4);
 }
 
@@ -167,6 +167,8 @@ onUnmounted(() => {
   border-radius: var(--radius-lg);
   border: 1px solid var(--border-lighter);
   padding: var(--space-4);
+  min-width: 0;
+  overflow: hidden;
 }
 
 .column-header {

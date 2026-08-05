@@ -44,6 +44,7 @@ import { setupApiInterceptors } from './composables/useAuth'
 import { useSystemConfig } from './composables/useSystemConfig'
 import AppHeader from './components/common/AppHeader.vue'
 import AppSidebar from './components/common/AppSidebar.vue'
+import axios from 'axios'
 
 const router = useRouter()
 const userStore = useUserStore()

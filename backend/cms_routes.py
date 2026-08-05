@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """CMS路由模块 - 文章管理、分类管理"""
 import datetime
 from flask import request, jsonify
@@ -10,17 +10,13 @@ def register_cms_routes(app, Session, Category, Article):
     """注册CMS相关路由"""
     
     # ==================== 分类路由 ====================
-    
+
     @app.route('/api/categories', methods=['GET'])
     @protected
     def get_categories():
-        # 创建新的session实例
         session = Session()
         try:
-            # 获取所有栏目，按排序字段排序
             categories = session.query(Category).order_by(Category.order).all()
-            
-            # 转换为字典列表
             categories_list = []
             for category in categories:
                 categories_list.append({
@@ -32,13 +28,96 @@ def register_cms_routes(app, Session, Category, Article):
                     'created_at': category.created_at.strftime('%Y-%m-%d %H:%M:%S') if category.created_at else None,
                     'updated_at': category.updated_at.strftime('%Y-%m-%d %H:%M:%S') if category.updated_at else None
                 })
-            
             session.commit()
             return jsonify({'categories': categories_list}), 200
         except Exception as e:
             session.rollback()
             logging.exception('Error in get_categories')
             return jsonify({'error': '操作失败'}), 500
+        finally:
+            session.close()
+
+    @app.route('/api/categories', methods=['POST'])
+    @protected
+    def create_category():
+        session = Session()
+        try:
+            data = request.get_json()
+            name = data.get('name', '').strip()
+            if not name:
+                return jsonify({'error': '栏目名称不能为空'}), 400
+
+            slug = generate_slug(name)
+            existing = session.query(Category).filter_by(slug=slug).first()
+            if existing:
+                slug = slug + '-' + str(int(datetime.datetime.now().timestamp()))
+
+            max_order = session.query(Category.order).order_by(Category.order.desc()).first()
+            new_order = (max_order[0] + 1) if max_order else 0
+
+            category = Category(
+                name=name,
+                slug=slug,
+                description=data.get('description', ''),
+                order=new_order
+            )
+            session.add(category)
+            session.commit()
+
+            return jsonify({'id': category.id, 'name': category.name, 'message': '创建成功'}), 201
+        except Exception as e:
+            session.rollback()
+            logging.exception('Error in create_category')
+            return jsonify({'error': '创建失败'}), 500
+        finally:
+            session.close()
+
+    @app.route('/api/categories/<int:id>', methods=['PUT'])
+    @protected
+    def update_category(id):
+        session = Session()
+        try:
+            category = session.query(Category).filter_by(id=id).first()
+            if not category:
+                return jsonify({'error': '栏目不存在'}), 404
+
+            data = request.get_json()
+            if 'name' in data:
+                category.name = data['name'].strip()
+            if 'description' in data:
+                category.description = data['description']
+            if 'order' in data:
+                category.order = data['order']
+
+            session.commit()
+            return jsonify({'message': '更新成功'}), 200
+        except Exception as e:
+            session.rollback()
+            logging.exception('Error in update_category')
+            return jsonify({'error': '更新失败'}), 500
+        finally:
+            session.close()
+
+    @app.route('/api/categories/<int:id>', methods=['DELETE'])
+    @protected
+    def delete_category(id):
+        session = Session()
+        try:
+            category = session.query(Category).filter_by(id=id).first()
+            if not category:
+                return jsonify({'error': '栏目不存在'}), 404
+
+            article_count = session.query(Article).filter_by(category_id=id).count()
+            if article_count > 0:
+                return jsonify({'error': f'该栏目下有 {article_count} 篇文章，无法删除'}), 400
+
+            session.delete(category)
+            session.commit()
+            return jsonify({'message': '删除成功'}), 200
+        except Exception as e:
+            session.rollback()
+            logging.exception('Error in delete_category')
+            return jsonify({'error': '删除失败'}), 500
         finally:
             session.close()
 
