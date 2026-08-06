@@ -72,9 +72,9 @@ const navItems = computed(() => {
   const items = [
     { path: '/', title: '首页', icon: icons.home },
     { path: '/data-analysis', title: '数据分析', icon: icons.ai, permission: 'data_analysis' },
-    { path: '/knowledge', title: '知识库', icon: icons.knowledge },
+    { path: '/knowledge', title: '知识库', icon: icons.knowledge, permission: 'knowledge' },
     { path: '/map', title: '数图城管', icon: icons.map, permission: 'map' },
-    { path: '/case-map', title: '案件地图', icon: icons.caseMap, permission: 'map' },
+    { path: '/case-map', title: '案件地图', icon: icons.caseMap, permission: 'case_map' },
     { path: '/business', title: '业务平台', icon: icons.business, permission: 'business' },
     { path: '/admin', title: '系统管理', icon: icons.admin, requiresAdmin: true }
   ]

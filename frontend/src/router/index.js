@@ -40,7 +40,7 @@ const routes = [
     path: '/knowledge',
     name: 'Knowledge',
     component: Knowledge,
-    meta: { requiresAuth: true, title: '知识库' }
+    meta: { requiresAuth: true, title: '知识库', permission: 'knowledge' }
   },
   {
     path: '/map',
@@ -52,7 +52,7 @@ const routes = [
     path: '/case-map',
     name: 'CaseMap',
     component: CaseMap,
-    meta: { requiresAuth: true, title: '案件地图', permission: 'map' }
+    meta: { requiresAuth: true, title: '案件地图', permission: 'case_map' }
   },
   {
     path: '/business',

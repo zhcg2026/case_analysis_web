@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """认证路由模块 - 用户登录、注册、权限管理"""
 from flask import request, jsonify
 from sqlalchemy import text
@@ -10,8 +10,8 @@ from helpers import (
 )
 
 # 当前保留的权限列
-PERMISSION_COLUMNS = 'data_management, data_analysis, map, business'
-PERMISSION_KEYS = ['data_management', 'data_analysis', 'map', 'business']
+PERMISSION_COLUMNS = 'data_analysis, knowledge, map, case_map, business'
+PERMISSION_KEYS = ['data_analysis', 'knowledge', 'map', 'case_map', 'business']
 
 def register_auth_routes(app, Session, User, engine):
     """注册认证相关路由"""

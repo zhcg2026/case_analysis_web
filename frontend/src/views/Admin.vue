@@ -354,16 +354,20 @@
         <div class="modal-body">
           <div class="permissions-grid">
             <label class="permission-item">
-              <input type="checkbox" v-model="editingPermissions.data_management" />
-              <span>数据管理</span>
-            </label>
-            <label class="permission-item">
               <input type="checkbox" v-model="editingPermissions.data_analysis" />
               <span>数据分析</span>
             </label>
             <label class="permission-item">
+              <input type="checkbox" v-model="editingPermissions.knowledge" />
+              <span>知识库</span>
+            </label>
+            <label class="permission-item">
               <input type="checkbox" v-model="editingPermissions.map" />
               <span>数图城管</span>
+            </label>
+            <label class="permission-item">
+              <input type="checkbox" v-model="editingPermissions.case_map" />
+              <span>案件地图</span>
             </label>
             <label class="permission-item">
               <input type="checkbox" v-model="editingPermissions.business" />
@@ -1654,9 +1658,10 @@ function openPermissionsEditor(user) {
   // 确保所有权限字段都有值，并将整数转换为布尔值
   const perms = user.permissions || {}
   editingPermissions.value = {
-    data_management: Boolean(perms.data_management),
     data_analysis: Boolean(perms.data_analysis),
+    knowledge: Boolean(perms.knowledge),
     map: Boolean(perms.map),
+    case_map: Boolean(perms.case_map),
     business: Boolean(perms.business)
   }
   showPermissionsEditor.value = true
@@ -1673,9 +1678,10 @@ async function savePermissions() {
   try {
     // 确保发送布尔值
     const dataToSend = {
-      data_management: Boolean(editingPermissions.value.data_management),
       data_analysis: Boolean(editingPermissions.value.data_analysis),
+      knowledge: Boolean(editingPermissions.value.knowledge),
       map: Boolean(editingPermissions.value.map),
+      case_map: Boolean(editingPermissions.value.case_map),
       business: Boolean(editingPermissions.value.business)
     }
     await axios.put(`/api/users/${editingPermissionsUser.value.id}/permissions`, dataToSend)
