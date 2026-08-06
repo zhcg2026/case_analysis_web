@@ -266,7 +266,22 @@
           </div>
           <!-- 栏目列表 -->
           <div class="category-list">
-            <div v-for="cat in categoryList" :key="cat.id" class="category-item">
+            <div
+              v-for="(cat, index) in categoryList"
+              :key="cat.id"
+              class="category-item"
+              :class="{ dragging: dragIndex === index, 'drag-over': dragOverIndex === index }"
+              draggable="true"
+              @dragstart="onDragStart(index, $event)"
+              @dragover.prevent="onDragOver(index)"
+              @dragenter.prevent="onDragEnter(index)"
+              @dragend="onDragEnd"
+            >
+              <div class="drag-handle" title="拖拽排序">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="8" y1="6" x2="16" y2="6"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="8" y1="18" x2="16" y2="18"/>
+                </svg>
+              </div>
               <div class="category-info">
                 <span class="category-name">{{ cat.name }}</span>
                 <span class="category-slug">{{ cat.slug }}</span>
@@ -1157,6 +1172,8 @@ const showCategoryEditor = ref(false)
 const editingArticle = ref(null)
 const editingCategory = ref({})
 const newCategoryName = ref('')
+const dragIndex = ref(null)
+const dragOverIndex = ref(null)
 const articleSaving = ref(false)
 const uploadingImage = ref(false)
 const uploadingFile = ref(false)
@@ -2035,6 +2052,38 @@ async function deleteCategory(category) {
   } catch (error) {
     console.error('删除栏目失败:', error)
     alert(error.response?.data?.error || '删除失败')
+  }
+}
+
+function onDragStart(index, event) {
+  dragIndex.value = index
+  event.dataTransfer.effectAllowed = 'move'
+}
+
+function onDragOver(index) {
+  if (dragIndex.value === null || dragIndex.value === index) return
+  const list = [...categoryList.value]
+  const item = list.splice(dragIndex.value, 1)[0]
+  list.splice(index, 0, item)
+  categoryList.value = list
+  dragIndex.value = index
+}
+
+function onDragEnter(index) {
+  dragOverIndex.value = index
+}
+
+async function onDragEnd() {
+  dragOverIndex.value = null
+  if (dragIndex.value === null) return
+  dragIndex.value = null
+
+  const items = categoryList.value.map((cat, i) => ({ id: cat.id, order: i }))
+  try {
+    await axios.put('/api/categories/reorder', { items })
+  } catch (error) {
+    console.error('排序保存失败:', error)
+    fetchCategories()
   }
 }
 
@@ -3041,7 +3090,27 @@ watch(articlesCurrentPage, fetchArticles)
   padding: var(--space-3);
   background: var(--fill-light);
   border-radius: var(--radius-md);
+  cursor: grab;
+  transition: background 0.15s, box-shadow 0.15s, transform 0.15s;
 }
+.category-item:active { cursor: grabbing; }
+.category-item.dragging {
+  opacity: 0.5;
+  background: var(--primary-light, rgba(64,158,255,0.1));
+}
+.category-item.drag-over {
+  box-shadow: 0 -2px 0 0 var(--primary-color, #409eff);
+}
+
+.drag-handle {
+  display: flex;
+  align-items: center;
+  color: var(--text-tertiary);
+  cursor: grab;
+  padding-right: var(--space-2);
+  flex-shrink: 0;
+}
+.drag-handle:active { cursor: grabbing; }
 
 .category-info {
   display: flex;

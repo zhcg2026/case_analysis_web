@@ -121,6 +121,34 @@ def register_cms_routes(app, Session, Category, Article):
         finally:
             session.close()
 
+    @app.route('/api/categories/reorder', methods=['PUT'])
+    @protected
+    def reorder_categories():
+        session = Session()
+        try:
+            data = request.get_json()
+            items = data.get('items')
+            if not items or not isinstance(items, list):
+                return jsonify({'error': '参数无效'}), 400
+
+            for item in items:
+                cat_id = item.get('id')
+                new_order = item.get('order')
+                if cat_id is None or new_order is None:
+                    continue
+                category = session.query(Category).filter_by(id=cat_id).first()
+                if category:
+                    category.order = new_order
+
+            session.commit()
+            return jsonify({'message': '排序更新成功'}), 200
+        except Exception as e:
+            session.rollback()
+            logging.exception('Error in reorder_categories')
+            return jsonify({'error': '排序更新失败'}), 500
+        finally:
+            session.close()
+
     # ==================== 文章路由 ====================
     
     @app.route('/api/articles', methods=['GET'])

@@ -1187,10 +1187,15 @@ def _fill_placeholders(doc, year, month_num, summary_data, engine=None, selected
             new_text = new_text.replace('（）月', f'{later_num}月', 1)   # 第二个（）月=后月
 
             # 替换具体数据
-            new_text = new_text.replace('减少（）%', f'减少{abs(total_pct):.1f}%')
-            new_text = new_text.replace('增加（）%', f'增加{abs(total_pct):.1f}%')
-            new_text = new_text.replace('从（）延长至（）', f'从{avg1}h延长至{avg2}h')
-            new_text = new_text.replace('从（）h延长至（）h', f'从{avg1}h延长至{avg2}h')
+            if total_pct >= 0:
+                new_text = new_text.replace('增加（）%', f'增加{abs(total_pct):.1f}%')
+                new_text = new_text.replace('减少（）%', '')
+            else:
+                new_text = new_text.replace('减少（）%', f'减少{abs(total_pct):.1f}%')
+                new_text = new_text.replace('增加（）%', '')
+            avg_dir = '缩短' if avg2 < avg1 else '延长'
+            new_text = new_text.replace('从（）延长至（）', f'从{avg1}h{avg_dir}至{avg2}h')
+            new_text = new_text.replace('从（）h延长至（）h', f'从{avg1}h{avg_dir}至{avg2}h')
 
             # 替换重复案件数据（"共发现 （）组"与"共发现 组"两种写法都兼容）
             new_text = re.sub(r'共发现\s*（）?\s*组', f'共发现 {total_r:,} 组', new_text)

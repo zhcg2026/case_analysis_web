@@ -803,7 +803,13 @@ onUnmounted(() => {
   align-items: center;
   gap: 6px;
 }
-.date-sep { font-size: 12px; color: rgba(255, 255, 255, 0.4); }
+.date-range .filter-input {
+  width: 100%;
+  flex: 1;
+  min-width: 0;
+  max-width: calc(50% - 3px);
+}
+.date-sep { font-size: 12px; color: rgba(255, 255, 255, 0.4); flex-shrink: 0; }
 .filter-input { padding: 6px 8px; font-size: 12px; }
 
 .mode-switch {
