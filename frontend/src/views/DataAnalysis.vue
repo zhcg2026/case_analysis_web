@@ -330,7 +330,16 @@ async function executeAndExport(tpl) {
       text: `报告 "${filename}" 已生成并开始下载`,
     })
   } catch (e) {
-    messages.value.push({ role: 'assistant', text: '报告生成失败: ' + e.message })
+    let errorMsg = e.message
+    if (e.response && e.response.data) {
+      try {
+        const errorData = e.response.data instanceof Blob
+          ? JSON.parse(await e.response.data.text())
+          : e.response.data
+        errorMsg = errorData.error || errorMsg
+      } catch { /* use default message */ }
+    }
+    messages.value.push({ role: 'assistant', text: '报告生成失败: ' + errorMsg })
   } finally {
     loading.value = false
     await nextTick()

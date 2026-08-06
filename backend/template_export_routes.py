@@ -1157,17 +1157,17 @@ def _fill_placeholders(doc, year, month_num, summary_data, engine=None, selected
                 earlier_data, later_data = {}, {}
 
             # 前月数据
-            t1 = int(earlier_data.get('案件总量', 0))
-            avg1 = earlier_data.get('平均时长', 0)
-            cr1 = earlier_data.get('办结率', 0)
-            d1 = int(earlier_data.get('延期案件', 0))
-            r1 = int(earlier_data.get('返工案件', 0))
+            t1 = int(earlier_data.get('案件总量') or 0)
+            avg1 = earlier_data.get('平均时长') or 0
+            cr1 = earlier_data.get('办结率') or 0
+            d1 = int(earlier_data.get('延期案件') or 0)
+            r1 = int(earlier_data.get('返工案件') or 0)
             # 后月数据
-            t2 = int(later_data.get('案件总量', 0))
-            avg2 = later_data.get('平均时长', 0)
-            cr2 = later_data.get('办结率', 0)
-            d2 = int(later_data.get('延期案件', 0))
-            r2 = int(later_data.get('返工案件', 0))
+            t2 = int(later_data.get('案件总量') or 0)
+            avg2 = later_data.get('平均时长') or 0
+            cr2 = later_data.get('办结率') or 0
+            d2 = int(later_data.get('延期案件') or 0)
+            r2 = int(later_data.get('返工案件') or 0)
 
             # 获取重复案件数据
             total_r, persist_r, resolved_r, new_r, _ = _get_repeat_analysis(engine, selected_months)

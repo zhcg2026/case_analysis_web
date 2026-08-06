@@ -612,7 +612,6 @@
           </div>
           <div class="report-card-actions">
             <button class="btn btn-sm btn-secondary" @click="openReportEditor(tpl)">编辑</button>
-            <button class="btn btn-sm btn-primary" @click="executeReport(tpl)">执行</button>
             <button class="btn btn-sm btn-danger" @click="deleteReport(tpl)">删除</button>
           </div>
         </div>
@@ -1317,10 +1316,6 @@ async function deleteReport(template) {
   } catch (e) {
     alert('删除失败: ' + (e.response?.data?.error || e.message))
   }
-}
-
-function executeReport(template) {
-  router.push(`/report/${template.id}`)
 }
 
 // Word模板上传相关函数

@@ -167,7 +167,16 @@ async function exportWord() {
     link.remove()
     window.URL.revokeObjectURL(url)
   } catch (e) {
-    alert('导出失败: ' + (e.response?.data?.error || e.message))
+    let errorMsg = e.message
+    if (e.response?.data) {
+      try {
+        const errorData = e.response.data instanceof Blob
+          ? JSON.parse(await e.response.data.text())
+          : e.response.data
+        errorMsg = errorData.error || errorMsg
+      } catch { /* use default message */ }
+    }
+    alert('导出失败: ' + errorMsg)
   } finally {
     exporting.value = false
   }
