@@ -228,6 +228,22 @@ try:
 
     Session = sessionmaker(bind=engine)
 
+    # 自动迁移：确保 permissions 表包含新权限列
+    try:
+        _perm_migrations = [
+            ("knowledge", "TINYINT(1) DEFAULT 0"),
+            ("case_map", "TINYINT(1) DEFAULT 0"),
+        ]
+        with engine.connect() as _conn:
+            _cols = {r[0] for r in _conn.execute(text("SHOW COLUMNS FROM permissions"))}
+            for _col_name, _col_def in _perm_migrations:
+                if _col_name not in _cols:
+                    _conn.execute(text(f"ALTER TABLE permissions ADD COLUMN {_col_name} {_col_def}"))
+                    _conn.commit()
+                    logger.info(f"permissions 表新增列: {_col_name}")
+    except Exception as _e:
+        logger.warning(f"permissions 表迁移检查失败: {_e}")
+
     # 注册认证路由
     register_auth_routes(app=app, Session=Session, User=User, engine=engine)
     logger.info("认证路由注册成功")
