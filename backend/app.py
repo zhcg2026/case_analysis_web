@@ -88,6 +88,12 @@ try:
     from backend.data_management_routes import register_data_management_routes
 except ImportError:
     from data_management_routes import register_data_management_routes
+
+# 归属判断路由
+try:
+    from backend.dispatch_routes import register_dispatch_routes
+except ImportError:
+    from dispatch_routes import register_dispatch_routes
 # JWT配置
 SECRET_KEY = os.getenv('JWT_SECRET_KEY')
 if not SECRET_KEY:
@@ -300,6 +306,13 @@ try:
         logger.info("数据管理路由注册成功")
     except Exception as e:
         logger.warning(f"数据管理路由注册失败: {e}")
+
+    # 归属判断路由
+    try:
+        register_dispatch_routes(app=app, protected=protected)
+        logger.info("归属判断路由注册成功")
+    except Exception as e:
+        logger.warning(f"归属判断路由注册失败: {e}")
 
 except Exception as e:
     logger.error(f"数据库初始化失败: {e}")

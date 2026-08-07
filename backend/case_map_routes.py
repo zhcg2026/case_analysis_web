@@ -37,7 +37,7 @@ def register_case_map_routes(app, engine=None, protected=None):
             start_date = request.args.get('start_date', '')
             end_date = request.args.get('end_date', '')
 
-            conditions = ["longitude IS NOT NULL AND latitude IS NOT NULL"]
+            conditions = []
             params = {}
 
             if batch:
@@ -55,7 +55,7 @@ def register_case_map_routes(app, engine=None, protected=None):
                 conditions.append("report_time <= :end_date")
                 params['end_date'] = end_date + ' 23:59:59' if len(end_date) == 10 else end_date
 
-            if len(conditions) <= 1:
+            if not conditions:
                 return jsonify({'success': False, 'error': '至少需要一个筛选条件'}), 400
 
             where_clause = ' AND '.join(conditions)

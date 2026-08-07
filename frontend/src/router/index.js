@@ -15,6 +15,7 @@ const CategoryArticles = () => import('../views/CategoryArticles.vue')
 const ReportView = () => import('../views/ReportView.vue')
 
 const CaseMap = () => import('../views/CaseMap.vue')
+const Dispatch = () => import('../views/Dispatch.vue')
 
 
 const routes = [
@@ -53,6 +54,12 @@ const routes = [
     name: 'CaseMap',
     component: CaseMap,
     meta: { requiresAuth: true, title: '案件地图', permission: 'case_map' }
+  },
+  {
+    path: '/dispatch',
+    name: 'Dispatch',
+    component: Dispatch,
+    meta: { requiresAuth: true, title: '案件归属', permission: 'case_map' }
   },
   {
     path: '/business',

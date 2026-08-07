@@ -269,8 +269,6 @@ function initMap() {
     mapStyle: isDark ? 'amap://styles/dark' : 'amap://styles/normal'
   })
 
-  AMap.plugin(['AMap.MarkerCluster', 'AMap.HeatMap'], () => {})
-
   mapInstance.on('moveend', debounceLoadData)
   mapInstance.on('zoomend', debounceLoadData)
 }
@@ -479,6 +477,10 @@ async function loadClusterData() {
       community: p.community,
       source: p.source
     }))
+
+    await new Promise(resolve => {
+      AMap.plugin(['AMap.MarkerCluster'], resolve)
+    })
 
     markerCluster = new AMap.MarkerCluster(mapInstance, clusterData, {
       gridSize: 60,
