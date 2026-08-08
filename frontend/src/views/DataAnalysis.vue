@@ -718,7 +718,7 @@ onUnmounted(() => {
   font-size: 13px;
 }
 .message-table th {
-  background: rgba(64, 158, 255, 0.12);
+  background: var(--fill-light);
   color: var(--text-primary);
   padding: 8px 12px;
   text-align: left;

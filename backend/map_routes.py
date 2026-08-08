@@ -53,9 +53,13 @@ def register_map_routes(app, protected=None):
             point_lng = float(lng)
             point_lat = float(lat)
 
+            _here = os.path.dirname(os.path.abspath(__file__))
+            _data_public = os.path.normpath(os.path.join(_here, "..", "frontend", "public", "data"))
+            _data_dist = os.path.normpath(os.path.join(_here, "..", "frontend", "dist", "data"))
+            _data_dir = _data_public if os.path.isdir(_data_public) else _data_dist
             geojson_files = {
-                'huanwei': {'path': '/app/frontend/dist/data/guanxia.geojson', 'dept': '市容环卫中心', 'category': '环卫'},
-                'yuanlin': {'path': '/app/frontend/dist/data/园林片区.geojson', 'dept': '园林绿化服务中心', 'category': '园林'},
+                'huanwei': {'path': os.path.join(_data_dir, 'guanxia.geojson'), 'dept': '市容环卫中心', 'category': '环卫'},
+                'yuanlin': {'path': os.path.join(_data_dir, '园林片区.geojson'), 'dept': '园林绿化服务中心', 'category': '园林'},
             }
 
             matched = []

@@ -67,6 +67,11 @@ def register_auth_routes(app, Session, User, engine):
         finally:
             session.close()
 
+    @app.route('/api/verify-token', methods=['GET'])
+    @protected
+    def verify_token_endpoint():
+        return jsonify({'valid': True}), 200
+
     @app.route('/api/user', methods=['GET'])
     @protected
     def get_current_user():

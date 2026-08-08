@@ -43,9 +43,10 @@ _SANITATION_OVERRIDE = ["不洁", "脏", "污", "积存", "积冰", "积雪", "�
 
 PARK_NAMES = ["人民公园", "航天公园", "禹都公园", "圣惠公园", "体育公园", "天逸公园", "南风广场"]
 
-MAP_DATA_DIR = os.path.normpath(
-    os.path.join(os.path.dirname(__file__), "..", "frontend", "dist", "data")
-)
+_here = os.path.dirname(os.path.abspath(__file__))
+_MAP_DATA_PUBLIC = os.path.normpath(os.path.join(_here, "..", "frontend", "public", "data"))
+_MAP_DATA_DIST = os.path.normpath(os.path.join(_here, "..", "frontend", "dist", "data"))
+MAP_DATA_DIR = _MAP_DATA_PUBLIC if os.path.isdir(_MAP_DATA_PUBLIC) else _MAP_DATA_DIST
 
 DEPARTMENT_GEO_RULES = {
     "市容环卫中心": {
