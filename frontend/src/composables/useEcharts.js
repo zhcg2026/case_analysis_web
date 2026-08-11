@@ -54,60 +54,108 @@ function chartPalette() {
 function barTemplate(title, data, xField, yField) {
   const c = chartPalette()
   const xData = data.map(d => d[xField])
-  const yData = data.map(d => d[yField])
+  
+  // 支持多列 yField（数组形式）
+  const yFields = Array.isArray(yField) ? yField : [yField]
+  const isMulti = yFields.length > 1
+  
+  const seriesColors = [
+    ['#5470c6', '#3b4fd0'],
+    ['#91cc75', '#5cb85c'],
+    ['#fac858', '#f0ad4e'],
+    ['#ee6666', '#d9534f'],
+    ['#73c0de', '#5bc0de'],
+  ]
+  
+  const series = yFields.map((field, idx) => ({
+    name: field,
+    type: 'bar',
+    data: data.map(d => d[field] || 0),
+    barMaxWidth: isMulti ? 30 : 50,
+    itemStyle: {
+      borderRadius: [6, 6, 0, 0],
+      color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+        { offset: 0, color: seriesColors[idx % seriesColors.length][0] },
+        { offset: 1, color: seriesColors[idx % seriesColors.length][1] }
+      ])
+    },
+    label: { show: !isMulti, position: 'top', color: c.label, fontSize: 11, formatter: p => fmtNum(p.value) },
+    animationDuration: 1000, animationEasing: 'cubicOut'
+  }))
+  
   return {
     title: { text: title, left: 'center', textStyle: { color: c.title, fontSize: 15 } },
     tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' },
-      formatter: p => `${p[0].name}<br/>${p[0].marker} ${yField}: <b>${fmtNum(p[0].value)}</b>` },
-    grid: { left: '3%', right: '4%', bottom: '12%', top: '16%', containLabel: true },
+      formatter: params => {
+        let lines = [params[0].name]
+        params.forEach(p => { lines.push(`${p.marker} ${p.seriesName}: <b>${fmtNum(p.value)}</b>`) })
+        return lines.join('<br/>')
+      }
+    },
+    legend: isMulti ? { data: yFields, top: 30, textStyle: { color: c.axis } } : undefined,
+    grid: { left: '3%', right: '4%', bottom: '12%', top: isMulti ? '22%' : '16%', containLabel: true },
     xAxis: { type: 'category', data: xData,
       axisLabel: { color: c.axis, rotate: xData.length > 6 ? 30 : 0 },
       axisLine: { lineStyle: { color: c.axisLine } } },
-    yAxis: { type: 'value', name: yField, nameTextStyle: { color: c.axis },
+    yAxis: { type: 'value', nameTextStyle: { color: c.axis },
       axisLabel: { color: c.axis, formatter: v => fmtNum(v) },
       splitLine: { lineStyle: { color: c.grid } } },
-    series: [{
-      type: 'bar', data: yData, barMaxWidth: 50,
-      itemStyle: {
-        borderRadius: [6, 6, 0, 0],
-        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-          { offset: 0, color: '#5470c6' }, { offset: 1, color: '#3b4fd0' }
-        ])
-      },
-      label: { show: true, position: 'top', color: c.label, fontSize: 11, formatter: p => fmtNum(p.value) },
-      animationDuration: 1000, animationEasing: 'cubicOut'
-    }]
+    series
   }
 }
 
 function horizontalBarTemplate(title, data, xField, yField) {
   const c = chartPalette()
-  const sorted = [...data].sort((a, b) => (a[yField] || 0) - (b[yField] || 0))
+  const yFields = Array.isArray(yField) ? yField : [yField]
+  const isMulti = yFields.length > 1
+  
+  // 多列时按第一个字段排序
+  const sorted = [...data].sort((a, b) => (a[yFields[0]] || 0) - (b[yFields[0]] || 0))
   const limited = sorted.slice(-15)
   const names = limited.map(d => d[xField])
-  const values = limited.map(d => d[yField])
+  
+  const seriesColors = [
+    ['#3b4fd0', '#5470c6'],
+    ['#5cb85c', '#91cc75'],
+    ['#f0ad4e', '#fac858'],
+    ['#d9534f', '#ee6666'],
+    ['#5bc0de', '#73c0de'],
+  ]
+  
+  const series = yFields.map((field, idx) => ({
+    name: field,
+    type: 'bar',
+    data: limited.map(d => d[field] || 0),
+    barMaxWidth: isMulti ? 20 : 28,
+    itemStyle: {
+      borderRadius: [0, 6, 6, 0],
+      color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
+        { offset: 0, color: seriesColors[idx % seriesColors.length][0] },
+        { offset: 1, color: seriesColors[idx % seriesColors.length][1] }
+      ])
+    },
+    label: { show: !isMulti, position: 'right', color: c.label, fontSize: 11, formatter: p => fmtNum(p.value) },
+    animationDuration: 1000, animationEasing: 'cubicOut'
+  }))
+  
   return {
     title: { text: title, left: 'center', textStyle: { color: c.title, fontSize: 15 } },
     tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' },
-      formatter: p => `${p[0].name}<br/>${p[0].marker} ${yField}: <b>${fmtNum(p[0].value)}</b>` },
-    grid: { left: '3%', right: '12%', bottom: '3%', top: '16%', containLabel: true },
-    xAxis: { type: 'value', name: yField, nameTextStyle: { color: c.axis },
+      formatter: params => {
+        let lines = [params[0].name]
+        params.forEach(p => { lines.push(`${p.marker} ${p.seriesName}: <b>${fmtNum(p.value)}</b>`) })
+        return lines.join('<br/>')
+      }
+    },
+    legend: isMulti ? { data: yFields, top: 30, textStyle: { color: c.axis } } : undefined,
+    grid: { left: '3%', right: '12%', bottom: '3%', top: isMulti ? '22%' : '16%', containLabel: true },
+    xAxis: { type: 'value', nameTextStyle: { color: c.axis },
       axisLabel: { color: c.axis, formatter: v => fmtNum(v) },
       splitLine: { lineStyle: { color: c.grid } } },
     yAxis: { type: 'category', data: names,
       axisLabel: { color: c.label, fontSize: 11 },
       axisLine: { lineStyle: { color: c.axisLine } } },
-    series: [{
-      type: 'bar', data: values, barMaxWidth: 28,
-      itemStyle: {
-        borderRadius: [0, 6, 6, 0],
-        color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
-          { offset: 0, color: '#3b4fd0' }, { offset: 1, color: '#5470c6' }
-        ])
-      },
-      label: { show: true, position: 'right', color: c.label, fontSize: 11, formatter: p => fmtNum(p.value) },
-      animationDuration: 1000, animationEasing: 'cubicOut'
-    }]
+    series
   }
 }
 

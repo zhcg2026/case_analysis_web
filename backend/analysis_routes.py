@@ -268,6 +268,7 @@ def register_analysis_routes(app, engine=None, protected=None):
             # 安全检查SQL
             sql = spec['sql'].strip()
             if not _validate_sql(sql):
+                logger.warning(f"SQL安全检查未通过: {sql}")
                 return jsonify({'error': 'SQL安全检查未通过'}), 400
 
             # 执行SQL获取真实数据
@@ -455,6 +456,12 @@ def _build_analysis_prompt(question, schema_info, available_months, data_samples
 10. 返工率按片区:
     SELECT district AS 片区, ROUND(SUM(is_rework)*100.0/COUNT(*), 2) AS 返工率 FROM case_data WHERE upload_batch IN (...) GROUP BY district ORDER BY 返工率 DESC
 
+11. 延期和返工案件统计（使用 CASE WHEN 合并统计，禁止使用 UNION）:
+    SELECT district AS 片区, SUM(CASE WHEN is_delayed = 1 THEN 1 ELSE 0 END) AS 延期数量, SUM(CASE WHEN is_rework = 1 THEN 1 ELSE 0 END) AS 返工数量 FROM case_data WHERE upload_batch IN (...) GROUP BY district ORDER BY 延期数量 DESC
+
+12. 延期和返工案件按部门统计:
+    SELECT department AS 部门, SUM(CASE WHEN is_delayed = 1 THEN 1 ELSE 0 END) AS 延期数量, SUM(CASE WHEN is_rework = 1 THEN 1 ELSE 0 END) AS 返工数量 FROM case_data WHERE upload_batch IN (...) GROUP BY department ORDER BY 延期数量 DESC
+
 【关键规则 - y_field 必须与 SQL 中的列别名完全一致】
 - 计数类SQL → y_field = "案件数量"
 - 均值类SQL → y_field = "平均处置时长"（注意：均值类SQL不要包含COUNT列，只返回平均值）
@@ -492,6 +499,10 @@ def _build_analysis_prompt(question, schema_info, available_months, data_samples
 问题: "执法西片区有多少案件"
 输出:
 {{"sql": "SELECT department AS 部门, COUNT(*) AS 案件数量 FROM case_data WHERE upload_batch IN ('202606') AND department LIKE '%执法西片区%' GROUP BY department", "chart_type": "bar", "title": "执法西片区案件数量", "x_field": "部门", "y_field": "案件数量"}}
+
+问题: "延期和返工案件统计"
+输出:
+{{"sql": "SELECT district AS 片区, SUM(CASE WHEN is_delayed = 1 THEN 1 ELSE 0 END) AS 延期数量, SUM(CASE WHEN is_rework = 1 THEN 1 ELSE 0 END) AS 返工数量 FROM case_data WHERE upload_batch IN ('202606') GROUP BY district ORDER BY 延期数量 DESC", "chart_type": "bar", "title": "各片区延期和返工案件统计", "x_field": "片区", "y_field": ["延期数量", "返工数量"]}}
 
 现在请分析用户的问题，只输出JSON（注意：SQL中必须使用实际的月份条件，不可用省略号）:
 
@@ -581,13 +592,24 @@ def _validate_sql(sql):
 
     # 禁止危险关键字（\b 边界匹配，避免误伤普通列名）
     for kw in _DANGEROUS_KEYWORDS:
+        # 允许 UNION ALL（合法的合并查询），但禁止单独的 UNION（注入风险）
+        if kw == 'UNION':
+            # 检查是否存在 UNION 但不是 UNION ALL
+            # 先移除所有 UNION ALL，再检查是否还有 UNION
+            su_no_union_all = re.sub(r'\bUNION\s+ALL\b', '', su)
+            if re.search(r'\bUNION\b', su_no_union_all):
+                logger.warning(f"SQL安全检查: 检测到非 UNION ALL 的 UNION 语句")
+                return False
+            continue
         if re.search(rf'\b{kw}\b', su):
+            logger.warning(f"SQL安全检查: 检测到危险关键字 '{kw}'")
             return False
 
     # 只允许查询白名单中的表（FROM/JOIN 后的表名）
     tables = re.findall(r'\b(?:FROM|JOIN)\s+([a-zA-Z0-9_`"]+)', su)
     for t in tables:
         if t.strip('`"').lower() not in ALLOWED_TABLES:
+            logger.warning(f"SQL安全检查: 非白名单表 '{t}'")
             return False
 
     return True

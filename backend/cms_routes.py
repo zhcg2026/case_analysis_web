@@ -405,6 +405,7 @@ def register_cms_routes(app, Session, Category, Article):
                         'title': article.title,
                         'summary': article.summary,
                         'view_count': article.view_count,
+                        'file_path': article.file_path,
                         'created_at': article.created_at.strftime('%Y-%m-%d %H:%M:%S') if article.created_at else None
                     })
 

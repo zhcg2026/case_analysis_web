@@ -84,6 +84,12 @@ function formatDate(dateStr) {
 }
 
 function viewArticle(article) {
+  // 如果是HTML格式的数据分析报告，直接新窗口打开
+  if (article.file_path && article.file_path.toLowerCase().endsWith('.html')) {
+    const url = article.file_path.startsWith('/') ? article.file_path : '/' + article.file_path
+    window.open(url, '_blank')
+    return
+  }
   router.push(`/article/${article.id}`)
 }
 
