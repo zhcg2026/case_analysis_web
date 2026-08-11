@@ -10,8 +10,8 @@ from helpers import (
 )
 
 # 当前保留的权限列
-PERMISSION_COLUMNS = 'data_analysis, knowledge, map, case_map, business'
-PERMISSION_KEYS = ['data_analysis', 'knowledge', 'map', 'case_map', 'business']
+PERMISSION_COLUMNS = 'data_analysis, knowledge, map, case_map, dispatch, business'
+PERMISSION_KEYS = ['data_analysis', 'knowledge', 'map', 'case_map', 'dispatch', 'business']
 
 def register_auth_routes(app, Session, User, engine):
     """注册认证相关路由"""

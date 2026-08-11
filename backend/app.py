@@ -164,6 +164,7 @@ try:
         knowledge = Column(Integer, nullable=False, default=0)
         map = Column(Integer, nullable=False, default=0)
         case_map = Column(Integer, nullable=False, default=0)
+        dispatch = Column(Integer, nullable=False, default=0)
         business = Column(Integer, nullable=False, default=0)
         created_at = Column(DateTime(timezone=True), server_default=func.now())
         updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
@@ -245,6 +246,7 @@ try:
         _perm_migrations = [
             ("knowledge", "TINYINT(1) DEFAULT 0"),
             ("case_map", "TINYINT(1) DEFAULT 0"),
+            ("dispatch", "TINYINT(1) DEFAULT 0"),
         ]
         with engine.connect() as _conn:
             _cols = {r[0] for r in _conn.execute(text("SHOW COLUMNS FROM permissions"))}

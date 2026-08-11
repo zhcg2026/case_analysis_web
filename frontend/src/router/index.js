@@ -59,7 +59,7 @@ const routes = [
     path: '/dispatch',
     name: 'Dispatch',
     component: Dispatch,
-    meta: { requiresAuth: true, title: '案件归属', permission: 'case_map' }
+    meta: { requiresAuth: true, title: '案件归属', permission: 'dispatch' }
   },
   {
     path: '/business',

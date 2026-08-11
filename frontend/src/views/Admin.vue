@@ -370,6 +370,10 @@
               <span>案件地图</span>
             </label>
             <label class="permission-item">
+              <input type="checkbox" v-model="editingPermissions.dispatch" />
+              <span>案件归属</span>
+            </label>
+            <label class="permission-item">
               <input type="checkbox" v-model="editingPermissions.business" />
               <span>业务平台</span>
             </label>
@@ -1759,6 +1763,7 @@ function openPermissionsEditor(user) {
     knowledge: Boolean(perms.knowledge),
     map: Boolean(perms.map),
     case_map: Boolean(perms.case_map),
+    dispatch: Boolean(perms.dispatch),
     business: Boolean(perms.business)
   }
   showPermissionsEditor.value = true
@@ -1779,6 +1784,7 @@ async function savePermissions() {
       knowledge: Boolean(editingPermissions.value.knowledge),
       map: Boolean(editingPermissions.value.map),
       case_map: Boolean(editingPermissions.value.case_map),
+      dispatch: Boolean(editingPermissions.value.dispatch),
       business: Boolean(editingPermissions.value.business)
     }
     await axios.put(`/api/users/${editingPermissionsUser.value.id}/permissions`, dataToSend)
