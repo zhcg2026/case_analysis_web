@@ -14,6 +14,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     fonts-wqy-zenhei \
     fonts-wqy-microhei \
     tzdata \
+    mariadb-client \
     && rm -rf /var/lib/apt/lists/*
 
 # 设置时区为北京时间
@@ -37,8 +38,8 @@ COPY backend/ ./backend/
 # 复制前端构建的文件
 COPY frontend/dist/ ./frontend/dist/
 
-# 创建上传目录
-RUN mkdir -p ./backend/uploads
+# 创建上传目录和备份目录
+RUN mkdir -p ./backend/uploads ./backend/backups
 
 # 暴露端口
 EXPOSE 5000

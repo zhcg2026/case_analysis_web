@@ -783,6 +783,102 @@
         </div>
         <button class="btn btn-primary" @click="saveSystemConfig">保存设置</button>
       </div>
+
+      <!-- 数据备份管理 -->
+      <div class="backup-section">
+        <h2 class="section-title" style="margin-top:32px">数据备份</h2>
+
+        <!-- 手动备份 -->
+        <div class="backup-actions">
+          <button class="btn btn-primary" @click="triggerBackup('full')" :disabled="backupLoading">
+            {{ backupLoading === 'full' ? '备份中…' : '全量备份' }}
+          </button>
+          <button class="btn btn-secondary" @click="triggerBackup('mysql')" :disabled="backupLoading">
+            {{ backupLoading === 'mysql' ? '备份中…' : '仅 MySQL' }}
+          </button>
+          <button class="btn btn-secondary" @click="triggerBackup('milvus')" :disabled="backupLoading">
+            {{ backupLoading === 'milvus' ? '备份中…' : '仅 Milvus' }}
+          </button>
+        </div>
+
+        <!-- 自动备份配置 -->
+        <div class="backup-config">
+          <h3 class="subsection-title">自动备份</h3>
+          <div class="config-row">
+            <label class="form-label">
+              <input type="checkbox" v-model="autoBackup.enabled" />
+              启用定时自动备份
+            </label>
+          </div>
+          <div class="config-row" v-if="autoBackup.enabled">
+            <label class="form-label">备份间隔</label>
+            <div class="config-input-group">
+              <input type="number" class="form-input config-input" v-model.number="autoBackup.interval_hours" min="1" max="720" />
+              <span class="config-unit">小时</span>
+            </div>
+          </div>
+          <div class="config-row" v-if="autoBackup.enabled">
+            <label class="form-label">保留份数</label>
+            <div class="config-input-group">
+              <input type="number" class="form-input config-input" v-model.number="autoBackup.max_count" min="1" max="100" />
+              <span class="config-unit">份</span>
+            </div>
+          </div>
+          <button class="btn btn-primary" style="margin-top:12px" @click="saveAutoBackupConfig" :disabled="backupConfigSaving">
+            {{ backupConfigSaving ? '保存中…' : '保存备份配置' }}
+          </button>
+        </div>
+
+        <!-- 恢复功能 -->
+        <div class="backup-restore">
+          <h3 class="subsection-title">数据恢复</h3>
+          <div class="restore-row">
+            <label class="btn btn-secondary restore-btn">
+              恢复 MySQL
+              <input type="file" accept=".gz,.sql.gz" hidden @change="e => restoreData('mysql', e)" />
+            </label>
+            <label class="btn btn-secondary restore-btn">
+              恢复 Milvus
+              <input type="file" accept=".gz,.jsonl.gz" hidden @change="e => restoreData('milvus', e)" />
+            </label>
+          </div>
+          <p class="restore-hint">恢复将覆盖当前数据，请谨慎操作。建议先备份再恢复。</p>
+        </div>
+
+        <!-- 备份文件列表 -->
+        <div class="backup-files">
+          <h3 class="subsection-title">备份文件</h3>
+          <button class="btn btn-secondary" style="margin-bottom:12px" @click="loadBackupFiles">刷新列表</button>
+          <table class="data-table" v-if="backupFiles.length > 0">
+            <thead>
+              <tr>
+                <th>类型</th>
+                <th>文件名</th>
+                <th>大小</th>
+                <th>创建时间</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="file in backupFiles" :key="file.filename">
+                <td>
+                  <span :class="['role-badge', file.type === 'mysql' ? 'admin' : 'user']">
+                    {{ file.type === 'mysql' ? 'MySQL' : 'Milvus' }}
+                  </span>
+                </td>
+                <td>{{ file.filename }}</td>
+                <td>{{ file.size_human }}</td>
+                <td>{{ file.created_at }}</td>
+                <td>
+                  <button class="btn-text" @click="downloadBackup(file.filename)">下载</button>
+                  <button class="btn-text danger" @click="deleteBackup(file.filename)">删除</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <p v-else class="empty-text">暂无备份文件</p>
+        </div>
+      </div>
     </div>
 
     <!-- 平台编辑弹窗 -->
@@ -1160,6 +1256,12 @@ const platformSaving = ref(false)
 
 // 系统设置：直接使用全局共享配置（与侧边栏/登录页同一份，保存后全站实时生效）
 const { config: systemConfig, loadSystemConfig, saveSystemConfig: _saveSystemConfig } = useSystemConfig()
+
+// 数据备份
+const backupLoading = ref(false)
+const backupFiles = ref([])
+const autoBackup = ref({ enabled: false, interval_hours: 24, max_count: 10 })
+const backupConfigSaving = ref(false)
 
 // 文章管理
 const articles = ref([])
@@ -1844,6 +1946,116 @@ async function handleLogoUpload(e) {
     e.target.value = ''
   }
 }
+
+// ===== 数据备份方法 =====
+async function triggerBackup(type) {
+  if (!confirm(`确认执行${type === 'full' ? '全量' : type.toUpperCase()}备份？`)) return
+  backupLoading.value = type
+  try {
+    const { data } = await axios.post(`/api/backup/${type}`)
+    alert(data.message || '备份成功')
+    await loadBackupFiles()
+  } catch (err) {
+    alert('备份失败：' + (err.response?.data?.error || err.message))
+  } finally {
+    backupLoading.value = false
+  }
+}
+
+async function loadBackupFiles() {
+  try {
+    const { data } = await axios.get('/api/backup/list')
+    backupFiles.value = data.files || []
+  } catch (err) {
+    console.error('获取备份列表失败:', err)
+  }
+}
+
+async function loadAutoBackupConfig() {
+  try {
+    const { data } = await axios.get('/api/backup/config')
+    autoBackup.value = {
+      enabled: data.enabled ?? false,
+      interval_hours: data.interval_hours ?? 24,
+      max_count: data.max_count ?? 10,
+    }
+  } catch (err) {
+    console.error('获取备份配置失败:', err)
+  }
+}
+
+async function saveAutoBackupConfig() {
+  backupConfigSaving.value = true
+  try {
+    const { data } = await axios.post('/api/backup/config', autoBackup.value)
+    alert(data.message || '配置已保存')
+    autoBackup.value = {
+      enabled: data.enabled,
+      interval_hours: data.interval_hours,
+      max_count: data.max_count,
+    }
+  } catch (err) {
+    alert('保存失败：' + (err.response?.data?.error || err.message))
+  } finally {
+    backupConfigSaving.value = false
+  }
+}
+
+async function downloadBackup(filename) {
+  try {
+    const { data, headers } = await axios.get(`/api/backup/download/${filename}`, { responseType: 'blob' })
+    const url = window.URL.createObjectURL(new Blob([data]))
+    const link = document.createElement('a')
+    link.href = url
+    link.download = filename
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    window.URL.revokeObjectURL(url)
+  } catch (err) {
+    alert('下载失败：' + (err.response?.data?.error || err.message))
+  }
+}
+
+async function deleteBackup(filename) {
+  if (!confirm(`确认删除备份文件 ${filename}？`)) return
+  try {
+    await axios.delete(`/api/backup/${filename}`)
+    await loadBackupFiles()
+  } catch (err) {
+    alert('删除失败：' + (err.response?.data?.error || err.message))
+  }
+}
+
+async function restoreData(type, event) {
+  const file = event.target.files[0]
+  if (!file) return
+  const label = type === 'mysql' ? 'MySQL' : 'Milvus'
+  if (!confirm(`确认从 ${file.name} 恢复${label}数据？\n\n⚠️ 这将覆盖当前${label}中的所有数据！`)) {
+    event.target.value = ''
+    return
+  }
+  const formData = new FormData()
+  formData.append('file', file)
+  try {
+    const { data } = await axios.post(`/api/backup/restore/${type}`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
+    alert(data.message || '恢复成功')
+  } catch (err) {
+    alert('恢复失败：' + (err.response?.data?.error || err.message))
+  } finally {
+    event.target.value = ''
+  }
+}
+
+// 加载备份相关数据
+watch(activeTab, (tab) => {
+  if (tab === 'system') {
+    loadBackupFiles()
+    loadAutoBackupConfig()
+  }
+})
 
 // ===== 文章管理方法 =====
 async function fetchCategories() {
@@ -3976,6 +4188,87 @@ watch(articlesCurrentPage, fetchArticles)
   border-radius: var(--radius-sm);
   margin-bottom: var(--space-1);
   font-size: 14px;
+  color: var(--text-secondary);
+}
+
+/* 数据备份样式 */
+.backup-section {
+  margin-top: var(--space-6);
+  border-top: 1px solid var(--border-color);
+  padding-top: var(--space-4);
+}
+
+.backup-actions {
+  display: flex;
+  gap: var(--space-3);
+  margin-bottom: var(--space-6);
+}
+
+.subsection-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: var(--space-3);
+}
+
+.backup-config {
+  margin-bottom: var(--space-6);
+}
+
+.config-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.config-row .form-label {
+  margin-bottom: 0;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  cursor: pointer;
+}
+
+.config-input-group {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.config-input {
+  width: 100px;
+}
+
+.config-unit {
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.backup-restore {
+  margin-bottom: var(--space-6);
+}
+
+.restore-row {
+  display: flex;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
+}
+
+.restore-btn {
+  cursor: pointer;
+}
+
+.restore-hint {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-top: var(--space-2);
+}
+
+.backup-files .empty-text {
+  text-align: center;
+  padding: var(--space-6);
   color: var(--text-secondary);
 }
 </style>
