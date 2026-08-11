@@ -382,7 +382,7 @@ def upload_image():
 # 接收 multipart 文件（字段名 file），保存至 backend/uploads/，返回 file_path。
 # 前端 Admin.vue handleFileUpload 期望 response.data.file_path。
 ALLOWED_FILE_EXT = {'.doc', '.docx', '.xls', '.xlsx', '.pdf', '.ppt', '.pptx',
-                    '.txt', '.csv', '.zip', '.rar', '.md',
+                    '.txt', '.csv', '.zip', '.rar', '.md', '.html',
                     '.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'}
 
 @app.route('/api/upload/file', methods=['POST'])

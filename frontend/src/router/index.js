@@ -16,6 +16,7 @@ const ReportView = () => import('../views/ReportView.vue')
 
 const CaseMap = () => import('../views/CaseMap.vue')
 const Dispatch = () => import('../views/Dispatch.vue')
+const ReportEmbed = () => import('../views/ReportEmbed.vue')
 
 
 const routes = [
@@ -84,6 +85,12 @@ const routes = [
     name: 'ArticleDetail',
     component: ArticleDetail,
     meta: { requiresAuth: true, title: '文章详情' }
+  },
+  {
+    path: '/report-embed/:filename',
+    name: 'ReportEmbed',
+    component: ReportEmbed,
+    meta: { requiresAuth: true, title: '报告查看' }
   },
   {
     path: '/category/:id',

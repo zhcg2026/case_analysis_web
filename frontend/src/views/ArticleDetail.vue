@@ -50,12 +50,12 @@
           附件
         </h3>
         <div class="attachment-actions">
-          <button v-if="isPdf" class="preview-btn" @click="togglePreview">
+          <button v-if="isPdf || isHtml" class="preview-btn" @click="togglePreview">
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
               <circle cx="12" cy="12" r="3"/>
             </svg>
-            {{ showPreview ? '收起预览' : '预览文档' }}
+            {{ showPreview ? '收起预览' : (isHtml ? '预览报告' : '预览文档') }}
           </button>
           <button class="download-btn" @click="downloadFile">
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -66,10 +66,10 @@
             下载附件
           </button>
         </div>
-        <!-- PDF 预览区域 -->
-        <div v-if="isPdf && showPreview" class="pdf-preview-container">
+        <!-- PDF/HTML 预览区域 -->
+        <div v-if="(isPdf || isHtml) && showPreview" class="pdf-preview-container">
           <iframe
-            :src="pdfPreviewUrl"
+            :src="previewUrl"
             class="pdf-preview-frame"
             frameborder="0"
           ></iframe>
@@ -122,8 +122,14 @@ const isPdf = computed(() => {
   return filePath.toLowerCase().endsWith('.pdf')
 })
 
-// PDF 预览 URL（确保路径以 / 开头）
-const pdfPreviewUrl = computed(() => {
+// 判断是否为 HTML 文件
+const isHtml = computed(() => {
+  const filePath = article.value?.file_path || ''
+  return filePath.toLowerCase().endsWith('.html')
+})
+
+// 预览 URL（确保路径以 / 开头）
+const previewUrl = computed(() => {
   if (!article.value?.file_path) return ''
   const path = article.value.file_path
   return path.startsWith('/') ? path : '/' + path
@@ -186,8 +192,8 @@ function togglePreview() {
 }
 
 function openFullscreen() {
-  if (!pdfPreviewUrl.value) return
-  window.open(pdfPreviewUrl.value, '_blank')
+  if (!previewUrl.value) return
+  window.open(previewUrl.value, '_blank')
 }
 
 function downloadFile() {
