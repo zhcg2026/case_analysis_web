@@ -82,6 +82,7 @@ services:
       - ./backend/backup_routes.py:/app/backend/backup_routes.py
       - ./backend/dispatch_routes.py:/app/backend/dispatch_routes.py
       - ./backend/dispatch_engine.py:/app/backend/dispatch_engine.py
+      - ./backend/map_markers_routes.py:/app/backend/map_markers_routes.py
       - ./backend/backups:/app/backend/backups
       - ./frontend/dist:/app/frontend/dist
     restart: unless-stopped

@@ -65,6 +65,11 @@ except ImportError:
     from map_routes import register_map_routes
 
 try:
+    from backend.map_markers_routes import register_map_markers_routes
+except ImportError:
+    from map_markers_routes import register_map_markers_routes
+
+try:
     from backend.analysis_routes import register_analysis_routes
 except ImportError:
     from analysis_routes import register_analysis_routes
@@ -132,7 +137,7 @@ Base = None
 
 try:
     from sqlalchemy.orm import declarative_base
-    from sqlalchemy import Column, Integer, String, DateTime, Text, Boolean
+    from sqlalchemy import Column, Integer, String, DateTime, Text, Boolean, Float
     from sqlalchemy.sql import func
     from sqlalchemy.orm import sessionmaker
 
@@ -223,6 +228,20 @@ try:
         new_value = Column(Text)
         created_at = Column(DateTime, default=datetime.datetime.now)
 
+    class MapMarker(Base):
+        """地图标记点表 - 存储中队岗亭等标记点数据"""
+        __tablename__ = 'map_markers'
+        id = Column(Integer, primary_key=True, autoincrement=True)
+        category = Column(String(50), nullable=False, comment='分类：zhifa/huanwei/yuanlin/shizheng')
+        subcategory = Column(String(50), nullable=False, comment='子类型：zhifa_post/huanwei_toilet等')
+        name = Column(String(200), nullable=False, comment='名称')
+        description = Column(Text, comment='描述')
+        longitude = Column(Float, nullable=False, comment='经度')
+        latitude = Column(Float, nullable=False, comment='纬度')
+        images = Column(Text, comment='图片URL列表，JSON数组格式')
+        created_at = Column(DateTime(timezone=True), server_default=func.now())
+        updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
     # 创建数据库表
     import time as _time
     for _retry in range(5):
@@ -281,6 +300,13 @@ try:
         logger.info("地图路由注册成功")
     except Exception as e:
         logger.warning(f"地图路由注册失败: {e}")
+
+    # 注册地图标记点路由
+    try:
+        register_map_markers_routes(app=app, protected=protected, admin_required=admin_required, Session=Session)
+        logger.info("地图标记点路由注册成功")
+    except Exception as e:
+        logger.warning(f"地图标记点路由注册失败: {e}")
 
     # 注册数据分析路由
     try:

@@ -60,6 +60,7 @@ def register_map_routes(app, protected=None):
             geojson_files = {
                 'huanwei': {'path': os.path.join(_data_dir, 'guanxia.geojson'), 'dept': '市容环卫中心', 'category': '环卫'},
                 'yuanlin': {'path': os.path.join(_data_dir, '园林片区.geojson'), 'dept': '园林绿化服务中心', 'category': '园林'},
+                'zhifa': {'path': os.path.join(_data_dir, '执法管辖.geojson'), 'dept': '综合行政执法队', 'category': '执法'},
             }
 
             matched = []
@@ -73,7 +74,7 @@ def register_map_routes(app, protected=None):
                         coords = extract_coords(feature['geometry'])
                         if coords and point_in_polygon(point_lng, point_lat, coords):
                             props = feature.get('properties', {})
-                            name = props.get('name') or props.get('zone_name') or info['category']
+                            name = props.get('area_name') or props.get('name') or props.get('zone_name') or info['category']
                             matched.append({
                                 'category': info['category'],
                                 'department': info['dept'],

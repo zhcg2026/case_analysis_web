@@ -64,7 +64,7 @@ DEPARTMENT_GEO_RULES = {
         "park_ready": False,
         "park_file": None,
     },
-    "综合行政执法队": {"ready": False, "file": None, "geometry_mode": "polygon", "unit_type": "分队"},
+    "综合行政执法队": {"ready": True, "file": "执法管辖.geojson", "geometry_mode": "polygon", "unit_type": "分队"},
     "市政公用服务中心": {
         "ready": True,
         "file": "市政管辖道路.geojson",
@@ -326,7 +326,14 @@ def _extract_unit_name(department: str, props: Dict[str, Any]) -> str:
         if zone_name:
             return zone_name
     if department == "综合行政执法队":
-        return props.get("zone_name") or props.get("name") or "综合行政执法队"
+        # 执法类案件细分到中队，返回片区+中队信息
+        area_name = props.get("area_name") or props.get("zone_name") or props.get("name")
+        squadron = props.get("squadron")
+        if area_name and squadron:
+            return f"{area_name} → {squadron}"
+        elif area_name:
+            return area_name
+        return "综合行政执法队"
     if department == "市政公用服务中心":
         return "市政公用服务中心"
     return department

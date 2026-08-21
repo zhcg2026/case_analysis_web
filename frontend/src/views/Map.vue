@@ -116,7 +116,33 @@
         <div v-if="selectedItem.images && selectedItem.images.length" class="detail-images">
           <img v-for="(img, idx) in selectedItem.images" :key="idx" :src="img" class="detail-image" @click="previewImage(img)" />
         </div>
-        <div class="detail-info">
+        <div v-if="selectedItem.subcategory && selectedItem.subcategory.endsWith('_area')" class="detail-info">
+          <div class="info-row">
+            <span class="info-label">片区名称</span>
+            <span class="info-value">{{ selectedItem.name }}</span>
+          </div>
+          <div v-if="selectedItem.area_manag || selectedItem.manager_org" class="info-row">
+            <span class="info-label">{{ selectedItem.squadron ? '片区负责人' : '管理单位' }}</span>
+            <span class="info-value">{{ selectedItem.area_manag || selectedItem.manager_org || '—' }}</span>
+          </div>
+          <div v-if="selectedItem.area_phone" class="info-row">
+            <span class="info-label">片区电话</span>
+            <span class="info-value">{{ selectedItem.area_phone || '—' }}</span>
+          </div>
+          <div v-if="selectedItem.squadron" class="info-row">
+            <span class="info-label">中队名称</span>
+            <span class="info-value">{{ selectedItem.squadron || '—' }}</span>
+          </div>
+          <div v-if="selectedItem.squad_mana" class="info-row">
+            <span class="info-label">中队负责人</span>
+            <span class="info-value">{{ selectedItem.squad_mana || '—' }}</span>
+          </div>
+          <div v-if="selectedItem.squad_phon" class="info-row">
+            <span class="info-label">中队电话</span>
+            <span class="info-value">{{ selectedItem.squad_phon || '—' }}</span>
+          </div>
+        </div>
+        <div v-else class="detail-info">
           <div class="info-row">
             <span class="info-label">经度</span>
             <span class="info-value">{{ selectedItem.longitude }}</span>
@@ -254,6 +280,85 @@ const markerForm = reactive({
   latitude: '',
   images: []
 })
+
+// ========== 从服务器加载标记点 ==========
+async function loadMarkersFromServer() {
+  try {
+    const response = await fetch('/api/map-markers', {
+      headers: {
+        'Authorization': `Bearer ${localStorage.getItem('token')}`
+      }
+    })
+    if (response.ok) {
+      const data = await response.json()
+      // 转换数据格式：images 从 JSON 字符串转为数组
+      markers.value = (data.markers || []).map(m => ({
+        ...m,
+        images: m.images ? (typeof m.images === 'string' ? JSON.parse(m.images) : m.images) : []
+      }))
+    }
+  } catch (error) {
+    console.error('从服务器加载标记点失败:', error)
+  }
+}
+
+// ========== 保存标记点到服务器 ==========
+async function saveMarkerToServer(markerData) {
+  try {
+    const response = await fetch('/api/map-markers', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${localStorage.getItem('token')}`
+      },
+      body: JSON.stringify({
+        ...markerData,
+        images: JSON.stringify(markerData.images || [])
+      })
+    })
+    return response.ok
+  } catch (error) {
+    console.error('保存标记点到服务器失败:', error)
+    return false
+  }
+}
+
+// ========== 更新标记点到服务器 ==========
+async function updateMarkerToServer(markerId, markerData) {
+  try {
+    const response = await fetch(`/api/map-markers/${markerId}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${localStorage.getItem('token')}`
+      },
+      body: JSON.stringify({
+        ...markerData,
+        images: JSON.stringify(markerData.images || [])
+      })
+    })
+    return response.ok
+  } catch (error) {
+    console.error('更新标记点到服务器失败:', error)
+    return false
+  }
+}
+
+// ========== 删除标记点从服务器 ==========
+async function deleteMarkerFromServer(markerId) {
+  try {
+    const response = await fetch(`/api/map-markers/${markerId}`, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${localStorage.getItem('token')}`
+      }
+    })
+    return response.ok
+  } catch (error) {
+    console.error('删除标记点从服务器失败:', error)
+    return false
+  }
+}
 
 // ========== 图层配置 ==========
 const layers = ref([
@@ -551,18 +656,40 @@ async function loadGeoJsonLayer(layer) {
 
         polygon.setExtData(feature.properties)
 
-        polygon.on('click', () => {
-          const props = feature.properties || {}
-          selectedItem.value = {
-            name: props.name || props.zone_name || layer.name,
-            category: layer.id.split('_')[0],
-            subcategory: layer.id,
-            description: props.remark || props.description || props.manager_org || '',
-            longitude: feature.geometry.coordinates[0][0],
-            latitude: feature.geometry.coordinates[0][1]
-          }
-          rightPanelCollapsed.value = false
-        })
+        const isAreaLayer = layer.id.endsWith('_area')
+        if (isAreaLayer) {
+          polygon.on('click', () => {
+            const props = feature.properties || {}
+            selectedItem.value = {
+              name: props.area_name || props.name || props.zone_name || layer.name,
+              category: layer.id.split('_')[0],
+              subcategory: layer.id,
+              description: '',
+              longitude: feature.geometry.coordinates[0][0],
+              latitude: feature.geometry.coordinates[0][1],
+              area_manag: props.area_manag || props.manager_person || '',
+              area_phone: props.area_phone || props.manager_phone || '',
+              squadron: props.squadron || '',
+              squad_mana: props.squad_mana || '',
+              squad_phon: props.squad_phon || '',
+              manager_org: props.manager_org || ''
+            }
+            rightPanelCollapsed.value = false
+          })
+        } else {
+          polygon.on('click', () => {
+            const props = feature.properties || {}
+            selectedItem.value = {
+              name: props.area_name || props.name || props.zone_name || layer.name,
+              category: layer.id.split('_')[0],
+              subcategory: layer.id,
+              description: props.remark || props.description || props.manager_org || '',
+              longitude: feature.geometry.coordinates[0][0],
+              latitude: feature.geometry.coordinates[0][1]
+            }
+            rightPanelCollapsed.value = false
+          })
+        }
 
         return polygon
       }).filter(p => p !== null)
@@ -734,15 +861,28 @@ function editItem(item) {
   markerForm.description = item.description || ''
   markerForm.longitude = item.longitude
   markerForm.latitude = item.latitude
-  markerForm.images = [...(item.images || [])]
+  // 解析图片列表
+  if (item.images) {
+    try {
+      markerForm.images = JSON.parse(item.images)
+    } catch {
+      markerForm.images = []
+    }
+  } else {
+    markerForm.images = []
+  }
   showMarkerForm.value = true
 }
 
 function deleteItem(item) {
   if (confirm(`确定删除"${item.name}"吗？`)) {
-    markers.value = markers.value.filter(m => m.id !== item.id)
-    saveMarkersToStorage()
-    refreshMarkers()
+    // 从服务器删除
+    deleteMarkerFromServer(item.id).then(success => {
+      if (success) {
+        markers.value = markers.value.filter(m => m.id !== item.id)
+        refreshMarkers()
+      }
+    })
     selectedItem.value = null
     rightPanelCollapsed.value = true
   }
@@ -751,39 +891,32 @@ function deleteItem(item) {
 async function saveMarker() {
   if (!markerForm.name || !markerForm.category) return
 
-  if (editingMarker.value) {
-    // 编辑模式
-    const idx = markers.value.findIndex(m => m.id === editingMarker.value.id)
-    if (idx !== -1) {
-      markers.value[idx] = {
-        ...markers.value[idx],
-        category: markerForm.category,
-        subcategory: markerForm.subcategory,
-        name: markerForm.name,
-        description: markerForm.description,
-        longitude: markerForm.longitude,
-        latitude: markerForm.latitude,
-        images: [...markerForm.images]
-      }
-    }
-  } else {
-    // 新增模式
-    const newMarker = {
-      id: Date.now(),
-      category: markerForm.category,
-      subcategory: markerForm.subcategory,
-      name: markerForm.name,
-      description: markerForm.description,
-      longitude: markerForm.longitude,
-      latitude: markerForm.latitude,
-      images: [...markerForm.images],
-      created_at: new Date().toISOString()
-    }
-    markers.value.push(newMarker)
+  const markerData = {
+    category: markerForm.category,
+    subcategory: markerForm.subcategory,
+    name: markerForm.name,
+    description: markerForm.description,
+    longitude: parseFloat(markerForm.longitude),
+    latitude: parseFloat(markerForm.latitude),
+    images: markerForm.images // 数组格式，由 saveMarkerToServer 处理序列化
   }
 
-  saveMarkersToStorage()
-  refreshMarkers()
+  if (editingMarker.value) {
+    // 编辑模式 - 更新到服务器
+    const success = await updateMarkerToServer(editingMarker.value.id, markerData)
+    if (success) {
+      // 从本地列表移除旧数据，重新加载
+      await loadMarkersFromServer()
+    }
+  } else {
+    // 新增模式 - 保存到服务器
+    const success = await saveMarkerToServer(markerData)
+    if (success) {
+      // 重新加载所有标记点
+      await loadMarkersFromServer()
+    }
+  }
+
   showMarkerForm.value = false
   mapMode.value = 'view'
 }
@@ -820,21 +953,6 @@ function refreshMarkers() {
       }
     })
   })
-}
-
-function saveMarkersToStorage() {
-  localStorage.setItem('urban_map_markers', JSON.stringify(markers.value))
-}
-
-function loadMarkersFromStorage() {
-  try {
-    const saved = localStorage.getItem('urban_map_markers')
-    if (saved) {
-      markers.value = JSON.parse(saved)
-    }
-  } catch (e) {
-    console.error('加载标记数据失败:', e)
-  }
 }
 
 // ========== 地图初始化 ==========
@@ -881,7 +999,8 @@ watch(() => themeStore.theme, (t) => {
 // ========== 生命周期 ==========
 
 onMounted(() => {
-  loadMarkersFromStorage()
+  // 从服务器加载标记点数据
+  loadMarkersFromServer()
   nextTick(() => {
     initMap()
   })
