@@ -17,6 +17,7 @@ const ReportView = () => import('../views/ReportView.vue')
 const CaseMap = () => import('../views/CaseMap.vue')
 const Dispatch = () => import('../views/Dispatch.vue')
 const ReportEmbed = () => import('../views/ReportEmbed.vue')
+const DataCleaning = () => import('../views/DataCleaning.vue')
 
 
 const routes = [
@@ -37,6 +38,12 @@ const routes = [
     name: 'DataAnalysis',
     component: DataAnalysis,
     meta: { requiresAuth: true, title: '数据分析', permission: 'data_analysis' }
+  },
+  {
+    path: '/data-cleaning',
+    name: 'DataCleaning',
+    component: DataCleaning,
+    meta: { requiresAuth: true, title: '数据清洗', permission: 'data_cleaning' }
   },
   {
     path: '/knowledge',

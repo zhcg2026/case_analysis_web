@@ -105,6 +105,12 @@ try:
     from backend.backup_routes import register_backup_routes
 except ImportError:
     from backup_routes import register_backup_routes
+
+# 数据清洗路由
+try:
+    from backend.data_cleaning_routes import register_data_cleaning_routes
+except ImportError:
+    from data_cleaning_routes import register_data_cleaning_routes
 # JWT配置
 SECRET_KEY = os.getenv('JWT_SECRET_KEY')
 if not SECRET_KEY:
@@ -171,6 +177,7 @@ try:
         case_map = Column(Integer, nullable=False, default=0)
         dispatch = Column(Integer, nullable=False, default=0)
         business = Column(Integer, nullable=False, default=0)
+        data_cleaning = Column(Integer, nullable=False, default=0)
         created_at = Column(DateTime(timezone=True), server_default=func.now())
         updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
@@ -266,6 +273,7 @@ try:
             ("knowledge", "TINYINT(1) DEFAULT 0"),
             ("case_map", "TINYINT(1) DEFAULT 0"),
             ("dispatch", "TINYINT(1) DEFAULT 0"),
+            ("data_cleaning", "TINYINT(1) DEFAULT 0"),
         ]
         with engine.connect() as _conn:
             _cols = {r[0] for r in _conn.execute(text("SHOW COLUMNS FROM permissions"))}
@@ -354,6 +362,13 @@ try:
         logger.info("数据备份路由注册成功")
     except Exception as e:
         logger.warning(f"数据备份路由注册失败: {e}")
+
+    # 数据清洗路由
+    try:
+        register_data_cleaning_routes(app=app, engine=engine)
+        logger.info("数据清洗路由注册成功")
+    except Exception as e:
+        logger.warning(f"数据清洗路由注册失败: {e}")
 
 except Exception as e:
     logger.error(f"数据库初始化失败: {e}")
