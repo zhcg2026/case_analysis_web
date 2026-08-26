@@ -465,6 +465,12 @@ const layers = ref([
       { id: 'zhifa_area', name: '管辖范围', type: 'geojson', file: '/data/执法管辖.geojson', visible: false, icon: '📍', color: '#ef4444' },
       { id: 'zhifa_post', name: '中队岗亭', type: 'markers', visible: false, icon: '🏢' }
     ]
+  },
+  {
+    id: 'collector', name: '采集区域', icon: '📋', expanded: true,
+    children: [
+      { id: 'collector_districts', name: '采集员片区', type: 'geojson', file: '/uploads/collector_districts.geojson', visible: false, icon: '🗺️', color: '#8b5cf6', isCollectorDistrict: true }
+    ]
   }
 ])
 
@@ -633,7 +639,13 @@ async function loadGeoJsonLayer(layer) {
       loadedLayerIds.value.add(layer.id)
     } else {
       // Polygon类型 - 管辖范围
-      const polygons = features.map(feature => {
+      // 多色显示的颜色方案
+      const districtColors = ['#ef4444', '#3b82f6', '#22c55e', '#f59e0b', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316']
+      // 需要多色显示的图层
+      const multiColorLayers = ['huanwei_area', 'yuanlin_area', 'zhifa_area', 'collector_districts']
+      const useMultiColor = layer.isCollectorDistrict === true || multiColorLayers.includes(layer.id)
+
+      const polygons = features.map((feature, index) => {
         let path
         if (feature.geometry.type === 'Polygon') {
           path = feature.geometry.coordinates[0].map(c => new window.AMap.LngLat(c[0], c[1]))
@@ -645,50 +657,70 @@ async function loadGeoJsonLayer(layer) {
 
         if (!path) return null
 
+        // 多色显示
+        const fillColor = useMultiColor ? districtColors[index % districtColors.length] : color
+        const strokeColor = useMultiColor ? districtColors[index % districtColors.length] : color
+
         const polygon = new window.AMap.Polygon({
           path: path,
-          fillColor: color,
-          fillOpacity: 0.15,
-          strokeColor: color,
-          strokeWeight: 2,
+          fillColor: fillColor,
+          fillOpacity: useMultiColor ? 0.25 : 0.15,
+          strokeColor: strokeColor,
+          strokeWeight: useMultiColor ? 3 : 2,
           strokeOpacity: 0.8
         })
 
         polygon.setExtData(feature.properties)
 
-        const isAreaLayer = layer.id.endsWith('_area')
-        if (isAreaLayer) {
+        // 采集员片区点击事件
+        if (layer.isCollectorDistrict) {
           polygon.on('click', () => {
             const props = feature.properties || {}
             selectedItem.value = {
-              name: props.area_name || props.name || props.zone_name || layer.name,
-              category: layer.id.split('_')[0],
+              name: props['片区名称'] || props.name || layer.name,
+              category: 'collector',
               subcategory: layer.id,
-              description: '',
-              longitude: feature.geometry.coordinates[0][0],
-              latitude: feature.geometry.coordinates[0][1],
-              area_manag: props.area_manag || props.manager_person || '',
-              area_phone: props.area_phone || props.manager_phone || '',
-              squadron: props.squadron || '',
-              squad_mana: props.squad_mana || '',
-              squad_phon: props.squad_phon || '',
-              manager_org: props.manager_org || ''
+              description: '采集员片区',
+              longitude: feature.geometry.coordinates[0][0][0],
+              latitude: feature.geometry.coordinates[0][0][1]
             }
             rightPanelCollapsed.value = false
           })
         } else {
-          polygon.on('click', () => {
-            const props = feature.properties || {}
-            selectedItem.value = {
-              name: props.area_name || props.name || props.zone_name || layer.name,
-              category: layer.id.split('_')[0],
-              subcategory: layer.id,
-              description: props.remark || props.description || props.manager_org || '',
-              longitude: feature.geometry.coordinates[0][0],
-              latitude: feature.geometry.coordinates[0][1]
-            }
-            rightPanelCollapsed.value = false
-          })
+          const isAreaLayer = layer.id.endsWith('_area')
+          if (isAreaLayer) {
+            polygon.on('click', () => {
+              const props = feature.properties || {}
+              selectedItem.value = {
+                name: props.area_name || props.name || props.zone_name || layer.name,
+                category: layer.id.split('_')[0],
+                subcategory: layer.id,
+                description: '',
+                longitude: feature.geometry.coordinates[0][0],
+                latitude: feature.geometry.coordinates[0][1],
+                area_manag: props.area_manag || props.manager_person || '',
+                area_phone: props.area_phone || props.manager_phone || '',
+                squadron: props.squadron || '',
+                squad_mana: props.squad_mana || '',
+                squad_phon: props.squad_phon || '',
+                manager_org: props.manager_org || ''
+              }
+              rightPanelCollapsed.value = false
+            })
+          } else {
+            polygon.on('click', () => {
+              const props = feature.properties || {}
+              selectedItem.value = {
+                name: props.area_name || props.name || props.zone_name || layer.name,
+                category: layer.id.split('_')[0],
+                subcategory: layer.id,
+                description: props.remark || props.description || props.manager_org || '',
+                longitude: feature.geometry.coordinates[0][0],
+                latitude: feature.geometry.coordinates[0][1]
+              }
+              rightPanelCollapsed.value = false
+            })
+          }
         }
 
         return polygon

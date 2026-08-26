@@ -20,6 +20,46 @@
       </div>
     </div>
 
+    <!-- 更新延期/返工/超时 -->
+    <div class="content-card">
+      <div class="card-header">
+        <h3>更新延期/返工/超时标记</h3>
+      </div>
+      <div class="card-body">
+        <p class="hint-text">上传延期/返工/超时案件列表（支持txt或xlsx格式），系统会自动检测所属批次并更新标记。</p>
+        <div class="upload-area" @dragover.prevent @drop.prevent="handleDelayReworkDrop">
+          <input type="file" ref="drFileInput" accept=".txt,.xlsx,.xls" @change="handleDelayReworkSelect" hidden />
+          <div class="upload-content" @click="$refs.drFileInput.click()">
+            <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            <span>点击或拖拽上传延期/返工/超时列表</span>
+            <span class="upload-hint">格式：任务号+类型（延期/返工/超时）</span>
+          </div>
+        </div>
+        <div v-if="drUploadLoading" class="upload-progress">解析中...</div>
+        <div v-if="drDetectResult" class="detect-result">
+          <div class="detect-summary">
+            <span v-if="drDetectResult.total_delayed">延期 {{ drDetectResult.total_delayed }} 条</span>
+            <span v-if="drDetectResult.total_rework">返工 {{ drDetectResult.total_rework }} 条</span>
+            <span v-if="drDetectResult.total_overtime">超时 {{ drDetectResult.total_overtime }} 条</span>
+          </div>
+          <div v-for="(stats, batch) in drDetectResult.batch_stats" :key="batch" class="batch-info">
+            <span class="batch-name">{{ formatMonth(batch) }}：</span>
+            <span v-if="stats.delayed">延期{{ stats.delayed }}条 </span>
+            <span v-if="stats.rework">返工{{ stats.rework }}条 </span>
+            <span v-if="stats.overtime">超时{{ stats.overtime }}条</span>
+          </div>
+          <div v-if="drDetectResult.not_found?.length" class="not-found">
+            未找到 {{ drDetectResult.not_found.length }} 个任务号
+          </div>
+          <button class="btn btn-primary" style="margin-top:12px" @click="applyDelayRework" :disabled="drApplyLoading">
+            {{ drApplyLoading ? '更新中...' : '确认更新' }}
+          </button>
+        </div>
+        <div v-if="drApplyMessage" class="upload-result success">{{ drApplyMessage }}</div>
+        <div v-if="drApplyError" class="upload-result error">{{ drApplyError }}</div>
+      </div>
+    </div>
+
     <!-- 数据浏览 -->
     <div class="content-card">
       <div class="card-header">
@@ -122,7 +162,7 @@
             <template v-if="col.name === 'task_no'">
               <input v-model="recordForm[col.name]" type="number" class="form-input" :disabled="!isAddRecord" :placeholder="isAddRecord ? '' : '不可编辑'" />
             </template>
-            <template v-else-if="col.name === 'is_delayed' || col.name === 'is_rework'">
+            <template v-else-if="col.name === 'is_delayed' || col.name === 'is_rework' || col.name === 'is_overtime'">
               <select v-model="recordForm[col.name]" class="form-select">
                 <option :value="0">否</option>
                 <option :value="1">是</option>
@@ -164,7 +204,7 @@
           </div>
           <div class="form-group" v-if="batchEditField">
             <label class="form-label">新值</label>
-            <template v-if="batchEditField === 'is_delayed' || batchEditField === 'is_rework'">
+            <template v-if="batchEditField === 'is_delayed' || batchEditField === 'is_rework' || batchEditField === 'is_overtime'">
               <select v-model="batchEditValue" class="form-select">
                 <option :value="0">否</option>
                 <option :value="1">是</option>
@@ -249,6 +289,17 @@ const deleteSaving = ref(false)
 
 const exportLoading = ref(false)
 
+// 延期/返工/超时更新
+const drFileInput = ref(null)
+const drUploadLoading = ref(false)
+const drDetectResult = ref(null)
+const drDelayTaskNos = ref([])
+const drReworkTaskNos = ref([])
+const drOvertimeTaskNos = ref([])
+const drApplyLoading = ref(false)
+const drApplyMessage = ref('')
+const drApplyError = ref('')
+
 // 计算属性
 const displayColumns = computed(() =>
   columns.value.filter(c => !['id', 'upload_time', 'uploader'].includes(c.name))
@@ -272,7 +323,7 @@ function formatMonth(batch) {
 
 function formatCellValue(val, col) {
   if (val === null || val === undefined) return ''
-  if (col.name === 'is_delayed' || col.name === 'is_rework') return val ? '是' : '否'
+  if (col.name === 'is_delayed' || col.name === 'is_rework' || col.name === 'is_overtime') return val ? '是' : '否'
   if (col.type === 'datetime' && typeof val === 'string' && val.length > 10) return val.substring(0, 16).replace('T', ' ')
   const str = String(val)
   return str.length > 40 ? str.substring(0, 40) + '...' : str
@@ -479,6 +530,90 @@ async function exportData() {
   } finally { exportLoading.value = false }
 }
 
+// 延期/返工/超时更新
+function handleDelayReworkSelect(e) {
+  const file = e.target.files?.[0]
+  if (file) parseDelayReworkFile(file)
+}
+
+function handleDelayReworkDrop(e) {
+  const file = e.dataTransfer?.files?.[0]
+  if (file && (file.name.endsWith('.txt') || file.name.endsWith('.xlsx') || file.name.endsWith('.xls'))) {
+    parseDelayReworkFile(file)
+  }
+}
+
+async function parseDelayReworkFile(file) {
+  drUploadLoading.value = true
+  drDetectResult.value = null
+  drApplyMessage.value = ''
+  drApplyError.value = ''
+
+  const formData = new FormData()
+  formData.append('file', file)
+
+  try {
+    const res = await axios.post('/api/cleaning/upload-delay-rework', formData)
+    if (res.data?.success) {
+      drDelayTaskNos.value = res.data.delayed_task_nos || []
+      drReworkTaskNos.value = res.data.rework_task_nos || []
+      drOvertimeTaskNos.value = res.data.overtime_task_nos || []
+
+      // 自动检测批次
+      const detectRes = await axios.post(`${API}/detect-delay-rework`, {
+        delay_task_nos: drDelayTaskNos.value,
+        rework_task_nos: drReworkTaskNos.value,
+        overtime_task_nos: drOvertimeTaskNos.value
+      })
+      if (detectRes.data?.success) {
+        drDetectResult.value = detectRes.data
+      }
+    }
+  } catch (e) {
+    drApplyError.value = e.response?.data?.error || '解析失败'
+  } finally {
+    drUploadLoading.value = false
+    if (drFileInput.value) drFileInput.value.value = ''
+  }
+}
+
+async function applyDelayRework() {
+  if (!drDetectResult.value?.batch_stats) return
+
+  const batches = Object.keys(drDetectResult.value.batch_stats)
+  if (batches.length === 0) {
+    drApplyError.value = '未找到匹配的批次'
+    return
+  }
+
+  if (batches.length > 1) {
+    drApplyError.value = '任务号分布在多个批次中，请确保列表中的任务号属于同一月份'
+    return
+  }
+
+  drApplyLoading.value = true
+  drApplyMessage.value = ''
+  drApplyError.value = ''
+
+  try {
+    const res = await axios.post(`${API}/apply-delay-rework`, {
+      batch: batches[0],
+      delay_task_nos: drDelayTaskNos.value,
+      rework_task_nos: drReworkTaskNos.value,
+      overtime_task_nos: drOvertimeTaskNos.value
+    })
+    if (res.data?.success) {
+      drApplyMessage.value = res.data.message
+      drDetectResult.value = null
+      fetchRecords()
+    }
+  } catch (e) {
+    drApplyError.value = e.response?.data?.error || '更新失败'
+  } finally {
+    drApplyLoading.value = false
+  }
+}
+
 onMounted(() => {
   fetchMonths()
   fetchRecords()
@@ -519,6 +654,14 @@ onMounted(() => {
 .upload-result { padding: 8px 12px; border-radius: 6px; font-size: 13px; margin-top: 8px; }
 .upload-result.success { background: rgba(34,197,94,0.1); color: #16a34a; }
 .upload-result.error { background: rgba(239,68,68,0.1); color: #ef4444; }
+
+/* 延期/返工/超时检测结果 */
+.hint-text { font-size: 13px; color: var(--text-secondary); margin: 0 0 12px; }
+.detect-result { margin-top: 12px; padding: 12px; background: var(--bg-secondary, #f8fafc); border-radius: 6px; font-size: 13px; }
+.detect-summary { display: flex; gap: 16px; margin-bottom: 8px; font-weight: 500; }
+.batch-info { color: var(--text-secondary); margin-bottom: 4px; }
+.batch-name { font-weight: 500; color: var(--text-primary); }
+.not-found { color: var(--text-tertiary); margin-top: 8px; font-size: 12px; }
 
 /* 过滤栏 */
 .filter-row { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 16px; }

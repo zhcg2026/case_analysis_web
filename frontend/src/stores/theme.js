@@ -16,6 +16,12 @@ export const useThemeStore = defineStore('theme', () => {
   // 应用主题到 DOM
   function applyTheme(newTheme) {
     document.documentElement.setAttribute('data-theme', newTheme)
+    // Element Plus 暗色主题需要 dark 类名
+    if (newTheme === 'dark') {
+      document.documentElement.classList.add('dark')
+    } else {
+      document.documentElement.classList.remove('dark')
+    }
     localStorage.setItem('theme', newTheme)
   }
 

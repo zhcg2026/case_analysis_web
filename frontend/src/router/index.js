@@ -18,6 +18,8 @@ const CaseMap = () => import('../views/CaseMap.vue')
 const Dispatch = () => import('../views/Dispatch.vue')
 const ReportEmbed = () => import('../views/ReportEmbed.vue')
 const DataCleaning = () => import('../views/DataCleaning.vue')
+const Ledger = () => import('../views/Ledger.vue')
+const Assessment = () => import('../views/Assessment.vue')
 
 
 const routes = [
@@ -74,6 +76,18 @@ const routes = [
     name: 'Business',
     component: Business,
     meta: { requiresAuth: true, title: '业务平台', permission: 'business' }
+  },
+  {
+    path: '/ledger',
+    name: 'Ledger',
+    component: Ledger,
+    meta: { requiresAuth: true, title: '台账管理', permission: 'ledger' }
+  },
+  {
+    path: '/assessment',
+    name: 'Assessment',
+    component: Assessment,
+    meta: { requiresAuth: true, title: '考核计分', permission: 'assessment' }
   },
   {
     path: '/admin',

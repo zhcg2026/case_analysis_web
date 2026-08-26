@@ -547,3 +547,177 @@ tr:hover td {
   color: rgba(255, 255, 255, 0.8);
   font-size: 14px;
 }
+
+/* ========== 台账页面 Element Plus 暗色适配 ========== */
+
+/* 表格 */
+[data-theme="dark"] .ledger-page .el-table {
+  --el-table-bg-color: rgba(30, 58, 138, 0.3) !important;
+  --el-table-tr-bg-color: transparent !important;
+  --el-table-header-bg-color: rgba(30, 58, 138, 0.6) !important;
+  --el-table-row-hover-bg-color: rgba(100, 149, 237, 0.2) !important;
+  --el-table-border-color: rgba(100, 149, 237, 0.3) !important;
+  --el-table-text-color: rgba(255, 255, 255, 0.9) !important;
+  --el-table-header-text-color: white !important;
+  --el-table-current-row-bg-color: rgba(100, 149, 237, 0.25) !important;
+}
+
+[data-theme="dark"] .ledger-page .el-table th.el-table__cell {
+  background: rgba(30, 58, 138, 0.6) !important;
+  color: white !important;
+  border-color: rgba(100, 149, 237, 0.3) !important;
+}
+
+[data-theme="dark"] .ledger-page .el-table td.el-table__cell {
+  background: rgba(30, 58, 138, 0.2) !important;
+  color: rgba(255, 255, 255, 0.9) !important;
+  border-color: rgba(100, 149, 237, 0.2) !important;
+}
+
+[data-theme="dark"] .ledger-page .el-table--striped .el-table__body tr.el-table__row--striped td.el-table__cell {
+  background: rgba(30, 58, 138, 0.25) !important;
+}
+
+[data-theme="dark"] .ledger-page .el-table__body tr:hover > td.el-table__cell {
+  background: rgba(100, 149, 237, 0.2) !important;
+}
+
+/* Tab */
+[data-theme="dark"] .ledger-page .el-tabs {
+  --el-tabs-header-text-color: rgba(255, 255, 255, 0.7) !important;
+  --el-tabs-header-text-color-active: #6495ed !important;
+}
+
+[data-theme="dark"] .ledger-page .el-tabs__item {
+  color: rgba(255, 255, 255, 0.7) !important;
+}
+
+[data-theme="dark"] .ledger-page .el-tabs__item.is-active {
+  color: #6495ed !important;
+}
+
+[data-theme="dark"] .ledger-page .el-tabs__active-bar {
+  background-color: #6495ed !important;
+}
+
+[data-theme="dark"] .ledger-page .el-tabs__nav-wrap::after {
+  background-color: rgba(100, 149, 237, 0.3) !important;
+}
+
+/* 弹窗 */
+[data-theme="dark"] .ledger-page .el-dialog {
+  --el-dialog-bg-color: rgba(25, 40, 80, 0.95) !important;
+  border: 1px solid rgba(100, 149, 237, 0.3) !important;
+  border-radius: 12px !important;
+}
+
+[data-theme="dark"] .ledger-page .el-dialog__header {
+  border-bottom: 1px solid rgba(100, 149, 237, 0.3) !important;
+}
+
+[data-theme="dark"] .ledger-page .el-dialog__title {
+  color: white !important;
+}
+
+[data-theme="dark"] .ledger-page .el-dialog__headerbtn .el-dialog__close {
+  color: rgba(255, 255, 255, 0.7) !important;
+}
+
+/* 表单 */
+[data-theme="dark"] .ledger-page .el-input__wrapper {
+  background: rgba(30, 58, 138, 0.6) !important;
+  box-shadow: 0 0 0 1px rgba(100, 149, 237, 0.5) inset !important;
+}
+
+[data-theme="dark"] .ledger-page .el-input__inner {
+  color: white !important;
+}
+
+[data-theme="dark"] .ledger-page .el-input__inner::placeholder {
+  color: rgba(255, 255, 255, 0.4) !important;
+}
+
+[data-theme="dark"] .ledger-page .el-textarea__inner {
+  background: rgba(30, 58, 138, 0.6) !important;
+  box-shadow: 0 0 0 1px rgba(100, 149, 237, 0.5) inset !important;
+  color: white !important;
+}
+
+[data-theme="dark"] .ledger-page .el-select .el-input__wrapper {
+  background: rgba(30, 58, 138, 0.6) !important;
+  box-shadow: 0 0 0 1px rgba(100, 149, 237, 0.5) inset !important;
+}
+
+[data-theme="dark"] .ledger-page .el-select-dropdown {
+  background: rgba(25, 40, 80, 0.95) !important;
+  border: 1px solid rgba(100, 149, 237, 0.5) !important;
+}
+
+[data-theme="dark"] .ledger-page .el-select-dropdown__item {
+  color: rgba(255, 255, 255, 0.9) !important;
+}
+
+[data-theme="dark"] .ledger-page .el-select-dropdown__item.hover,
+[data-theme="dark"] .ledger-page .el-select-dropdown__item:hover {
+  background: rgba(100, 149, 237, 0.2) !important;
+}
+
+[data-theme="dark"] .ledger-page .el-form-item__label {
+  color: rgba(255, 255, 255, 0.9) !important;
+}
+
+/* 日期选择器 */
+[data-theme="dark"] .ledger-page .el-date-editor .el-input__wrapper {
+  background: rgba(30, 58, 138, 0.6) !important;
+}
+
+[data-theme="dark"] .ledger-page .el-picker-panel {
+  background: rgba(25, 40, 80, 0.95) !important;
+  border: 1px solid rgba(100, 149, 237, 0.5) !important;
+  color: white !important;
+}
+
+/* 分页 */
+[data-theme="dark"] .ledger-page .el-pagination {
+  --el-pagination-bg-color: transparent !important;
+  --el-pagination-text-color: rgba(255, 255, 255, 0.8) !important;
+  --el-pagination-button-bg-color: rgba(30, 58, 138, 0.6) !important;
+}
+
+[data-theme="dark"] .ledger-page .el-pagination button {
+  background: rgba(30, 58, 138, 0.6) !important;
+  color: rgba(255, 255, 255, 0.8) !important;
+}
+
+[data-theme="dark"] .ledger-page .el-pager li {
+  background: rgba(30, 58, 138, 0.6) !important;
+  color: rgba(255, 255, 255, 0.8) !important;
+}
+
+[data-theme="dark"] .ledger-page .el-pager li.is-active {
+  background: #6495ed !important;
+  color: white !important;
+}
+
+/* Tag */
+[data-theme="dark"] .ledger-page .el-tag {
+  border: none !important;
+}
+
+/* Popconfirm */
+[data-theme="dark"] .ledger-page .el-popover.el-popper {
+  background: rgba(25, 40, 80, 0.95) !important;
+  border: 1px solid rgba(100, 149, 237, 0.5) !important;
+  color: white !important;
+}
+
+/* Upload */
+[data-theme="dark"] .ledger-page .el-upload--picture-card {
+  background: rgba(30, 58, 138, 0.6) !important;
+  border-color: rgba(100, 149, 237, 0.5) !important;
+}
+
+[data-theme="dark"] .ledger-page .el-upload-list__item {
+  background: rgba(30, 58, 138, 0.4) !important;
+  border-color: rgba(100, 149, 237, 0.3) !important;
+}

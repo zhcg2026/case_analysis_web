@@ -6,6 +6,7 @@ import App from './App.vue'
 // Element Plus
 import ElementPlus from 'element-plus'
 import 'element-plus/dist/index.css'
+import 'element-plus/theme-chalk/dark/css-vars.css'
 import zhCn from 'element-plus/dist/locale/zh-cn.mjs'
 
 // 设计系统样式

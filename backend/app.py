@@ -111,6 +111,19 @@ try:
     from backend.data_cleaning_routes import register_data_cleaning_routes
 except ImportError:
     from data_cleaning_routes import register_data_cleaning_routes
+
+# 台账路由
+try:
+    from backend.ledger_routes import register_ledger_routes
+except ImportError:
+    from ledger_routes import register_ledger_routes
+
+# 考核计分路由
+try:
+    from backend.assessment_routes import register_assessment_routes
+except ImportError:
+    from assessment_routes import register_assessment_routes
+
 # JWT配置
 SECRET_KEY = os.getenv('JWT_SECRET_KEY')
 if not SECRET_KEY:
@@ -249,6 +262,54 @@ try:
         created_at = Column(DateTime(timezone=True), server_default=func.now())
         updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
+    class MaintenanceLedger(Base):
+        """运维台账表"""
+        __tablename__ = 'maintenance_ledger'
+        id = Column(Integer, primary_key=True, autoincrement=True)
+        title = Column(String(200), nullable=False, comment='故障标题')
+        fault_level = Column(String(20), default='中', comment='故障等级：低/中/高/紧急')
+        reporter = Column(String(50), nullable=False, comment='提报人')
+        assignee = Column(String(50), comment='处理人')
+        description = Column(Text, comment='问题描述')
+        solution = Column(Text, comment='解决方案')
+        status = Column(String(20), default='待处理', comment='状态：待处理/处理中/已解决')
+        reported_at = Column(DateTime, comment='提报时间')
+        resolved_at = Column(DateTime, comment='解决时间')
+        notes = Column(Text, comment='备注')
+        created_by = Column(Integer, comment='创建人ID')
+        created_at = Column(DateTime(timezone=True), server_default=func.now())
+        updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    class MeetingLedger(Base):
+        """会议台账表"""
+        __tablename__ = 'meeting_ledger'
+        id = Column(Integer, primary_key=True, autoincrement=True)
+        meeting_time = Column(DateTime, nullable=False, comment='会议时间')
+        title = Column(String(200), nullable=False, comment='会议主题')
+        location = Column(String(200), comment='会议地点')
+        attendees = Column(String(500), comment='参会人员')
+        host = Column(String(50), comment='主持人')
+        minutes = Column(Text, comment='会议纪要')
+        images = Column(Text, comment='会议照片，JSON数组格式')
+        created_by = Column(Integer, comment='创建人ID')
+        created_at = Column(DateTime(timezone=True), server_default=func.now())
+        updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    class TrainingLedger(Base):
+        """培训台账表"""
+        __tablename__ = 'training_ledger'
+        id = Column(Integer, primary_key=True, autoincrement=True)
+        training_time = Column(DateTime, nullable=False, comment='培训时间')
+        title = Column(String(200), nullable=False, comment='培训主题')
+        location = Column(String(200), comment='培训地点')
+        attendees = Column(String(500), comment='培训人员')
+        trainer = Column(String(50), nullable=False, comment='培训人')
+        content = Column(Text, comment='培训内容')
+        images = Column(Text, comment='培训照片，JSON数组格式')
+        created_by = Column(Integer, comment='创建人ID')
+        created_at = Column(DateTime(timezone=True), server_default=func.now())
+        updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
     # 创建数据库表
     import time as _time
     for _retry in range(5):
@@ -274,6 +335,8 @@ try:
             ("case_map", "TINYINT(1) DEFAULT 0"),
             ("dispatch", "TINYINT(1) DEFAULT 0"),
             ("data_cleaning", "TINYINT(1) DEFAULT 0"),
+            ("ledger", "TINYINT(1) DEFAULT 0"),
+            ("assessment", "TINYINT(1) DEFAULT 0"),
         ]
         with engine.connect() as _conn:
             _cols = {r[0] for r in _conn.execute(text("SHOW COLUMNS FROM permissions"))}
@@ -369,6 +432,20 @@ try:
         logger.info("数据清洗路由注册成功")
     except Exception as e:
         logger.warning(f"数据清洗路由注册失败: {e}")
+
+    # 台账路由
+    try:
+        register_ledger_routes(app=app, Session=Session, MaintenanceLedger=MaintenanceLedger, MeetingLedger=MeetingLedger, TrainingLedger=TrainingLedger, protected=protected)
+        logger.info("台账路由注册成功")
+    except Exception as e:
+        logger.warning(f"台账路由注册失败: {e}")
+
+    # 考核计分路由
+    try:
+        register_assessment_routes(app=app, engine=engine, protected=protected, admin_required=admin_required)
+        logger.info("考核计分路由注册成功")
+    except Exception as e:
+        logger.warning(f"考核计分路由注册失败: {e}")
 
 except Exception as e:
     logger.error(f"数据库初始化失败: {e}")

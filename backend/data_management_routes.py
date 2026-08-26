@@ -28,7 +28,7 @@ DB_COLUMN_LABELS.update({
 })
 
 SYSTEM_COLUMNS = {'id', 'upload_batch', 'upload_time', 'uploader'}
-HIDDEN_COLUMNS = {'id', 'upload_time', 'uploader'}
+HIDDEN_COLUMNS = {'id', 'upload_time', 'uploader', 'reason_delayed', 'opinion', 'area', 'grid', 'delay_count'}
 SEARCHABLE_TYPES = {'varchar', 'text'}
 
 
@@ -38,6 +38,8 @@ def _get_columns_info(engine):
         columns = []
         for row in result:
             col_name = row[0]
+            if col_name in HIDDEN_COLUMNS:
+                continue
             col_type = str(row[1]).split('(')[0].lower()
             columns.append({
                 'name': col_name,
@@ -362,6 +364,126 @@ def register_data_management_routes(app, engine=None, protected=None, admin_requ
         except Exception as e:
             logger.exception("上传案件数据失败")
             return jsonify({'success': False, 'error': f'上传失败: {str(e)}'}), 500
+
+    @app.route('/api/data-management/detect-delay-rework', methods=['POST'])
+    @admin_required
+    def dm_detect_delay_rework():
+        """检测延期/返工/超时任务号属于哪个批次，返回匹配结果"""
+        try:
+            data = request.get_json(silent=True) or {}
+            delay_task_nos = [str(n).strip() for n in data.get('delay_task_nos', []) if str(n).strip().isdigit()]
+            rework_task_nos = [str(n).strip() for n in data.get('rework_task_nos', []) if str(n).strip().isdigit()]
+            overtime_task_nos = [str(n).strip() for n in data.get('overtime_task_nos', []) if str(n).strip().isdigit()]
+
+            if not delay_task_nos and not rework_task_nos and not overtime_task_nos:
+                return jsonify({'success': False, 'error': '请上传延期/返工/超时列表'}), 400
+
+            if not engine:
+                return jsonify({'success': False, 'error': '数据库未连接'}), 500
+
+            all_task_nos = list(set(delay_task_nos + rework_task_nos + overtime_task_nos))
+            placeholders = ','.join([f':t{i}' for i in range(len(all_task_nos))])
+            params = {f't{i}': v for i, v in enumerate(all_task_nos)}
+
+            with engine.connect() as conn:
+                result = conn.execute(text(
+                    f"SELECT upload_batch, task_no FROM case_data WHERE task_no IN ({placeholders})"
+                ), params)
+                rows = result.fetchall()
+
+            # 按批次统计
+            batch_stats = {}
+            found_task_nos = set()
+            for batch, task_no in rows:
+                found_task_nos.add(str(task_no))
+                if batch not in batch_stats:
+                    batch_stats[batch] = {'delayed': 0, 'rework': 0, 'overtime': 0, 'total': 0}
+                batch_stats[batch]['total'] += 1
+                if str(task_no) in delay_task_nos:
+                    batch_stats[batch]['delayed'] += 1
+                if str(task_no) in rework_task_nos:
+                    batch_stats[batch]['rework'] += 1
+                if str(task_no) in overtime_task_nos:
+                    batch_stats[batch]['overtime'] += 1
+
+            # 未找到的任务号
+            not_found = [t for t in all_task_nos if t not in found_task_nos]
+
+            return jsonify({
+                'success': True,
+                'batch_stats': batch_stats,
+                'not_found': not_found,
+                'total_delayed': len(delay_task_nos),
+                'total_rework': len(rework_task_nos),
+                'total_overtime': len(overtime_task_nos)
+            })
+        except Exception as e:
+            logger.error(f"检测延期/返工/超时失败: {e}")
+            return jsonify({'success': False, 'error': str(e)}), 500
+
+    @app.route('/api/data-management/apply-delay-rework', methods=['POST'])
+    @admin_required
+    def dm_apply_delay_rework():
+        """确认更新延期/返工/超时标记"""
+        try:
+            data = request.get_json(silent=True) or {}
+            batch = data.get('batch', '').strip()
+            delay_task_nos = [str(n).strip() for n in data.get('delay_task_nos', []) if str(n).strip().isdigit()]
+            rework_task_nos = [str(n).strip() for n in data.get('rework_task_nos', []) if str(n).strip().isdigit()]
+            overtime_task_nos = [str(n).strip() for n in data.get('overtime_task_nos', []) if str(n).strip().isdigit()]
+
+            if not batch:
+                return jsonify({'success': False, 'error': '请选择批次'}), 400
+
+            if not delay_task_nos and not rework_task_nos and not overtime_task_nos:
+                return jsonify({'success': False, 'error': '无任务号可更新'}), 400
+
+            if not engine:
+                return jsonify({'success': False, 'error': '数据库未连接'}), 500
+
+            updated = {'delayed': 0, 'rework': 0, 'overtime': 0}
+
+            with engine.connect() as conn:
+                # 更新延期
+                if delay_task_nos:
+                    placeholders = ','.join([f':t{i}' for i in range(len(delay_task_nos))])
+                    params = {f't{i}': v for i, v in enumerate(delay_task_nos)}
+                    params['batch'] = batch
+                    result = conn.execute(text(
+                        f"UPDATE case_data SET is_delayed = 1 WHERE upload_batch = :batch AND task_no IN ({placeholders})"
+                    ), params)
+                    updated['delayed'] = result.rowcount
+
+                # 更新返工
+                if rework_task_nos:
+                    placeholders = ','.join([f':t{i}' for i in range(len(rework_task_nos))])
+                    params = {f't{i}': v for i, v in enumerate(rework_task_nos)}
+                    params['batch'] = batch
+                    result = conn.execute(text(
+                        f"UPDATE case_data SET is_rework = 1 WHERE upload_batch = :batch AND task_no IN ({placeholders})"
+                    ), params)
+                    updated['rework'] = result.rowcount
+
+                # 更新超时
+                if overtime_task_nos:
+                    placeholders = ','.join([f':t{i}' for i in range(len(overtime_task_nos))])
+                    params = {f't{i}': v for i, v in enumerate(overtime_task_nos)}
+                    params['batch'] = batch
+                    result = conn.execute(text(
+                        f"UPDATE case_data SET is_overtime = 1 WHERE upload_batch = :batch AND task_no IN ({placeholders})"
+                    ), params)
+                    updated['overtime'] = result.rowcount
+
+                conn.commit()
+
+            return jsonify({
+                'success': True,
+                'message': f"更新完成：延期{updated['delayed']}条，返工{updated['rework']}条，超时{updated['overtime']}条",
+                'updated': updated
+            })
+        except Exception as e:
+            logger.error(f"更新延期/返工/超时失败: {e}")
+            return jsonify({'success': False, 'error': str(e)}), 500
 
     @app.route('/api/data-management/export', methods=['GET'])
     @admin_required

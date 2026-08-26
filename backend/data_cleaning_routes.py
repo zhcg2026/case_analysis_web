@@ -5,6 +5,7 @@ data_cleaning_routes.py —— 数据清洗API路由
 """
 import os
 import io
+import json
 import datetime
 import logging
 import pandas as pd
@@ -28,9 +29,9 @@ except ImportError:
 UPLOAD_DIR = os.path.join(os.path.dirname(__file__), 'uploads', 'cleaning')
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-# 五大片区GeoJSON路径（用户在QGIS中绘制后放到此位置）
+# 五大片区GeoJSON路径
 DISTRICT_GEOJSON = os.path.join(
-    os.path.dirname(__file__), '..', 'frontend', 'public', 'data', '采集员片区.geojson'
+    os.path.dirname(__file__), 'uploads', 'collector_districts.geojson'
 )
 
 
@@ -86,27 +87,48 @@ def register_data_cleaning_routes(app, engine=None):
     @protected
     def cleaning_preview():
         """执行清洗规则，返回清洗前后对比"""
-        if not request.json:
-            return jsonify({'error': '请求体为空'}), 400
-
-        data = request.json
-        file_data = data.get('file_data')
-        rules_config = data.get('rules_config', {})
-        geojson_path = data.get('geojson_path')
-
-        if not file_data:
-            return jsonify({'error': '缺少文件数据'}), 400
+        # 支持文件上传或JSON数据
+        if request.content_type and 'multipart' in request.content_type:
+            # 文件上传模式
+            if 'file' not in request.files:
+                return jsonify({'error': '请选择文件'}), 400
+            file = request.files['file']
+            rules_config = json.loads(request.form.get('rules_config', '{}'))
+            geojson_path = request.form.get('geojson_path')
+            delay_task_nos = json.loads(request.form.get('delay_task_nos', '[]'))
+            rework_task_nos = json.loads(request.form.get('rework_task_nos', '[]'))
+            overtime_task_nos = json.loads(request.form.get('overtime_task_nos', '[]'))
+            try:
+                file_bytes = file.read()
+                df = pd.read_excel(io.BytesIO(file_bytes))
+            except Exception as e:
+                return jsonify({'error': f'文件解析失败: {str(e)}'}), 400
+        else:
+            # JSON数据模式（兼容）
+            if not request.json:
+                return jsonify({'error': '请求体为空'}), 400
+            data = request.json
+            file_data = data.get('file_data')
+            rules_config = data.get('rules_config', {})
+            geojson_path = data.get('geojson_path')
+            delay_task_nos = data.get('delay_task_nos', [])
+            rework_task_nos = data.get('rework_task_nos', [])
+            overtime_task_nos = data.get('overtime_task_nos', [])
+            if not file_data:
+                return jsonify({'error': '缺少文件数据'}), 400
+            df = pd.DataFrame(file_data)
 
         try:
-            # 重建DataFrame
-            df = pd.DataFrame(file_data)
             original_df = df.copy()
 
             # 执行清洗
             df, report = run_cleaning(
                 df, rules_config,
                 engine=engine,
-                geojson_path=geojson_path or DISTRICT_GEOJSON
+                geojson_path=geojson_path or DISTRICT_GEOJSON,
+                delay_task_nos=delay_task_nos,
+                rework_task_nos=rework_task_nos,
+                overtime_task_nos=overtime_task_nos
             )
 
             # 生成对比数据（前20行）
@@ -137,16 +159,20 @@ def register_data_cleaning_routes(app, engine=None):
 
             # 清洗后的完整数据（用于后续入库）
             cleaned_data = df.fillna('').to_dict('records')
+            # 原始数据（用于前端对比显示）
+            original_data = original_df.fillna('').to_dict('records')
 
             return jsonify({
                 'success': True,
                 'report': report,
                 'compare': compare_rows,
                 'total_rows': len(df),
-                'cleaned_data': cleaned_data
+                'cleaned_data': cleaned_data,
+                'original_data': original_data
             })
         except Exception as e:
-            logger.error(f'清洗预览失败: {e}')
+            import traceback
+            logger.error(f'清洗预览失败: {e}\n{traceback.format_exc()}')
             return jsonify({'error': f'清洗处理失败: {str(e)}'}), 500
 
     @app.route('/api/cleaning/execute', methods=['POST'])
@@ -183,7 +209,7 @@ def register_data_cleaning_routes(app, engine=None):
             df = pd.DataFrame(cleaned_data)
 
             # 确保必要列存在
-            for col in ['is_delayed', 'is_rework']:
+            for col in ['is_delayed', 'is_rework', 'is_overtime']:
                 if col in df.columns:
                     df[col] = df[col].apply(lambda x: 1 if str(x).strip() in ('1', 'True', 'true', '是') else 0).astype(int)
 
@@ -201,9 +227,8 @@ def register_data_cleaning_routes(app, engine=None):
                 'small_category', 'source', 'description', 'stage',
                 'department', 'deadline_bundled', 'close_time', 'district',
                 'issue_type', 'address', 'street', 'community', 'supervisor',
-                'deadline', 'is_delayed', 'is_rework', 'longitude', 'latitude',
-                'reason_delayed', 'opinion', 'area', 'grid', 'delay_count',
-                'uploader'
+                'deadline', 'is_delayed', 'is_rework', 'is_overtime',
+                'longitude', 'latitude', 'uploader'
             ]
             df = df[[c for c in db_columns if c in df.columns]]
 
@@ -248,8 +273,10 @@ def register_data_cleaning_routes(app, engine=None):
                 'success': True,
                 'delayed_count': len(result['delayed']),
                 'rework_count': len(result['rework']),
+                'overtime_count': len(result.get('overtime', [])),
                 'delayed_task_nos': result['delayed'],
-                'rework_task_nos': result['rework']
+                'rework_task_nos': result['rework'],
+                'overtime_task_nos': result.get('overtime', [])
             })
         except Exception as e:
             return jsonify({'error': f'解析失败: {str(e)}'}), 400
