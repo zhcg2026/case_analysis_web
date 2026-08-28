@@ -247,8 +247,20 @@ def _load_department_geojson(file_name: Optional[str]) -> Optional[Dict[str, Any
         return None
     if file_name in _department_geojson_cache:
         return _department_geojson_cache[file_name]
-    file_path = os.path.join(MAP_DATA_DIR, file_name)
-    if not os.path.exists(file_path):
+    # 先在 MAP_DATA_DIR 中查找，找不到则回退到另一个目录
+    search_dirs = [MAP_DATA_DIR]
+    if _MAP_DATA_PUBLIC != MAP_DATA_DIR:
+        search_dirs.append(_MAP_DATA_PUBLIC)
+    if _MAP_DATA_DIST != MAP_DATA_DIR:
+        search_dirs.append(_MAP_DATA_DIST)
+    file_path = None
+    for d in search_dirs:
+        candidate = os.path.join(d, file_name)
+        if os.path.exists(candidate):
+            file_path = candidate
+            break
+    if not file_path:
+        logger.warning(f"GeoJSON 文件未找到: {file_name}，已搜索路径: {search_dirs}")
         return None
     try:
         with open(file_path, "r", encoding="utf-8") as f:

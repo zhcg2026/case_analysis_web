@@ -358,6 +358,10 @@
               <span>数据分析</span>
             </label>
             <label class="permission-item">
+              <input type="checkbox" v-model="editingPermissions.data_cleaning" />
+              <span>数据清洗</span>
+            </label>
+            <label class="permission-item">
               <input type="checkbox" v-model="editingPermissions.knowledge" />
               <span>知识库</span>
             </label>
@@ -376,6 +380,14 @@
             <label class="permission-item">
               <input type="checkbox" v-model="editingPermissions.business" />
               <span>业务平台</span>
+            </label>
+            <label class="permission-item">
+              <input type="checkbox" v-model="editingPermissions.ledger" />
+              <span>台账管理</span>
+            </label>
+            <label class="permission-item">
+              <input type="checkbox" v-model="editingPermissions.assessment" />
+              <span>考核计分</span>
             </label>
           </div>
         </div>
@@ -1760,11 +1772,14 @@ function openPermissionsEditor(user) {
   const perms = user.permissions || {}
   editingPermissions.value = {
     data_analysis: Boolean(perms.data_analysis),
+    data_cleaning: Boolean(perms.data_cleaning),
     knowledge: Boolean(perms.knowledge),
     map: Boolean(perms.map),
     case_map: Boolean(perms.case_map),
     dispatch: Boolean(perms.dispatch),
-    business: Boolean(perms.business)
+    business: Boolean(perms.business),
+    ledger: Boolean(perms.ledger),
+    assessment: Boolean(perms.assessment)
   }
   showPermissionsEditor.value = true
 }
@@ -1781,11 +1796,14 @@ async function savePermissions() {
     // 确保发送布尔值
     const dataToSend = {
       data_analysis: Boolean(editingPermissions.value.data_analysis),
+      data_cleaning: Boolean(editingPermissions.value.data_cleaning),
       knowledge: Boolean(editingPermissions.value.knowledge),
       map: Boolean(editingPermissions.value.map),
       case_map: Boolean(editingPermissions.value.case_map),
       dispatch: Boolean(editingPermissions.value.dispatch),
-      business: Boolean(editingPermissions.value.business)
+      business: Boolean(editingPermissions.value.business),
+      ledger: Boolean(editingPermissions.value.ledger),
+      assessment: Boolean(editingPermissions.value.assessment)
     }
     await axios.put(`/api/users/${editingPermissionsUser.value.id}/permissions`, dataToSend)
     closePermissionsEditor()

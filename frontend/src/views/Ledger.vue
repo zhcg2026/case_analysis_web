@@ -50,8 +50,9 @@
             <el-table-column prop="assignee" label="处理人" width="80" align="center" />
             <el-table-column prop="reported_at" label="提报时间" width="160" align="center" />
             <el-table-column prop="resolved_at" label="解决时间" width="160" align="center" />
-            <el-table-column label="操作" width="120" align="center" fixed="right">
+            <el-table-column label="操作" width="150" align="center" fixed="right">
               <template #default="{ row }">
+                <el-button type="primary" link size="small" @click="openDetail('maintenance', row)">查看</el-button>
                 <el-button type="primary" link size="small" @click="openMaintenanceDialog(row)">编辑</el-button>
                 <el-popconfirm title="确定删除该记录？" @confirm="deleteMaintenance(row.id)">
                   <template #reference>
@@ -115,8 +116,9 @@
                 <span v-else>-</span>
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="120" align="center" fixed="right">
+            <el-table-column label="操作" width="150" align="center" fixed="right">
               <template #default="{ row }">
+                <el-button type="primary" link size="small" @click="openDetail('meeting', row)">查看</el-button>
                 <el-button type="primary" link size="small" @click="openMeetingDialog(row)">编辑</el-button>
                 <el-popconfirm title="确定删除该记录？" @confirm="deleteMeeting(row.id)">
                   <template #reference>
@@ -180,8 +182,9 @@
                 <span v-else>-</span>
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="120" align="center" fixed="right">
+            <el-table-column label="操作" width="150" align="center" fixed="right">
               <template #default="{ row }">
+                <el-button type="primary" link size="small" @click="openDetail('training', row)">查看</el-button>
                 <el-button type="primary" link size="small" @click="openTrainingDialog(row)">编辑</el-button>
                 <el-popconfirm title="确定删除该记录？" @confirm="deleteTraining(row.id)">
                   <template #reference>
@@ -373,6 +376,78 @@
       </template>
     </el-dialog>
 
+    <!-- 查看详情弹窗 -->
+    <el-dialog v-model="detail.visible" :title="detail.title" width="650px" top="6vh">
+      <div class="detail-content" v-if="detail.data">
+        <!-- 运维台账详情 -->
+        <template v-if="detail.type === 'maintenance'">
+          <el-descriptions :column="2" border>
+            <el-descriptions-item label="故障标题" :span="2">{{ detail.data.title }}</el-descriptions-item>
+            <el-descriptions-item label="故障等级">
+              <el-tag :type="getFaultLevelType(detail.data.fault_level)" size="small">{{ detail.data.fault_level }}</el-tag>
+            </el-descriptions-item>
+            <el-descriptions-item label="状态">
+              <el-tag :type="getStatusType(detail.data.status)" size="small">{{ detail.data.status }}</el-tag>
+            </el-descriptions-item>
+            <el-descriptions-item label="提报人">{{ detail.data.reporter }}</el-descriptions-item>
+            <el-descriptions-item label="处理人">{{ detail.data.assignee || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="提报时间" :span="2">{{ detail.data.reported_at || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="解决时间" :span="2">{{ detail.data.resolved_at || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="问题描述" :span="2">
+              <div class="detail-text">{{ detail.data.description || '-' }}</div>
+            </el-descriptions-item>
+            <el-descriptions-item label="解决方案" :span="2">
+              <div class="detail-text">{{ detail.data.solution || '-' }}</div>
+            </el-descriptions-item>
+            <el-descriptions-item label="备注" :span="2">
+              <div class="detail-text">{{ detail.data.notes || '-' }}</div>
+            </el-descriptions-item>
+          </el-descriptions>
+        </template>
+        <!-- 会议台账详情 -->
+        <template v-if="detail.type === 'meeting'">
+          <el-descriptions :column="2" border>
+            <el-descriptions-item label="会议主题" :span="2">{{ detail.data.title }}</el-descriptions-item>
+            <el-descriptions-item label="会议时间" :span="2">{{ detail.data.meeting_time }}</el-descriptions-item>
+            <el-descriptions-item label="会议地点">{{ detail.data.location || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="主持人">{{ detail.data.host || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="参会人员" :span="2">{{ detail.data.attendees || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="会议纪要" :span="2">
+              <div class="detail-text">{{ detail.data.minutes || '-' }}</div>
+            </el-descriptions-item>
+          </el-descriptions>
+          <div v-if="detail.images.length" class="detail-images">
+            <div class="detail-images-label">会议照片</div>
+            <div class="detail-images-grid">
+              <img v-for="(img, idx) in detail.images" :key="idx" :src="img" class="detail-img" @click="openImagePreview(detail.images, idx)" />
+            </div>
+          </div>
+        </template>
+        <!-- 培训台账详情 -->
+        <template v-if="detail.type === 'training'">
+          <el-descriptions :column="2" border>
+            <el-descriptions-item label="培训主题" :span="2">{{ detail.data.title }}</el-descriptions-item>
+            <el-descriptions-item label="培训时间" :span="2">{{ detail.data.training_time }}</el-descriptions-item>
+            <el-descriptions-item label="培训地点">{{ detail.data.location || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="培训人">{{ detail.data.trainer }}</el-descriptions-item>
+            <el-descriptions-item label="培训人员" :span="2">{{ detail.data.attendees || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="培训内容" :span="2">
+              <div class="detail-text">{{ detail.data.content || '-' }}</div>
+            </el-descriptions-item>
+          </el-descriptions>
+          <div v-if="detail.images.length" class="detail-images">
+            <div class="detail-images-label">培训照片</div>
+            <div class="detail-images-grid">
+              <img v-for="(img, idx) in detail.images" :key="idx" :src="img" class="detail-img" @click="openImagePreview(detail.images, idx)" />
+            </div>
+          </div>
+        </template>
+      </div>
+      <template #footer>
+        <el-button @click="detail.visible = false">关闭</el-button>
+      </template>
+    </el-dialog>
+
     <!-- 图片预览弹窗 -->
     <div v-if="imagePreview.visible" class="image-preview-overlay" @click="closeImagePreview">
       <div class="image-preview-container" @click.stop>
@@ -423,6 +498,29 @@ function prevImage() {
 
 function nextImage() {
   imagePreview.index = (imagePreview.index + 1) % imagePreview.images.length
+}
+
+// 查看详情
+const detail = reactive({
+  visible: false,
+  type: '',
+  title: '',
+  data: null,
+  images: []
+})
+
+const DETAIL_TITLES = {
+  maintenance: '运维记录详情',
+  meeting: '会议记录详情',
+  training: '培训记录详情'
+}
+
+function openDetail(type, row) {
+  detail.type = type
+  detail.title = DETAIL_TITLES[type] || '详情'
+  detail.data = { ...row }
+  detail.images = (type === 'meeting' || type === 'training') ? parseImageList(row.images) : []
+  detail.visible = true
 }
 
 // 运维台账
@@ -884,5 +982,43 @@ onMounted(() => {
   color: white;
   margin-top: 12px;
   font-size: 14px;
+}
+
+/* 详情弹窗 */
+.detail-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.6;
+  color: var(--text-regular);
+}
+
+.detail-images {
+  margin-top: 16px;
+}
+
+.detail-images-label {
+  font-weight: 500;
+  margin-bottom: 8px;
+  color: var(--text-primary);
+}
+
+.detail-images-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.detail-img {
+  width: 100px;
+  height: 100px;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-lighter);
+  cursor: pointer;
+  transition: border-color var(--transition-fast);
+}
+
+.detail-img:hover {
+  border-color: var(--primary-500);
 }
 </style>

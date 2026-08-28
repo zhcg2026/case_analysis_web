@@ -50,6 +50,35 @@ def _human_size(size_bytes):
 
 # ===================== MySQL 备份 =====================
 
+def _find_mysqldump():
+    """查找 mysqldump 可执行文件路径，找不到则尝试自动安装"""
+    import shutil
+    path = shutil.which('mysqldump')
+    if path:
+        return path
+
+    # 尝试自动安装 mariadb-client（提供 mysqldump）
+    logger.info("mysqldump 未找到，尝试安装 mariadb-client...")
+    try:
+        proc = subprocess.run(
+            ['bash', '-c', 'apt-get update -qq && apt-get install -y --no-install-recommends mariadb-client'],
+            capture_output=True, timeout=120
+        )
+        if proc.returncode == 0:
+            path = shutil.which('mysqldump')
+            if path:
+                logger.info("mariadb-client 安装成功")
+                return path
+    except Exception as e:
+        logger.warning(f"自动安装 mariadb-client 失败: {e}")
+
+    raise RuntimeError(
+        'mysqldump 未找到，请在容器中安装 mariadb-client：\n'
+        '  apt-get update && apt-get install -y mariadb-client\n'
+        '或在 Dockerfile 中确保已安装该包。'
+    )
+
+
 def _backup_mysql():
     """执行 mysqldump，返回备份文件路径"""
     _ensure_backup_dir()
@@ -62,11 +91,13 @@ def _backup_mysql():
     if not all([db_user, db_password, db_host]):
         raise RuntimeError('数据库配置不完整（DB_USER/DB_PASSWORD/DB_HOST）')
 
+    mysqldump_path = _find_mysqldump()
+
     filename = f"mysql_backup_{_timestamp()}.sql.gz"
     filepath = os.path.join(BACKUP_DIR, filename)
 
     cmd = [
-        'mysqldump',
+        mysqldump_path,
         f'-h{db_host}',
         f'-P{db_port}',
         f'-u{db_user}',
@@ -157,6 +188,34 @@ def _backup_milvus():
 
 # ===================== MySQL 恢复 =====================
 
+def _find_mysql_client():
+    """查找 mysql 客户端可执行文件路径，找不到则尝试自动安装"""
+    import shutil
+    path = shutil.which('mysql')
+    if path:
+        return path
+
+    # 尝试自动安装 mariadb-client（提供 mysql 客户端）
+    logger.info("mysql 客户端未找到，尝试安装 mariadb-client...")
+    try:
+        proc = subprocess.run(
+            ['bash', '-c', 'apt-get update -qq && apt-get install -y --no-install-recommends mariadb-client'],
+            capture_output=True, timeout=120
+        )
+        if proc.returncode == 0:
+            path = shutil.which('mysql')
+            if path:
+                logger.info("mariadb-client 安装成功")
+                return path
+    except Exception as e:
+        logger.warning(f"自动安装 mariadb-client 失败: {e}")
+
+    raise RuntimeError(
+        'mysql 客户端未找到，请在容器中安装 mariadb-client：\n'
+        '  apt-get update && apt-get install -y mariadb-client'
+    )
+
+
 def _restore_mysql(filepath):
     """从 .sql.gz 文件恢复 MySQL 数据库"""
     db_user = os.getenv('DB_USER')
@@ -168,12 +227,14 @@ def _restore_mysql(filepath):
     if not all([db_user, db_password, db_host]):
         raise RuntimeError('数据库配置不完整')
 
+    mysql_path = _find_mysql_client()
+
     # 解压 SQL
     with gzip.open(filepath, 'rb') as f:
         sql_data = f.read()
 
     cmd = [
-        'mysql',
+        mysql_path,
         f'-h{db_host}',
         f'-P{db_port}',
         f'-u{db_user}',
