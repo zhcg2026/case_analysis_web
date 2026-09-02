@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """数据管理路由模块 - 案件数据上传、浏览、编辑、导出"""
 import io
+import json
 import datetime
 import logging
 from flask import request, jsonify, send_file
@@ -29,7 +30,7 @@ DB_COLUMN_LABELS.update({
 
 SYSTEM_COLUMNS = {'id', 'upload_batch', 'upload_time', 'uploader'}
 HIDDEN_COLUMNS = {'id', 'upload_time', 'uploader', 'reason_delayed', 'opinion', 'area', 'grid', 'delay_count'}
-SEARCHABLE_TYPES = {'varchar', 'text'}
+SEARCHABLE_TYPES = {'varchar', 'text', 'bigint', 'int'}
 
 
 def _get_columns_info(engine):
@@ -48,6 +49,48 @@ def _get_columns_info(engine):
                 'label': DB_COLUMN_LABELS.get(col_name, col_name),
             })
     return columns
+
+
+def _snapshot_records(engine, record_ids):
+    """查询指定ID记录的完整快照，返回 {id: {字段: 值}} 字典"""
+    if not record_ids:
+        return {}
+    placeholders = ','.join([f':rid{i}' for i in range(len(record_ids))])
+    params = {f'rid{i}': v for i, v in enumerate(record_ids)}
+    with engine.connect() as conn:
+        result = conn.execute(text(f"SELECT * FROM case_data WHERE id IN ({placeholders})"), params)
+        columns = [col for col in result.keys()]
+        snapshot = {}
+        for row in result:
+            row_dict = {}
+            for i, col in enumerate(columns):
+                val = row[i]
+                if isinstance(val, (datetime.datetime,)):
+                    val = val.strftime('%Y-%m-%d %H:%M:%S')
+                elif hasattr(val, 'isoformat'):
+                    val = str(val)
+                row_dict[col] = val
+            snapshot[str(row_dict['id'])] = row_dict
+    return snapshot
+
+
+def _write_operation_log(conn, user_id, table_name, op_type, record_ids, snapshot_data=None, old_value=None, new_value=None):
+    """写入 operation_logs 表"""
+    record_id_str = ','.join(str(rid) for rid in record_ids) if record_ids else ''
+    snapshot_json = json.dumps(snapshot_data, ensure_ascii=False, default=str) if snapshot_data else None
+    conn.execute(text(
+        "INSERT INTO operation_logs (user_id, table_name, operation_type, record_id, old_value, new_value, snapshot_data, created_at) "
+        "VALUES (:user_id, :table_name, :op_type, :record_id, :old_value, :new_value, :snapshot_data, :created_at)"
+    ), {
+        'user_id': user_id,
+        'table_name': table_name,
+        'op_type': op_type,
+        'record_id': record_id_str,
+        'old_value': old_value,
+        'new_value': new_value,
+        'snapshot_data': snapshot_json,
+        'created_at': datetime.datetime.now()
+    })
 
 
 def register_data_management_routes(app, engine=None, protected=None, admin_required=None):
@@ -106,8 +149,12 @@ def register_data_management_routes(app, engine=None, protected=None, admin_requ
             if search_field and search_value and search_field in valid_col_names:
                 col_type = next((c['type'] for c in columns_info if c['name'] == search_field), '')
                 if col_type in SEARCHABLE_TYPES or col_type == 'text':
-                    conditions.append(f"`{search_field}` LIKE :search_value")
-                    params['search_value'] = f'%{search_value}%'
+                    if col_type in ('bigint', 'int'):
+                        conditions.append(f"`{search_field}` = :search_value")
+                        params['search_value'] = search_value
+                    else:
+                        conditions.append(f"`{search_field}` LIKE :search_value")
+                        params['search_value'] = f'%{search_value}%'
 
             where_clause = (' WHERE ' + ' AND '.join(conditions)) if conditions else ''
             offset = (page - 1) * page_size
@@ -213,7 +260,7 @@ def register_data_management_routes(app, engine=None, protected=None, admin_requ
             if not engine:
                 return jsonify({'success': False, 'error': '数据库未连接'}), 500
 
-            for col in ['is_delayed', 'is_rework']:
+            for col in ['is_delayed', 'is_rework', 'is_overtime']:
                 if col in record_data:
                     record_data[col] = _normalize_bool(record_data[col])
 
@@ -224,6 +271,9 @@ def register_data_management_routes(app, engine=None, protected=None, admin_requ
             if not filtered:
                 return jsonify({'success': False, 'error': '无有效更新字段'}), 400
 
+            # 变更前快照
+            snapshot = _snapshot_records(engine, [record_id])
+
             set_clause = ', '.join([f'`{k}` = :{k}' for k in filtered.keys()])
             params = dict(filtered)
             params['id'] = record_id
@@ -231,10 +281,14 @@ def register_data_management_routes(app, engine=None, protected=None, admin_requ
             with engine.connect() as conn:
                 sql = text(f"UPDATE case_data SET {set_clause} WHERE id = :id")
                 result = conn.execute(sql, params)
-                conn.commit()
 
                 if result.rowcount == 0:
+                    conn.commit()
                     return jsonify({'success': False, 'error': '记录不存在'}), 404
+
+                _write_operation_log(conn, request.user_id, 'case_data', 'update', [record_id],
+                                     snapshot_data=snapshot, old_value=f'修改字段: {",".join(filtered.keys())}')
+                conn.commit()
 
             return jsonify({'success': True, 'message': '修改成功'})
         except Exception as e:
@@ -248,12 +302,19 @@ def register_data_management_routes(app, engine=None, protected=None, admin_requ
             if not engine:
                 return jsonify({'success': False, 'error': '数据库未连接'}), 500
 
+            # 变更前快照
+            snapshot = _snapshot_records(engine, [record_id])
+
             with engine.connect() as conn:
                 result = conn.execute(text("DELETE FROM case_data WHERE id = :id"), {'id': record_id})
-                conn.commit()
 
                 if result.rowcount == 0:
+                    conn.commit()
                     return jsonify({'success': False, 'error': '记录不存在'}), 404
+
+                _write_operation_log(conn, request.user_id, 'case_data', 'delete', [record_id],
+                                     snapshot_data=snapshot, old_value='删除记录')
+                conn.commit()
 
             return jsonify({'success': True, 'message': '删除成功'})
         except Exception as e:
@@ -278,14 +339,20 @@ def register_data_management_routes(app, engine=None, protected=None, admin_requ
             if not engine:
                 return jsonify({'success': False, 'error': '数据库未连接'}), 500
 
+            # 变更前快照
+            snapshot = _snapshot_records(engine, ids)
+
             placeholders = ','.join([f':id{i}' for i in range(len(ids))])
             params = {f'id{i}': v for i, v in enumerate(ids)}
 
             with engine.connect() as conn:
                 sql = text(f"DELETE FROM case_data WHERE id IN ({placeholders})")
                 result = conn.execute(sql, params)
-                conn.commit()
                 deleted_count = result.rowcount
+
+                _write_operation_log(conn, request.user_id, 'case_data', 'batch_delete', ids,
+                                     snapshot_data=snapshot, old_value=f'批量删除{deleted_count}条记录')
+                conn.commit()
 
             return jsonify({'success': True, 'message': '批量删除成功', 'deleted_count': deleted_count})
         except Exception as e:
@@ -314,7 +381,7 @@ def register_data_management_routes(app, engine=None, protected=None, admin_requ
             if field not in editable:
                 return jsonify({'success': False, 'error': '不可修改该字段'}), 400
 
-            if field in ('is_delayed', 'is_rework'):
+            if field in ('is_delayed', 'is_rework', 'is_overtime'):
                 value = _normalize_bool(value)
 
             try:
@@ -322,6 +389,10 @@ def register_data_management_routes(app, engine=None, protected=None, admin_requ
             except (ValueError, TypeError):
                 return jsonify({'success': False, 'error': '无效的记录ID'}), 400
 
+            # 变更前快照
+            snapshot = _snapshot_records(engine, ids)
+
+            field_label = DB_COLUMN_LABELS.get(field, field)
             placeholders = ','.join([f':id{i}' for i in range(len(ids))])
             params = {f'id{i}': v for i, v in enumerate(ids)}
             params['value'] = value
@@ -329,8 +400,13 @@ def register_data_management_routes(app, engine=None, protected=None, admin_requ
             with engine.connect() as conn:
                 sql = text(f"UPDATE case_data SET `{field}` = :value WHERE id IN ({placeholders})")
                 result = conn.execute(sql, params)
-                conn.commit()
                 updated_count = result.rowcount
+
+                _write_operation_log(conn, request.user_id, 'case_data', 'batch_update', ids,
+                                     snapshot_data=snapshot,
+                                     old_value=f'批量修改{field_label}',
+                                     new_value=f'设为: {value}')
+                conn.commit()
 
             return jsonify({'success': True, 'message': '批量修改成功', 'updated_count': updated_count})
         except Exception as e:
@@ -387,24 +463,39 @@ def register_data_management_routes(app, engine=None, protected=None, admin_requ
 
             with engine.connect() as conn:
                 result = conn.execute(text(
-                    f"SELECT upload_batch, task_no FROM case_data WHERE task_no IN ({placeholders})"
+                    f"SELECT upload_batch, task_no, is_delayed, is_rework, is_overtime "
+                    f"FROM case_data WHERE task_no IN ({placeholders})"
                 ), params)
                 rows = result.fetchall()
+
+            # 同一任务号分布在多个批次时，优先选择有非零标记的批次，否则选最大的批次
+            task_batches = {}
+            for batch, task_no, d, r, o in rows:
+                tn = str(task_no)
+                if tn not in task_batches:
+                    task_batches[tn] = []
+                task_batches[tn].append((batch, d or 0, r or 0, o or 0))
 
             # 按批次统计
             batch_stats = {}
             found_task_nos = set()
-            for batch, task_no in rows:
-                found_task_nos.add(str(task_no))
-                if batch not in batch_stats:
-                    batch_stats[batch] = {'delayed': 0, 'rework': 0, 'overtime': 0, 'total': 0}
-                batch_stats[batch]['total'] += 1
-                if str(task_no) in delay_task_nos:
-                    batch_stats[batch]['delayed'] += 1
-                if str(task_no) in rework_task_nos:
-                    batch_stats[batch]['rework'] += 1
-                if str(task_no) in overtime_task_nos:
-                    batch_stats[batch]['overtime'] += 1
+            for tn, entries in task_batches.items():
+                if len(entries) > 1:
+                    # 多批次：优先选有非零标记的，否则选最大批次
+                    non_zero = [e for e in entries if any(e[1:])]
+                    best_batch = non_zero[0][0] if non_zero else max(e[0] for e in entries)
+                else:
+                    best_batch = entries[0][0]
+                found_task_nos.add(tn)
+                if best_batch not in batch_stats:
+                    batch_stats[best_batch] = {'delayed': 0, 'rework': 0, 'overtime': 0, 'total': 0}
+                batch_stats[best_batch]['total'] += 1
+                if tn in delay_task_nos:
+                    batch_stats[best_batch]['delayed'] += 1
+                if tn in rework_task_nos:
+                    batch_stats[best_batch]['rework'] += 1
+                if tn in overtime_task_nos:
+                    batch_stats[best_batch]['overtime'] += 1
 
             # 未找到的任务号
             not_found = [t for t in all_task_nos if t not in found_task_nos]
@@ -441,6 +532,19 @@ def register_data_management_routes(app, engine=None, protected=None, admin_requ
             if not engine:
                 return jsonify({'success': False, 'error': '数据库未连接'}), 500
 
+            # 收集所有任务号，查询受影响记录ID用于快照
+            all_task_nos = list(set(delay_task_nos + rework_task_nos + overtime_task_nos))
+            affected_ids = []
+            with engine.connect() as conn:
+                placeholders = ','.join([f':tn{i}' for i in range(len(all_task_nos))])
+                params = {f'tn{i}': v for i, v in enumerate(all_task_nos)}
+                params['batch'] = batch
+                result = conn.execute(text(
+                    f"SELECT id FROM case_data WHERE upload_batch = :batch AND task_no IN ({placeholders})"
+                ), params)
+                affected_ids = [row[0] for row in result]
+
+            snapshot = _snapshot_records(engine, affected_ids) if affected_ids else {}
             updated = {'delayed': 0, 'rework': 0, 'overtime': 0}
 
             with engine.connect() as conn:
@@ -474,6 +578,14 @@ def register_data_management_routes(app, engine=None, protected=None, admin_requ
                     ), params)
                     updated['overtime'] = result.rowcount
 
+                parts = []
+                if updated['delayed']: parts.append(f"延期{updated['delayed']}条")
+                if updated['rework']: parts.append(f"返工{updated['rework']}条")
+                if updated['overtime']: parts.append(f"超时{updated['overtime']}条")
+                _write_operation_log(conn, request.user_id, 'case_data', 'batch_update', affected_ids,
+                                     snapshot_data=snapshot,
+                                     old_value='更新延期/返工/超时标记',
+                                     new_value='，'.join(parts))
                 conn.commit()
 
             return jsonify({
@@ -509,8 +621,12 @@ def register_data_management_routes(app, engine=None, protected=None, admin_requ
             if search_field and search_value and search_field in valid_col_names:
                 col_type = next((c['type'] for c in columns_info if c['name'] == search_field), '')
                 if col_type in SEARCHABLE_TYPES or col_type == 'text':
-                    conditions.append(f"`{search_field}` LIKE :search_value")
-                    params['search_value'] = f'%{search_value}%'
+                    if col_type in ('bigint', 'int'):
+                        conditions.append(f"`{search_field}` = :search_value")
+                        params['search_value'] = search_value
+                    else:
+                        conditions.append(f"`{search_field}` LIKE :search_value")
+                        params['search_value'] = f'%{search_value}%'
 
             where_clause = (' WHERE ' + ' AND '.join(conditions)) if conditions else ''
 
@@ -520,7 +636,7 @@ def register_data_management_routes(app, engine=None, protected=None, admin_requ
             if total > 100000:
                 return jsonify({'success': False, 'error': '数据量过大，请按月份筛选后导出'}), 400
 
-            df = pd.read_sql(f"SELECT * FROM case_data{where_clause} ORDER BY id DESC", engine, params=params)
+            df = pd.read_sql(text(f"SELECT * FROM case_data{where_clause} ORDER BY id DESC"), engine, params=params)
 
             if df.empty:
                 return jsonify({'success': False, 'error': '无数据可导出'}), 400
@@ -549,4 +665,136 @@ def register_data_management_routes(app, engine=None, protected=None, admin_requ
             )
         except Exception as e:
             logger.error(f"导出数据失败: {e}")
+            return jsonify({'success': False, 'error': str(e)}), 500
+
+    # ===== 操作日志 =====
+
+    @app.route('/api/data-management/logs', methods=['GET'])
+    @admin_required
+    def dm_logs():
+        try:
+            if not engine:
+                return jsonify({'success': False, 'error': '数据库未连接'}), 500
+
+            page = int(request.args.get('page', 1))
+            page_size = int(request.args.get('page_size', 20))
+            op_type = request.args.get('operation_type', '')
+            offset = (page - 1) * page_size
+
+            conditions = ["table_name = 'case_data'"]
+            params = {}
+            if op_type:
+                conditions.append("operation_type = :op_type")
+                params['op_type'] = op_type
+
+            where = ' AND '.join(conditions)
+
+            with engine.connect() as conn:
+                count_result = conn.execute(text(f"SELECT COUNT(*) FROM operation_logs WHERE {where}"), params)
+                total = count_result.scalar()
+
+                params['limit'] = page_size
+                params['offset'] = offset
+                result = conn.execute(text(
+                    f"SELECT ol.id, ol.operation_type, ol.record_id, ol.old_value, ol.new_value, ol.snapshot_data, ol.created_at, u.username "
+                    f"FROM operation_logs ol LEFT JOIN users u ON ol.user_id = u.id "
+                    f"WHERE {where} ORDER BY ol.created_at DESC LIMIT :limit OFFSET :offset"
+                ), params)
+
+                logs = []
+                for row in result:
+                    logs.append({
+                        'id': row[0],
+                        'operation_type': row[1],
+                        'record_id': row[2],
+                        'old_value': row[3],
+                        'new_value': row[4],
+                        'snapshot_data': row[5],
+                        'created_at': row[6].strftime('%Y-%m-%d %H:%M:%S') if row[6] else '',
+                        'username': row[7] or '未知'
+                    })
+
+            return jsonify({'success': True, 'logs': logs, 'total': total})
+        except Exception as e:
+            logger.error(f"查询操作日志失败: {e}")
+            return jsonify({'success': False, 'error': str(e)}), 500
+
+    @app.route('/api/data-management/rollback', methods=['POST'])
+    @admin_required
+    def dm_rollback():
+        try:
+            data = request.get_json(silent=True) or {}
+            log_id = data.get('log_id')
+            target_record_id = data.get('record_id')  # 可选，指定单条回滚
+
+            if not log_id:
+                return jsonify({'success': False, 'error': '缺少日志ID'}), 400
+
+            if not engine:
+                return jsonify({'success': False, 'error': '数据库未连接'}), 500
+
+            with engine.connect() as conn:
+                # 查询日志记录
+                result = conn.execute(text(
+                    "SELECT operation_type, record_id, snapshot_data FROM operation_logs WHERE id = :log_id"
+                ), {'log_id': log_id})
+                log_row = result.fetchone()
+
+                if not log_row:
+                    return jsonify({'success': False, 'error': '日志记录不存在'}), 404
+
+                op_type, record_id_str, snapshot_json = log_row
+
+                if not snapshot_json:
+                    return jsonify({'success': False, 'error': '该操作无可回滚的快照数据'}), 400
+
+                snapshot = json.loads(snapshot_json)
+
+                # 确定要回滚的记录
+                if target_record_id:
+                    target_id_str = str(target_record_id)
+                    if target_id_str not in snapshot:
+                        return jsonify({'success': False, 'error': '该记录不在快照中'}), 400
+                    rollback_items = {target_id_str: snapshot[target_id_str]}
+                else:
+                    rollback_items = snapshot
+
+                restored = 0
+                for rid_str, record_data in rollback_items.items():
+                    rid = int(rid_str)
+                    # 检查记录是否存在
+                    check = conn.execute(text("SELECT id FROM case_data WHERE id = :id"), {'id': rid})
+                    if check.fetchone():
+                        # 记录存在 → UPDATE 恢复
+                        set_parts = []
+                        update_params = {}
+                        for k, v in record_data.items():
+                            if k == 'id':
+                                continue
+                            set_parts.append(f'`{k}` = :{k}')
+                            update_params[k] = v
+                        update_params['id'] = rid
+                        conn.execute(text(f"UPDATE case_data SET {', '.join(set_parts)} WHERE id = :id"), update_params)
+                    else:
+                        # 记录已删除 → INSERT 恢复
+                        cols = [k for k in record_data.keys() if k != 'id']
+                        vals = [f':{c}' for c in cols]
+                        insert_params = {c: record_data[c] for c in cols}
+                        insert_params['id'] = rid
+                        conn.execute(text(
+                            f"INSERT INTO case_data (id, {', '.join(cols)}) VALUES ({rid}, {', '.join(vals)})"
+                        ), insert_params)
+                    restored += 1
+
+                # 记录回滚操作本身
+                _write_operation_log(conn, request.user_id, 'case_data', 'rollback',
+                                     [int(rid) for rid in rollback_items.keys()],
+                                     snapshot_data=rollback_items,
+                                     old_value=f'回滚日志#{log_id}',
+                                     new_value=f'恢复{restored}条记录')
+                conn.commit()
+
+            return jsonify({'success': True, 'message': f'回滚成功，恢复了 {restored} 条记录', 'restored': restored})
+        except Exception as e:
+            logger.error(f"回滚失败: {e}")
             return jsonify({'success': False, 'error': str(e)}), 500
