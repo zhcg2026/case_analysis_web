@@ -2,12 +2,19 @@
 """生成 Word 公文稿：先出图表 PNG，再排版 docx
 口径：结案=当前阶段[办结]；超时/延期/返工=对应字段；考核时限=《立案、处置和结案标准》法定时限
 """
-import json, os, sys
+import json, os, sys, glob
 import matplotlib
 matplotlib.use('Agg')
+# 彻底删除字体缓存
+_cache = matplotlib.get_cachedir()
+for _f in glob.glob(os.path.join(_cache, 'fontlist*')):
+    os.remove(_f)
+import matplotlib.font_manager as fm
+# 显式注册字体文件 + 直接设 font.family 为字体名（不走 sans-serif 中转）
+fm.fontManager.addfont('/usr/share/fonts/truetype/wqy/wqy-microhei.ttc')
+matplotlib.rcParams['font.family'] = 'WenQuanYi Micro Hei'
+matplotlib.rcParams['axes.unicode_minus'] = False
 import matplotlib.pyplot as plt
-plt.rcParams['font.sans-serif'] = ['WenQuanYi Micro Hei', 'Microsoft YaHei', 'SimHei', 'DejaVu Sans']
-plt.rcParams['axes.unicode_minus'] = False
 import numpy as np
 from docx import Document
 from docx.shared import Pt, Cm, RGBColor

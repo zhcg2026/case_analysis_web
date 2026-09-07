@@ -14,7 +14,6 @@ import re
 import shutil
 import subprocess
 import sys
-import tempfile
 
 import pandas as pd
 from sqlalchemy import text
@@ -128,21 +127,11 @@ def build_config(batch, workdir, src_path, anomalies, overrides):
 def _run_step(script, config_path, workdir, optional=False):
     env = dict(os.environ)
     env['MPLBACKEND'] = 'Agg'  # 容器/服务无显示器环境下 matplotlib 必须用 Agg
-    # 为每个子进程创建独立的 matplotlib 配置目录，内含 matplotlibrc 指定中文字体，
-    # 强制 matplotlib 从零扫描字体、不依赖可能过期的缓存
-    mpl_dir = tempfile.mkdtemp(prefix='mpl_')
-    with open(os.path.join(mpl_dir, 'matplotlibrc'), 'w') as f:
-        f.write("font.sans-serif: WenQuanYi Micro Hei, Microsoft YaHei, SimHei, DejaVu Sans\n"
-                "axes.unicode_minus: False\n")
-    env['MPLCONFIGDIR'] = mpl_dir
-    try:
-        proc = subprocess.run(
-            [sys.executable, os.path.join(MR_DIR, script), config_path],
-            cwd=workdir, env=env, capture_output=True, text=True,
-            encoding='utf-8', errors='replace', timeout=600,
-        )
-    finally:
-        shutil.rmtree(mpl_dir, ignore_errors=True)
+    proc = subprocess.run(
+        [sys.executable, os.path.join(MR_DIR, script), config_path],
+        cwd=workdir, env=env, capture_output=True, text=True,
+        encoding='utf-8', errors='replace', timeout=600,
+    )
     if proc.returncode != 0:
         tail = (proc.stderr or proc.stdout or '')[-1500:]
         if optional:
@@ -150,6 +139,20 @@ def _run_step(script, config_path, workdir, optional=False):
             return False
         raise RuntimeError(f'{script} 执行失败: {tail}')
     return True
+
+
+def _prepare_mpl_env(workdir):
+    """在 workdir 写入 matplotlibrc（matplotlib 优先读 cwd 下的配置），
+    同时删除 matplotlib 字体缓存，强制每次重建。"""
+    rc_path = os.path.join(workdir, 'matplotlibrc')
+    with open(rc_path, 'w') as f:
+        f.write("font.sans-serif: WenQuanYi Micro Hei, Microsoft YaHei, SimHei, DejaVu Sans\n"
+                "axes.unicode_minus: False\n")
+    # 删除 matplotlib 字体缓存（~/.cache/matplotlib/）
+    import glob
+    mpl_cache = os.path.expanduser('~/.cache/matplotlib')
+    if os.path.isdir(mpl_cache):
+        shutil.rmtree(mpl_cache, ignore_errors=True)
 
 
 def run_pipeline(batch, engine, anomalies=None, overrides=None):
@@ -169,6 +172,8 @@ def run_pipeline(batch, engine, anomalies=None, overrides=None):
     config_path = os.path.join(workdir, 'config.json')
     with open(config_path, 'w', encoding='utf-8') as f:
         json.dump(cfg, f, ensure_ascii=False, indent=2)
+
+    _prepare_mpl_env(workdir)
 
     for script in PIPELINE_STEPS:
         # std_parse / polish_* 为可选步骤（std 缺失或图表精修失败不阻断主流程）
