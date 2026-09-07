@@ -14,6 +14,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 
 import pandas as pd
 from sqlalchemy import text
@@ -127,11 +128,21 @@ def build_config(batch, workdir, src_path, anomalies, overrides):
 def _run_step(script, config_path, workdir, optional=False):
     env = dict(os.environ)
     env['MPLBACKEND'] = 'Agg'  # 容器/服务无显示器环境下 matplotlib 必须用 Agg
-    proc = subprocess.run(
-        [sys.executable, os.path.join(MR_DIR, script), config_path],
-        cwd=workdir, env=env, capture_output=True, text=True,
-        encoding='utf-8', errors='replace', timeout=600,
-    )
+    # 为每个子进程创建独立的 matplotlib 配置目录，内含 matplotlibrc 指定中文字体，
+    # 强制 matplotlib 从零扫描字体、不依赖可能过期的缓存
+    mpl_dir = tempfile.mkdtemp(prefix='mpl_')
+    with open(os.path.join(mpl_dir, 'matplotlibrc'), 'w') as f:
+        f.write("font.sans-serif: WenQuanYi Micro Hei, Microsoft YaHei, SimHei, DejaVu Sans\n"
+                "axes.unicode_minus: False\n")
+    env['MPLCONFIGDIR'] = mpl_dir
+    try:
+        proc = subprocess.run(
+            [sys.executable, os.path.join(MR_DIR, script), config_path],
+            cwd=workdir, env=env, capture_output=True, text=True,
+            encoding='utf-8', errors='replace', timeout=600,
+        )
+    finally:
+        shutil.rmtree(mpl_dir, ignore_errors=True)
     if proc.returncode != 0:
         tail = (proc.stderr or proc.stdout or '')[-1500:]
         if optional:
