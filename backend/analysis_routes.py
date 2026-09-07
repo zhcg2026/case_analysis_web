@@ -44,6 +44,7 @@ COLUMN_MAP = {
     '处置截止时间': 'deadline',
     '延期案件': 'is_delayed',
     '返工案件': 'is_rework',
+    'is_overtime': 'is_overtime',
     'X坐标': 'longitude',
     'Y坐标': 'latitude',
 }
@@ -72,6 +73,7 @@ CREATE TABLE IF NOT EXISTS case_data (
     deadline DATETIME COMMENT '处置截止时间',
     is_delayed TINYINT DEFAULT 0 COMMENT '延期案件',
     is_rework TINYINT DEFAULT 0 COMMENT '返工案件',
+    is_overtime TINYINT DEFAULT 0 COMMENT '超时案件（平台认定）',
     longitude DECIMAL(10,6) DEFAULT NULL COMMENT '经度(X坐标)',
     latitude DECIMAL(10,6) DEFAULT NULL COMMENT '纬度(Y坐标)',
     upload_time DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '上传时间',
@@ -112,7 +114,9 @@ def _normalize_bool(x):
 
 def process_excel_upload(file_stream, batch_override, username, engine):
     df = pd.read_excel(io.BytesIO(file_stream))
-    required_cols = {k: v for k, v in COLUMN_MAP.items() if k not in ('坐标', 'Y坐标')}
+    # is_overtime 保持可选：旧格式 xlsx 无该列时照常上传（落库走列默认值 0），
+    # 新格式含该列时保留平台认定的超时真值
+    required_cols = {k: v for k, v in COLUMN_MAP.items() if k not in ('坐标', 'Y坐标', 'is_overtime')}
     missing_cols = [col for col in required_cols.keys() if col not in df.columns]
     if missing_cols:
         raise ValueError('缺少列: ' + ', '.join(missing_cols))
@@ -131,7 +135,7 @@ def process_excel_upload(file_stream, batch_override, username, engine):
     df = df[[col for col in COLUMN_MAP.values() if col in df.columns]]
     df['upload_batch'] = batch
     df['uploader'] = username or 'system'
-    for col in ['is_delayed', 'is_rework']:
+    for col in ['is_delayed', 'is_rework', 'is_overtime']:
         if col in df.columns:
             df[col] = df[col].apply(_normalize_bool).astype(int)
     for col in ['report_time', 'close_time', 'deadline', 'deadline_bundled']:

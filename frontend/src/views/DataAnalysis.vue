@@ -30,6 +30,21 @@
       </div>
 
       <div class="sidebar-section">
+        <h3 class="section-title">月度分析报告</h3>
+        <p class="monthly-hint" v-if="!canGenMonthly">请在上方"已上传数据"中选择 1 个月份</p>
+        <div class="monthly-actions" v-else>
+          <button class="btn-monthly btn-monthly-primary" @click="generateMonthlyReport" :disabled="mrLoading">
+            <KbIcon name="bar-chart" :size="14" />
+            <span>{{ mrLoading ? '生成中...' : '生成报告' }}</span>
+          </button>
+          <button class="btn-monthly" @click="exportMonthlyReport" :disabled="mrLoading">
+            <KbIcon name="download" :size="14" />
+            <span>导出 Word</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="sidebar-section">
         <h3 class="section-title">报告模板</h3>
         <div v-if="templatesLoading" class="loading-hint">加载中...</div>
         <div v-else-if="reportTemplates.length === 0" class="empty-hint">暂无模板</div>
@@ -121,7 +136,8 @@
 </template>
 
 <script setup>
-import { ref, onMounted, nextTick, watch, onUnmounted } from 'vue'
+import { ref, computed, onMounted, nextTick, watch, onUnmounted } from 'vue'
+import { useRouter } from 'vue-router'
 import axios from 'axios'
 import { useThemeStore } from '../stores/theme'
 import { chartTemplates, COLORS, fmtNum, getOrInitChart, disposeEcharts, setChartTheme } from '../composables/useEcharts'
@@ -139,6 +155,56 @@ const months = ref([])
 const selectedMonths = ref([])
 const chatContainer = ref(null)
 let msgSeq = 0
+
+// 月度分析报告
+const router = useRouter()
+const mrLoading = ref(false)
+const canGenMonthly = computed(() => selectedMonths.value.length === 1)
+
+async function generateMonthlyReport() {
+  if (mrLoading.value || !canGenMonthly.value) return
+  const batch = selectedMonths.value[0]
+  mrLoading.value = true
+  try {
+    const token = localStorage.getItem('token')
+    const res = await axios.post('/api/monthly-report/generate', { batch }, {
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }
+    })
+    router.push(`/report-embed/${batch}.html`)
+  } catch (e) {
+    alert('生成失败: ' + (e.response?.data?.error || e.message))
+  } finally {
+    mrLoading.value = false
+  }
+}
+
+async function exportMonthlyReport() {
+  if (mrLoading.value || !canGenMonthly.value) return
+  const batch = selectedMonths.value[0]
+  mrLoading.value = true
+  try {
+    const token = localStorage.getItem('token')
+    const res = await axios.get(`/api/monthly-report/${batch}/export`, {
+      headers: { 'Authorization': `Bearer ${token}` },
+      responseType: 'blob'
+    })
+    const disposition = res.headers['content-disposition']
+    let filename = `${batch}月份城市管理案件数据分析报告_优化版.docx`
+    if (disposition) {
+      const match = disposition.match(/filename\*?=(?:UTF-8'')?([^;\n]+)/i)
+      if (match) filename = decodeURIComponent(match[1].replace(/['"]/g, ''))
+    }
+    const blobUrl = window.URL.createObjectURL(res.data)
+    const a = document.createElement('a')
+    a.href = blobUrl; a.download = filename
+    document.body.appendChild(a); a.click()
+    window.URL.revokeObjectURL(blobUrl); document.body.removeChild(a)
+  } catch (e) {
+    alert('导出失败: ' + (e.response?.data?.error || e.message))
+  } finally {
+    mrLoading.value = false
+  }
+}
 
 const quickQueries = [
   '各片区案件数量统计',
@@ -490,6 +556,50 @@ onUnmounted(() => {
   color: var(--text-tertiary);
   font-size: 12px;
   padding: 8px 0;
+}
+
+.monthly-hint {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin: 0;
+  padding: 2px 0;
+}
+
+.monthly-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.btn-monthly {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 10px;
+  border: 1px solid var(--border-light);
+  border-radius: 6px;
+  background: var(--bg-card);
+  color: var(--text-primary);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.btn-monthly:hover:not(:disabled) {
+  background: rgba(64, 158, 255, 0.08);
+  border-color: color-mix(in srgb, var(--primary-500) 40%, transparent);
+}
+.btn-monthly:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.btn-monthly-primary {
+  background: var(--primary-50);
+  border-color: var(--primary-500);
+  color: var(--primary-500);
+  font-weight: 600;
+}
+.btn-monthly-primary:hover:not(:disabled) {
+  background: rgba(64, 158, 255, 0.15);
 }
 
 .template-list {

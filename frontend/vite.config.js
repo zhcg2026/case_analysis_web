@@ -25,6 +25,12 @@ export default defineConfig({
         changeOrigin: true,
         secure: false,
         rewrite: (path) => path
+      },
+      '/reports': {
+        target: apiTarget,
+        changeOrigin: true,
+        secure: false,
+        rewrite: (path) => path
       }
     }
   },

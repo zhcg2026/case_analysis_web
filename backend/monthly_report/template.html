@@ -1,0 +1,695 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>__TITLE__</title>
+<script src="/reports/echarts.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:"Microsoft YaHei","PingFang SC",-apple-system,"Segoe UI",sans-serif;background:#eef1f6;color:#1f2733;line-height:1.7;font-size:14px}
+.wrap{max-width:1280px;margin:0 auto;padding:0 0 60px}
+header{background:linear-gradient(135deg,#12305c 0%,#1c4a8a 55%,#2b6cb8 100%);color:#fff;padding:44px 40px 38px}
+header .sub{font-size:14px;opacity:.85;letter-spacing:2px;margin-bottom:10px}
+header h1{font-size:31px;font-weight:600;letter-spacing:1px;margin-bottom:16px}
+header .meta{display:flex;flex-wrap:wrap;gap:10px 28px;font-size:13px;opacity:.9;border-top:1px solid rgba(255,255,255,.2);padding-top:16px}
+header .meta b{font-weight:600}
+nav{position:sticky;top:0;z-index:99;background:#fff;border-bottom:1px solid #dde3ec;box-shadow:0 2px 10px rgba(20,40,80,.06);padding:0 20px;overflow-x:auto}
+nav ul{display:flex;list-style:none;gap:2px;min-width:max-content}
+nav a{display:block;padding:13px 16px;color:#4a5568;text-decoration:none;font-size:13.5px;border-bottom:2px solid transparent;white-space:nowrap}
+nav a:hover{color:#1c4a8a;border-bottom-color:#2b6cb8;background:#f5f8fc}
+section{background:#fff;margin:22px 20px 0;border-radius:10px;padding:30px 34px 34px;box-shadow:0 1px 4px rgba(20,40,80,.07)}
+h2{font-size:21px;font-weight:600;color:#12305c;padding-left:13px;border-left:4px solid #2b6cb8;margin-bottom:6px}
+h2 .en{font-size:12px;color:#97a3b6;font-weight:400;margin-left:10px;letter-spacing:1px}
+h3{font-size:16px;font-weight:600;color:#1c4a8a;margin:30px 0 12px;padding-bottom:7px;border-bottom:1px dashed #dde3ec}
+h3:first-of-type{margin-top:20px}
+h4{font-size:14.5px;font-weight:600;color:#2d3748;margin:20px 0 8px}
+p{margin:9px 0;color:#374151}
+.lead{color:#5a6474;font-size:13.5px;margin-bottom:4px}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(178px,1fr));gap:14px;margin:20px 0 8px}
+.card{background:#f7f9fc;border:1px solid #e3e9f2;border-radius:8px;padding:16px 18px;border-top:3px solid #2b6cb8}
+.card .k{font-size:12.5px;color:#6b7684;margin-bottom:6px}
+.card .v{font-size:26px;font-weight:600;color:#12305c;line-height:1.2;font-variant-numeric:tabular-nums}
+.card .v small{font-size:14px;font-weight:400;color:#5a6474}
+.card .d{font-size:12px;color:#8a94a6;margin-top:5px}
+.card.warn{border-top-color:#d97706}.card.warn .v{color:#b45309}
+.card.bad{border-top-color:#c53030}.card.bad .v{color:#9b2c2c}
+.card.good{border-top-color:#2f855a}.card.good .v{color:#276749}
+.chart{width:100%;height:380px;margin:14px 0}
+.chart.sm{height:320px}.chart.lg{height:460px}.chart.xl{height:560px}.chart.xxl{height:680px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+@media(max-width:980px){.grid2{grid-template-columns:1fr}section{padding:22px 18px}header{padding:30px 20px}}
+table{width:100%;border-collapse:collapse;margin:14px 0;font-size:13px}
+th{background:#eef2f8;color:#12305c;font-weight:600;padding:9px 11px;text-align:left;border-bottom:2px solid #d3dceb;white-space:nowrap}
+td{padding:8px 11px;border-bottom:1px solid #eaeef5;color:#374151}
+tbody tr:hover{background:#f7f9fc}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+.tag{display:inline-block;padding:1px 8px;border-radius:10px;font-size:11.5px;font-weight:600}
+.t-bad{background:#fde8e8;color:#9b2c2c}.t-warn{background:#fef3c7;color:#92400e}
+.t-good{background:#e3f5ea;color:#276749}.t-info{background:#e6f0fb;color:#1c4a8a}
+.t-gray{background:#eef1f6;color:#5a6474}
+.note{background:#f7f9fc;border-left:3px solid #2b6cb8;padding:13px 17px;margin:16px 0;font-size:13.3px;color:#4a5568;border-radius:0 6px 6px 0}
+.note b{color:#12305c}
+.note.warn{background:#fffaf0;border-left-color:#d97706}.note.warn b{color:#92400e}
+.find{background:#fff;border:1px solid #e3e9f2;border-radius:9px;padding:20px 24px;margin:16px 0;border-left:4px solid #2b6cb8}
+.find .no{display:inline-block;background:#12305c;color:#fff;width:26px;height:26px;line-height:26px;text-align:center;border-radius:50%;font-size:13px;font-weight:600;margin-right:10px}
+.find h4{margin:0 0 8px;display:inline;font-size:16px;color:#12305c}
+.find .body{margin-top:10px;font-size:13.6px;color:#4a5568}
+.find .body .n1{color:#1c4a8a;font-weight:600}
+.find .body .n2{color:#b45309;font-weight:600}
+ul.kv{list-style:none;margin:10px 0}
+ul.kv li{padding:6px 0 6px 20px;position:relative;color:#4a5568;font-size:13.6px;border-bottom:1px dashed #eef1f6}
+ul.kv li:before{content:"";position:absolute;left:4px;top:15px;width:5px;height:5px;background:#2b6cb8;border-radius:50%}
+ul.kv li b{color:#1c4a8a}
+.acts{background:#f7fbf8;border:1px solid #d7ebde;border-radius:9px;padding:18px 24px;margin:14px 0}
+.acts h4{color:#276749;margin:0 0 8px}
+.acts ol{margin-left:20px;font-size:13.5px;color:#374151}
+.acts ol li{margin:7px 0}
+.meth{background:#f5f8fc;border:1px solid #dbe4f0;border-radius:9px;padding:18px 24px;margin:16px 0}
+.meth h4{color:#12305c;margin:0 0 10px}
+.meth ul{margin-left:18px;font-size:13.4px;color:#4a5568}
+.meth ul li{margin:6px 0}
+.meth code{background:#e8eff7;padding:1px 6px;border-radius:4px;font-size:12.5px;color:#1c4a8a}
+footer{text-align:center;color:#8a94a6;font-size:12.5px;padding:34px 20px 10px}
+.small{font-size:12.5px;color:#8a94a6;margin-top:6px}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <div class="sub">__ORG_DOT__</div>
+  <h1>__TITLE__</h1>
+  <div class="meta">
+    <span>考核口径：<b>处置截止时间在 __MONTH_CN__</b></span>
+    <span>案件总量：<b id="m-total"></b></span>
+    <span>办结：<b id="m-closed"></b></span>
+    <span>数据来源：<b>智慧城管平台案件数据（已清洗）</b></span>
+    <span>生成日期：<b>2026-09-04</b></span>
+  </div>
+</header>
+
+<nav><ul>
+  <li><a href="#s0">口径说明</a></li>
+  <li><a href="#s1">核心结论</a></li>
+  <li><a href="#s2">总量与结构</a></li>
+  <li><a href="#s3">时空分布</a></li>
+  <li><a href="#s4">重复案件分析</a></li>
+  <li><a href="#s5">处置效能</a></li>
+  <li><a href="#s6">质量三率</a></li>
+  <li><a href="#s7">特征归纳</a></li>
+  <li><a href="#s8">工作建议</a></li>
+</ul></nav>
+
+<section id="s0">
+  <h2>一、数据底盘与考核口径<span class="en">DATA BASIS</span></h2>
+  <p class="lead">先说清楚这份表是怎么来的、每个指标怎么算，后面的数据才好读懂。</p>
+  <div class="cards" id="c-meta"></div>
+
+  <h3>1.1 本表口径：处置截止时间在 8 月的案件</h3>
+  <div class="note" id="n-basis"></div>
+  <table>
+    <thead><tr><th style="width:150px">项目</th><th style="width:200px">数值</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td><b>案件总量</b></td><td id="k-total"></td><td>任务号无重复</td></tr>
+      <tr><td><b>处置截止在本月</b></td><td id="k-dead"></td><td>截止区间 <span id="k-deadrange"></span></td></tr>
+      <tr><td><b>上报于本月</b></td><td id="k-aug"></td><td>本月新上报案件</td></tr>
+      <tr><td><b>上报于往月</b></td><td id="k-prev"></td><td>往月上报、经延期后处置截止时间落在 8 月，按考核口径一并纳入</td></tr>
+      <tr><td><b>办结</b></td><td id="k-closed"></td><td>当前阶段名称 =「[办结]」</td></tr>
+      <tr><td><b>未办结</b></td><td id="k-un"></td><td>滞留在二级专业部门、问题流向等环节</td></tr>
+    </tbody>
+  </table>
+
+  <h3>1.2 指标计算口径</h3>
+  <table>
+    <thead><tr><th style="width:140px">指标</th><th style="width:240px">计算方式</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td><b>结案判定</b></td><td>当前阶段名称 =「[办结]」</td><td>不采用「结案时间非空」判定</td></tr>
+      <tr><td><b>法定考核时限</b></td><td>来自《立案、处置和结案标准》</td><td>各小类固定要求，详见第六章；单位分「工作时」「工作日」</td></tr>
+      <tr><td><b>处置时长</b></td><td>结案时间 − 上报时间</td><td>有效样本 <b id="k-durn"></b> 条</td></tr>
+      <tr><td><b>超时</b></td><td>is_overtime 字段 = 1</td><td><b id="k-ot"></b> 条（<b id="k-otr"></b>%）</td></tr>
+      <tr><td><b>延期</b></td><td>延期案件 字段 = 1</td><td><b id="k-dl"></b> 条（<b id="k-dlr"></b>%）</td></tr>
+      <tr><td><b>返工</b></td><td>返工案件 字段 = 1</td><td><b id="k-rw"></b> 条（<b id="k-rwr"></b>%）</td></tr>
+      <tr><td><b>重复案件</b></td><td>问题描述点位签名一致 + 坐标距离 ≤ 50 米 + 地址描述参考</td><td>剔除单位默认地址（无定位案件）；详见第四章</td></tr>
+    </tbody>
+  </table>
+
+  <h3>1.3 关于跨月挂账案件</h3>
+  <div class="note" id="n-prev"></div>
+
+  <h3>1.4 数据质量记录</h3>
+  <table>
+    <thead><tr><th style="width:90px">日期</th><th style="width:80px" class="num">案件量</th><th style="width:110px">原因</th><th>说明</th></tr></thead>
+    <tbody id="t-anom"></tbody>
+  </table>
+  <div class="note warn" id="n-addr"></div>
+  <div class="note" id="n-oldest"></div>
+
+  <h3>1.5 未办结案件明细（<span id="k-un2"></span> 件）</h3>
+  <table id="t-unclosed"><thead><tr><th>任务号</th><th>大类</th><th>小类</th><th>处置部门</th><th>当前阶段</th><th>上报时间</th></tr></thead><tbody></tbody></table>
+</section>
+
+<section id="s1">
+  <h2>二、核心结论<span class="en">KEY FINDINGS</span></h2>
+  <div class="cards" id="c-core"></div>
+  <div class="note" id="n-core"></div>
+</section>
+
+<section id="s2">
+  <h2>三、案件总量与结构<span class="en">VOLUME &amp; STRUCTURE</span></h2>
+  <div class="grid2">
+    <div><h3>3.1 大类构成</h3><div id="ch-dalei" class="chart sm"></div></div>
+    <div><h3>3.2 问题来源构成</h3><div id="ch-src" class="chart sm"></div></div>
+  </div>
+  <div class="note" id="n-dalei"></div>
+  <h3>3.3 小类 Top20 与累计占比</h3>
+  <div id="ch-xiaolei" class="chart lg"></div>
+  <div class="note" id="n-pareto"></div>
+  <div class="grid2">
+    <div><h3>3.4 各大类在五个片区的分布</h3><div id="ch-dlarea" class="chart"></div></div>
+    <div><h3>3.5 各来源渠道的问题大类结构</h3><div id="ch-srcdl" class="chart"></div></div>
+  </div>
+  <div class="grid2">
+    <div><h3>3.6 街道分布</h3><div id="ch-street" class="chart sm"></div></div>
+    <div><h3>3.7 社区 Top20</h3><div id="ch-comm" class="chart sm"></div></div>
+  </div>
+  <div class="note" id="n-area"></div>
+</section>
+
+<section id="s3">
+  <h2>四、时空分布<span class="en">SPATIO-TEMPORAL</span></h2>
+  <h3>4.1 每日案件量走势</h3>
+  <div id="ch-daily" class="chart"></div>
+  <div class="note" id="n-daily"></div>
+  <h3>4.2 上报时段与采集作业时间对照</h3>
+  <div id="ch-hour" class="chart"></div>
+  <div class="grid2">
+    <div id="ch-workrate" class="chart sm"></div>
+    <div id="ch-chour" class="chart sm"></div>
+  </div>
+  <div class="note" id="n-hour"></div>
+  <h3>4.3 星期 × 时段 分布</h3>
+  <div id="ch-wh" class="chart"></div>
+  <div class="note" id="n-wh"></div>
+  <h3>4.4 周末与工作日对比</h3>
+  <div id="ch-weekcmp" class="chart sm"></div>
+  <div class="note" id="n-week"></div>
+</section>
+
+<section id="s4">
+  <h2>五、重复案件分析<span class="en">RECURRENCE</span></h2>
+  <p class="lead">同一小类的问题在同一地点反复出现，是本月数据中特征最突出的部分，单独成章分析。</p>
+
+  <h3>5.1 识别方法</h3>
+  <div class="meth">
+    <h4>三重条件</h4>
+    <ul>
+      <li><b>小类一致</b>：仅在同一小类内比对（如无照经营游商只与无照经营游商比对）。</li>
+      <li><b>问题描述点位签名</b>：从「问题描述」字段提取「街道 + 具体点位/店铺/路口」作为核心判定（精确到店铺或具体点位，不做到街道整段）。同点位签名、分别落点，再进入坐标确认。</li>
+      <li><b>坐标确认</b>：对同点位签名的案件，以某条为中心、半径 <code id="m-r"></code> 米划定圆形区域确认，落在圆内的归为一组。<b>不做链式传递</b>，避免沿街摊点被串成一条超长记录；每组直径上限 2R（<span id="m-2r"></span> 米），实测中位直径 <span id="m-diam"></span> 米。</li>
+      <li><b>地址描述仅作参考</b>：地址描述中 89.7% 可提取出参照物（POI）名称，计算组内 POI 一致率与问题描述文本相似度（字符二元组 Jaccard）作为辅助校验，<b>不单独作为判定条件</b>。坐标相近但地址描述不同的，按问题描述与坐标判定为不同点位。</li>
+      <li><b>剔除单位默认地址</b>：地址为「金城大厦·铺安街989号」（本单位）的案件，系 12345 转办等无定位案件由系统默认落点，非真实点位，整体剔除后再做聚类。</li>
+    </ul>
+    <h4 style="margin-top:14px">距离换算依据</h4>
+    <ul>
+      <li>纬度 1° ≈ 110,540 米（本区纬度约 35.03°），经度 1° ≈ 111,320 × cos(35.03°) ≈ <span id="m-lonm"></span> 米。</li>
+      <li>用真实距离（米）而非网格，可避免「相邻网格其实很近」的边界问题。</li>
+    </ul>
+  </div>
+  <div class="cards" id="c-recur"></div>
+  <h3>5.2 距离阈值敏感性</h3>
+  <p class="lead">改变半径会改变识别结果，本表给出不同尺度下的结果，便于按需取用。</p>
+  <div id="ch-sens" class="chart sm"></div>
+  <table>
+    <thead><tr><th style="width:90px">半径</th><th class="num" style="width:100px">识别组数</th><th class="num" style="width:110px">涉及案件</th><th class="num" style="width:100px">占比</th><th>适用解读</th></tr></thead>
+    <tbody id="t-sens"></tbody>
+  </table>
+
+  <h3>5.3 重复案件空间分布</h3>
+  <div id="ch-rscatter" class="chart xl"></div>
+  <div class="note" id="n-rscatter"></div>
+
+  <h3>5.4 高频重复点位 Top20</h3>
+  <div id="ch-rtop" class="chart lg"></div>
+  <div class="note" id="n-rtop"></div>
+
+  <h3>5.5 重复案件的小类分布</h3>
+  <div id="ch-rxl" class="chart"></div>
+  <div class="note" id="n-rxl"></div>
+
+  <h3>5.6 高频重复点位清单（案件数 ≥10 且涉及 ≥5 天）</h3>
+  <table id="t-recur">
+    <thead><tr><th style="width:36px">序</th><th style="width:100px">小类</th><th class="num" style="width:60px">案件</th><th class="num" style="width:60px">天数</th><th class="num" style="width:60px">跨度</th><th class="num" style="width:66px">直径(m)</th><th class="num" style="width:70px">POI一致</th><th class="num" style="width:70px">描述相似</th><th>主要参照物 / 位置</th><th style="width:70px">片区</th></tr></thead>
+    <tbody></tbody></table>
+  <div class="note" id="n-recurlist"></div>
+</section>
+
+<section id="s5">
+  <h2>六、处置效能<span class="en">EFFICIENCY</span></h2>
+  <p class="lead">先看清一件事：不同类型案件的法定考核时限本身差异很大，这是解读处置时长的前提。</p>
+  <h3>6.1 法定考核时限（来自《立案、处置和结案标准》）</h3>
+  <div class="cards" id="c-std"></div>
+  <div class="grid2">
+    <div id="ch-std" class="chart sm"></div>
+    <div>
+      <table id="t-std">
+        <thead><tr><th>小类</th><th class="num">案件量</th><th>法定考核时限</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+  <div class="note" id="n-std"></div>
+  <h3>6.2 处置时长分布</h3>
+  <div id="ch-durbin" class="chart sm"></div>
+  <h3>6.3 问题类型对比（处置时长与工时占比）</h3>
+  <div id="ch-ptype" class="chart sm"></div>
+  <div class="note" id="n-ptype"></div>
+  <h3>6.4 部门处置时长（案件量 ≥50，按中位时长）</h3>
+  <div id="ch-dept" class="chart xl"></div>
+  <div class="note" id="n-dept"></div>
+  <div class="grid2">
+    <div><h3>6.5 大类处置时长</h3><div id="ch-dleff" class="chart"></div></div>
+    <div><h3>6.6 小类处置时长 Top15</h3><div id="ch-xleff" class="chart"></div></div>
+  </div>
+  <h3>6.7 片区与来源渠道处置时长</h3>
+  <div class="grid2">
+    <div id="ch-areff" class="chart sm"></div>
+    <div id="ch-srceff" class="chart sm"></div>
+  </div>
+  <div class="note" id="n-src"></div>
+</section>
+
+<section id="s6">
+  <h2>七、质量三率<span class="en">QUALITY RATES</span></h2>
+  <p class="lead">超时率、延期率、返工率，均按平台标记字段统计。</p>
+  <div class="cards" id="c-rate"></div>
+  <div class="grid2">
+    <div><h3>7.1 三率按处置部门（案件量 ≥50）</h3><div id="ch-ratedept" class="chart lg"></div></div>
+    <div><h3>7.2 三率按问题大类</h3><div id="ch-ratedl" class="chart lg"></div></div>
+  </div>
+  <div class="note" id="n-rate"></div>
+  <div class="grid2">
+    <div><h3>7.3 超时案件构成</h3><div id="ch-otx" class="chart sm"></div></div>
+    <div><h3>7.4 延期案件构成</h3><div id="ch-dlx" class="chart sm"></div></div>
+  </div>
+  <div class="grid2">
+    <div><h3>7.5 三率按片区</h3><div id="ch-ratearea" class="chart sm"></div></div>
+    <div><h3>7.6 三率按来源渠道</h3><div id="ch-ratesrc" class="chart sm"></div></div>
+  </div>
+  <div class="note" id="n-rate2"></div>
+</section>
+
+<section id="s7">
+  <h2>八、数据特征归纳<span class="en">CHARACTERISTICS</span></h2>
+  <p class="lead">以下为数据中呈现出的六项特征，均附对应数据。</p>
+  <div id="findings"></div>
+  <h3>8.1 专职监督员采集工作量分布</h3>
+  <div id="ch-sup" class="chart xxl"></div>
+  <div class="note" id="n-sup"></div>
+</section>
+
+<section id="s8">
+  <h2>九、工作建议<span class="en">RECOMMENDATIONS</span></h2>
+  <p class="lead">七条建议，均对应前文数据。</p>
+  <div id="recs"></div>
+  <div class="note">本报告全部指标基于「__SRC_FILE__」原始字段计算。结案以当前阶段名称为准，超时、延期、返工以对应标记字段为准，考核口径为处置截止时间在 __MONTH_CN__。分析脚本与中间数据一并留存，口径调整后可重新计算。</div>
+</section>
+
+<footer>__ORG__ · __TITLE__</footer>
+</div>
+
+<script>
+const D = __DATA__;
+const F=(n,d=0)=>Number(n).toLocaleString('zh-CN',{minimumFractionDigits:d,maximumFractionDigits:d});
+const BLUE='#2b6cb8',NAVY='#12305c',RED='#c53030',AMB='#d97706',GRN='#2f855a',GRY='#97a3b6',PUR='#805ad5';
+const PAL=['#2b6cb8','#4a90d9','#38a169','#d97706','#c53030','#805ad5','#319795','#d69e2e','#5a67d8','#dd6b20','#2c7a7b','#b794f4','#718096','#9f7aea'];
+const baseGrid={left:70,right:30,top:50,bottom:50,containLabel:true};
+const axisStyle={axisLine:{lineStyle:{color:'#cbd5e0'}},axisLabel:{color:'#5a6474',fontSize:11.5},splitLine:{lineStyle:{color:'#eef1f6'}}};
+function mk(id,opt){const el=document.getElementById(id);if(!el)return;const c=echarts.init(el);c.setOption(opt);window.addEventListener('resize',()=>c.resize());return c;}
+function barH(id,cats,vals,name,color,unit,left,fmt){
+  mk(id,{grid:Object.assign({},baseGrid,{left:left||110,right:70}),
+  tooltip:{trigger:'axis',axisPointer:{type:'shadow'},formatter:p=>p[0].name+'<br/>'+name+'：'+(fmt?fmt(p[0].value):F(p[0].value,2)+(unit||''))},
+  xAxis:Object.assign({type:'value'},axisStyle),
+  yAxis:Object.assign({type:'category',data:cats,inverse:true},axisStyle,{axisLabel:{color:'#374151',fontSize:11.5}}),
+  series:[{type:'bar',data:vals,itemStyle:{color:color,borderRadius:[0,3,3,0]},barMaxWidth:16,
+    label:{show:true,position:'right',color:'#5a6474',fontSize:11,formatter:p=>fmt?fmt(p.value):F(p.value,2)+(unit||'')}}]});
+}
+function barV(id,cats,series,unit,rot,stack){
+  mk(id,{grid:Object.assign({},baseGrid,{bottom:rot?80:50}),tooltip:{trigger:'axis',axisPointer:{type:'shadow'}},
+  legend:{top:8,textStyle:{fontSize:12,color:'#4a5568'}},
+  xAxis:Object.assign({type:'category',data:cats},axisStyle,{axisLabel:{color:'#4a5568',fontSize:11.5,interval:0,rotate:rot||0}}),
+  yAxis:Object.assign({type:'value'},axisStyle),
+  series:series.map((s,i)=>({name:s.name,type:'bar',stack:stack||null,data:s.data,itemStyle:{color:s.color||PAL[i%PAL.length],borderRadius:stack?0:[3,3,0,0]},barMaxWidth:30}))});
+}
+const set=(id,v)=>{const e=document.getElementById(id);if(e)e.textContent=v;};
+const TOT=D.basis.total;
+
+/* ---------- 1 口径 ---------- */
+set('m-total',F(TOT)+' 件'); set('m-closed',F(D.basis.closed)+' 件（'+D.basis.close_rate+'%）');
+set('k-total',F(TOT)+' 条'); set('k-dead',F(D.basis.deadline_aug)+' 条（'+D.basis.deadline_aug_rate+'%）');
+set('k-deadrange',D.basis.deadline_range[0].slice(0,10)+' 至 '+D.basis.deadline_range[1].slice(0,10));
+set('k-aug',F(D.basis.aug_n)+' 条（'+F(D.basis.aug_n/TOT*100,1)+'%）');
+set('k-prev',F(D.basis.prev_n)+' 条（'+F(D.basis.prev_n/TOT*100,1)+'%）');
+set('k-closed',F(D.basis.closed)+' 条（'+D.basis.close_rate+'%）');
+set('k-un',F(D.basis.unclosed)+' 条'); set('k-un2',D.basis.unclosed);
+set('k-durn',F(D.basis.dur_n));
+set('k-ot',F(D.eff.overtime.n)); set('k-otr',D.eff.overtime.rate);
+set('k-dl',F(D.eff.delay.n)); set('k-dlr',D.eff.delay.rate);
+set('k-rw',F(D.eff.rework.n)); set('k-rwr',D.eff.rework.rate);
+set('m-r',D.recur.r); set('m-2r',D.recur.r*2); set('m-lonm',F(D.recur.lon_m,0)); set('m-poi',D.insight.poi_cover);
+const diamAll=D.recur.ge3_all.map(r=>r.diam).sort((a,b)=>a-b);
+set('m-diam',diamAll.length?F(diamAll[Math.floor(diamAll.length/2)],1):'-');
+
+document.getElementById('c-meta').innerHTML=[
+ ['案件总量',F(TOT),'件','处置截止在本月占 '+D.basis.deadline_aug_rate+'%'],
+ ['已办结',F(D.basis.closed),'件','办结率 '+D.basis.close_rate+'%','good'],
+ ['未办结',F(D.basis.unclosed),'件','滞留专业部门等环节','warn'],
+ ['本月新上报',F(D.basis.aug_n),'件','占 '+F(D.basis.aug_n/TOT*100,1)+'%'],
+ ['往月挂账',F(D.basis.prev_n),'件','经延期后截止落在本月','warn'],
+ ['法定时限小类',F(D.std.n_xl),'类','覆盖 '+D.std.cover_rate+'% 案件','']
+].map(c=>'<div class="card '+(c[4]||'')+'"><div class="k">'+c[0]+'</div><div class="v">'+c[1]+'<small> '+c[2]+'</small></div><div class="d">'+c[3]+'</div></div>').join('');
+
+document.getElementById('n-basis').innerHTML='本表为平台按<b>考核口径</b>导出：凡<b>处置截止时间落在 2026 年 8 月</b>的案件均纳入本月考核，全表 '+F(D.basis.deadline_aug)+' 条（'+D.basis.deadline_aug_rate+'%）的处置截止时间在 8 月内，另有 10 条因跨月顺延至 9 月 2 日前。<b>因此本表既包含本月新上报的案件，也包含往月上报、经延期后处置截止时间落在本月的挂账案件</b>（'+F(D.basis.prev_n)+' 条）。这也是表内存在上报于 2025 年案件的原因，属口径使然，不是数据错误。';
+document.getElementById('n-prev').innerHTML='往月上报案件共 <b>'+F(D.basis.prev_n)+' 条</b>，占全表 '+(D.basis.prev_n/TOT*100).toFixed(1)+'%，其中 <b>'+D.basis.prev_profile.delay_n+' 条办过延期、'+D.basis.prev_profile.overtime_n+' 条被标记超时</b>，中位处置时长 '+D.basis.prev_profile.dur_med+' 小时，高于 8 月新上报案件。从部门看主要集中在 '+D.basis.prev_profile.top_dept.slice(0,3).map(r=>r[0]+'（'+r[1]+'件）').join('、')+'；从大类看主要是 '+D.basis.prev_profile.top_dalei.slice(0,3).map(r=>r[0]+'（'+r[1]+'件）').join('、')+'。<b>做同比或趋势分析时，建议把这部分单列，避免与本月新发案件混算。</b>';
+
+document.getElementById('t-anom').innerHTML=D.basis.anomaly.map(r=>{
+ const cls=r[2]==='系统故障'?'t-bad':(r[2]==='降雨'?'t-info':'t-gray');
+ return '<tr><td><b>'+r[0].slice(5)+'</b></td><td class="num">'+r[1]+'</td><td><span class="tag '+cls+'">'+r[2]+'</span></td><td>'+r[3]+'</td></tr>';}).join('');
+document.getElementById('n-addr').innerHTML='<b>地址描述缺失 '+F(D.insight.no_addr)+' 件（'+D.insight.no_addr_rate+'%）</b>，其中道路不洁 '+D.insight.no_addr_by_xl.slice(0,4).map(r=>r[1]+' 件').join('、')+' 分列前几位。第四章的重复案件识别以问题描述点位签名为核心、坐标 50 米圆确认、地址描述仅作参考，已规避该影响；该比例本身可作为采集质量的一项记录。另外有 89.7% 的地址描述可提取出参照物（POI）名称，为复核提供了条件。';
+const od=D.basis.oldest;
+document.getElementById('n-oldest').innerHTML='<b>上报时间最早案件：</b>任务号 '+od['任务号']+'，'+od['大类名称']+'—'+od['小类名称']+'，'+od['上报时间'].slice(0,10)+' 上报，'+od['结案时间'].slice(0,10)+' 结案，考核期限 '+F(od['期限h'],0)+' 小时（约 '+F(od['期限h']/24/30,0)+' 个月）。该案经多次延期后处置截止时间落在本月，属考核口径内的正常记录。';
+
+document.getElementById('t-unclosed').querySelector('tbody').innerHTML=
+ D.basis.unclosed_detail.map(r=>'<tr><td>'+r['任务号']+'</td><td>'+r['大类名称']+'</td><td>'+r['小类名称']+'</td><td>'+r['部门']+'</td><td><span class="tag t-warn">'+r['阶段']+'</span></td><td>'+r['上报时间']+'</td></tr>').join('');
+
+/* ---------- 2 核心结论 ---------- */
+document.getElementById('c-core').innerHTML=[
+ ['办结率',D.basis.close_rate,'%','未办结 '+D.basis.unclosed+' 件','good'],
+ ['中位处置时长',D.eff.dur.p50,'小时','P90 为 '+D.eff.dur.p90+' 小时','good'],
+ ['按期办结率',D.eff.ontime_rate,'%',D.eff.ontime+' 件（总−超时）','good'],
+ ['当日结案率',D.eff.same_day_rate,'%','上报当天办结','good'],
+ ['重复案件占比',D.recur.ge3_rate,'%',D.recur.ge3_n+' 组、'+F(D.recur.ge3_cases)+' 件','warn'],
+ ['超时率',D.eff.overtime.rate,'%',D.eff.overtime.n+' 件','warn'],
+ ['延期率',D.eff.delay.rate,'%',D.eff.delay.n+' 件','warn'],
+ ['返工率',D.eff.rework.rate,'%',D.eff.rework.n+' 件','good']
+].map(c=>'<div class="card '+(c[4]||'')+'"><div class="k">'+c[0]+'</div><div class="v">'+c[1]+'<small> '+c[2]+'</small></div><div class="d">'+c[3]+'</div></div>').join('');
+document.getElementById('n-core').innerHTML='本月办结率 <b>'+D.basis.close_rate+'%</b>，中位处置时长 <b>'+D.eff.dur.p50+' 小时</b>，按平台认定口径（is_overtime 字段）超时 <b>'+D.eff.overtime.n+' 件（'+D.eff.overtime.rate+'%）</b>，按期办结 <b>'+D.eff.ontime_rate+'%</b>。数据呈现三个主要特征：<b>一是案件类型集中</b>，Top10 小类覆盖 '+D.structure.top10_cover+'%；<b>二是同一地点问题反复出现</b>，半径 '+D.recur.r+' 米内同小类案件成组出现的共 '+F(D.recur.ge3_n)+' 组、'+F(D.recur.ge3_cases)+' 件，占 '+D.recur.ge3_rate+'%；<b>三是不同类别案件的法定考核时限跨度较大</b>（从约 2 工作小时到按工作日计不等），解读处置时长时需结合各小类各自的法定时限，不宜直接横向比较。';
+
+/* ---------- 3 结构 ---------- */
+mk('ch-dalei',{tooltip:{trigger:'item',formatter:'{b}：{c} 件（{d}%）'},legend:{type:'scroll',orient:'vertical',right:6,top:20,textStyle:{fontSize:12,color:'#4a5568'}},
+ series:[{type:'pie',radius:['42%','70%'],center:['36%','52%'],label:{formatter:'{d}%',color:'#fff',fontSize:11,fontWeight:600},itemStyle:{borderColor:'#fff',borderWidth:2},
+ data:D.structure.dalei.map((r,i)=>({name:r[0],value:r[1],itemStyle:{color:PAL[i%PAL.length]}}))}]});
+mk('ch-src',{tooltip:{trigger:'item',formatter:'{b}：{c} 件（{d}%）'},legend:{type:'scroll',orient:'vertical',right:6,top:20,textStyle:{fontSize:12,color:'#4a5568'}},
+ series:[{type:'pie',radius:['42%','70%'],center:['34%','52%'],label:{formatter:'{d}%',color:'#fff',fontSize:11,fontWeight:600},
+ data:D.structure.source.map((r,i)=>({name:r[0],value:r[1],itemStyle:{color:PAL[i%PAL.length]}}))}]});
+const xlt=D.structure.xiaolei;
+mk('ch-xiaolei',{grid:Object.assign({},baseGrid,{bottom:90,right:60}),tooltip:{trigger:'axis',axisPointer:{type:'shadow'}},legend:{top:6,textStyle:{fontSize:12,color:'#4a5568'}},
+ xAxis:Object.assign({type:'category',data:xlt.map(r=>r[0])},axisStyle,{axisLabel:{color:'#4a5568',fontSize:11.5,interval:0,rotate:45}}),
+ yAxis:[Object.assign({type:'value',name:'案件数'},axisStyle),Object.assign({type:'value',name:'累计占比(%)',max:100},axisStyle,{splitLine:{show:false}})],
+ series:[{name:'案件数',type:'bar',data:xlt.map(r=>r[1]),itemStyle:{color:BLUE,borderRadius:[3,3,0,0]},barMaxWidth:26},
+  {name:'累计占比',type:'line',yAxisIndex:1,data:D.structure.pareto,smooth:true,symbolSize:6,lineStyle:{color:RED,width:2},itemStyle:{color:RED},
+   markLine:{silent:true,symbol:'none',data:[{yAxis:80,label:{formatter:'80%',color:RED,fontSize:11},lineStyle:{color:RED,type:'dashed'}}]}}]});
+const mx=D.structure.matrix;
+mk('ch-dlarea',{grid:Object.assign({},baseGrid,{bottom:70}),tooltip:{trigger:'axis',axisPointer:{type:'shadow'}},legend:{top:6,textStyle:{fontSize:11.5,color:'#4a5568'}},
+ xAxis:Object.assign({type:'category',data:mx.areas},axisStyle,{axisLabel:{color:'#4a5568',fontSize:12}}),
+ yAxis:Object.assign({type:'value'},axisStyle),
+ series:mx.dalei.map((d,i)=>({name:d,type:'bar',stack:'a',data:mx.rows[i].slice(1),itemStyle:{color:PAL[i%PAL.length]},barMaxWidth:52}))});
+const smx=D.structure.src_matrix;
+mk('ch-srcdl',{grid:Object.assign({},baseGrid,{bottom:70,left:120}),tooltip:{trigger:'axis',axisPointer:{type:'shadow'}},legend:{top:6,textStyle:{fontSize:11.5,color:'#4a5568'}},
+ xAxis:Object.assign({type:'value'},axisStyle),
+ yAxis:Object.assign({type:'category',data:smx.srcs.slice().reverse()},axisStyle,{axisLabel:{color:'#4a5568',fontSize:11.5}}),
+ series:smx.dalei.map((d,i)=>({name:d,type:'bar',stack:'a',data:smx.rows.map(r=>r[2+i]).reverse(),itemStyle:{color:PAL[i%PAL.length]},barMaxWidth:30}))});
+barH('ch-street',D.structure.street.map(r=>r[0]),D.structure.street.map(r=>r[1]),'案件数',BLUE,' 件',110,p=>F(p.value)+' 件');
+barH('ch-comm',D.structure.community.map(r=>r[0]),D.structure.community.map(r=>r[1]),'案件数','#38a169',' 件',130,p=>F(p.value)+' 件');
+const dlTop=D.structure.dalei.slice(0,2).reduce((s,r)=>s+r[1],0);
+document.getElementById('n-dalei').innerHTML='街面秩序与市容环境两类合计 <b>'+(dlTop/TOT*100).toFixed(1)+'%</b>（'+F(dlTop)+' 件）。从来源看，<b>采集员上报占 '+D.insight.src_collector_rate+'%（'+F(D.insight.src_collector)+' 件）</b>，视频上报 '+D.insight.src_video+' 件（'+F(D.insight.src_video/TOT*100,1)+'%），12345 及市民政务渠道合计 '+D.insight.src_gov+' 件（'+D.insight.src_gov_rate+'%）。';
+document.getElementById('n-pareto').innerHTML='<b>Top10 小类覆盖 '+D.structure.top10_cover+'%，Top20 覆盖 '+D.structure.top20_cover+'%，小类总数 '+D.structure.xiaolei_n+' 类。</b>无照经营游商、道路不洁、共享单车管理、店外经营、沿街晾挂五类合计 '+F(D.structure.xiaolei.slice(0,5).reduce((s,r)=>s+r[1],0))+' 件，占 '+(D.structure.xiaolei.slice(0,5).reduce((s,r)=>s+r[1],0)/TOT*100).toFixed(1)+'%。';
+document.getElementById('n-area').innerHTML='街道层面，北城办事处 '+F(D.structure.street[0][1])+' 件、东城办事处 '+F(D.structure.street[1][1])+' 件，两个街道合计占 '+((D.structure.street[0][1]+D.structure.street[1][1])/TOT*100).toFixed(1)+'%；南城办事处、大渠办事处分别为 '+D.structure.street[6][1]+' 件、'+D.structure.street[7][1]+' 件。社区层面，'+D.structure.community[0][0]+' '+D.structure.community[0][1]+' 件居首。';
+
+/* ---------- 4 时空 ---------- */
+const daily=D.time.daily, anomMap={};
+D.basis.anomaly.forEach(r=>anomMap[r[0].slice(5)]=r);
+const AVG_ALL=D.basis.aug_n/D.time.daily.length;
+mk('ch-daily',{grid:Object.assign({},baseGrid,{bottom:70}),
+ tooltip:{trigger:'axis',formatter:p=>{const k=p[0].axisValue;let s=k+'<br/>案件：'+F(p[0].value)+' 件';if(anomMap[k])s+='<br/><span style="color:#c53030">'+anomMap[k][2]+'：'+anomMap[k][3]+'</span>';return s;}},
+ xAxis:Object.assign({type:'category',data:daily.map(r=>r[0].slice(5))},axisStyle,{axisLabel:{color:'#4a5568',fontSize:11,interval:0,rotate:45}}),
+ yAxis:Object.assign({type:'value',name:'案件数'},axisStyle),
+ series:[{type:'line',data:daily.map(r=>r[1]),smooth:true,symbol:'circle',symbolSize:6,lineStyle:{color:BLUE,width:2.5},itemStyle:{color:BLUE},areaStyle:{color:'rgba(43,108,184,.10)'},
+  markPoint:{data:D.basis.anomaly.map(a=>({coord:[a[0].slice(5),a[1]],value:(a[2]==='系统故障'?'故障':a[2].slice(0,2)),itemStyle:{color:(a[2]==='系统故障'?RED:'#378add')}})),symbolSize:34,label:{fontSize:10,color:'#fff'}},
+  markLine:{silent:true,symbol:'none',data:[{yAxis:AVG_ALL,label:{formatter:'名义日均 '+AVG_ALL.toFixed(1),color:'#5a6474',fontSize:11},lineStyle:{color:GRY,type:'dashed'}}]}}]});
+const clean=D.time.daily.filter(r=>!anomMap[r[0].slice(5)]);
+const cleanSum=clean.reduce((s,r)=>s+r[1],0);
+document.getElementById('n-daily').innerHTML='本月上报 <b>'+F(D.basis.aug_n)+' 件</b>，含全部 '+D.time.daily.length+' 天的名义日均 <b>'+F(AVG_ALL,1)+' 件</b>；<b>剔除 '+D.basis.anomaly.map(a=>a[0].slice(5)+'日（'+a[1]+'件，'+a[2]+'）').join('、')+' 后，'+clean.length+' 个完整采集日共 '+F(cleanSum)+' 件，日均 '+F(cleanSum/clean.length,1)+' 件</b>。全月无明显的持续上升或下降趋势。';
+
+const hr=D.time.hourly;
+mk('ch-hour',{grid:Object.assign({},baseGrid,{bottom:70}),tooltip:{trigger:'axis',formatter:p=>p[0].axisValue+'<br/>上报：'+F(p[0].value)+' 件'},
+ xAxis:Object.assign({type:'category',data:Array.from({length:24},(_,i)=>i+'时')},axisStyle,{axisLabel:{color:'#4a5568',fontSize:11,interval:0,rotate:45}}),
+ yAxis:Object.assign({type:'value',name:'案件数'},axisStyle),
+ series:[{type:'bar',data:hr,barMaxWidth:20,
+  itemStyle:{color:p=>{const h=p.dataIndex;if(h>=8&&h<=11)return BLUE;if(h>=15&&h<=19)return '#38a169';if(h===14)return AMB;return GRY;}},
+  markArea:{silent:true,data:[[{xAxis:'8时',itemStyle:{color:'rgba(43,108,184,.06)'}},{xAxis:'11时'}],
+   [{xAxis:'14时',itemStyle:{color:'rgba(217,119,6,.07)'}},{xAxis:'19时'}]]}}]});
+const w=D.time.work;
+barV('ch-workrate',['8:00—11:00\n(3.0h)','11:00—11:30\n(0.5h)','14:00—15:00\n(1.0h)','15:00—20:00\n(5.0h)'],
+ [{name:'件/小时',data:[w.am_rate,w.amhalf_rate,w.pm14_rate,w.pm_rate],
+   color:p=>p.dataIndex===2?AMB:(p.dataIndex<2?BLUE:'#38a169')}],' 件/小时',0);
+barV('ch-chour',Array.from({length:24},(_,i)=>i+'时'),[{name:'结案案件数',data:D.time.close_hour,color:'#38a169'}],' 件',45);
+document.getElementById('n-hour').innerHTML='采集员作业时间为 <b>8:00—11:30、14:00—20:00，节假日不休息</b>。对照数据：<b>8:00—11:00 采集 '+F(w.am_cases)+' 件，合 '+w.am_rate+' 件/小时；11:00—11:30 采集 '+F(w.amhalf_cases)+' 件，合 '+w.amhalf_rate+' 件/小时</b>；下午时段 <b>15:00—20:00 采集 '+F(w.pm_cases)+' 件，合 '+w.pm_rate+' 件/小时</b>，上午时段单位时间采集量约为下午的 <b>'+(w.am_rate/w.pm_rate).toFixed(1)+' 倍</b>。需要留意的是，<b>14:00—15:00 时段仅 '+w.pm14_cases+' 件</b>（'+w.pm14_rate+' 件/小时），与 14:00 开始作业的时间安排不符，15:00 起采集量才明显上升，该现象建议核实。作业时间以外共 '+w.off_cases+' 件（'+w.off_rate+'%），主要为系统自动入库或跨时段补录。结案时段的分布与上报基本同步，同样集中在 8—11 时与 15—19 时。';
+
+const wh=[];for(let a=0;a<7;a++)for(let b=0;b<24;b++)wh.push([b,a,D.time.weekhour[a][b]]);
+const wname=['周一','周二','周三','周四','周五','周六','周日'];
+mk('ch-wh',{grid:{left:80,right:40,top:40,bottom:70},tooltip:{formatter:p=>wname[p.value[1]]+' '+p.value[0]+' 时<br/>案件：'+p.value[2]+' 件'},
+ xAxis:{type:'category',data:Array.from({length:24},(_,i)=>i+'时'),splitArea:{show:true},axisLabel:{color:'#4a5568',fontSize:11}},
+ yAxis:{type:'category',data:wname,splitArea:{show:true},axisLabel:{color:'#4a5568',fontSize:12}},
+ visualMap:{min:0,max:260,calculable:true,orient:'horizontal',left:'center',bottom:8,itemWidth:14,itemHeight:110,inRange:{color:['#f0f5fb','#9dc3e6','#4a90d9','#1c4a8a','#0a2547']},textStyle:{color:'#5a6474',fontSize:11}},
+ series:[{type:'heatmap',data:wh,emphasis:{itemStyle:{shadowBlur:8,shadowColor:'rgba(0,0,0,.3)'}}}]});
+const k=D.insight.weekend;
+document.getElementById('n-wh').innerHTML='采集员节假日不休息，7 天均有作业。从分布看，周六、周日的 <b>9—11 时与 15—17 时</b>采集强度高于工作日同期，与周末街面人流、商业活动增加相对应。';
+mk('ch-weekcmp',{grid:Object.assign({},baseGrid,{left:64,right:64,bottom:40}),
+ tooltip:{trigger:'axis',axisPointer:{type:'shadow'},formatter:p=>p[0].axisValue+'<br/>'+p.map(x=>x.marker+x.seriesName+'：'+x.value).join('<br/>')},
+ legend:{top:6,textStyle:{fontSize:12,color:'#4a5568'}},
+ xAxis:Object.assign({type:'category',data:['工作日','周末']},axisStyle,{axisLabel:{color:'#4a5568',fontSize:11.5,interval:0}}),
+ yAxis:[Object.assign({type:'value',name:'日均案件量（件/天）'},axisStyle),
+        Object.assign({type:'value',name:'处置时长中位（小时）'},axisStyle,{splitLine:{show:false}})],
+ series:[{name:'日均案件量',type:'bar',data:[k.wd_avg,k.we_avg],itemStyle:{color:BLUE},barMaxWidth:30,
+   label:{show:true,position:'top',color:'#5a6474',fontSize:11}},
+  {name:'处置时长中位',type:'bar',yAxisIndex:1,data:[k.wd_dur,k.we_dur],itemStyle:{color:AMB},barMaxWidth:30,
+   label:{show:true,position:'top',color:'#5a6474',fontSize:11}}]});
+document.getElementById('n-week').innerHTML='周末日均 <b>'+k.we_avg+' 件</b>（'+k.we_days+' 天），工作日日均 <b>'+k.wd_avg+' 件</b>（'+k.wd_days+' 天），周末高出 <b>'+((k.we_avg/k.wd_avg-1)*100).toFixed(1)+'%</b>。由于节假日不休息，这一差异反映的是问题发生规律而非排班差异。处置时长方面，周末中位 '+k.we_dur+' 小时、工作日 '+k.wd_dur+' 小时，两者接近。';
+
+/* ---------- 5 重复案件 ---------- */
+document.getElementById('c-recur').innerHTML=[
+ ['识别组数',F(D.recur.ge3_n),'组','半径 '+D.recur.r+' 米内同小类 ≥3 件'],
+ ['涉及案件',F(D.recur.ge3_cases),'件','占全表 '+D.recur.ge3_rate+'%','warn'],
+ ['高频重复组',F(D.recur.hot_n),'组','≥10 件且涉及 ≥5 天'],
+ ['高频涉及案件',F(D.recur.hot_cases),'件','占 '+D.recur.hot_rate+'%','warn'],
+ ['单组最大案件量',D.recur.top[0].n,'件','涉及 '+D.recur.top[0].days+' 天'],
+ ['非重复案件',F(D.recur.isolated),'件','占 '+D.recur.isolated_rate+'%','good']
+].map(c=>'<div class="card '+(c[4]||'')+'"><div class="k">'+c[0]+'</div><div class="v">'+c[1]+'<small> '+c[2]+'</small></div><div class="d">'+c[3]+'</div></div>').join('');
+
+const sens=D.recur.sens;
+mk('ch-sens',{grid:Object.assign({},baseGrid,{bottom:60}),tooltip:{trigger:'axis',formatter:p=>'半径 '+p[0].axisValue+' 米<br/>涉及案件：'+F(p[0].value)+' 件'},
+ xAxis:Object.assign({type:'category',data:sens.map(r=>r[0]+' 米')},axisStyle,{axisLabel:{color:'#4a5568',fontSize:12}}),
+ yAxis:Object.assign({type:'value',name:'涉及案件数',max:TOT},axisStyle),
+ series:[{type:'bar',data:sens.map(r=>r[1]),itemStyle:{color:BLUE},barMaxWidth:60,
+  label:{show:true,position:'top',color:'#5a6474',fontSize:11,formatter:p=>F(p.value)+'\n'+(p.value/TOT*100).toFixed(1)+'%'}}]});
+document.getElementById('t-sens').innerHTML=sens.map(r=>{
+ const note={30:'定位到具体摊位、门店门口等点位',50:'兼顾点位与门前路段，本报告采用',100:'整条街道或街区的重复发生情况',200:'较大片区的整体发生强度'}[r[0]];
+ return '<tr><td><b>'+r[0]+' 米</b></td><td class="num">'+F(r[3])+'</td><td class="num">'+F(r[1])+'</td><td class="num">'+r[2]+'%</td><td>'+note+'</td></tr>';}).join('');
+
+const hs=D.recur.top.slice(0,40);
+mk('ch-rscatter',{grid:{left:70,right:40,top:40,bottom:60},
+ tooltip:{formatter:p=>{const r=p.data.r;return r.xl+'<br/>案件：<b>'+r.n+'</b> 件，涉及 '+r.days+' 天<br/>直径：'+r.diam+' 米<br/>POI一致率：'+r.poi_rate+'%<br/>描述相似度：'+r.sim+'<br/>参照物：'+(r.poi||'—')+'<br/>'+r.addr;}},
+ xAxis:Object.assign({type:'value',name:'经度',scale:true,nameTextStyle:{color:'#5a6474'}},axisStyle,{splitLine:{show:false}}),
+ yAxis:Object.assign({type:'value',name:'纬度',scale:true,nameTextStyle:{color:'#5a6474'}},axisStyle,{splitLine:{show:false}}),
+ visualMap:{min:3,max:D.recur.top[0].n,calculable:true,orient:'vertical',right:10,top:60,itemWidth:14,itemHeight:150,
+  inRange:{color:['#9dc3e6','#4a90d9','#1c4a8a','#7f1d1d']},text:['多','少'],textStyle:{color:'#5a6474',fontSize:11}},
+ series:[{type:'scatter',data:hs.map(r=>({value:[r.lon,r.lat,r.n],r:r})),symbolSize:v=>Math.max(7,Math.sqrt(v[2])*3.4),
+  itemStyle:{opacity:.72},emphasis:{itemStyle:{opacity:1,borderColor:'#fff',borderWidth:2}}}]});
+document.getElementById('n-rscatter').innerHTML='上图为案件量最大的 40 个重复点位的分布，圆点大小表示案件数量。这些点位与城市商业网点、学校、医院、市场等人流密集区域的位置相对应。';
+
+const rt=D.recur.top.slice(0,20).reverse();
+mk('ch-rtop',{grid:Object.assign({},baseGrid,{left:210,right:80,bottom:60,top:60}),
+ tooltip:{trigger:'axis',axisPointer:{type:'shadow'},formatter:p=>{const r=rt[p[0].dataIndex];return r.xl+'<br/>案件：'+r.n+' 件<br/>涉及天数：'+r.days+' 天<br/>参照物：'+(r.poi||'—')+'（一致率 '+r.poi_rate+'%）<br/>描述相似度：'+r.sim+'<br/>'+r.addr;}},
+ legend:{top:6,textStyle:{fontSize:12,color:'#4a5568'}},
+ xAxis:Object.assign({type:'value',name:'案件数（件）'},axisStyle),
+ yAxis:Object.assign({type:'category',data:rt.map(r=>(r.poi||r.addr.slice(0,10))+' · '+r.xl)},axisStyle,{axisLabel:{color:'#374151',fontSize:11}}),
+ series:[{name:'案件数',type:'bar',data:rt.map(r=>r.n),itemStyle:{color:BLUE,borderRadius:[0,3,3,0]},barMaxWidth:13,
+   label:{show:true,position:'right',color:'#5a6474',fontSize:11,formatter:p=>p.value+' 件'}},
+  {name:'涉及天数',type:'bar',data:rt.map(r=>r.days),itemStyle:{color:AMB,opacity:.85,borderRadius:[0,3,3,0]},barMaxWidth:13,
+   label:{show:true,position:'right',color:'#a0aec0',fontSize:10.5,formatter:p=>p.value+' 天'}}]});
+document.getElementById('n-rtop').innerHTML='上图按案件量取前 20 位，橙色为涉及天数。<b>案件量最多的点位为 '+D.recur.top[0].xl+'，月内 '+D.recur.top[0].n+' 件，分布在 '+D.recur.top[0].days+' 天，跨度 '+D.recur.top[0].span+' 天</b>，即该点位在整月大部分日期都有同类问题上报。前 20 位中，无照经营游商与店外经营占多数，其余为共享单车管理、道路不洁等。';
+
+barH('ch-rxl',D.recur.by_xl.map(r=>r[0]+'（'+r[1]+'组）'),D.recur.by_xl.map(r=>r[2]),'涉及案件数',PUR,' 件',150,p=>F(p.value)+' 件');
+document.getElementById('n-rxl').innerHTML='从小类看，重复出现最多的依次是无照经营游商（'+D.recur.by_xl[0][1]+' 组、'+F(D.recur.by_xl[0][2])+' 件）、道路不洁（'+D.recur.by_xl[1][1]+' 组）、共享单车管理（'+D.recur.by_xl[2][1]+' 组）。<b>其中无照经营游商、店外经营属于人流聚集处的经营活动，共享单车管理、道路不洁属于高频动态问题，两类问题的重复特征不同，对应的管理方式也应有所区别。</b>';
+
+document.getElementById('t-recur').querySelector('tbody').innerHTML=D.recur.hot.slice(0,30).map((r,i)=>{
+ const simCls=r.sim>=0.5?'t-good':(r.sim>=0.3?'t-warn':'t-gray');
+ const poiCls=r.poi_rate>=50?'t-good':(r.poi_rate>=20?'t-warn':'t-gray');
+ return '<tr><td>'+(i+1)+'</td><td>'+r.xl+'</td><td class="num"><b>'+r.n+'</b></td><td class="num">'+r.days+'</td><td class="num">'+r.span+'</td>'+
+ '<td class="num">'+r.diam+'</td><td class="num"><span class="tag '+poiCls+'">'+r.poi_rate+'%</span></td>'+
+ '<td class="num"><span class="tag '+simCls+'">'+r.sim+'</span></td><td>'+(r.poi?('<b>'+r.poi+'</b> · '):'')+r.addr+'</td><td>'+r.area+'</td></tr>';}).join('');
+document.getElementById('n-recurlist').innerHTML='<b>表中"POI 一致率"指该组内地址描述参照物相同的比例，"描述相似度"为问题描述文本的字符二元组 Jaccard 相似系数（0—1，越高越接近）。</b>这两项作为辅助判断：一致率高的组，可认定为同一具体位置的同类问题；一致率低但坐标集中的组，通常是同一路段或同一片区域内的多个位置，属于区域性问题而非单一点位。全部 '+F(D.recur.hot_n)+' 组按案件量排序，此处列出前 30 组。';
+
+/* ---------- 6 效能 ---------- */
+document.getElementById('c-std').innerHTML=[
+ ['法定时限覆盖小类',F(D.std.n_xl),'类','全表小类均已配置'],
+ ['覆盖案件',F(D.std.covered),'件',D.std.cover_rate+'%'],
+ ['以"工作时"计',(D.std.unit_dist.find(r=>r[0]==='工作时')||[,'0'])[1],'类','按工作小时计'],
+ ['以"工作日"计',(D.std.unit_dist.find(r=>r[0]==='工作日')||[,'0'])[1],'类','按工作日计']
+].map(c=>'<div class="card"><div class="k">'+c[0]+'</div><div class="v">'+c[1]+'<small> '+c[2]+'</small></div><div class="d">'+c[3]+'</div></div>').join('');
+
+const unitName={'工作时':'工作时制','工作日':'工作日制','工作时+工作日':'混合（分环节）','其他':'其他'};
+mk('ch-std',{tooltip:{trigger:'item',formatter:'{b}：{c} 类（{d}%）'},legend:{top:6,textStyle:{fontSize:12,color:'#4a5568'}},
+ series:[{type:'pie',radius:['40%','70%'],center:['42%','54%'],label:{formatter:'{b}\n{c}类',color:'#4a5568',fontSize:12},itemStyle:{borderColor:'#fff',borderWidth:2},
+  data:D.std.unit_dist.map((r,i)=>({name:unitName[r[0]]||r[0],value:r[1],itemStyle:{color:PAL[i%PAL.length]}}))}]});
+
+document.getElementById('t-std').querySelector('tbody').innerHTML=D.std.rows.slice(0,25).map(r=>
+ '<tr><td>'+r[0]+'</td><td class="num">'+F(r[1])+'</td><td>'+r[2]+'</td></tr>').join('');
+const _gw=(D.std.unit_dist.find(r=>r[0]==='工作时')||[,'0'])[1],_gr=(D.std.unit_dist.find(r=>r[0]==='工作日')||[,'0'])[1],_mix=(D.std.unit_dist.find(r=>r[0]==='工作时+工作日')||[,'0'])[1];
+document.getElementById('n-std').innerHTML='各小类法定考核时限来自《立案、处置和结案标准》，为平台对每类案件的固定要求，<b>全表 '+F(D.std.n_xl)+' 个小类均已配置，覆盖 '+F(D.std.covered)+' 件（'+D.std.cover_rate+'%）</b>。按时限单位划分：以「工作时」计 <b>'+_gw+'</b> 类、以「工作日」计 <b>'+_gr+'</b> 类、按处置环节分设两类时限 <b>'+_mix+'</b> 类。基础处置时限从约 2 工作小时（沿街晾挂等）到按工作日计算（共享单车、渣土等）不等，路灯为 70 工作小时。<b>解读处置时长时，需结合各小类各自的法定时限，不宜直接跨类横向比较。</b>';
+
+barV('ch-durbin',D.eff.dur_bins.map(r=>r[0]),[{name:'案件数',data:D.eff.dur_bins.map(r=>r[1]),color:BLUE}],' 件',40);
+const pt=D.eff.ptype;
+barH('ch-ptype',pt.map(r=>r[0]+'（'+F(r[1])+'件）'),pt.map(r=>r[3]),'处置工时占比',AMB,'%',120,p=>p.value+'%');
+document.getElementById('n-ptype').innerHTML='按问题类型看：<b>部件类 '+F(pt.find(r=>r[0]==='部件')[1])+' 件，占案件量 '+(pt.find(r=>r[0]==='部件')[1]/TOT*100).toFixed(1)+'%，处置工时占比 '+pt.find(r=>r[0]==='部件')[3]+'%</b>（即以约 '+(pt.find(r=>r[0]==='部件')[1]/TOT*100).toFixed(1)+'% 的案件量，消耗了约 '+pt.find(r=>r[0]==='部件')[3]+'% 的处置工时）；事件类 '+F(pt.find(r=>r[0]==='事件')[1])+' 件，处置工时占比 '+pt.find(r=>r[0]==='事件')[3]+'%。<b>部件类单件处置周期长（中位 '+pt.find(r=>r[0]==='部件')[2]+' 小时），与其需要材料、工序或外部协调的性质相关，在配置作业力量时应与事件类区别对待。</b>';
+
+const dd=D.eff.dept.slice().sort((a,b)=>b[2]-a[2]);
+mk('ch-dept',{grid:Object.assign({},baseGrid,{left:130,right:120,bottom:50}),
+ tooltip:{trigger:'axis',axisPointer:{type:'shadow'},formatter:p=>{const r=dd[p[0].dataIndex];
+   return r[0]+'<br/>案件量：'+F(r[1])+' 件<br/>处置时长中位：'+r[2]+' 小时';}},
+ legend:{top:6,textStyle:{fontSize:12,color:'#4a5568'}},
+ xAxis:Object.assign({type:'value',name:'小时'},axisStyle),
+ yAxis:Object.assign({type:'category',data:dd.map(r=>r[0]),inverse:true},axisStyle,{axisLabel:{color:'#374151',fontSize:11.5}}),
+ series:[{name:'处置时长中位(小时)',type:'bar',data:dd.map(r=>r[2]),itemStyle:{color:BLUE,borderRadius:[0,3,3,0]},barMaxWidth:11,
+   label:{show:true,position:'right',color:'#5a6474',fontSize:10.5,formatter:p=>p.value+'h'}}]});
+const d0=dd[0],dN=dd[dd.length-1];
+document.getElementById('n-dept').innerHTML='按处置时长中位排列（案件量 ≥50）：耗时最短的是 <b>'+dN[0]+'（'+dN[2]+' 小时）</b>，最长的是 <b>'+d0[0]+'（'+d0[2]+' 小时）</b>，两者相差约 '+(d0[2]/dN[2]).toFixed(0)+' 倍。<b>部门间处置时长的差距，部分源于所承办案件的类型结构不同（部件类与事件类法定时限不同），不宜直接作为部门效率高低的唯一依据。</b>';
+
+barH('ch-dleff',D.eff.dalei.map(r=>r[0]+'（'+F(r[1])+'件）'),D.eff.dalei.map(r=>r[2]),'处置时长中位',BLUE,' 小时',150,p=>p.value+'h');
+barH('ch-xleff',D.eff.xiaolei.map(r=>r[0]),D.eff.xiaolei.map(r=>r[2]),'处置时长中位',RED,' 小时',150,p=>p.value+'h');
+barH('ch-areff',D.eff.area.map(r=>r[0]+'（'+F(r[1])+'）'),D.eff.area.map(r=>r[2]),'处置时长中位',PUR,' 小时',110,p=>p.value+'h');
+barH('ch-srceff',D.eff.src.map(r=>r[0]+'（'+F(r[1])+'）'),D.eff.src.map(r=>r[2]),'处置时长中位',AMB,' 小时',140,p=>p.value+'h');
+const gd=D.insight.gov_dur, gsrc=D.insight.gov_by_src;
+document.getElementById('n-src').innerHTML='按来源渠道：<b>12345 热线转办工单 '+gsrc[0][1]+' 件，中位用时 '+gsrc[0][2]+' 小时</b>；12345 电话快办 '+gsrc[1][1]+' 件、'+gsrc[1][2]+' 小时。市民政务渠道整体中位用时 '+gd.p50+' 小时。这类案件需经<b>市民反映 → 12345 受理 → 转至平台 → 平台转派 → 处置部门处置</b>的五个环节，链条较采集员直接上报更长；由于表中无平台签收时间与转派时间字段，各环节耗时暂无法拆分。视频上报件中位用时 1.01 小时，为各渠道中最短。';
+
+/* ---------- 7 三率 ---------- */
+document.getElementById('c-rate').innerHTML=[
+ ['超时案件',F(D.eff.overtime.n),'件','超时率 '+D.eff.overtime.rate+'%'],
+ ['延期案件',F(D.eff.delay.n),'件','延期率 '+D.eff.delay.rate+'%'],
+ ['返工案件',F(D.eff.rework.n),'件','返工率 '+D.eff.rework.rate+'%','good'],
+ ['超时件中位用时',D.eff.ot_profile.dur_med,'小时','按 is_overtime 认定口径'],
+ ['延期件中位用时',D.eff.delay_profile.dur_med,'小时','延期案件标记口径']
+].map(c=>'<div class="card '+(c[4]||'')+'"><div class="k">'+c[0]+'</div><div class="v">'+c[1]+'<small> '+c[2]+'</small></div><div class="d">'+c[3]+'</div></div>').join('');
+
+function mergeRate(ov,dl,rw,sortIdx){
+  const m={};
+  ov.forEach(r=>m[r[0]]={n:r[1],ot:r[3]});
+  dl.forEach(r=>{if(!m[r[0]])m[r[0]]={n:r[1],ot:0};m[r[0]].dl=r[3];});
+  rw.forEach(r=>{if(!m[r[0]])m[r[0]]={n:r[1],ot:0,dl:0};m[r[0]].rw=r[3];});
+  return Object.keys(m).map(k=>[k,m[k].n,m[k].ot||0,m[k].dl||0,m[k].rw||0]).sort((a,b)=>b[sortIdx]-a[sortIdx]);
+}
+function rateChart(id,rows,maxW){
+  mk(id,{grid:Object.assign({},baseGrid,{left:130,right:60,bottom:60}),
+   tooltip:{trigger:'axis',axisPointer:{type:'shadow'},formatter:p=>{const r=rows[p[0].dataIndex];
+     return r[0]+'<br/>案件量：'+F(r[1])+' 件<br/>超时率：'+r[2]+'%<br/>延期率：'+r[3]+'%<br/>返工率：'+r[4]+'%';}},
+   legend:{top:6,textStyle:{fontSize:12,color:'#4a5568'}},
+   xAxis:Object.assign({type:'value',name:'%'},axisStyle),
+   yAxis:Object.assign({type:'category',data:rows.map(r=>r[0]),inverse:true},axisStyle,{axisLabel:{color:'#374151',fontSize:11.5}}),
+   series:[{name:'超时率',type:'bar',data:rows.map(r=>r[2]),itemStyle:{color:RED},barMaxWidth:maxW||9},
+    {name:'延期率',type:'bar',data:rows.map(r=>r[3]),itemStyle:{color:AMB},barMaxWidth:maxW||9},
+    {name:'返工率',type:'bar',data:rows.map(r=>r[4]),itemStyle:{color:PUR},barMaxWidth:maxW||9}]});
+}
+rateChart('ch-ratedept',mergeRate(D.eff.overtime.by_dept,D.eff.delay.by_dept,D.eff.rework.by_dept,2));
+rateChart('ch-ratedl',mergeRate(D.eff.overtime.by_dalei,D.eff.delay.by_dalei,D.eff.rework.by_dalei,3),11);
+const rd=mergeRate(D.eff.overtime.by_dept,D.eff.delay.by_dept,D.eff.rework.by_dept,2);
+const rd2=mergeRate(D.eff.overtime.by_dalei,D.eff.delay.by_dalei,D.eff.rework.by_dalei,3);
+document.getElementById('n-rate').innerHTML='全平台三率分别为 '+D.eff.overtime.rate+'%、'+D.eff.delay.rate+'%、'+D.eff.rework.rate+'%。按部门看，<b>超时率较高的是 '+rd.slice(0,3).map(r=>r[0]+'（'+r[2]+'%）').join('、')+'</b>；<b>延期率较高的是 '+mergeRate(D.eff.overtime.by_dept,D.eff.delay.by_dept,D.eff.rework.by_dept,3).slice(0,3).map(r=>r[0]+'（'+r[3]+'%）').join('、')+'</b>。按大类看，<b>'+rd2.slice(0,3).map(r=>r[0]+'（超时 '+r[2]+'%、延期 '+r[3]+'%）').join('；')+'</b>；街面秩序 7609 件中超时 3 件，宣传广告、园林绿地超时为 0。<b>三率主要分布在市政工程与园林养护两类专业线条。</b>';
+
+const otp=D.eff.ot_profile;
+mk('ch-otx',{tooltip:{trigger:'item',formatter:'{b}：{c} 件（{d}%）'},legend:{type:'scroll',orient:'vertical',right:4,top:14,textStyle:{fontSize:11.5,color:'#4a5568'}},
+ series:[{type:'pie',radius:['38%','68%'],center:['34%','52%'],label:{formatter:'{d}%',color:'#fff',fontSize:11,fontWeight:600},
+ data:otp.top_xl.map((r,i)=>({name:r[0],value:r[1],itemStyle:{color:PAL[i%PAL.length]}}))}]});
+mk('ch-dlx',{tooltip:{trigger:'item',formatter:'{b}：{c} 件（{d}%）'},legend:{type:'scroll',orient:'vertical',right:4,top:14,textStyle:{fontSize:11.5,color:'#4a5568'}},
+ series:[{type:'pie',radius:['38%','68%'],center:['34%','52%'],label:{formatter:'{d}%',color:'#fff',fontSize:11,fontWeight:600},
+ data:D.eff.delay_profile.top_xl.map((r,i)=>({name:r[0],value:r[1],itemStyle:{color:PAL[(i+3)%PAL.length]}}))}]});
+barV('ch-ratearea',mergeRate(D.eff.overtime.by_area,D.eff.delay.by_area,D.eff.rework.by_area,2).map(r=>r[0]),
+ [{name:'超时率',data:mergeRate(D.eff.overtime.by_area,D.eff.delay.by_area,D.eff.rework.by_area,2).map(r=>r[2]),color:RED},
+  {name:'延期率',data:mergeRate(D.eff.overtime.by_area,D.eff.delay.by_area,D.eff.rework.by_area,2).map(r=>r[3]),color:AMB},
+  {name:'返工率',data:mergeRate(D.eff.overtime.by_area,D.eff.delay.by_area,D.eff.rework.by_area,2).map(r=>r[4]),color:PUR}],'%',0);
+const srk=mergeRate(D.eff.overtime.by_src,D.eff.delay.by_src,D.eff.rework.by_src,2).filter(r=>r[1]>=20);
+barV('ch-ratesrc',srk.map(r=>r[0]),
+ [{name:'超时率',data:srk.map(r=>r[2]),color:RED},{name:'延期率',data:srk.map(r=>r[3]),color:AMB},{name:'返工率',data:srk.map(r=>r[4]),color:PUR}],'%',30);
+document.getElementById('n-rate2').innerHTML='超时 '+D.eff.overtime.n+' 件中，<b>'+otp.top_xl.slice(0,3).map(r=>r[0]+' '+r[1]+' 件').join('、')+'</b> 居前；按大类看市容环境 '+otp.top_dalei[0][1]+' 件占 '+(otp.top_dalei[0][1]/D.eff.overtime.n*100).toFixed(0)+'%。延期 '+D.eff.delay.n+' 件中，<b>'+D.eff.delay_profile.top_xl.slice(0,3).map(r=>r[0]+' '+r[1]+' 件').join('、')+'</b> 居前，多为市政设施类。片区维度，东片区超时率 '+D.eff.overtime.by_area[0][3]+'%，与其他片区存在差异。';
+
+/* ---------- 8 特征归纳 ---------- */
+const findings=[
+ {t:'重复出现是本批数据最突出的特征',
+  b:'以半径 <span class="n1">'+D.recur.r+' 米</span>、同小类为条件识别，共 <span class="n1">'+F(D.recur.ge3_n)+' 组</span>、涉及 <span class="n1">'+F(D.recur.ge3_cases)+' 件（'+D.recur.ge3_rate+'%）</span>；其中案件数 ≥10 件且涉及 ≥5 天的有 <span class="n1">'+F(D.recur.hot_n)+' 组、'+F(D.recur.hot_cases)+' 件（'+D.recur.hot_rate+'%）</span>。单组最大 <span class="n1">'+D.recur.top[0].n+' 件、分布在 '+D.recur.top[0].days+' 天</span>。按小类看，无照经营游商 '+D.recur.by_xl[0][1]+' 组、道路不洁 '+D.recur.by_xl[1][1]+' 组、共享单车管理 '+D.recur.by_xl[2][1]+' 组居前。<br><br>地址描述校验显示，各组 POI 一致率在 <span class="n2">15%—80%</span> 之间、描述相似度在 <span class="n2">0.28—0.75</span> 之间：一致率高的组对应同一具体位置；一致率低但坐标集中的组，多为同一路段或片区内的多个位置。<b>前者适合点位值守，后者适合路段整体管理。</b>'},
+ {t:'不同类别案件的法定考核时限跨度较大',
+  b:'各小类法定考核时限来自《立案、处置和结案标准》，单位分「工作时」与「工作日」两类：基础处置时限从约 2 工作小时（沿街晾挂等）到按工作日计算（共享单车、渣土等）不等，路灯为 70 工作小时，相差可达数十倍。<br><br>因此直接用处置时长横向比较部门或大类会放大差异，解读时应结合各小类各自的法定时限。这与第六章按处置时长中位呈现的部门、大类排名并不矛盾——排名反映的是实际用时水平，而跨类比较需考虑时限前提。'},
+ {t:'部件类案件量少、单件周期长',
+  b:'部件类 <span class="n1">'+F(pt.find(r=>r[0]==="部件")[1])+' 件，占案件量 '+(pt.find(r=>r[0]==="部件")[1]/TOT*100).toFixed(1)+'%，处置工时占比 '+pt.find(r=>r[0]==="部件")[3]+'%</span>；用时中位 '+pt.find(r=>r[0]==="部件")[2]+' 小时。事件类 '+F(pt.find(r=>r[0]==="事件")[1])+' 件、用时中位 '+pt.find(r=>r[0]==="事件")[2]+' 小时、工时占比 '+pt.find(r=>r[0]==="事件")[3]+'%。<br><br>部件类以约 '+(pt.find(r=>r[0]==="部件")[1]/TOT*100).toFixed(1)+'% 的案件量，消耗了约 '+pt.find(r=>r[0]==="部件")[3]+'% 的处置工时；路灯、道路破损、人行道等需要材料、工序或外部协调，单件周期长是其性质决定的，在力量配置上应与事件类区别对待。'},
+ {t:'市民政务渠道件流转环节较多',
+  b:'市民政务渠道共 <span class="n1">'+D.insight.src_gov+' 件（'+D.insight.src_gov_rate+'%）</span>，其中 12345 热线转办 '+gsrc[0][1]+' 件、中位用时 <span class="n1">'+gsrc[0][2]+' 小时</span>，12345 电话快办 '+gsrc[1][1]+' 件、'+gsrc[1][2]+' 小时；渠道整体中位用时 '+gd.p50+' 小时。采集员上报件中位用时 1.39 小时，视频上报件 1.01 小时。<br><br>此类案件需经 <span class="n2">市民反映 → 12345 受理 → 转至平台 → 平台转派 → 处置部门处置</span> 的五个环节，链条长于采集员直接上报。表中无平台签收时间与转派时间字段，各环节耗时暂无法拆分；<b>若能补充这两个时间字段，可定位耗时主要发生在哪一环节。</b>'},
+ {t:'采集时段集中于上午，14:00—15:00 时段案件量偏低',
+  b:'采集员作业时间为 8:00—11:30、14:00—20:00，节假日不休息。数据显示：<span class="n1">8:00—11:00 采集 '+F(w.am_cases)+' 件（'+w.am_rate+' 件/小时）</span>，<span class="n1">15:00—20:00 采集 '+F(w.pm_cases)+' 件（'+w.pm_rate+' 件/小时）</span>，上午单位时间采集量约为下午的 <span class="n1">'+(w.am_rate/w.pm_rate).toFixed(1)+' 倍</span>；作业时间以外共 '+w.off_cases+' 件（'+w.off_rate+'%）。<br><br>需留意的是 <span class="n2">14:00—15:00 时段仅 '+w.pm14_cases+' 件（'+w.pm14_rate+' 件/小时）</span>，与 14:00 开始作业的安排不符，15:00 起采集量才明显上升，建议核实该时段实际情况。'},
+ {t:'周末案件量高于工作日',
+  b:'周末日均 <span class="n1">'+k.we_avg+' 件</span>（'+k.we_days+' 天），工作日日均 '+k.wd_avg+' 件（'+k.wd_days+' 天），周末高出 <span class="n1">'+((k.we_avg/k.wd_avg-1)*100).toFixed(1)+'%</span>。由于节假日不休息，该差异反映的是问题发生规律而非排班差异。处置时长方面，周末中位 '+k.we_dur+' 小时、工作日 '+k.wd_dur+' 小时，周末高于工作日 '+((k.we_dur/k.wd_dur-1)*100).toFixed(0)+'%。'}
+];
+document.getElementById('findings').innerHTML=findings.map((f,i)=>
+ '<div class="find"><span class="no">'+(i+1)+'</span><h4>'+f.t+'</h4><div class="body">'+f.b+'</div></div>').join('');
+
+const sup=D.insight.sup_all;
+mk('ch-sup',{grid:Object.assign({},baseGrid,{left:110,right:70}),
+ tooltip:{trigger:'axis',axisPointer:{type:'shadow'},formatter:p=>{const v=p[0].value;
+   return p[0].name+'<br/>采集案件：'+F(v)+' 件<br/>与人均差值：'+(v-D.insight.sup_mean>=0?'+':'')+(v-D.insight.sup_mean).toFixed(1)+' 件';}},
+ xAxis:Object.assign({type:'value'},axisStyle),
+ yAxis:Object.assign({type:'category',data:sup.map(r=>r[0]),inverse:true},axisStyle,{axisLabel:{color:'#374151',fontSize:11}}),
+ series:[{type:'bar',data:sup.map(r=>r[1]),barMaxWidth:11,
+  itemStyle:{color:p=>p.value>=600?RED:(p.value<D.insight.sup_mean*0.7?GRY:BLUE),borderRadius:[0,3,3,0]},
+  label:{show:true,position:'right',color:'#5a6474',fontSize:10.5,formatter:p=>F(p.value)+' 件'},
+  markLine:{silent:true,symbol:'none',data:[{xAxis:D.insight.sup_mean,label:{formatter:'人均 '+D.insight.sup_mean+' 件',color:'#5a6474',fontSize:11},lineStyle:{color:AMB,type:'dashed'}}]}}]});
+const si=D.insight;
+document.getElementById('n-sup').innerHTML='按采集量统计，共出现 '+si.sup_all_raw+' 个采集人员账号，其中 <b>'+si.sup_cut+' 人采集量低于 100 件（合计仅 '+si.sup_cut_cases+' 件），按非专职人员不纳入分析</b>；其余 <b>'+si.sup_n+' 名专职采集员</b>本月共采集 <b>'+F(si.sup_cases)+' 件</b>，人均 <b>'+si.sup_mean+' 件</b>、中位 '+si.sup_med+' 件，标准差 '+si.sup_std+'、<b>变异系数 '+si.sup_cv+'%</b>，区间 '+si.sup_min+'—'+si.sup_max+' 件，其中 '+si.sup_gt600+' 人超过 600 件，采集量前 10 名占 '+si.sup_top10_share+'%。<b>各人采集量的差异与所负责网格的面积、商业网点密度、人流量相关，可结合网格属性做进一步比对。</b>';
+
+/* ---------- 9 建议 ---------- */
+const recs=[
+ {t:'对高频重复点位实行分类管理',
+  l:['对识别出的 '+F(D.recur.hot_n)+' 个高频重复组均满足同小类、同 POI、坐标相近，可直接按具体点位建档（含坐标与参照物）。',
+     '无位置描述的重复组按路段或片区建档。',
+     '点位类可结合值守、疏导区设置；路段类可结合巡查频次调整与集中整治。',
+     '将"重复发生情况"作为片区考核的一项内容，与案件处置量一并统计。',
+     '责任建议：执法各片区、市容秩序科。']},
+ {t:'补充流转环节时间字段，量化 12345 转办件各环节耗时',
+  l:['该类案件需经市民反映、12345 受理、转至平台、平台转派、部门处置五个环节，目前仅能统计全程用时（中位 '+gsrc[0][2]+' 小时）。',
+     '建议在平台中增加"平台签收时间""转派时间"两个字段，便于定位耗时主要发生在哪一环节。',
+     '在字段完善前，可对转办件单独记录响应时长与办结率，与采集员上报件分表统计。',
+     '责任建议：平台服务中心。']},
+ {t:'对处置时长偏长的部门与小类开展流程分析',
+  l:['处置时长中位最长的部门为 '+d0[0]+'（'+d0[2]+' 小时），与其承办案件以部件类、需外部协调为主有关。',
+     '建议对处置时长明显偏长的小类（如路灯 '+D.eff.xiaolei.find(r=>r[0]==='路灯')[2]+' 小时等）逐类分析原因（材料采购、工序安排、外部协调等），区分可压缩与不可压缩部分。',
+     '对因客观条件确需较长时间的作业类型，可研究在立案环节标注合理工期，减少被动延期（全平台延期率 '+D.eff.delay.rate+'%）。',
+     '责任建议：市政工程部、城市照明服务中心、排水服务中心、环卫东片区。']},
+ {t:'核实 14:00—15:00 时段采集情况',
+  l:['该时段案件量仅 '+w.pm14_cases+' 件（'+w.pm14_rate+' 件/小时），与 14:00 开始作业的时间安排存在差异，15:00 起才明显上升。',
+     '建议核实该时段为到岗通勤、设备准备还是系统时间记录差异，并据此调整时段统计口径。',
+     '责任建议：平台服务中心、各片区采集队伍。']},
+ {t:'按时段采集强度调整力量投放',
+  l:['上午时段采集强度（'+w.am_rate+' 件/小时）约为下午（'+w.pm_rate+' 件/小时）的 '+(w.am_rate/w.pm_rate).toFixed(1)+' 倍，与问题发生规律和作业安排有关。',
+     '可结合重复点位的时段分布，在人流高峰时段加强重点点位的巡查与值守。',
+     '责任建议：各片区采集队伍、执法各片区。']},
+ {t:'将地址描述完整率纳入采集质量记录',
+  l:['本月地址描述缺失 '+F(D.insight.no_addr)+' 件（'+D.insight.no_addr_rate+'%），其中道路不洁、共享单车管理、无照经营游商三类较多。',
+     '建议按人统计地址描述完整率，作为采集质量的一项记录指标，目标可设为 95% 以上。',
+     '责任建议：平台服务中心、各片区采集队伍。']},
+ {t:'做好跨月挂账案件的单独统计',
+  l:['本表含往月上报、经延期后截止落在本月的案件 '+F(D.basis.prev_n)+' 条，其中 '+D.basis.prev_profile.delay_n+' 条办过延期、'+D.basis.prev_profile.overtime_n+' 条被标记超时。',
+     '建议按月统计时将其单列，与本月新发案件分开核算，便于同比分析。',
+     '同时对 22 件未办结案件逐件落实责任部门与办结时限，其中 11 件滞留在二级专业部门环节。',
+     '责任建议：平台服务中心。']}
+];
+document.getElementById('recs').innerHTML=recs.map((r,i)=>
+ '<div class="acts"><h4>'+(i+1)+'. '+r.t+'</h4><ol>'+r.l.map(x=>'<li>'+x+'</li>').join('')+'</ol></div>').join('');
+</script>
+</body>
+</html>

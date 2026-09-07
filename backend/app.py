@@ -124,6 +124,12 @@ try:
 except ImportError:
     from assessment_routes import register_assessment_routes
 
+# 月度分析报告路由
+try:
+    from backend.monthly_report.monthly_report_routes import register_monthly_report_routes
+except ImportError:
+    from monthly_report.monthly_report_routes import register_monthly_report_routes
+
 # JWT配置
 SECRET_KEY = os.getenv('JWT_SECRET_KEY')
 if not SECRET_KEY:
@@ -447,6 +453,13 @@ try:
     except Exception as e:
         logger.warning(f"考核计分路由注册失败: {e}")
 
+    # 月度分析报告路由
+    try:
+        register_monthly_report_routes(app=app, engine=engine, protected=protected)
+        logger.info("月度分析报告路由注册成功")
+    except Exception as e:
+        logger.warning(f"月度分析报告路由注册失败: {e}")
+
 except Exception as e:
     logger.error(f"数据库初始化失败: {e}")
     engine = None
@@ -464,6 +477,13 @@ except Exception as e:
 def serve_upload(filename):
     upload_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
     return send_from_directory(upload_dir, filename)
+
+
+# 报告静态目录（月度分析报告 HTML / echarts 本地副本 / 报告 docx 缓存）
+@app.route('/reports/<path:filename>')
+def serve_reports(filename):
+    reports_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'reports')
+    return send_from_directory(reports_dir, filename)
 
 
 # ===================== 图片上传（系统 Logo / 文章配图等） =====================

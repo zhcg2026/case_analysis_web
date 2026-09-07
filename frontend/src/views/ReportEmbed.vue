@@ -27,6 +27,8 @@ const filename = computed(() => route.params.filename)
 const reportUrl = computed(() => `/reports/${filename.value}`)
 const reportTitle = computed(() => {
   const name = filename.value.replace('.html', '')
+  const m = name.match(/^(\d{4})(\d{2})$/)
+  if (m) return `${m[1]}年${parseInt(m[2])}月城市管理案件数据分析报告`
   const titleMap = {
     'sanitation-july-report': '环卫部门7月案件分析报告'
   }
