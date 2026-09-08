@@ -1,0 +1,375 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>环卫部门7月案件视频分析报告</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Microsoft YaHei', sans-serif; background: #0a0e17; color: #fff; height: 100vh; width: 100vw; overflow: hidden; }
+        .slide { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: none; flex-direction: column; justify-content: center; align-items: center; padding: 60px; opacity: 0; transition: opacity 0.6s ease; pointer-events: none; }
+        .slide.active { display: flex; opacity: 1; pointer-events: all; }
+        .slide-number { position: absolute; bottom: 30px; right: 50px; font-size: 14px; color: rgba(255,255,255,0.3); letter-spacing: 2px; }
+        .progress-bar { position: fixed; top: 0; left: 0; height: 3px; background: linear-gradient(90deg, #00d4ff, #00ff88); z-index: 1000; }
+        .auto-timer { position: fixed; top: 20px; right: 30px; font-size: 13px; color: rgba(255,255,255,0.4); letter-spacing: 1px; z-index: 1000; }
+        .controls { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); display: flex; gap: 15px; z-index: 100; opacity: 0; transition: opacity 0.3s; }
+        .controls:hover { opacity: 1; }
+        .ctrl-btn { background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); color: #fff; padding: 10px 24px; border-radius: 40px; cursor: pointer; font-size: 13px; transition: all 0.3s; backdrop-filter: blur(10px); }
+        .ctrl-btn:hover { background: rgba(0,212,255,0.2); border-color: #00d4ff; }
+        .ctrl-btn.pause { background: rgba(255,87,87,0.2); border-color: #ff5757; }
+        .title-slide { background: radial-gradient(ellipse at 50% 40%, #1a3a5f 0%, #0a1628 70%); }
+        .title-slide h1 { font-size: 64px; font-weight: 700; margin-bottom: 24px; background: linear-gradient(90deg, #00d4ff, #00ff88); -webkit-background-clip: text; -webkit-text-fill-color: transparent; animation: titleGlow 3s ease-in-out infinite alternate; }
+        @keyframes titleGlow { from { filter: drop-shadow(0 0 20px rgba(0,212,255,0.4)); } to { filter: drop-shadow(0 0 40px rgba(0,255,136,0.6)); } }
+        .subtitle { font-size: 24px; color: rgba(255,255,255,0.7); margin-bottom: 16px; letter-spacing: 2px; }
+        .meta-info { font-size: 15px; color: rgba(255,255,255,0.45); margin-top: 36px; line-height: 2; }
+        .title-line { width: 120px; height: 3px; background: linear-gradient(90deg, #00d4ff, transparent); margin-bottom: 30px; border-radius: 2px; }
+        .content-slide { background: linear-gradient(180deg, #0c1220 0%, #111827 100%); }
+        .slide-title { font-size: 42px; font-weight: 600; margin-bottom: 40px; text-align: center; background: linear-gradient(90deg, #fff, #00d4ff); -webkit-background-clip: text; -webkit-text-fill-color: transparent; letter-spacing: 2px; }
+        .content-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 24px; width: 100%; max-width: 1200px; }
+        .metric-card { background: rgba(255,255,255,0.04); border-radius: 16px; padding: 28px; border: 1px solid rgba(255,255,255,0.08); animation: fadeInUp 0.8s ease forwards; opacity: 0; }
+        .metric-card:nth-child(1) { animation-delay: 0.15s; } .metric-card:nth-child(2) { animation-delay: 0.3s; } .metric-card:nth-child(3) { animation-delay: 0.45s; } .metric-card:nth-child(4) { animation-delay: 0.6s; }
+        @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+        .metric-value { font-size: 52px; font-weight: 700; color: #00d4ff; margin-bottom: 8px; letter-spacing: -1px; }
+        .metric-label { font-size: 15px; color: rgba(255,255,255,0.6); line-height: 1.5; }
+        .insight-box { background: linear-gradient(135deg, rgba(0,212,255,0.06), rgba(0,255,136,0.06)); border-left: 3px solid #00d4ff; padding: 22px; border-radius: 10px; margin-top: 28px; max-width: 800px; animation: slideIn 0.8s ease; }
+        @keyframes slideIn { from { opacity: 0; transform: translateX(-25px); } to { opacity: 1; transform: translateX(0); } }
+        .insight-title { font-size: 18px; font-weight: 600; color: #00ff88; margin-bottom: 10px; }
+        .insight-text { font-size: 15px; line-height: 1.7; color: rgba(255,255,255,0.75); }
+        .highlight { color: #00ff88; font-weight: 700; }
+        .two-column { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; width: 100%; max-width: 1200px; }
+        .column { display: flex; flex-direction: column; gap: 20px; }
+        .chart-container { background: rgba(255,255,255,0.02); border-radius: 16px; padding: 28px; width: 100%; max-width: 800px; border: 1px solid rgba(255,255,255,0.06); }
+        .chart-title { font-size: 16px; font-weight: 600; color: rgba(255,255,255,0.8); margin-bottom: 20px; text-align: center; }
+        .doughnut-chart { display: flex; align-items: center; justify-content: center; gap: 40px; flex-wrap: wrap; }
+        .doughnut-visual { width: 220px; height: 220px; border-radius: 50%; position: relative; }
+        .doughnut-legend { display: flex; flex-direction: column; gap: 12px; }
+        .legend-item { display: flex; align-items: center; gap: 10px; font-size: 14px; color: rgba(255,255,255,0.8); }
+        .legend-color { width: 14px; height: 14px; border-radius: 3px; }
+        .bar-chart { display: flex; align-items: flex-end; justify-content: space-around; height: 200px; gap: 12px; padding: 0 20px; }
+        .bar-item { display: flex; flex-direction: column; align-items: center; gap: 8px; flex: 1; max-width: 100px; }
+        .bar { width: 100%; background: linear-gradient(180deg, #00d4ff, rgba(0,212,255,0.6)); border-radius: 6px 6px 0 0; height: 176px; }
+        .bar-label { font-size: 12px; color: rgba(255,255,255,0.7); text-align: center; line-height: 1.3; }
+        .bar-value { font-size: 14px; font-weight: 600; color: #00d4ff; }
+        .hbar-chart { display: flex; flex-direction: column; gap: 12px; padding: 10px 0; }
+        .hbar-item { display: flex; align-items: center; gap: 12px; }
+        .hbar-label { width: 100px; font-size: 13px; color: rgba(255,255,255,0.8); text-align: right; flex-shrink: 0; }
+        .hbar-track { flex: 1; height: 24px; background: rgba(255,255,255,0.05); border-radius: 4px; overflow: hidden; }
+        .hbar-fill { height: 100%; background: linear-gradient(90deg, #00d4ff, rgba(0,212,255,0.6)); border-radius: 4px; }
+        .hbar-value { width: 40px; font-size: 13px; font-weight: 600; color: #00d4ff; flex-shrink: 0; }
+        .timeline-chart { display: flex; align-items: flex-end; justify-content: space-around; height: 180px; gap: 20px; padding: 20px; }
+        .timeline-point { display: flex; flex-direction: column; align-items: center; gap: 8px; flex: 1; }
+        .timeline-dot { width: 16px; height: 16px; background: #00d4ff; border-radius: 50%; border: 3px solid #fff; box-shadow: 0 0 12px rgba(0,212,255,0.6); }
+        .timeline-value { font-size: 14px; font-weight: 600; color: #00d4ff; }
+        .timeline-label { font-size: 12px; color: rgba(255,255,255,0.7); text-align: center; }
+        .conclusion-card { background: rgba(255,255,255,0.04); border-radius: 12px; padding: 20px; border-left: 3px solid #00ff88; animation: fadeInUp 0.6s ease forwards; opacity: 0; }
+        .conclusion-card:nth-child(1) { animation-delay: 0.1s; } .conclusion-card:nth-child(2) { animation-delay: 0.2s; } .conclusion-card:nth-child(3) { animation-delay: 0.3s; } .conclusion-card:nth-child(4) { animation-delay: 0.4s; } .conclusion-card:nth-child(5) { animation-delay: 0.5s; } .conclusion-card:nth-child(6) { animation-delay: 0.6s; }
+        .conclusion-number { font-size: 18px; font-weight: 700; color: #00d4ff; margin-bottom: 8px; }
+        .conclusion-text { font-size: 14px; line-height: 1.6; color: rgba(255,255,255,0.75); }
+        .suggestion-card { background: rgba(255,255,255,0.04); border-radius: 12px; padding: 22px; border: 1px solid rgba(0,212,255,0.2); animation: fadeInUp 0.6s ease forwards; opacity: 0; }
+        .suggestion-card:nth-child(1) { animation-delay: 0.1s; } .suggestion-card:nth-child(2) { animation-delay: 0.2s; } .suggestion-card:nth-child(3) { animation-delay: 0.3s; } .suggestion-card:nth-child(4) { animation-delay: 0.4s; }
+        .suggestion-priority { display: inline-block; padding: 4px 12px; border-radius: 16px; font-size: 12px; font-weight: 600; margin-bottom: 10px; }
+        .priority-high { background: rgba(255,87,87,0.15); color: #ff6b6b; }
+        .priority-medium { background: rgba(255,193,7,0.15); color: #ffc107; }
+        .suggestion-title { font-size: 17px; font-weight: 600; margin-bottom: 8px; color: #fff; }
+        .suggestion-desc { font-size: 14px; line-height: 1.6; color: rgba(255,255,255,0.65); }
+        .footer { position: absolute; bottom: 50px; left: 50%; transform: translateX(-50%); text-align: center; color: rgba(255,255,255,0.35); font-size: 13px; letter-spacing: 1px; }
+        @media (max-width: 768px) { .slide { padding: 24px; } .title-slide h1 { font-size: 36px; } .slide-title { font-size: 28px; } .metric-value { font-size: 42px; } .two-column { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+    <div class="progress-bar" id="progressBar"></div>
+    <div class="auto-timer" id="autoTimer">00:00 / 01:46</div>
+
+    <!-- Slide 1 -->
+    <div class="slide title-slide active" id="slide1">
+        <h1>环卫部门7月案件分析报告</h1>
+        <div class="title-line"></div>
+        <p class="subtitle">道路抛洒专项分析 · 一案两派 · 车轮夹带</p>
+        <p class="meta-info">分析周期：2026年7月1日 — 7月31日</p>
+        <p class="meta-info">数据来源：7月案件数据分析系统 + 131件案件处置详情</p>
+        <p class="meta-info">生成日期：2026年8月7日</p>
+        <span class="slide-number">1 / 10</span>
+    </div>
+
+    <!-- Slide 2 -->
+    <div class="slide content-slide" id="slide2">
+        <h2 class="slide-title">总体概况</h2>
+        <div class="content-grid">
+            <div class="metric-card"><div class="metric-value">18,366</div><div class="metric-label">全市案件总量（件）</div></div>
+            <div class="metric-card"><div class="metric-value">3,792</div><div class="metric-label">环卫部门处置案件（占20.6%）</div></div>
+            <div class="metric-card"><div class="metric-value">131</div><div class="metric-label">道路抛洒案件（逐件核查）</div></div>
+            <div class="metric-card"><div class="metric-value">93</div><div class="metric-label">一案两派案件（占71.0%）</div></div>
+        </div>
+        <span class="slide-number">2 / 10</span>
+    </div>
+
+    <!-- Slide 3 -->
+    <div class="slide content-slide" id="slide3">
+        <h2 class="slide-title">环卫部门案件类型分布</h2>
+        <div class="chart-container">
+            <div class="chart-title">案件类型占比</div>
+            <div class="doughnut-chart">
+                <div class="doughnut-visual" style="background: conic-gradient(#00d4ff 0deg 292deg, #00ff88 292deg 388deg, #a855f7 388deg 468deg, #f97316 468deg 510deg, #6b7280 510deg 546deg, #ff6b6b 546deg 360deg);">
+                    <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:120px;height:120px;background:#0c1220;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;color:rgba(255,255,255,0.6);">其他类<br>1.9%</div>
+                </div>
+                <div class="doughnut-legend">
+                    <div class="legend-item"><div class="legend-color" style="background:#00d4ff;"></div>道路不洁 2,048件 (54.0%)</div>
+                    <div class="legend-item"><div class="legend-color" style="background:#00ff88;"></div>暴露生活垃圾 700件 (18.5%)</div>
+                    <div class="legend-item"><div class="legend-color" style="background:#a855f7;"></div>绿地脏乱 556件 (14.7%)</div>
+                    <div class="legend-item"><div class="legend-color" style="background:#f97316;"></div>垃圾满溢 277件 (7.3%)</div>
+                    <div class="legend-item"><div class="legend-color" style="background:#ff6b6b;"></div>道路抛洒 6件 (0.2%)</div>
+                </div>
+            </div>
+        </div>
+        <div class="insight-box"><div class="insight-title">关键发现</div><div class="insight-text">四大类案件（道路不洁、暴露生活垃圾、绿地脏乱、垃圾满溢）合计占比<span class="highlight">94.4%</span>，其中道路不洁占比最高达<span class="highlight">54.0%</span>。道路抛洒案件仅占0.2%，是本报告重点分析对象。</div></div>
+        <span class="slide-number">3 / 10</span>
+    </div>
+
+    <!-- Slide 4 -->
+    <div class="slide content-slide" id="slide4">
+        <h2 class="slide-title">"一案两派"模式核查结果</h2>
+        <div class="two-column">
+            <div class="column">
+                <div class="chart-container">
+                    <div class="chart-title">参与模式分布</div>
+                    <div class="doughnut-chart">
+                        <div class="doughnut-visual" style="background: conic-gradient(#00d4ff 0deg 254deg, #00ff88 254deg 338deg, #a855f7 338deg 360deg);">
+                            <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:100px;height:100px;background:#0c1220;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;color:rgba(255,255,255,0.6);text-align:center;line-height:1.4;">总计<br>131件</div>
+                        </div>
+                        <div class="doughnut-legend">
+                            <div class="legend-item"><div class="legend-color" style="background:#00d4ff;"></div>一案两派 93件 (71.0%)</div>
+                            <div class="legend-item"><div class="legend-color" style="background:#00ff88;"></div>仅执法参与 34件 (26.0%)</div>
+                            <div class="legend-item"><div class="legend-color" style="background:#a855f7;"></div>仅环卫参与 4件 (3.1%)</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="column">
+                <div class="insight-box"><div class="insight-title">核查结论</div><div class="insight-text">131件道路抛洒案件中，<span class="highlight">93件（71.0%）</span>为"一案两派"，环卫与执法双方均实际参与处置。仅执法参与34件（多为施工工地车轮夹带），仅环卫参与4件（道路遗撒清扫）。</div></div>
+                <div class="insight-box"><div class="insight-title">环卫参与率</div><div class="insight-text">环卫部门实际参与<span class="highlight">97件（74.0%）</span>，其中93件与执法协同处置，4件独立处置。</div></div>
+            </div>
+        </div>
+        <span class="slide-number">4 / 10</span>
+    </div>
+
+    <!-- Slide 5 -->
+    <div class="slide content-slide" id="slide5">
+        <h2 class="slide-title">分小类环卫参与情况对比</h2>
+        <div class="chart-container">
+            <div class="chart-title">环卫参与率对比</div>
+            <div class="bar-chart">
+                <div class="bar-item">
+                    <div class="bar-value">88%</div>
+                    <div class="bar"></div>
+                    <div class="bar-label">道路遗撒<br>(95件)</div>
+                </div>
+                <div class="bar-item">
+                    <div class="bar-value">36%</div>
+                    <div class="bar" style="background:linear-gradient(180deg,#00ff88,rgba(0,255,136,0.6));height:72px;"></div>
+                    <div class="bar-label">车轮夹带<br>(36件)</div>
+                </div>
+            </div>
+        </div>
+        <div class="insight-box"><div class="insight-title">差异分析</div><div class="insight-text"><strong>道路遗撒案件（95件）：</strong>环卫参与率高达<span class="highlight">88%</span>，遗撒发生后路面清扫是刚性需求。<br><strong>施工工地车轮夹带（36件）：</strong>环卫参与率<span class="highlight">36%</span>，此类问题直接指向工地，执法队责令工地整改为主。</div></div>
+        <span class="slide-number">5 / 10</span>
+    </div>
+
+    <!-- Slide 6 -->
+    <div class="slide content-slide" id="slide6">
+        <h2 class="slide-title">高发路段排名</h2>
+        <div class="chart-container">
+            <div class="chart-title">Top 10 高发路段</div>
+            <div class="hbar-chart">
+                <div class="hbar-item"><div class="hbar-label">机场大道</div><div class="hbar-track"><div class="hbar-fill" style="width:100%;"></div></div><div class="hbar-value">22件</div></div>
+                <div class="hbar-item"><div class="hbar-label">红旗西街</div><div class="hbar-track"><div class="hbar-fill" style="width:77%;"></div></div><div class="hbar-value">17件</div></div>
+                <div class="hbar-item"><div class="hbar-label">圣惠南路</div><div class="hbar-track"><div class="hbar-fill" style="width:73%;"></div></div><div class="hbar-value">16件</div></div>
+                <div class="hbar-item"><div class="hbar-label">河东西街</div><div class="hbar-track"><div class="hbar-fill" style="width:45%;"></div></div><div class="hbar-value">10件</div></div>
+                <div class="hbar-item"><div class="hbar-label">涑水东街</div><div class="hbar-track"><div class="hbar-fill" style="width:32%;"></div></div><div class="hbar-value">7件</div></div>
+                <div class="hbar-item"><div class="hbar-label">安邑路</div><div class="hbar-track"><div class="hbar-fill" style="width:27%;"></div></div><div class="hbar-value">6件</div></div>
+                <div class="hbar-item"><div class="hbar-label">中银北路</div><div class="hbar-track"><div class="hbar-fill" style="width:23%;"></div></div><div class="hbar-value">5件</div></div>
+                <div class="hbar-item"><div class="hbar-label">大禹街</div><div class="hbar-track"><div class="hbar-fill" style="width:18%;"></div></div><div class="hbar-value">4件</div></div>
+                <div class="hbar-item"><div class="hbar-label">周西路</div><div class="hbar-track"><div class="hbar-fill" style="width:18%;"></div></div><div class="hbar-value">4件</div></div>
+                <div class="hbar-item"><div class="hbar-label">铺安街</div><div class="hbar-track"><div class="hbar-fill" style="width:18%;"></div></div><div class="hbar-value">4件</div></div>
+            </div>
+        </div>
+        <div class="insight-box"><div class="insight-title">重点关注路段</div><div class="insight-text">机场大道（22件）、红旗西街（17件）、圣惠南路（16件）三大路段合计<span class="highlight">55件</span>，占总量的41.9%。车轮夹带集中在大禹街、周西路、铺安街等工地周边。</div></div>
+        <span class="slide-number">6 / 10</span>
+    </div>
+
+    <!-- Slide 7 -->
+    <div class="slide content-slide" id="slide7">
+        <h2 class="slide-title">处置时效分析</h2>
+        <div class="two-column">
+            <div class="column">
+                <div class="chart-container">
+                    <div class="chart-title">处置时间线（小时）</div>
+                    <div class="timeline-chart">
+                        <div class="timeline-point"><div class="timeline-value">0.22h</div><div class="timeline-dot"></div><div class="timeline-label">执法介入</div></div>
+                        <div class="timeline-point"><div class="timeline-value">10.38h</div><div class="timeline-dot"></div><div class="timeline-label">环卫介入</div></div>
+                        <div class="timeline-point"><div class="timeline-value">0.43h</div><div class="timeline-dot"></div><div class="timeline-label">实际清扫</div></div>
+                        <div class="timeline-point"><div class="timeline-value">14.9h</div><div class="timeline-dot"></div><div class="timeline-label">总时长</div></div>
+                    </div>
+                </div>
+            </div>
+            <div class="column">
+                <div class="insight-box"><div class="insight-title">时间分布特征</div><div class="insight-text">• 执法队平均<span class="highlight">0.22小时</span>即介入溯源<br>• 环卫平均<span class="highlight">10.38小时</span>后兜底介入<br>• 实际清扫仅需约<span class="highlight">0.43小时</span><br>• 总时长平均<span class="highlight">14.9小时</span></div></div>
+                <div class="insight-box"><div class="insight-title">合理分工逻辑</div><div class="insight-text">先督促责任方自行清洗，找不到才环卫兜底，符合职责定位而非处置拖沓。</div></div>
+            </div>
+        </div>
+        <span class="slide-number">7 / 10</span>
+    </div>
+
+    <!-- Slide 8 -->
+    <div class="slide content-slide" id="slide8">
+        <h2 class="slide-title">处置效果评价</h2>
+        <div class="two-column">
+            <div class="column">
+                <div class="chart-container">
+                    <div class="chart-title">环卫处置到位率</div>
+                    <div class="doughnut-chart">
+                        <div class="doughnut-visual" style="background: conic-gradient(#00ff88 0deg 321deg, #ff6b6b 321deg 360deg);">
+                            <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:100px;height:100px;background:#0c1220;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;color:rgba(255,255,255,0.6);text-align:center;line-height:1.4;">总计<br>97件</div>
+                        </div>
+                        <div class="doughnut-legend">
+                            <div class="legend-item"><div class="legend-color" style="background:#00ff88;"></div>已处理/已清理 86件 (88.7%)</div>
+                            <div class="legend-item"><div class="legend-color" style="background:#ff6b6b;"></div>未反馈结果 11件 (11.3%)</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="column">
+                <div class="insight-box"><div class="insight-title">环卫处置到位率</div><div class="insight-text">环卫实际参与的97件案件中，<span class="highlight">86件（88.7%）</span>汇总反馈了清扫处置结果（"已处理"66件、"已清理"5件、"已冲洗"1件等）。</div></div>
+                <div class="insight-box"><div class="insight-title">执法反馈情况</div><div class="insight-text">执法参与的127件案件中，<span class="highlight">74件（58.3%）</span>返回文字反馈意见，明确处置结果45件，核实"无施工项目"并转环卫兜底15件。</div></div>
+            </div>
+        </div>
+        <span class="slide-number">8 / 10</span>
+    </div>
+
+    <!-- Slide 9 -->
+    <div class="slide content-slide" id="slide9">
+        <h2 class="slide-title">核心结论</h2>
+        <div class="content-grid">
+            <div class="conclusion-card"><div class="conclusion-number">结论一</div><div class="conclusion-text">环卫部门核心工作是道路保洁和垃圾清运，四大类案件占比94.4%</div></div>
+            <div class="conclusion-card"><div class="conclusion-number">结论二</div><div class="conclusion-text">道路抛洒案件实行"一案两派"处置模式，71.0%案件同时派给执法和环卫</div></div>
+            <div class="conclusion-card"><div class="conclusion-number">结论三</div><div class="conclusion-text">环卫是道路抛洒的兜底部门，实际参与74.0%，88.7%案件反馈处置结果</div></div>
+            <div class="conclusion-card"><div class="conclusion-number">结论四</div><div class="conclusion-text">道路遗撒环卫参与率88%，车轮夹带环卫参与率36%，参与结构不同</div></div>
+            <div class="conclusion-card"><div class="conclusion-number">结论五</div><div class="conclusion-text">执法溯源快（0.22h）、环卫兜底在后（10.38h）是合理分工</div></div>
+            <div class="conclusion-card"><div class="conclusion-number">结论六</div><div class="conclusion-text">高发路段集中在主干道与在建工地沿线，机场大道22件居首</div></div>
+        </div>
+        <span class="slide-number">9 / 10</span>
+    </div>
+
+    <!-- Slide 10 -->
+    <div class="slide content-slide" id="slide10">
+        <h2 class="slide-title">改进建议</h2>
+        <div class="content-grid">
+            <div class="suggestion-card"><span class="suggestion-priority priority-high">高优先级</span><div class="suggestion-title">明确衔接机制</div><div class="suggestion-desc">以制度明确"执法溯源→主家清洗→环卫兜底"处置顺序，设定时限要求，避免空转拖长总时长</div></div>
+            <div class="suggestion-card"><span class="suggestion-priority priority-high">高优先级</span><div class="suggestion-title">强化源头治理</div><div class="suggestion-desc">针对机场大道/红旗西街/圣惠南路三大高发路段联合执法加强渣土车检查，从源头减少抛洒</div></div>
+            <div class="suggestion-card"><span class="suggestion-priority priority-high">高优先级</span><div class="suggestion-title">工地专项治理</div><div class="suggestion-desc">加强大禹街、周西路、铺安街等工地出入口冲洗设施管理，落实工地自行清洗责任</div></div>
+            <div class="suggestion-card"><span class="suggestion-priority priority-medium">中优先级</span><div class="suggestion-title">优化派遣准确性</div><div class="suggestion-desc">建立片区边界知识库，减少跨片区回退流转，提升结案效率</div></div>
+        </div>
+        <div class="footer">环卫部门应聚焦道路保洁和垃圾清运核心主业，形成高效的闭环处置体系</div>
+        <span class="slide-number">10 / 10</span>
+    </div>
+
+    <div class="controls" id="controls">
+        <button class="ctrl-btn" id="playPauseBtn" onclick="toggleAutoPlay()">暂停</button>
+        <button class="ctrl-btn" onclick="prevSlide()">上一页</button>
+        <button class="ctrl-btn" onclick="nextSlide()">下一页</button>
+    </div>
+
+    <script>
+        let currentSlide = 1;
+        const totalSlides = 10;
+        let isAutoPlaying = true;
+        let autoPlayTimer = null;
+        let slideStartTime = Date.now();
+        const durations = [6, 8, 10, 10, 10, 10, 10, 10, 12, 10];
+        const totalDuration = durations.reduce((a, b) => a + b, 0);
+
+        function showSlide(n) {
+            const slides = document.querySelectorAll('.slide');
+            slides.forEach(s => s.classList.remove('active'));
+            document.getElementById('slide' + n).classList.add('active');
+            updateProgress();
+            setTimeout(() => triggerAnimations(), 50);
+        }
+
+        function triggerAnimations() {
+            const cards = document.querySelectorAll('.metric-card, .insight-box, .conclusion-card, .suggestion-card');
+            cards.forEach(c => c.style.animation = 'none');
+            setTimeout(() => cards.forEach(c => c.style.animation = ''), 10);
+        }
+
+        function nextSlide() {
+            if (currentSlide < totalSlides) {
+                currentSlide++;
+                showSlide(currentSlide);
+                resetAutoPlay();
+            }
+        }
+
+        function prevSlide() {
+            if (currentSlide > 1) {
+                currentSlide--;
+                showSlide(currentSlide);
+                resetAutoPlay();
+            }
+        }
+
+        function updateProgress() {
+            let elapsed = 0;
+            for (let i = 0; i < currentSlide - 1; i++) elapsed += durations[i];
+            document.getElementById('progressBar').style.width = (elapsed / totalDuration * 100) + '%';
+        }
+
+        function formatTime(sec) {
+            return Math.floor(sec / 60).toString().padStart(2, '0') + ':' + (sec % 60).toString().padStart(2, '0');
+        }
+
+        function startAutoPlay() {
+            if (autoPlayTimer) clearInterval(autoPlayTimer);
+            slideStartTime = Date.now();
+            autoPlayTimer = setInterval(() => {
+                const elapsed = (Date.now() - slideStartTime) / 1000;
+                if (elapsed >= durations[currentSlide - 1]) {
+                    if (currentSlide < totalSlides) {
+                        currentSlide++;
+                        showSlide(currentSlide);
+                    } else {
+                        currentSlide = 1;
+                        showSlide(currentSlide);
+                    }
+                }
+            }, 100);
+        }
+
+        function stopAutoPlay() {
+            if (autoPlayTimer) { clearInterval(autoPlayTimer); autoPlayTimer = null; }
+        }
+
+        function resetAutoPlay() {
+            if (isAutoPlaying) { stopAutoPlay(); startAutoPlay(); }
+        }
+
+        function toggleAutoPlay() {
+            isAutoPlaying = !isAutoPlaying;
+            const btn = document.getElementById('playPauseBtn');
+            if (isAutoPlaying) { btn.textContent = '暂停'; startAutoPlay(); }
+            else { btn.textContent = '播放'; stopAutoPlay(); }
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === ' ') { e.preventDefault(); nextSlide(); }
+            if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { e.preventDefault(); prevSlide(); }
+            if (e.key === 'p' || e.key === 'P') toggleAutoPlay();
+        });
+
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                startAutoPlay();
+            }, 1000);
+        });
+    </script>
+</body>
+</html>
