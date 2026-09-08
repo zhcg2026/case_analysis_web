@@ -209,9 +209,31 @@ def run_pipeline(batch, engine, anomalies=None, overrides=None):
 
     _prepare_mpl_env(workdir)
 
-    for script in PIPELINE_STEPS:
-        # std_parse / polish_* 为可选步骤（std 缺失或图表精修失败不阻断主流程）
-        optional = script in ('std_parse.py', 'polish_charts.py', 'polish_docx.py')
+    # 步骤1: std_parse（可选）
+    _run_step('std_parse.py', config_path, workdir, optional=True)
+    # 步骤2: analyze
+    _run_step('analyze.py', config_path, workdir)
+    # 步骤3: AI 章节生成（可选，LLM 不可用时 fallback 到规则引擎 bullets）
+    try:
+        from backend.monthly_report.llm_writer import generate_ai_chapters
+    except ImportError:
+        from monthly_report.llm_writer import generate_ai_chapters
+    month_cn = cfg.get('month_cn', batch)
+    analysis_json = os.path.join(workdir, cfg.get('out_json', 'analysis.json'))
+    ai_result = generate_ai_chapters(analysis_json, month=month_cn)
+    ai_path = os.path.join(workdir, 'ai_chapters.json')
+    with open(ai_path, 'w', encoding='utf-8') as f:
+        json.dump(ai_result, f, ensure_ascii=False)
+    # 注入 analysis.json 供 template.html 使用
+    if os.path.exists(analysis_json):
+        with open(analysis_json, encoding='utf-8') as f:
+            d = json.load(f)
+        d['ai_chapters'] = ai_result
+        with open(analysis_json, 'w', encoding='utf-8') as f:
+            json.dump(d, f, ensure_ascii=False, default=str)
+    # 步骤4-6: build_html / make_word / polish
+    for script in ['build_html.py', 'make_word.py', 'polish_charts.py', 'polish_docx.py']:
+        optional = script in ('polish_charts.py', 'polish_docx.py')
         _run_step(script, config_path, workdir, optional=optional)
 
     os.makedirs(REPORTS_DIR, exist_ok=True)

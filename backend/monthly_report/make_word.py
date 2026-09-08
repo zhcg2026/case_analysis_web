@@ -364,27 +364,30 @@ table(['街道', '案件数', '占比'],
 # 三 时空
 h1('三、时空分布特征')
 h2('（一）日趋势')
-anomaly_txt = '、'.join(f"{a[0][5:]}日（{a[1]}件）" for a in B['anomaly'])
-good_n = B['aug_n'] - sum(a[1] for a in B['anomaly'])
-good_days = W['days'] - len(B['anomaly'])
-_RT = CFG.get('anomaly_reason_tpl', {})
+if B['anomaly']:
+    anomaly_txt = '、'.join(f"{a[0][5:]}日（{a[1]}件）" for a in B['anomaly'])
+    good_n = B['aug_n'] - sum(a[1] for a in B['anomaly'])
+    good_days = W['days'] - len(B['anomaly'])
+    _RT = CFG.get('anomaly_reason_tpl', {})
 
-
-def _reason():
-    """按异常类型聚合生成原因说明，如：8月4日、12日为降雨天气，采集作业受限"""
-    g = {}
-    for a in B['anomaly']:
-        g.setdefault(a[2], []).append('%d日' % int(a[0][8:10]))
-    out = []
-    for k, days in g.items():
-        days = [(MS + days[0])] + days[1:] if days else days
-        tpl = _RT.get(k, '{days}为{k}天气，采集作业受限')
-        out.append(tpl.format(days='、'.join(days), k=k, month=MS))
-    return '；'.join(out)
-para(f"本月上报 {B['aug_n']:,} 件，全月 {W['days']} 天日均 {B['aug_n']/W['days']:.1f} 件。"
-     f"其中 {anomaly_txt} 采集量明显偏低（{_reason()}）。剔除上述 {len(B['anomaly'])} 日后，"
-     f"{good_days} 个正常采集日共 {good_n:,} 件，日均 {good_n/good_days:.1f} 件。"
-     f"全月无明显的持续上升或下降趋势。")
+    def _reason():
+        """按异常类型聚合生成原因说明，如：8月4日、12日为降雨天气，采集作业受限"""
+        g = {}
+        for a in B['anomaly']:
+            g.setdefault(a[2], []).append('%d日' % int(a[0][8:10]))
+        out = []
+        for k, days in g.items():
+            days = [(MS + days[0])] + days[1:] if days else days
+            tpl = _RT.get(k, '{days}为{k}天气，采集作业受限')
+            out.append(tpl.format(days='、'.join(days), k=k, month=MS))
+        return '；'.join(out)
+    para(f"本月上报 {B['aug_n']:,} 件，全月 {W['days']} 天日均 {B['aug_n']/W['days']:.1f} 件。"
+         f"其中 {anomaly_txt} 采集量明显偏低（{_reason()}）。剔除上述 {len(B['anomaly'])} 日后，"
+         f"{good_days} 个正常采集日共 {good_n:,} 件，日均 {good_n/good_days:.1f} 件。"
+         f"全月无明显的持续上升或下降趋势。")
+else:
+    para(f"本月上报 {B['aug_n']:,} 件，全月 {W['days']} 天日均 {B['aug_n']/W['days']:.1f} 件。"
+         f"全月无明显的持续上升或下降趋势。")
 pic(F3); caption(f'图3  {MS}每日案件量走势')
 h2('（二）采集时段与作业时间对照')
 para(f"采集员作业时间为 {_WT}，节假日不休息。数据显示，"
@@ -523,9 +526,20 @@ para(f"超时、延期主要分布在道路交通设施、公用设施、市容�
      f"延期 {[r[2] for r in E['delay']['by_dalei'] if r[0]=='街面秩序'][0]} 件，"
      f"宣传广告类超时、延期均为 0。")
 
-# 七 特征归纳
+# 七 特征归纳——优先用 AI 生成，fallback 到固定模板
 h1('七、数据特征归纳')
-feats = [
+_ai = {}
+try:
+    _ai = json.load(open(_p('ai_chapters.json'), encoding='utf-8'))
+except Exception:
+    pass
+if _ai.get('chapter7'):
+    for _line in _ai['chapter7'].split('\n'):
+        _line = _line.strip()
+        if _line:
+            para(_line, space_after=5)
+else:
+    feats = [
     ('重复出现是本批数据最突出的特征。',
      f"半径 {R['r']} 米内同小类、点位一致的案件成组出现的共 {R['ge3_n']:,} 组、{R['ge3_cases']:,} 件"
      f"（{R['ge3_rate']}%），其中高频重复组 {R['hot_n']} 个、{R['hot_cases']:,} 件"
@@ -548,21 +562,27 @@ feats = [
      f"{(K['we_avg']/K['wd_avg']-1)*100:.1f}%；周末处置时长中位 {K['we_dur']} 小时、"
      f"工作日 {K['wd_dur']} 小时。"),
 ]
-if BRIEF:
-    feats = [f for i, f in enumerate(feats) if i != 4]
-for i, (t, b) in enumerate(feats, 1):
-    para(f"{i}. {t}{b}", space_after=5)
-para(f"专职采集员工作量方面，" + (
-    f"本月出现 {I['sup_all_raw']} 个采集人员账号，其中 {I['sup_cut']} 人采集量低于 {MINSUP} 件"
-    f"（合计 {I['sup_cut_cases']} 件），按非专职人员不纳入统计；" if not BRIEF else "") +
-     f"{I['sup_n']} 名专职采集员共采集 {I['sup_cases']:,} 件，"
-     f"人均 {I['sup_mean']} 件、中位 {I['sup_med']} 件，区间 {I['sup_min']}—{I['sup_max']} 件，"
-     f"变异系数 {I['sup_cv']}%，采集量前 10 名占 {I['sup_top10_share']}%。")
+    if BRIEF:
+        feats = [f for i, f in enumerate(feats) if i != 4]
+    for i, (t, b) in enumerate(feats, 1):
+        para(f"{i}. {t}{b}", space_after=5)
+    para(f"专职采集员工作量方面，" + (
+        f"本月出现 {I['sup_all_raw']} 个采集人员账号，其中 {I['sup_cut']} 人采集量低于 {MINSUP} 件"
+        f"（合计 {I['sup_cut_cases']} 件），按非专职人员不纳入统计；" if not BRIEF else "") +
+         f"{I['sup_n']} 名专职采集员共采集 {I['sup_cases']:,} 件，"
+         f"人均 {I['sup_mean']} 件、中位 {I['sup_med']} 件，区间 {I['sup_min']}—{I['sup_max']} 件，"
+         f"变异系数 {I['sup_cv']}%，采集量前 10 名占 {I['sup_top10_share']}%。")
 pic(F9, width=13.6); caption(f"图9  专职监督员采集工作量分布（{I['sup_n']}人）")
 
-# 八 建议
+# 八 建议——优先用 AI 生成，fallback 到固定模板
 h1('八、工作建议')
-recs = [
+if _ai.get('chapter8'):
+    for _line in _ai['chapter8'].split('\n'):
+        _line = _line.strip()
+        if _line:
+            para(_line, space_after=5)
+else:
+    recs = [
     ('对高频重复点位实行分类管理。',
      f"识别出的 {R['hot_n']} 个高频重复组均已满足同小类、点位一致、坐标相近的条件，可按具体点位建档。"
      f"点位类结合值守、疏导区设置，路段类结合巡查频次调整与集中整治；"
@@ -594,11 +614,11 @@ recs = [
      f"建议按月统计时单列，与本月新发案件分开核算；同时对 {B['unclosed']} 件未办结案件逐件落实"
      f"责任部门与办结时限。责任建议：平台服务中心。"),
 ]
-if BRIEF:
-    recs = [recs[i] for i in (0, 2, 4) if i < len(recs)]
-for i, (t, b) in enumerate(recs, 1):
-    para(f"{i}. {t}{b}", space_after=5)
-para('')
+    if BRIEF:
+        recs = [recs[i] for i in (0, 2, 4) if i < len(recs)]
+    for i, (t, b) in enumerate(recs, 1):
+        para(f"{i}. {t}{b}", space_after=5)
+    para('')
 para(f'附件：{ML}案件数据分析指标明细（见交互式分析报告）', size=12, font='楷体_GB2312',
      indent=False, space_before=10, color='595959')
 

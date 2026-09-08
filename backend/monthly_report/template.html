@@ -438,7 +438,9 @@ mk('ch-daily',{grid:Object.assign({},baseGrid,{bottom:70}),
   markLine:{silent:true,symbol:'none',data:[{yAxis:AVG_ALL,label:{formatter:'名义日均 '+AVG_ALL.toFixed(1),color:'#5a6474',fontSize:11},lineStyle:{color:GRY,type:'dashed'}}]}}]});
 const clean=D.time.daily.filter(r=>!anomMap[r[0].slice(5)]);
 const cleanSum=clean.reduce((s,r)=>s+r[1],0);
-document.getElementById('n-daily').innerHTML='本月上报 <b>'+F(D.basis.aug_n)+' 件</b>，含全部 '+D.time.daily.length+' 天的名义日均 <b>'+F(AVG_ALL,1)+' 件</b>；<b>剔除 '+D.basis.anomaly.map(a=>a[0].slice(5)+'日（'+a[1]+'件，'+a[2]+'）').join('、')+' 后，'+clean.length+' 个完整采集日共 '+F(cleanSum)+' 件，日均 '+F(cleanSum/clean.length,1)+' 件</b>。全月无明显的持续上升或下降趋势。';
+const anomText=D.basis.anomaly.length
+  ?'；<b>剔除 '+D.basis.anomaly.map(a=>a[0].slice(5)+'日（'+a[1]+'件，'+a[2]+'）').join('、')+' 后，'+clean.length+' 个完整采集日共 '+F(cleanSum)+' 件，日均 '+F(cleanSum/clean.length,1)+' 件</b>':'';
+document.getElementById('n-daily').innerHTML='本月上报 <b>'+F(D.basis.aug_n)+' 件</b>，全月 '+D.time.daily.length+' 天日均 <b>'+F(AVG_ALL,1)+' 件</b>'+anomText+'。全月无明显的持续上升或下降趋势。';
 
 const hr=D.time.hourly;
 mk('ch-hour',{grid:Object.assign({},baseGrid,{bottom:70}),tooltip:{trigger:'axis',formatter:p=>p[0].axisValue+'<br/>上报：'+F(p[0].value)+' 件'},
@@ -622,6 +624,14 @@ barV('ch-ratesrc',srk.map(r=>r[0]),
 document.getElementById('n-rate2').innerHTML='超时 '+D.eff.overtime.n+' 件中，<b>'+otp.top_xl.slice(0,3).map(r=>r[0]+' '+r[1]+' 件').join('、')+'</b> 居前；按大类看市容环境 '+otp.top_dalei[0][1]+' 件占 '+(otp.top_dalei[0][1]/D.eff.overtime.n*100).toFixed(0)+'%。延期 '+D.eff.delay.n+' 件中，<b>'+D.eff.delay_profile.top_xl.slice(0,3).map(r=>r[0]+' '+r[1]+' 件').join('、')+'</b> 居前，多为市政设施类。片区维度，东片区超时率 '+D.eff.overtime.by_area[0][3]+'%，与其他片区存在差异。';
 
 /* ---------- 8 特征归纳 ---------- */
+if (D.ai_chapters && D.ai_chapters.chapter7) {
+  document.getElementById('findings').innerHTML = D.ai_chapters.chapter7
+    .split('\n').filter(l=>l.trim())
+    .map(p => '<p style="text-indent:2em;margin:0 0 12px;line-height:1.8">' + p.trim() + '</p>').join('');
+  // 隐藏"七条特征"的 lead 文字
+  var lead7 = document.querySelector('#s7 .lead');
+  if (lead7) lead7.style.display = 'none';
+} else {
 const findings=[
  {t:'重复出现是本批数据最突出的特征',
   b:'以半径 <span class="n1">'+D.recur.r+' 米</span>、同小类为条件识别，共 <span class="n1">'+F(D.recur.ge3_n)+' 组</span>、涉及 <span class="n1">'+F(D.recur.ge3_cases)+' 件（'+D.recur.ge3_rate+'%）</span>；其中案件数 ≥10 件且涉及 ≥5 天的有 <span class="n1">'+F(D.recur.hot_n)+' 组、'+F(D.recur.hot_cases)+' 件（'+D.recur.hot_rate+'%）</span>。单组最大 <span class="n1">'+D.recur.top[0].n+' 件、分布在 '+D.recur.top[0].days+' 天</span>。按小类看，无照经营游商 '+D.recur.by_xl[0][1]+' 组、道路不洁 '+D.recur.by_xl[1][1]+' 组、共享单车管理 '+D.recur.by_xl[2][1]+' 组居前。<br><br>地址描述校验显示，各组 POI 一致率在 <span class="n2">15%—80%</span> 之间、描述相似度在 <span class="n2">0.28—0.75</span> 之间：一致率高的组对应同一具体位置；一致率低但坐标集中的组，多为同一路段或片区内的多个位置。<b>前者适合点位值守，后者适合路段整体管理。</b>'},
@@ -638,6 +648,7 @@ const findings=[
 ];
 document.getElementById('findings').innerHTML=findings.map((f,i)=>
  '<div class="find"><span class="no">'+(i+1)+'</span><h4>'+f.t+'</h4><div class="body">'+f.b+'</div></div>').join('');
+} // end else (fallback findings)
 
 const sup=D.insight.sup_all;
 mk('ch-sup',{grid:Object.assign({},baseGrid,{left:110,right:70}),
@@ -653,6 +664,13 @@ const si=D.insight;
 document.getElementById('n-sup').innerHTML='按采集量统计，共出现 '+si.sup_all_raw+' 个采集人员账号，其中 <b>'+si.sup_cut+' 人采集量低于 100 件（合计仅 '+si.sup_cut_cases+' 件），按非专职人员不纳入分析</b>；其余 <b>'+si.sup_n+' 名专职采集员</b>本月共采集 <b>'+F(si.sup_cases)+' 件</b>，人均 <b>'+si.sup_mean+' 件</b>、中位 '+si.sup_med+' 件，标准差 '+si.sup_std+'、<b>变异系数 '+si.sup_cv+'%</b>，区间 '+si.sup_min+'—'+si.sup_max+' 件，其中 '+si.sup_gt600+' 人超过 600 件，采集量前 10 名占 '+si.sup_top10_share+'%。<b>各人采集量的差异与所负责网格的面积、商业网点密度、人流量相关，可结合网格属性做进一步比对。</b>';
 
 /* ---------- 9 建议 ---------- */
+if (D.ai_chapters && D.ai_chapters.chapter8) {
+  document.getElementById('recs').innerHTML = D.ai_chapters.chapter8
+    .split('\n').filter(l=>l.trim())
+    .map(p => '<p style="text-indent:2em;margin:0 0 12px;line-height:1.8">' + p.trim() + '</p>').join('');
+  var lead8 = document.querySelector('#s8 .lead');
+  if (lead8) lead8.style.display = 'none';
+} else {
 const recs=[
  {t:'对高频重复点位实行分类管理',
   l:['对识别出的 '+F(D.recur.hot_n)+' 个高频重复组均满足同小类、同 POI、坐标相近，可直接按具体点位建档（含坐标与参照物）。',
@@ -690,6 +708,7 @@ const recs=[
 ];
 document.getElementById('recs').innerHTML=recs.map((r,i)=>
  '<div class="acts"><h4>'+(i+1)+'. '+r.t+'</h4><ol>'+r.l.map(x=>'<li>'+x+'</li>').join('')+'</ol></div>').join('');
+} // end else (fallback recs)
 </script>
 </body>
 </html>
