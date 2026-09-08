@@ -42,6 +42,32 @@
             <span>导出 Word</span>
           </button>
         </div>
+        <div class="anom-toggle" v-if="canGenMonthly" @click="showAnomalies = !showAnomalies">
+          <KbIcon :name="showAnomalies ? 'chevron-up' : 'chevron-down'" :size="12" />
+          <span>采集异常日设置</span>
+          <span class="anom-badge" v-if="anomalies.length">{{ anomalies.length }}</span>
+        </div>
+        <div class="anom-panel" v-if="canGenMonthly && showAnomalies">
+          <div v-if="anomaliesLoading" class="loading-hint">加载中...</div>
+          <div v-else>
+            <div v-for="(a, i) in anomalies" :key="i" class="anom-item">
+              <span class="anom-date">{{ a.date.slice(5) }}</span>
+              <span class="anom-type-tag" :class="a.type === '系统故障' ? 'fault' : 'rain'">{{ a.type }}</span>
+              <span class="anom-note">{{ a.note }}</span>
+              <span class="anom-del" @click="removeAnomaly(i)">×</span>
+            </div>
+            <div class="anom-form">
+              <input type="date" v-model="anomDate" class="anom-input" />
+              <select v-model="anomType" class="anom-input">
+                <option>降雨</option>
+                <option>系统故障</option>
+                <option>其他</option>
+              </select>
+              <input type="text" v-model="anomNote" class="anom-input anom-note-input" placeholder="说明（可选）" />
+              <button class="anom-add-btn" @click="addAnomaly" :disabled="!anomDate">+</button>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div class="sidebar-section">
@@ -160,6 +186,53 @@ let msgSeq = 0
 const router = useRouter()
 const mrLoading = ref(false)
 const canGenMonthly = computed(() => selectedMonths.value.length === 1)
+
+// 采集异常日设置
+const showAnomalies = ref(false)
+const anomalies = ref([])
+const anomaliesLoading = ref(false)
+const anomDate = ref('')
+const anomType = ref('降雨')
+const anomNote = ref('')
+
+async function loadAnomalies() {
+  if (!canGenMonthly.value) { anomalies.value = []; return }
+  const batch = selectedMonths.value[0]
+  anomaliesLoading.value = true
+  try {
+    const token = localStorage.getItem('token')
+    const res = await axios.get(`/api/monthly-report/${batch}/config`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+    anomalies.value = res.data.anomalies || []
+  } catch { anomalies.value = [] }
+  finally { anomaliesLoading.value = false }
+}
+
+async function saveAnomalies() {
+  if (!canGenMonthly.value) return
+  const batch = selectedMonths.value[0]
+  try {
+    const token = localStorage.getItem('token')
+    await axios.put(`/api/monthly-report/${batch}/config`, { anomalies: anomalies.value }, {
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }
+    })
+  } catch (e) { alert('保存失败: ' + (e.response?.data?.error || e.message)) }
+}
+
+function addAnomaly() {
+  if (!anomDate.value) return
+  anomalies.value.push({ date: anomDate.value, type: anomType.value, note: anomNote.value })
+  anomDate.value = ''; anomNote.value = ''
+  saveAnomalies()
+}
+
+function removeAnomaly(idx) {
+  anomalies.value.splice(idx, 1)
+  saveAnomalies()
+}
+
+watch(selectedMonths, () => { loadAnomalies() })
 
 async function generateMonthlyReport() {
   if (mrLoading.value || !canGenMonthly.value) return
@@ -601,6 +674,98 @@ onUnmounted(() => {
 .btn-monthly-primary:hover:not(:disabled) {
   background: rgba(64, 158, 255, 0.15);
 }
+
+.anom-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 8px;
+  padding: 4px 0;
+  font-size: 11px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+.anom-toggle:hover { color: var(--primary-500); }
+.anom-badge {
+  background: var(--primary-500);
+  color: #fff;
+  font-size: 10px;
+  min-width: 16px;
+  height: 16px;
+  line-height: 16px;
+  text-align: center;
+  border-radius: 8px;
+  padding: 0 4px;
+}
+
+.anom-panel {
+  margin-top: 6px;
+  padding: 8px;
+  background: var(--bg-page, #f5f7fa);
+  border: 1px solid var(--border-lighter, #ebeef5);
+  border-radius: 6px;
+}
+.anom-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+  font-size: 11px;
+  border-bottom: 1px solid var(--border-lighter, #ebeef5);
+}
+.anom-item:last-of-type { border-bottom: none; }
+.anom-date { font-weight: 600; color: var(--text-primary); min-width: 40px; }
+.anom-type-tag {
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+.anom-type-tag.rain { background: #e6f7ff; color: #1890ff; }
+.anom-type-tag.fault { background: #fff2e8; color: #fa541c; }
+.anom-note { flex: 1; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.anom-del {
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 2px;
+}
+.anom-del:hover { color: #f56c6c; }
+
+.anom-form {
+  display: flex;
+  gap: 4px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+.anom-input {
+  font-size: 11px;
+  padding: 3px 6px;
+  border: 1px solid var(--border-light, #dcdfe6);
+  border-radius: 4px;
+  background: var(--bg-card, #fff);
+  color: var(--text-primary);
+  outline: none;
+}
+.anom-input:focus { border-color: var(--primary-500); }
+.anom-note-input { flex: 1; min-width: 60px; }
+.anom-add-btn {
+  font-size: 14px;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--primary-500);
+  border-radius: 4px;
+  background: var(--primary-50, #ecf5ff);
+  color: var(--primary-500);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.anom-add-btn:hover:not(:disabled) { background: var(--primary-500); color: #fff; }
+.anom-add-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
 .template-list {
   display: flex;
