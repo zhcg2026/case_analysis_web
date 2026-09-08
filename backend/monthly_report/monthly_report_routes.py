@@ -9,9 +9,9 @@ from flask import request, jsonify, send_from_directory
 logger = logging.getLogger(__name__)
 
 try:
-    from backend.monthly_report.pipeline import run_pipeline, ensure_report, REPORTS_DIR
+    from backend.monthly_report.pipeline import run_pipeline, ensure_report, REPORTS_DIR, load_batch_config, save_batch_config
 except ImportError:
-    from monthly_report.pipeline import run_pipeline, ensure_report, REPORTS_DIR
+    from monthly_report.pipeline import run_pipeline, ensure_report, REPORTS_DIR, load_batch_config, save_batch_config
 
 try:
     from common import protected as _protected
@@ -78,3 +78,27 @@ def register_monthly_report_routes(app, engine=None, protected=None):
         html_ok = os.path.exists(os.path.join(REPORTS_DIR, f'{batch}.html'))
         docx_ok = os.path.exists(os.path.join(REPORTS_DIR, f'{batch}.docx'))
         return jsonify({'batch': batch, 'html_ready': html_ok, 'docx_ready': docx_ok})
+
+    @app.route('/api/monthly-report/<batch>/config', methods=['GET'])
+    @protected
+    def monthly_report_config_get(batch):
+        if not BATCH_RE.match(batch):
+            return jsonify({'error': 'batch 格式须为 YYYYMM'}), 400
+        cfg = load_batch_config(batch)
+        return jsonify({'batch': batch, 'anomalies': cfg.get('anomalies', [])})
+
+    @app.route('/api/monthly-report/<batch>/config', methods=['PUT'])
+    @protected
+    def monthly_report_config_put(batch):
+        if not BATCH_RE.match(batch):
+            return jsonify({'error': 'batch 格式须为 YYYYMM'}), 400
+        data = request.get_json(silent=True) or {}
+        anomalies = data.get('anomalies', [])
+        if not isinstance(anomalies, list):
+            return jsonify({'error': 'anomalies 须为数组'}), 400
+        # 校验每条记录格式
+        for a in anomalies:
+            if not isinstance(a, dict) or 'date' not in a:
+                return jsonify({'error': '每条异常记录须含 date 字段'}), 400
+        save_batch_config(batch, {'anomalies': anomalies})
+        return jsonify({'batch': batch, 'anomalies': anomalies, 'message': '保存成功'})

@@ -22,6 +22,7 @@ MR_DIR = os.path.dirname(os.path.abspath(__file__))
 BACKEND_DIR = os.path.dirname(MR_DIR)
 REPORTS_DIR = os.path.join(BACKEND_DIR, 'reports')
 STD_XLSX = os.path.join(MR_DIR, 'std', '立案、处置和结案标准.xlsx')
+CONFIG_DIR = os.path.join(MR_DIR, 'config')
 
 BATCH_RE = re.compile(r'^\d{6}$')
 
@@ -155,6 +156,33 @@ def _prepare_mpl_env(workdir):
         shutil.rmtree(mpl_cache, ignore_errors=True)
 
 
+def load_batch_config(batch):
+    """读取按 batch 存储的配置（anomalies 等），不存在则返回空 dict"""
+    path = os.path.join(CONFIG_DIR, f'{batch}.json')
+    if os.path.exists(path):
+        with open(path, encoding='utf-8') as f:
+            return json.load(f)
+    return {}
+
+
+def save_batch_config(batch, data):
+    """持久化按 batch 的配置字段（合并写入，不覆盖其他字段）"""
+    os.makedirs(CONFIG_DIR, exist_ok=True)
+    path = os.path.join(CONFIG_DIR, f'{batch}.json')
+    existing = load_batch_config(batch)
+    existing.update(data)
+    with open(path, 'w', encoding='utf-8') as f:
+        json.dump(existing, f, ensure_ascii=False, indent=2)
+
+
+def resolve_anomalies(batch, anomalies):
+    """三级优先：前端传入 > 配置文件 > 空列表"""
+    if anomalies:
+        return anomalies
+    stored = load_batch_config(batch)
+    return stored.get('anomalies', [])
+
+
 def run_pipeline(batch, engine, anomalies=None, overrides=None):
     """执行完整流水线，返回产物路径信息。失败抛异常。"""
     if not BATCH_RE.match(batch or ''):
@@ -167,6 +195,12 @@ def run_pipeline(batch, engine, anomalies=None, overrides=None):
 
     src_path = os.path.join(workdir, 'src.xlsx')
     n_rows = export_batch_to_xlsx(engine, batch, src_path)
+
+    # anomalies 三级优先：前端传入 > 配置文件 > 空
+    anomalies = resolve_anomalies(batch, anomalies)
+    # 如果前端传了 anomalies，持久化到配置文件（下次自动读取）
+    if anomalies and load_batch_config(batch).get('anomalies') != anomalies:
+        save_batch_config(batch, {'anomalies': anomalies})
 
     cfg = build_config(batch, workdir, src_path, anomalies, overrides)
     config_path = os.path.join(workdir, 'config.json')
