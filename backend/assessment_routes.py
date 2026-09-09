@@ -401,14 +401,18 @@ def _calculate_scores(departments, external_data):
     )
 
     san_extra = external_data.get('san_extra', 0)
-    san_garbage_count = external_data.get('san_garbage_count', 0)
     san_center_score = external_data.get('san_center_score', 100)
+    # 单体垃圾得分：优先用直接输入的分值，否则用案件数换算
+    if 'san_garbage_score' in external_data:
+        san_garbage_score = float(external_data['san_garbage_score'])
+    else:
+        san_garbage_count = external_data.get('san_garbage_count', 0)
+        san_garbage_score = max(0, 100 - san_garbage_count * 0.01)
 
     san_system_score = _calculate_system_score(
         san_total, san_closed, san_overtime,
         san_delayed, san_rework
     )
-    san_garbage_score = max(0, 100 - san_garbage_count * 0.01)
     san_final_score = san_system_score * 0.3 + san_garbage_score * 0.3 + san_center_score * 0.4 + san_extra
 
     results['市容环卫中心'] = {
@@ -419,7 +423,6 @@ def _calculate_scores(departments, external_data):
         'rework': san_rework,
         'system_score': san_system_score,
         'garbage_score': round(san_garbage_score, 2),
-        'garbage_count': san_garbage_count,
         'center_score': san_center_score,
         'extra_points': san_extra,
         'final_score': round(san_final_score, 2)
@@ -429,21 +432,24 @@ def _calculate_scores(departments, external_data):
     for dept_name, stats in departments.items():
         if '环卫' in dept_name:
             district_extra = external_data.get(f'san_{dept_name}_extra', 0)
-            district_garbage = external_data.get(f'san_{dept_name}_garbage', 0)
             district_center = external_data.get(f'san_{dept_name}_center', 100)
+            # 单体垃圾得分：优先用直接输入的分值，否则用案件数换算
+            if f'san_{dept_name}_garbage_score' in external_data:
+                garbage_score = float(external_data[f'san_{dept_name}_garbage_score'])
+            else:
+                district_garbage = external_data.get(f'san_{dept_name}_garbage', 0)
+                garbage_score = max(0, 100 - district_garbage * 0.01)
 
             sys_score = _calculate_system_score(
                 stats['total'], stats['closed'], stats['overtime'],
                 stats['delayed'], stats['rework']
             )
-            garbage_score = max(0, 100 - district_garbage * 0.01)
             final = sys_score * 0.3 + garbage_score * 0.3 + district_center * 0.4 + district_extra
 
             results[dept_name] = {
                 **stats,
                 'system_score': sys_score,
                 'garbage_score': round(garbage_score, 2),
-                'garbage_count': district_garbage,
                 'center_score': district_center,
                 'extra_points': district_extra,
                 'final_score': round(final, 2)
