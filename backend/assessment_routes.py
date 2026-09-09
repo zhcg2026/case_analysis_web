@@ -286,9 +286,10 @@ def _get_municipal_units(departments):
     return units
 
 
-def _calculate_system_score(total, closed, overtime, delayed, rework, extra_points=0):
+def _calculate_system_score(total, closed, overtime, delayed, rework):
     """计算系统考核得分
-    公式：(按期结案率×100% + 超期结案率×40%) × 80% + (1-延期率) × 10% + (1-返工率) × 10% ± 加减分项
+    公式：(按期结案率×100% + 超期结案率×40%) × 80% + (1-延期率) × 10% + (1-返工率) × 10%
+    注：加减分项不在系统分内，由调用方加到最终得分上
     """
     if total == 0:
         return 0
@@ -308,11 +309,10 @@ def _calculate_system_score(total, closed, overtime, delayed, rework, extra_poin
     # 返工率
     rework_rate = rework / total
 
-    # 系统考核得分
+    # 系统考核得分（不含加减分项）
     score = (ontime_rate * 100 + overtime_rate * 40) * 0.8 + \
             (1 - delay_rate) * 10 + \
-            (1 - rework_rate) * 10 + \
-            extra_points
+            (1 - rework_rate) * 10
 
     return round(score, 3)
 
@@ -344,9 +344,9 @@ def _calculate_scores(departments, external_data):
 
     dispatch_system_score = _calculate_system_score(
         dispatch_total, dispatch_closed, dispatch_overtime,
-        dispatch_delayed, dispatch_rework, dispatch_extra
+        dispatch_delayed, dispatch_rework
     )
-    dispatch_final_score = dispatch_system_score * 0.7 + dispatch_team_score * 0.15 + dispatch_street_score * 0.15
+    dispatch_final_score = dispatch_system_score * 0.7 + dispatch_team_score * 0.15 + dispatch_street_score * 0.15 + dispatch_extra
 
     results['执法队'] = {
         'total': dispatch_total,
@@ -370,9 +370,9 @@ def _calculate_scores(departments, external_data):
 
         sys_score = _calculate_system_score(
             stats['total'], stats['closed'], stats['overtime'],
-            stats['delayed'], stats['rework'], team_extra
+            stats['delayed'], stats['rework']
         )
-        final = sys_score * 0.7 + team_score * 0.15 + street_score * 0.15
+        final = sys_score * 0.7 + team_score * 0.15 + street_score * 0.15 + team_extra
 
         results[team_name] = {
             **stats,
@@ -406,10 +406,10 @@ def _calculate_scores(departments, external_data):
 
     san_system_score = _calculate_system_score(
         san_total, san_closed, san_overtime,
-        san_delayed, san_rework, san_extra
+        san_delayed, san_rework
     )
     san_garbage_score = max(0, 100 - san_garbage_count * 0.01)
-    san_final_score = san_system_score * 0.3 + san_garbage_score * 0.3 + san_center_score * 0.4
+    san_final_score = san_system_score * 0.3 + san_garbage_score * 0.3 + san_center_score * 0.4 + san_extra
 
     results['市容环卫中心'] = {
         'total': san_total,
@@ -434,10 +434,10 @@ def _calculate_scores(departments, external_data):
 
             sys_score = _calculate_system_score(
                 stats['total'], stats['closed'], stats['overtime'],
-                stats['delayed'], stats['rework'], district_extra
+                stats['delayed'], stats['rework']
             )
             garbage_score = max(0, 100 - district_garbage * 0.01)
-            final = sys_score * 0.3 + garbage_score * 0.3 + district_center * 0.4
+            final = sys_score * 0.3 + garbage_score * 0.3 + district_center * 0.4 + district_extra
 
             results[dept_name] = {
                 **stats,
@@ -471,9 +471,9 @@ def _calculate_scores(departments, external_data):
 
     garden_system_score = _calculate_system_score(
         garden_total, garden_closed, garden_overtime,
-        garden_delayed, garden_rework, garden_extra
+        garden_delayed, garden_rework
     )
-    garden_final_score = garden_system_score * 0.7 + garden_center_score * 0.3
+    garden_final_score = garden_system_score * 0.7 + garden_center_score * 0.3 + garden_extra
 
     results['园林绿化服务中心'] = {
         'total': garden_total,
@@ -496,9 +496,9 @@ def _calculate_scores(departments, external_data):
 
             sys_score = _calculate_system_score(
                 stats['total'], stats['closed'], stats['overtime'],
-                stats['delayed'], stats['rework'], district_extra
+                stats['delayed'], stats['rework']
             )
-            final = sys_score * 0.7 + district_center * 0.3
+            final = sys_score * 0.7 + district_center * 0.3 + district_extra
 
             results[dept_name] = {
                 **stats,
@@ -517,9 +517,9 @@ def _calculate_scores(departments, external_data):
 
             sys_score = _calculate_system_score(
                 stats['total'], stats['closed'], stats['overtime'],
-                stats['delayed'], stats['rework'], park_extra
+                stats['delayed'], stats['rework']
             )
-            final = sys_score * 0.7 + park_center * 0.3
+            final = sys_score * 0.7 + park_center * 0.3 + park_extra
 
             results[dept_name] = {
                 **stats,
@@ -549,7 +549,7 @@ def _calculate_scores(departments, external_data):
     muni_extra = external_data.get('muni_extra', 0)
     muni_system_score = _calculate_system_score(
         muni_total, muni_closed, muni_overtime,
-        muni_delayed, muni_rework, muni_extra
+        muni_delayed, muni_rework
     )
 
     results['市政公用服务中心'] = {
@@ -560,7 +560,7 @@ def _calculate_scores(departments, external_data):
         'rework': muni_rework,
         'system_score': muni_system_score,
         'extra_points': muni_extra,
-        'final_score': muni_system_score
+        'final_score': muni_system_score + muni_extra
     }
 
     # 市政子单位明细
@@ -571,14 +571,14 @@ def _calculate_scores(departments, external_data):
 
             sys_score = _calculate_system_score(
                 stats['total'], stats['closed'], stats['overtime'],
-                stats['delayed'], stats['rework'], unit_extra
+                stats['delayed'], stats['rework']
             )
 
             results[unit_name] = {
                 **stats,
                 'system_score': sys_score,
                 'extra_points': unit_extra,
-                'final_score': sys_score
+                'final_score': sys_score + unit_extra
             }
 
     # 其他独立部门
@@ -590,14 +590,14 @@ def _calculate_scores(departments, external_data):
 
             sys_score = _calculate_system_score(
                 stats['total'], stats['closed'], stats['overtime'],
-                stats['delayed'], stats['rework'], dept_extra
+                stats['delayed'], stats['rework']
             )
 
             results[dept_name] = {
                 **stats,
                 'system_score': sys_score,
                 'extra_points': dept_extra,
-                'final_score': sys_score
+                'final_score': sys_score + dept_extra
             }
 
     return results
