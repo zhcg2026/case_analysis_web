@@ -402,12 +402,8 @@ def _calculate_scores(departments, external_data):
 
     san_extra = external_data.get('san_extra', 0)
     san_center_score = external_data.get('san_center_score', 100)
-    # 单体垃圾得分：优先用直接输入的分值，否则用案件数换算
-    if 'san_garbage_score' in external_data:
-        san_garbage_score = float(external_data['san_garbage_score'])
-    else:
-        san_garbage_count = external_data.get('san_garbage_count', 0)
-        san_garbage_score = max(0, 100 - san_garbage_count * 0.01)
+    # 单体垃圾得分：直接用传入的分值
+    san_garbage_score = float(external_data.get('san_garbage_score', 100))
 
     san_system_score = _calculate_system_score(
         san_total, san_closed, san_overtime,
@@ -433,12 +429,8 @@ def _calculate_scores(departments, external_data):
         if '环卫' in dept_name:
             district_extra = external_data.get(f'san_{dept_name}_extra', 0)
             district_center = external_data.get(f'san_{dept_name}_center', 100)
-            # 单体垃圾得分：优先用直接输入的分值，否则用案件数换算
-            if f'san_{dept_name}_garbage_score' in external_data:
-                garbage_score = float(external_data[f'san_{dept_name}_garbage_score'])
-            else:
-                district_garbage = external_data.get(f'san_{dept_name}_garbage', 0)
-                garbage_score = max(0, 100 - district_garbage * 0.01)
+            # 单体垃圾得分：直接用传入的分值
+            garbage_score = float(external_data.get(f'san_{dept_name}_garbage', 100))
 
             sys_score = _calculate_system_score(
                 stats['total'], stats['closed'], stats['overtime'],
