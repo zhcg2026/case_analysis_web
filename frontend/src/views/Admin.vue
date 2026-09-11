@@ -771,6 +771,20 @@
     <div v-else-if="activeTab === 'data'" class="content-card" style="padding:0;border:none;background:transparent">
       <DataManagementTab />
     </div>
+    <div v-else-if="activeTab === 'standards'" class="content-card">
+      <div class="card-header">
+        <h2 class="section-title">立结案标准</h2>
+        <p class="section-hint">只读查看。数据来自《立案、处置和结案标准》，用于考核录入等场景的大小类字典核对。</p>
+      </div>
+      <CaseStandardsTab />
+    </div>
+    <div v-else-if="activeTab === 'assessment_input'" class="content-card">
+      <div class="card-header">
+        <h2 class="section-title">考核数据录入</h2>
+        <p class="section-hint">按月录入平台分值与采集员数据，供考核计分与后续报表使用。已录入月份可再次打开修改。</p>
+      </div>
+      <AssessmentInputTab />
+    </div>
     <div v-else-if="activeTab === 'system'" class="content-card">
       <h2 class="section-title">系统设置</h2>
       <div class="settings-form">
@@ -1085,6 +1099,8 @@ import { Editor, Toolbar } from '@wangeditor/editor-for-vue'
 import '@wangeditor/editor/dist/css/style.css'
 import KbIcon from '../components/common/KbIcon.vue'
 import DataManagementTab from '../components/admin/DataManagementTab.vue'
+import CaseStandardsTab from '../components/admin/CaseStandardsTab.vue'
+import AssessmentInputTab from '../components/admin/AssessmentInputTab.vue'
 import { useSystemConfig } from '../composables/useSystemConfig'
 
 const router = useRouter()
@@ -1095,6 +1111,8 @@ const tabs = [
   { key: 'data', label: '数据管理' },
   { key: 'reports', label: '报告模板' },
   { key: 'knowledge', label: '知识库管理' },
+  { key: 'standards', label: '立结案标准' },
+  { key: 'assessment_input', label: '考核数据录入' },
   { key: 'business', label: '业务平台' },
   { key: 'system', label: '系统设置' }
 ]
@@ -2529,6 +2547,12 @@ watch(articlesCurrentPage, fetchArticles)
   font-weight: 600;
   color: var(--text-primary);
   margin: 0;
+}
+
+.section-hint {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--text-tertiary);
 }
 
 /* 按钮样式 */

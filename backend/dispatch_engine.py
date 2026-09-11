@@ -35,34 +35,49 @@ logger = logging.getLogger(__name__)
 
 RESPONSIBLE_BODY_TO_DEPT = {
     "市容环卫中心": "市容环卫中心",
+    "运城市市容环卫中心": "市容环卫中心",
     "市容环卫": "市容环卫中心",
     "环卫中心": "市容环卫中心",
     "环卫": "市容环卫中心",
     "园林绿化中心": "园林绿化中心",
+    "运城市园林绿化服务中心": "园林绿化中心",
     "园林绿化": "园林绿化中心",
     "园林中心": "园林绿化中心",
     "园林": "园林绿化中心",
     "综合行政执法队": "综合行政执法队",
+    "运城市城市管理综合行政执法队": "综合行政执法队",
+    "城市管理综合行政执法队": "综合行政执法队",
     "综合执法队": "综合行政执法队",
     "执法队": "综合行政执法队",
     "城管执法": "综合行政执法队",
+    "属地行政执法部门": "综合行政执法队",
+    "所属街办": "综合行政执法队",
     "市政公用服务中心": "市政公用服务中心",
+    "运城市市政公用服务中心": "市政公用服务中心",
     "市政公用": "市政公用服务中心",
     "市政中心": "市政公用服务中心",
     "市政": "市政公用服务中心",
     "排水服务中心": "排水服务中心",
+    "运城市排水服务中心": "排水服务中心",
     "排水中心": "排水服务中心",
     "排水": "排水服务中心",
     "节水服务中心": "节水服务中心",
+    "运城市城市节约用水中心": "节水服务中心",
+    "节约用水中心": "节水服务中心",
     "节水中心": "节水服务中心",
     "节水": "节水服务中心",
     "供热供气服务中心": "供热供气服务中心",
+    "运城市城市集中供热供气服务中心": "供热供气服务中心",
+    "运城市集中供热供气服务中心": "供热供气服务中心",
+    "集中供热供气服务中心": "供热供气服务中心",
     "供热供气": "供热供气服务中心",
     "供热中心": "供热供气服务中心",
     "供气中心": "供热供气服务中心",
     "供热": "供热供气服务中心",
     "供气": "供热供气服务中心",
     "建筑资源化服务中心": "建筑资源化服务中心",
+    "运城市建筑垃圾资源化利用服务中心": "建筑资源化服务中心",
+    "建筑垃圾资源化利用服务中心": "建筑资源化服务中心",
     "建筑资源化": "建筑资源化服务中心",
     "资源化中心": "建筑资源化服务中心",
 }
@@ -118,22 +133,27 @@ def get_case_categories() -> List[Dict[str, str]]:
 
 
 def resolve_department(responsible_body: str) -> Optional[str]:
-    """将立结案标准中的责任主体名称映射为统一部门标识"""
+    """将立结案标准中的责任主体名称映射为统一部门标识（取最长命中）"""
     if not responsible_body:
         return None
     body = responsible_body.strip()
     if body in RESPONSIBLE_BODY_TO_DEPT:
         return RESPONSIBLE_BODY_TO_DEPT[body]
-    # 模糊匹配：责任主体包含部门名
+    best_key = ''
+    best_dept = None
     for key, dept in RESPONSIBLE_BODY_TO_DEPT.items():
-        if key in body or body in key:
-            return dept
-    return None
+        if key and (key in body or body in key):
+            if len(key) > len(best_key):
+                best_key = key
+                best_dept = dept
+    return best_dept
 
 
 def dispatch(case_type_id: str = None,
              question: str = None,
-             location: Any = None) -> Dict[str, Any]:
+             location: Any = None,
+             case_type_info: Optional[Dict[str, Any]] = None,
+             expected_department: Optional[str] = None) -> Dict[str, Any]:
     """
     归属判断主入口
 
@@ -141,23 +161,21 @@ def dispatch(case_type_id: str = None,
       case_type_id: 案件类型ID（可选，来自前端下拉选择）
       question: 自然语言问题描述（可选）
       location: 坐标信息，支持 {"lat":..., "lng":...} 或 [lat, lng] 格式
-
-    返回：
-      {
-        "success": bool,
-        "department": str | None,     # 归属部门
-        "unit": str | None,           # 具体处置单位（片区/分队）
-        "in_jurisdiction": bool,      # 是否在管辖范围内
-        "case_type": dict | None,     # 匹配到的案件类型信息
-        "layer_status": str,          # 图层状态
-        "answer": str,                # 归属结论文字
-      }
+      case_type_info: 预解析的案件类型（字典小类或旧 CASE_TYPES）
+      expected_department: 由责任主体映射得到的部门（可选）
     """
     # 1. 确定部门
     department = None
-    case_type_info = None
 
-    if case_type_id:
+    if expected_department:
+        department = expected_department
+
+    if not department and case_type_info:
+        department = case_type_info.get("department")
+        if not department and case_type_info.get("responsible"):
+            department = resolve_department(case_type_info.get("responsible"))
+
+    if not department and case_type_id and not case_type_info:
         case_type_info = next((ct for ct in CASE_TYPES if ct["id"] == case_type_id), None)
         if case_type_info:
             department = case_type_info["department"]

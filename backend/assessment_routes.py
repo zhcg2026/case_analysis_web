@@ -162,11 +162,17 @@ def register_assessment_routes(app, engine=None, protected=None, admin_required=
     @app.route('/api/assessment/calculate', methods=['POST'])
     @protected
     def assessment_calculate():
-        """计算考核得分"""
+        """计算考核得分。
+
+        优先从库中读取人工分值（assessment_manual_*）；
+        仍兼容请求体 external_data（兼容旧前端）。
+        缺人工分的单位：只出系统分，final_score 置空并记 missing。
+        结果同月覆盖写入 assessment_result。
+        """
         try:
             data = request.get_json(silent=True) or {}
             batch = data.get('batch', '').strip()
-            external_data = data.get('external_data', {})
+            external_data = data.get('external_data') or {}
 
             if not batch:
                 return jsonify({'success': False, 'error': '请指定月份'}), 400
@@ -196,13 +202,31 @@ def register_assessment_routes(app, engine=None, protected=None, admin_required=
                         'overtime': int(row[3]), 'delayed': int(row[4]), 'rework': int(row[5])
                     }
 
-            # 计算各部门得分
-            results = _calculate_scores(departments, external_data)
+            missing = {}
+            # 库中人工分（主路径）
+            try:
+                from assessment_manual_routes import load_external_data_from_db, persist_calc_results
+            except ImportError:
+                from backend.assessment_manual_routes import load_external_data_from_db, persist_calc_results
+
+            db_external, missing = load_external_data_from_db(engine, batch)
+            if external_data:
+                # 请求体覆盖库中值（兼容）
+                db_external.update(external_data)
+            external_data = db_external
+
+            results = _calculate_scores(departments, external_data, missing=missing)
+
+            try:
+                persist_calc_results(engine, batch, results, missing, getattr(request, 'username', 'admin'))
+            except Exception as pe:
+                logger.warning(f'考核结果落库失败(不影响计算): {pe}')
 
             return jsonify({
                 'success': True,
                 'batch': batch,
-                'results': results
+                'results': results,
+                'missing': missing,
             })
         except Exception as e:
             logger.error(f"计算考核得分失败: {e}")
@@ -317,9 +341,23 @@ def _calculate_system_score(total, closed, overtime, delayed, rework):
     return round(score, 3)
 
 
-def _calculate_scores(departments, external_data):
-    """计算各部门考核得分"""
+def _calculate_scores(departments, external_data, missing=None):
+    """计算各部门考核得分。
+    missing: {unit_name: [缺项标签]} — 有缺项时 final_score 置 None
+    """
+    missing = missing or {}
     results = {}
+
+    def _apply_missing(unit_name, payload):
+        miss = missing.get(unit_name) or []
+        if miss:
+            payload['final_score'] = None
+            payload['missing_fields'] = miss
+            payload['is_complete'] = False
+        else:
+            payload.setdefault('is_complete', True)
+            payload.setdefault('missing_fields', [])
+        return payload
 
     # 执法队
     dispatch_total = sum(
@@ -374,14 +412,14 @@ def _calculate_scores(departments, external_data):
         )
         final = sys_score * 0.7 + team_score * 0.15 + street_score * 0.15 + team_extra
 
-        results[team_name] = {
+        results[team_name] = _apply_missing(team_name, {
             **stats,
             'system_score': sys_score,
             'team_score': team_score,
             'street_score': street_score,
             'extra_points': team_extra,
             'final_score': round(final, 3)
-        }
+        })
 
     # 环卫
     san_total = sum(
@@ -438,14 +476,14 @@ def _calculate_scores(departments, external_data):
             )
             final = sys_score * 0.3 + garbage_score * 0.3 + district_center * 0.4 + district_extra
 
-            results[dept_name] = {
+            results[dept_name] = _apply_missing(dept_name, {
                 **stats,
                 'system_score': sys_score,
                 'garbage_score': round(garbage_score, 2),
                 'center_score': district_center,
                 'extra_points': district_extra,
                 'final_score': round(final, 2)
-            }
+            })
 
     # 园林
     garden_total = sum(
@@ -498,13 +536,13 @@ def _calculate_scores(departments, external_data):
             )
             final = sys_score * 0.7 + district_center * 0.3 + district_extra
 
-            results[dept_name] = {
+            results[dept_name] = _apply_missing(dept_name, {
                 **stats,
                 'system_score': sys_score,
                 'center_score': district_center,
                 'extra_points': district_extra,
                 'final_score': round(final, 2)
-            }
+            })
 
     # 公园广场明细
     for dept_name in PARK_MAP.keys():
@@ -519,13 +557,13 @@ def _calculate_scores(departments, external_data):
             )
             final = sys_score * 0.7 + park_center * 0.3 + park_extra
 
-            results[dept_name] = {
+            results[dept_name] = _apply_missing(dept_name, {
                 **stats,
                 'system_score': sys_score,
                 'center_score': park_center,
                 'extra_points': park_extra,
                 'final_score': round(final, 2)
-            }
+            })
 
     # 市政
     muni_total = sum(
@@ -562,22 +600,35 @@ def _calculate_scores(departments, external_data):
     }
 
     # 市政子单位明细
+    # 照明、排水：综合系统分 + 加减分
+    # 应急、维护部：结案数/应结案数（×100）+ 加减分
+    MUNICIPAL_CLOSE_RATE_UNITS = {'应急执法分队', '市政设施维护部'}
     for dept_name, unit_name in MUNICIPAL_UNIT_MAP.items():
         if dept_name in departments:
             stats = departments[dept_name]
             unit_extra = external_data.get(f'muni_{unit_name}_extra', 0)
+            total = stats['total']
+            closed = stats['closed']
 
-            sys_score = _calculate_system_score(
-                stats['total'], stats['closed'], stats['overtime'],
-                stats['delayed'], stats['rework']
-            )
+            if unit_name in MUNICIPAL_CLOSE_RATE_UNITS:
+                # 结案率（百分制）
+                close_rate_score = round((closed / total * 100.0), 3) if total else 0.0
+                sys_score = close_rate_score
+                score_mode = 'close_rate'
+            else:
+                sys_score = _calculate_system_score(
+                    stats['total'], stats['closed'], stats['overtime'],
+                    stats['delayed'], stats['rework']
+                )
+                score_mode = 'system'
 
-            results[unit_name] = {
+            results[unit_name] = _apply_missing(unit_name, {
                 **stats,
                 'system_score': sys_score,
+                'score_mode': score_mode,
                 'extra_points': unit_extra,
                 'final_score': sys_score + unit_extra
-            }
+            })
 
     # 其他独立部门
     for dept_name in ['市容秩序科', '排水服务中心', '城市节约用水中心',

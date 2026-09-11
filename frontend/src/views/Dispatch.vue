@@ -61,7 +61,9 @@
           <div class="query-title">案件类型</div>
           <select v-model="selectedCategory" class="query-select" @change="onCategoryChange">
             <option value="">选择大类</option>
-            <option v-for="cat in categories" :key="cat.name" :value="cat.name">{{ cat.name }}</option>
+            <option v-for="cat in categories" :key="cat.key || cat.name" :value="cat.key || cat.name">
+              {{ cat.domain_label ? cat.domain_label + ' · ' : '' }}{{ cat.name }}
+            </option>
           </select>
           <select v-model="selectedCaseType" class="query-select" :disabled="!filteredTypes.length">
             <option value="">选择具体类型</option>
@@ -201,7 +203,10 @@ let pointMarker = null
 // 过滤后的案件类型
 const filteredTypes = computed(() => {
   if (!selectedCategory.value) return caseTypes.value
-  return caseTypes.value.filter(t => t.category === selectedCategory.value)
+  return caseTypes.value.filter(t =>
+    t.category_key === selectedCategory.value ||
+    t.category === selectedCategory.value
+  )
 })
 
 // 图层状态映射

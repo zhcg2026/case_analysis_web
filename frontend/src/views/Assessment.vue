@@ -12,20 +12,16 @@
       </div>
     </div>
 
-    <!-- 统计概览 -->
+    <div v-if="manualHint" class="manual-hint" :class="manualHintClass">{{ manualHint }}</div>
+
     <div v-if="summary" class="overview-section">
       <el-tabs v-model="activeTab">
-        <!-- 处置情况 -->
         <el-tab-pane label="处置情况" name="overview">
           <div class="table-wrapper">
             <table class="data-table">
               <thead>
                 <tr>
-                  <th>处置部门</th>
-                  <th>应结案数</th>
-                  <th>结案数</th>
-                  <th>结案率</th>
-                  <th>占比</th>
+                  <th>处置部门</th><th>应结案数</th><th>结案数</th><th>结案率</th><th>占比</th>
                 </tr>
               </thead>
               <tbody>
@@ -48,23 +44,13 @@
           </div>
         </el-tab-pane>
 
-        <!-- 市容秩序（执法队） -->
         <el-tab-pane label="市容秩序" name="dispatch">
           <div class="table-wrapper">
             <table class="data-table">
               <thead>
                 <tr>
-                  <th>执法分队</th>
-                  <th>应结案数</th>
-                  <th>结案数</th>
-                  <th>超期率</th>
-                  <th>延期率</th>
-                  <th>返工率</th>
-                  <th>系统分数</th>
-                  <th>队考核分</th>
-                  <th>街道办分</th>
-                  <th>加减分项</th>
-                  <th v-if="results">总分</th>
+                  <th>执法分队</th><th>应结案数</th><th>结案数</th><th>超期率</th><th>延期率</th><th>返工率</th>
+                  <th>系统分数</th><th>队考核分</th><th>街道办分</th><th>加减分项</th><th>总分</th>
                 </tr>
               </thead>
               <tbody>
@@ -76,33 +62,33 @@
                   <td>{{ formatRate(stats.delayed, stats.total) }}</td>
                   <td>{{ formatRate(stats.rework, stats.total) }}</td>
                   <td>{{ results?.[team]?.system_score ?? '-' }}</td>
-                  <td><el-input-number v-model="externalData[`dispatch_${team}_team_score`]" :min="0" :max="100" :step="0.1" size="small" style="width:80px" /></td>
-                  <td><el-input-number v-model="externalData[`dispatch_${team}_street_score`]" :min="0" :max="100" :step="0.1" size="small" style="width:80px" /></td>
-                  <td><el-input-number v-model="externalData[`dispatch_${team}_extra`]" :min="-10" :max="10" :step="0.1" size="small" style="width:80px" /></td>
-                  <td v-if="results"><strong>{{ results[team]?.final_score ?? '-' }}</strong></td>
+                  <td>{{ displayScore(team, 'team') }}</td>
+                  <td>{{ displayScore(team, 'street') }}</td>
+                  <td>{{ displayScore(team, 'extra') }}</td>
+                  <td>
+                    <strong v-if="results?.[team]?.final_score != null">{{ results[team].final_score }}</strong>
+                    <span v-else class="miss">未录入，不参与计算</span>
+                  </td>
                 </tr>
               </tbody>
             </table>
           </div>
+          <div class="formula-box">
+            <div class="formula-title">市容秩序（执法分队）计分公式</div>
+            <ul class="formula-list">
+              <li>系统分 =（按期结案率×100% + 超期结案率×40%）×80% +（1−延期率）×10% +（1−返工率）×10%</li>
+              <li>总分 = 系统分×0.7 + 队考核分×0.15 + 街道办分×0.15 + 加减分项</li>
+            </ul>
+          </div>
         </el-tab-pane>
 
-        <!-- 环境卫生 -->
         <el-tab-pane label="环境卫生" name="sanitation">
           <div class="table-wrapper">
             <table class="data-table">
               <thead>
                 <tr>
-                  <th>环卫片区</th>
-                  <th>应结案数</th>
-                  <th>结案数</th>
-                  <th>超期率</th>
-                  <th>延期率</th>
-                  <th>返工率</th>
-                  <th>系统分数</th>
-                  <th>单体垃圾数</th>
-                  <th>中心考核分</th>
-                  <th>加减分项</th>
-                  <th v-if="results">总分</th>
+                  <th>环卫片区</th><th>应结案数</th><th>结案数</th><th>超期率</th><th>延期率</th><th>返工率</th>
+                  <th>系统分数</th><th>单体垃圾得分</th><th>中心考核分</th><th>加减分项</th><th>总分</th>
                 </tr>
               </thead>
               <tbody>
@@ -114,33 +100,35 @@
                   <td>{{ formatRate(stats.delayed, stats.total) }}</td>
                   <td>{{ formatRate(stats.rework, stats.total) }}</td>
                   <td>{{ results?.[district]?.system_score ?? '-' }}</td>
-                  <td><el-input-number v-model="externalData[`san_${district}_garbage`]" :min="0" :step="1" size="small" style="width:80px" /></td>
-                  <td><el-input-number v-model="externalData[`san_${district}_center`]" :min="0" :max="100" :step="0.1" size="small" style="width:80px" /></td>
-                  <td><el-input-number v-model="externalData[`san_${district}_extra`]" :min="-10" :max="10" :step="0.1" size="small" style="width:80px" /></td>
-                  <td v-if="results"><strong>{{ results[district]?.final_score ?? '-' }}</strong></td>
+                  <td>{{ displayGarbage(district) }}</td>
+                  <td>{{ displayScore(district, 'center', 'sanitation') }}</td>
+                  <td>{{ displayScore(district, 'extra', 'sanitation') }}</td>
+                  <td>
+                    <strong v-if="results?.[district]?.final_score != null">{{ results[district].final_score }}</strong>
+                    <span v-else class="miss">未录入，不参与计算</span>
+                  </td>
                 </tr>
               </tbody>
             </table>
           </div>
+          <div class="formula-box">
+            <div class="formula-title">环境卫生（片区）计分公式</div>
+            <ul class="formula-list">
+              <li>系统分 =（按期结案率×100% + 超期结案率×40%）×80% +（1−延期率）×10% +（1−返工率）×10%</li>
+              <li>单体垃圾得分 = 100 − 该片区垃圾件数×0.01</li>
+              <li>总分 = 系统分×0.3 + 单体垃圾得分×0.3 + 中心考核分×0.4 + 加减分项</li>
+            </ul>
+          </div>
         </el-tab-pane>
 
-        <!-- 园林绿化 -->
         <el-tab-pane label="园林绿化" name="garden">
           <h4 class="sub-title">园林片区</h4>
           <div class="table-wrapper">
             <table class="data-table">
               <thead>
                 <tr>
-                  <th>园林片区</th>
-                  <th>应结案数</th>
-                  <th>结案数</th>
-                  <th>超期率</th>
-                  <th>延期率</th>
-                  <th>返工率</th>
-                  <th>系统分数</th>
-                  <th>中心考核分</th>
-                  <th>加减分项</th>
-                  <th v-if="results">总分</th>
+                  <th>园林片区</th><th>应结案数</th><th>结案数</th><th>超期率</th><th>延期率</th><th>返工率</th>
+                  <th>系统分数</th><th>中心考核分</th><th>加减分项</th><th>总分</th>
                 </tr>
               </thead>
               <tbody>
@@ -152,9 +140,12 @@
                   <td>{{ formatRate(stats.delayed, stats.total) }}</td>
                   <td>{{ formatRate(stats.rework, stats.total) }}</td>
                   <td>{{ results?.[district]?.system_score ?? '-' }}</td>
-                  <td><el-input-number v-model="externalData[`garden_${district}_center`]" :min="0" :max="100" :step="0.1" size="small" style="width:80px" /></td>
-                  <td><el-input-number v-model="externalData[`garden_${district}_extra`]" :min="-10" :max="10" :step="0.1" size="small" style="width:80px" /></td>
-                  <td v-if="results"><strong>{{ results[district]?.final_score ?? '-' }}</strong></td>
+                  <td>{{ displayScore(district, 'center', 'garden') }}</td>
+                  <td>{{ displayScore(district, 'extra', 'garden') }}</td>
+                  <td>
+                    <strong v-if="results?.[district]?.final_score != null">{{ results[district].final_score }}</strong>
+                    <span v-else class="miss">未录入，不参与计算</span>
+                  </td>
                 </tr>
               </tbody>
             </table>
@@ -165,16 +156,8 @@
             <table class="data-table">
               <thead>
                 <tr>
-                  <th>公园广场</th>
-                  <th>应结案数</th>
-                  <th>结案数</th>
-                  <th>超期率</th>
-                  <th>延期率</th>
-                  <th>返工率</th>
-                  <th>系统分数</th>
-                  <th>中心考核分</th>
-                  <th>加减分项</th>
-                  <th v-if="results">总分</th>
+                  <th>公园广场</th><th>应结案数</th><th>结案数</th><th>超期率</th><th>延期率</th><th>返工率</th>
+                  <th>系统分数</th><th>中心考核分</th><th>加减分项</th><th>总分</th>
                 </tr>
               </thead>
               <tbody>
@@ -186,30 +169,32 @@
                   <td>{{ formatRate(stats.delayed, stats.total) }}</td>
                   <td>{{ formatRate(stats.rework, stats.total) }}</td>
                   <td>{{ results?.[park]?.system_score ?? '-' }}</td>
-                  <td><el-input-number v-model="externalData[`garden_${park}_center`]" :min="0" :max="100" :step="0.1" size="small" style="width:80px" /></td>
-                  <td><el-input-number v-model="externalData[`garden_${park}_extra`]" :min="-10" :max="10" :step="0.1" size="small" style="width:80px" /></td>
-                  <td v-if="results"><strong>{{ results[park]?.final_score ?? '-' }}</strong></td>
+                  <td>{{ displayScore(park, 'center', 'garden_park') }}</td>
+                  <td>{{ displayScore(park, 'extra', 'garden_park') }}</td>
+                  <td>
+                    <strong v-if="results?.[park]?.final_score != null">{{ results[park].final_score }}</strong>
+                    <span v-else class="miss">未录入，不参与计算</span>
+                  </td>
                 </tr>
               </tbody>
             </table>
           </div>
+          <div class="formula-box">
+            <div class="formula-title">园林绿化（片区 / 公园广场）计分公式</div>
+            <ul class="formula-list">
+              <li>系统分 =（按期结案率×100% + 超期结案率×40%）×80% +（1−延期率）×10% +（1−返工率）×10%</li>
+              <li>总分 = 系统分×0.7 + 中心考核分×0.3 + 加减分项</li>
+            </ul>
+          </div>
         </el-tab-pane>
 
-        <!-- 市政公用 -->
         <el-tab-pane label="市政公用" name="municipal">
           <div class="table-wrapper">
             <table class="data-table">
               <thead>
                 <tr>
-                  <th>市政考核</th>
-                  <th>应结案数</th>
-                  <th>结案数</th>
-                  <th>结案率</th>
-                  <th>超期率</th>
-                  <th>延期率</th>
-                  <th>返工率</th>
-                  <th>加减分项</th>
-                  <th v-if="results">分数</th>
+                  <th>市政考核</th><th>应结案数</th><th>结案数</th><th>结案率</th><th>超期率</th><th>延期率</th><th>返工率</th>
+                  <th>加减分项</th><th>分数</th>
                 </tr>
               </thead>
               <tbody>
@@ -221,17 +206,26 @@
                   <td>{{ formatRate(stats.overtime, stats.total) }}</td>
                   <td>{{ formatRate(stats.delayed, stats.total) }}</td>
                   <td>{{ formatRate(stats.rework, stats.total) }}</td>
-                  <td><el-input-number v-model="externalData[`muni_${unit}_extra`]" :min="-10" :max="10" :step="0.1" size="small" style="width:80px" /></td>
-                  <td v-if="results"><strong>{{ results[unit]?.final_score ?? '-' }}</strong></td>
+                  <td>{{ displayScore(unit, 'extra', 'municipal') }}</td>
+                  <td>
+                    <strong v-if="results?.[unit]?.final_score != null">{{ results[unit].final_score }}</strong>
+                    <span v-else class="miss">未录入，不参与计算</span>
+                  </td>
                 </tr>
               </tbody>
             </table>
+          </div>
+          <div class="formula-box">
+            <div class="formula-title">市政公用计分公式</div>
+            <ul class="formula-list">
+              <li><strong>城市照明部、排水服务中心：</strong>系统分 =（按期结案率×100% + 超期结案率×40%）×80% +（1−延期率）×10% +（1−返工率）×10%；总分 = 系统分 + 加减分项</li>
+              <li><strong>应急执法分队、市政设施维护部：</strong>得分 = 结案数 ÷ 应结案数 × 100；总分 = 得分 + 加减分项</li>
+            </ul>
           </div>
         </el-tab-pane>
       </el-tabs>
     </div>
 
-    <!-- 空状态 -->
     <div v-else-if="!loading" class="empty-state">
       <p>请选择月份查看考核数据</p>
     </div>
@@ -245,93 +239,100 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { Loading } from '@element-plus/icons-vue'
 import axios from 'axios'
 
 const API = '/api/assessment'
 
-// 月份
 const months = ref([])
 const selectedBatch = ref('')
 const loading = ref(false)
-
-// 统计数据
 const summary = ref(null)
 const results = ref(null)
 const calculating = ref(false)
 const activeTab = ref('overview')
 
-// 外部数据
-const externalData = ref({
-  dispatch_team_score: 100,
-  dispatch_street_score: 100,
-  dispatch_extra: 0,
-  san_garbage_count: 0,
-  san_center_score: 100,
-  san_extra: 0,
-  garden_center_score: 100,
-  garden_extra: 0,
-  muni_extra: 0
-})
+// 人工分值（库中）
+const manualScores = ref([]) // [{unit_name, unit_type, score_type, score_value}]
+const garbage = ref([]) // [{region, district_name, piece_count}]
+const hasManual = ref(false)
+const manualHint = ref('')
+const manualHintClass = ref('')
 
-// 计算属性
 const totalCount = computed(() => {
   if (!summary.value?.dept_groups) return 0
   return Object.values(summary.value.dept_groups).reduce((sum, s) => sum + Number(s.total || 0), 0)
 })
-
 const totalClosed = computed(() => {
   if (!summary.value?.dept_groups) return 0
   return Object.values(summary.value.dept_groups).reduce((sum, s) => sum + Number(s.closed || 0), 0)
 })
 
-// 格式化月份
 function formatMonth(batch) {
   if (!batch || batch.length < 6) return batch || ''
   return batch.substring(0, 4) + '年' + batch.substring(4, 6) + '月'
 }
-
-// 格式化比率
 function formatRate(numerator, denominator) {
   if (!denominator) return '-'
   return ((numerator / denominator) * 100).toFixed(2) + '%'
 }
-
-// 格式化百分比
 function formatPercent(value, total) {
   if (!total) return '-'
   return ((value / total) * 100).toFixed(2) + '%'
 }
 
-// 获取月份列表
+function findScore(unit, scoreType, unitType) {
+  return manualScores.value.find(
+    s => s.unit_name === unit && s.score_type === scoreType && (!unitType || s.unit_type === unitType)
+  )
+}
+
+function displayScore(unit, scoreType, unitType) {
+  const s = findScore(unit, scoreType, unitType)
+  if (s == null || s === undefined) return '未录入'
+  return s.score_value
+}
+
+function displayGarbage(district) {
+  const g = garbage.value.find(x => x.district_name === district)
+  if (!g) return '未录入'
+  const score = 100 - Number(g.piece_count || 0) * 0.01
+  return score.toFixed(2)
+}
+
 async function fetchMonths() {
   try {
     const res = await axios.get(`${API}/months`)
-    if (res.data?.success) {
-      months.value = res.data.months
-    }
+    if (res.data?.success) months.value = res.data.months
   } catch (e) {
     console.error('获取月份失败:', e)
   }
 }
 
-// 加载统计数据
 async function loadSummary() {
   if (!selectedBatch.value) return
-
   loading.value = true
   summary.value = null
   results.value = null
-
+  manualHint.value = ''
   try {
-    const res = await axios.get(`${API}/summary`, {
-      params: { batch: selectedBatch.value }
-    })
-    if (res.data?.success) {
-      summary.value = res.data
-      // 初始化外部数据
-      initExternalData(res.data)
+    const [sumRes, manRes] = await Promise.all([
+      axios.get(`${API}/summary`, { params: { batch: selectedBatch.value } }),
+      axios.get(`${API}/manual`, { params: { batch: selectedBatch.value } }),
+    ])
+    if (sumRes.data?.success) summary.value = sumRes.data
+    if (manRes.data?.success) {
+      manualScores.value = manRes.data.scores || []
+      garbage.value = manRes.data.garbage || []
+      hasManual.value = manualScores.value.length > 0
+      if (!hasManual.value) {
+        manualHint.value = '该月人工分值尚未录入。请到「系统管理 → 考核数据录入」维护后计算；确认后仍可计算，缺分单位不计总分。'
+        manualHintClass.value = 'warn'
+      } else {
+        manualHint.value = `已从库中读取人工分值 ${manualScores.value.length} 条。若需修改，请到「系统管理 → 考核数据录入」。`
+        manualHintClass.value = 'info'
+      }
     }
   } catch (e) {
     ElMessage.error('加载失败')
@@ -340,71 +341,34 @@ async function loadSummary() {
   }
 }
 
-// 初始化外部数据
-function initExternalData(data) {
-  const newData = {}
-
-  // 执法分队
-  if (data.dispatch_teams) {
-    Object.keys(data.dispatch_teams).forEach(team => {
-      newData[`dispatch_${team}_team_score`] = 100
-      newData[`dispatch_${team}_street_score`] = 100
-      newData[`dispatch_${team}_extra`] = 0
-    })
-  }
-
-  // 环卫片区
-  if (data.sanitation_districts) {
-    Object.keys(data.sanitation_districts).forEach(district => {
-      newData[`san_${district}_garbage`] = 0
-      newData[`san_${district}_center`] = 100
-      newData[`san_${district}_extra`] = 0
-    })
-  }
-
-  // 园林片区
-  if (data.garden_districts) {
-    Object.keys(data.garden_districts).forEach(district => {
-      newData[`garden_${district}_center`] = 100
-      newData[`garden_${district}_extra`] = 0
-    })
-  }
-
-  // 公园广场
-  if (data.parks) {
-    Object.keys(data.parks).forEach(park => {
-      newData[`garden_${park}_center`] = 100
-      newData[`garden_${park}_extra`] = 0
-    })
-  }
-
-  // 市政公用
-  if (data.municipal_units) {
-    Object.keys(data.municipal_units).forEach(unit => {
-      newData[`muni_${unit}_extra`] = 0
-    })
-  }
-
-  externalData.value = newData
-}
-
-// 计算得分
 async function calculateScores() {
   if (!selectedBatch.value) return
+  try {
+    if (!hasManual.value) {
+      await ElMessageBox.confirm(
+        '该月人工分值未录入或不完整。继续计算时：仅系统得分照常展示，缺失考核分/加减分/垃圾件数的单位不计算总分。是否继续？',
+        '未录入提示',
+        { type: 'warning', confirmButtonText: '继续计算', cancelButtonText: '取消' }
+      )
+    }
+  } catch {
+    return
+  }
 
   calculating.value = true
-
   try {
+    // 由后端从库中读人工分计算，不再传 external_data
     const res = await axios.post(`${API}/calculate`, {
       batch: selectedBatch.value,
-      external_data: externalData.value
     })
     if (res.data?.success) {
       results.value = res.data.results
       ElMessage.success('计算完成')
+    } else {
+      ElMessage.error(res.data?.error || '计算失败')
     }
   } catch (e) {
-    ElMessage.error('计算失败')
+    ElMessage.error(e.response?.data?.error || '计算失败')
   } finally {
     calculating.value = false
   }
@@ -416,128 +380,65 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.assessment-page {
-  padding: 20px;
-}
-
+.assessment-page { padding: 20px; }
 .page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 20px;
+  display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;
 }
-
-.page-header h2 {
-  margin: 0;
-  font-size: 20px;
-  font-weight: 600;
+.page-header h2 { margin: 0; font-size: 20px; font-weight: 600; }
+.header-actions { display: flex; gap: 12px; align-items: center; }
+.manual-hint {
+  margin-bottom: 12px; padding: 10px 14px; border-radius: 8px; font-size: 13px;
 }
-
-.header-actions {
-  display: flex;
-  gap: 12px;
-  align-items: center;
+.manual-hint.warn {
+  background: #fef3c7; color: #92400e; border: 1px solid #fcd34d;
 }
-
+.manual-hint.info {
+  background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe;
+}
 .overview-section {
-  background: var(--bg-card);
-  border-radius: 8px;
-  border: 1px solid var(--border-lighter);
-  padding: 16px;
+  background: var(--bg-card); border-radius: 8px; border: 1px solid var(--border-lighter); padding: 16px;
 }
-
-.sub-title {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin: 20px 0 12px;
+.sub-title { font-size: 15px; font-weight: 600; color: var(--text-primary); margin: 20px 0 12px; }
+.table-wrapper { overflow-x: auto; margin-top: 16px; }
+.data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.data-table th, .data-table td {
+  padding: 10px 12px; text-align: center; border-bottom: 1px solid var(--border-lighter);
 }
-
-.table-wrapper {
-  overflow-x: auto;
+.data-table th { font-weight: 600; color: var(--text-secondary); background: var(--bg-secondary, #f8fafc); }
+.data-table td:first-child, .data-table th:first-child { text-align: left; }
+.data-table tr:hover { background: var(--bg-secondary, #f8fafc); }
+.total-row { background: var(--bg-secondary, #f8fafc); }
+.total-row td { font-weight: 600; }
+.miss { color: #b45309; font-size: 12px; }
+.formula-box {
   margin-top: 16px;
-}
-
-.data-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 13px;
-}
-
-.data-table th,
-.data-table td {
-  padding: 10px 12px;
-  text-align: center;
-  border-bottom: 1px solid var(--border-lighter);
-}
-
-.data-table th {
-  font-weight: 600;
-  color: var(--text-secondary);
-  background: var(--bg-secondary, #f8fafc);
-}
-
-.data-table td:first-child,
-.data-table th:first-child {
-  text-align: left;
-}
-
-.data-table tr:hover {
-  background: var(--bg-secondary, #f8fafc);
-}
-
-.total-row {
-  background: var(--bg-secondary, #f8fafc);
-}
-
-.total-row td {
-  font-weight: 600;
-}
-
-.external-form {
-  background: var(--bg-secondary, #f8fafc);
+  padding: 12px 16px;
   border-radius: 8px;
-  padding: 16px;
-  margin-bottom: 16px;
+  border: 1px solid var(--border-lighter, #e5e7eb);
+  background: var(--bg-secondary, #f8fafc);
 }
-
-.external-form h4 {
-  margin: 0 0 12px;
-  font-size: 14px;
+.formula-title {
+  font-size: 13px;
   font-weight: 600;
   color: var(--text-primary);
+  margin-bottom: 8px;
 }
-
-.form-row {
-  display: flex;
-  gap: 24px;
-  flex-wrap: wrap;
-}
-
-.form-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.form-item label {
-  font-size: 13px;
+.formula-list {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12px;
+  line-height: 1.7;
   color: var(--text-secondary);
-  white-space: nowrap;
 }
-
-.empty-state {
-  text-align: center;
-  padding: 48px;
-  color: var(--text-tertiary);
+.formula-list li {
+  margin-bottom: 2px;
 }
-
+.formula-list strong {
+  color: var(--text-primary);
+}
+.empty-state { text-align: center; padding: 48px; color: var(--text-tertiary); }
 .loading-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 48px;
-  color: var(--text-secondary);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 48px; color: var(--text-secondary);
 }
 </style>

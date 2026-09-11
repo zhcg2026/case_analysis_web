@@ -124,6 +124,18 @@ try:
 except ImportError:
     from assessment_routes import register_assessment_routes
 
+# 考核人工数据录入
+try:
+    from backend.assessment_manual_routes import register_assessment_manual_routes
+except ImportError:
+    from assessment_manual_routes import register_assessment_manual_routes
+
+# 字典路由（大小类/立结案标准）
+try:
+    from backend.dict_routes import register_dict_routes
+except ImportError:
+    from dict_routes import register_dict_routes
+
 # 月度分析报告路由
 try:
     from backend.monthly_report.monthly_report_routes import register_monthly_report_routes
@@ -420,7 +432,7 @@ try:
 
     # 归属判断路由
     try:
-        register_dispatch_routes(app=app, protected=protected)
+        register_dispatch_routes(app=app, protected=protected, engine=engine)
         logger.info("归属判断路由注册成功")
     except Exception as e:
         logger.warning(f"归属判断路由注册失败: {e}")
@@ -452,6 +464,20 @@ try:
         logger.info("考核计分路由注册成功")
     except Exception as e:
         logger.warning(f"考核计分路由注册失败: {e}")
+
+    # 考核人工数据录入
+    try:
+        register_assessment_manual_routes(app=app, engine=engine, protected=protected, admin_required=admin_required)
+        logger.info("考核人工数据路由注册成功")
+    except Exception as e:
+        logger.warning(f"考核人工数据路由注册失败: {e}")
+
+    # 字典路由
+    try:
+        register_dict_routes(app=app, engine=engine, protected=protected, admin_required=admin_required)
+        logger.info("字典路由注册成功")
+    except Exception as e:
+        logger.warning(f"字典路由注册失败: {e}")
 
     # 月度分析报告路由
     try:
