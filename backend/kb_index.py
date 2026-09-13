@@ -25,6 +25,7 @@ import json
 import hashlib
 import argparse
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from typing import List
 
 # ⚠️ 必须在 import kb_common 之前加载 .env，否则 kb_common 顶部读到的
@@ -398,6 +399,19 @@ def doc_id_of(rel_path):
     return rel_path.replace("\\", "/")[:256]
 
 
+# 嵌入并发度：ollama 侧必须 OLLAMA_NUM_PARALLEL>=该值才真并行（默认串行排队，
+# 实测 2 路并发吞吐不变）；服务器 20 核 CPU + 160M jina 模型，6 路约 4~5 倍吞吐
+EMBED_WORKERS = int(os.getenv("KB_EMBED_WORKERS", "6"))
+
+
+def embed_texts_parallel(texts: List[str]) -> list:
+    """多线程并发嵌入一批文本：HTTP 型负载，线程池即可吃满 ollama 并行槽。"""
+    if len(texts) <= 1:
+        return [embed(t) for t in texts]
+    with ThreadPoolExecutor(max_workers=EMBED_WORKERS) as ex:
+        return list(ex.map(embed, texts))
+
+
 def _utf8_truncate(s: str, max_bytes: int) -> str:
     """按 UTF-8 字节数截断（errors=ignore 自动丢弃被切断的半个多字节字符）。
 
@@ -443,9 +457,10 @@ def _fit_tokens_bytes(tokens: list, max_bytes: int) -> str:
     return "[" + ",".join(parts) + "]"
 
 
-def make_row(doc_id, idx, chunk, doc_type, source):
+def make_row(doc_id, idx, chunk, doc_type, source, vec=None):
     text = chunk["text"]
-    vec = embed(text)
+    if vec is None:
+        vec = embed(text)
     if vec is None:
         logger.warning(f"embedding 失败，跳过：{doc_id}#{idx}")
         return None
@@ -517,9 +532,10 @@ def index_directory(client, base_dir, only_types=None):
                 parsed = _dispatch_parse(path, doc_type, org_cat)
                 if not parsed:
                     continue
+                vecs = embed_texts_parallel([c["text"] for c in parsed["chunks"]])
                 rows = []
-                for idx, chunk in enumerate(parsed["chunks"]):
-                    row = make_row(doc_id_of(rel), idx, chunk, doc_type, rel)
+                for idx, (chunk, vec) in enumerate(zip(parsed["chunks"], vecs)):
+                    row = make_row(doc_id_of(rel), idx, chunk, doc_type, rel, vec=vec)
                     if row:
                         rows.append(row)
                 if rows:
@@ -538,9 +554,10 @@ def index_directory(client, base_dir, only_types=None):
             parsed = _dispatch_parse(path, "org", cat)
             if not parsed:
                 continue
+            vecs = embed_texts_parallel([c["text"] for c in parsed["chunks"]])
             rows = []
-            for idx, chunk in enumerate(parsed["chunks"]):
-                row = make_row(doc_id_of(rel), idx, chunk, "org", rel)
+            for idx, (chunk, vec) in enumerate(zip(parsed["chunks"], vecs)):
+                row = make_row(doc_id_of(rel), idx, chunk, "org", rel, vec=vec)
                 if row:
                     rows.append(row)
             if rows:
