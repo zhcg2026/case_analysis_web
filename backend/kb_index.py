@@ -121,8 +121,10 @@ def define_schema():
         FieldSchema(name="source", dtype=DataType.VARCHAR, max_length=512),
         FieldSchema(name="title", dtype=DataType.VARCHAR, max_length=512),
         FieldSchema(name="text", dtype=DataType.VARCHAR, max_length=16000),
-        # 仅法律法规填充；检索时可用 expr 直接排除「已废止/已修改」，防误当作现行有效
-        FieldSchema(name="law_status", dtype=DataType.VARCHAR, max_length=16),
+        # 仅法律法规填充；检索时可用 expr 直接排除「已废止/已修改」，防误当作现行有效。
+        # max_length 是字节数：原 16 只装得下 5 个汉字（"现行有效"=12B 擦边过），
+        # 「现行有效（2019年修正）」=31B 整批拒绝；扩到 128 并在 make_row 按字节截。
+        FieldSchema(name="law_status", dtype=DataType.VARCHAR, max_length=128),
         # 立结案标准的「案件类型」实体（如“污水井盖”“路灯”），抽成独立可查询字段，
         # 用于用户点名某标准时确定性召回，不依赖语义排名。
         FieldSchema(name="case_type", dtype=DataType.VARCHAR, max_length=128),
@@ -461,7 +463,7 @@ def make_row(doc_id, idx, chunk, doc_type, source):
         "source": _utf8_truncate(source, 500),
         "title": _utf8_truncate(title, 500),
         "text": _utf8_truncate(text, 15000),
-        "law_status": (chunk.get("law_status") or "")[:16],
+        "law_status": _utf8_truncate(chunk.get("law_status") or "", 120),
         "case_type": _utf8_truncate(chunk.get("case_type") or "", 120),
         "metadata": _fit_meta_bytes(chunk.get("meta", {}) or {}, 7800),
         "text_tokens": _fit_tokens_bytes(tokens, 7800),
