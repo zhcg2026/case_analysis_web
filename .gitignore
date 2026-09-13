@@ -108,3 +108,14 @@ pip_cache/
 bug.txt
 nginx.conf
 docs/
+
+# 本地会话/工具数据
+.zcode/
+
+# 本地备份目录
+_backup_*/
+
+# 报告生成产物（服务器自生成，不进仓库）
+backend/reports/
+backend/monthly_report/work/
+
