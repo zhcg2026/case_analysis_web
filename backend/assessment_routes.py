@@ -205,9 +205,15 @@ def register_assessment_routes(app, engine=None, protected=None, admin_required=
             missing = {}
             # 库中人工分（主路径）
             try:
-                from assessment_manual_routes import load_external_data_from_db, persist_calc_results
+                from assessment_manual_routes import (
+                    load_external_data_from_db, persist_calc_results,
+                    load_exempt_for_batch, calc_to_case_names,
+                )
             except ImportError:
-                from backend.assessment_manual_routes import load_external_data_from_db, persist_calc_results
+                from backend.assessment_manual_routes import (
+                    load_external_data_from_db, persist_calc_results,
+                    load_exempt_for_batch, calc_to_case_names,
+                )
 
             db_external, missing = load_external_data_from_db(engine, batch)
             if external_data:
@@ -215,7 +221,29 @@ def register_assessment_routes(app, engine=None, protected=None, admin_required=
                 db_external.update(external_data)
             external_data = db_external
 
+            # 豁免期：覆盖到本月的部门整月不参与考核，其案件从统计中剔除
+            try:
+                exempt_items = load_exempt_for_batch(engine, batch)
+            except Exception as ee:
+                logger.warning(f'读取豁免期失败(不影响计算): {ee}')
+                exempt_items = []
+            for it in exempt_items:
+                for calc_name in it.get('unit_names') or [it.get('unit_name')]:
+                    for case_name in calc_to_case_names(calc_name):
+                        departments.pop(case_name, None)
+
             results = _calculate_scores(departments, external_data, missing=missing)
+
+            # 豁免单位写入结果：总分置空并附备注，供前端展示
+            for it in exempt_items:
+                for calc_name in it.get('unit_names') or [it.get('unit_name')]:
+                    results[calc_name] = {
+                        'total': 0, 'closed': 0, 'overtime': 0,
+                        'delayed': 0, 'rework': 0,
+                        'system_score': None, 'final_score': None,
+                        'exempt': True, 'exempt_note': it['note'],
+                        'missing_fields': [], 'is_complete': False,
+                    }
 
             try:
                 persist_calc_results(engine, batch, results, missing, getattr(request, 'username', 'admin'))
@@ -227,6 +255,7 @@ def register_assessment_routes(app, engine=None, protected=None, admin_required=
                 'batch': batch,
                 'results': results,
                 'missing': missing,
+                'exemptions': exempt_items,
             })
         except Exception as e:
             logger.error(f"计算考核得分失败: {e}")

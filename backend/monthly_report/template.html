@@ -327,11 +327,11 @@ const axisStyle={axisLine:{lineStyle:{color:'#cbd5e0'}},axisLabel:{color:'#5a647
 function mk(id,opt){const el=document.getElementById(id);if(!el)return;const c=echarts.init(el);c.setOption(opt);window.addEventListener('resize',()=>c.resize());return c;}
 function barH(id,cats,vals,name,color,unit,left,fmt){
   mk(id,{grid:Object.assign({},baseGrid,{left:left||110,right:70}),
-  tooltip:{trigger:'axis',axisPointer:{type:'shadow'},formatter:p=>p[0].name+'<br/>'+name+'：'+(fmt?fmt(p[0].value):F(p[0].value,2)+(unit||''))},
+  tooltip:{trigger:'axis',axisPointer:{type:'shadow'},formatter:p=>p[0].name+'<br/>'+name+'：'+(fmt?fmt(p[0]):F(p[0].value,2)+(unit||''))},
   xAxis:Object.assign({type:'value'},axisStyle),
   yAxis:Object.assign({type:'category',data:cats,inverse:true},axisStyle,{axisLabel:{color:'#374151',fontSize:11.5}}),
   series:[{type:'bar',data:vals,itemStyle:{color:color,borderRadius:[0,3,3,0]},barMaxWidth:16,
-    label:{show:true,position:'right',color:'#5a6474',fontSize:11,formatter:p=>fmt?fmt(p.value):F(p.value,2)+(unit||'')}}]});
+    label:{show:true,position:'right',color:'#5a6474',fontSize:11,formatter:p=>fmt?fmt(p):F(p.value,2)+(unit||'')}}]});
 }
 function barV(id,cats,series,unit,rot,stack){
   mk(id,{grid:Object.assign({},baseGrid,{bottom:rot?80:50}),tooltip:{trigger:'axis',axisPointer:{type:'shadow'}},

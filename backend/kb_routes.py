@@ -218,6 +218,14 @@ def register_kb_routes(app, protected=None, admin_required=None):
                 except Exception as e:
                     _rebuild_tasks[task_id].update(
                         stage="error", status="error", message=f"重建失败：{e}")
+                finally:
+                    # 集合被 drop+重建（或中途失败），BM25 语料缓存必然过期：
+                    # 失效本进程缓存并写标记文件，通知其它 gunicorn worker 重建
+                    try:
+                        from kb_store import invalidate_bm25_cache
+                        invalidate_bm25_cache()
+                    except Exception:
+                        pass
 
             t = threading.Thread(target=_run, daemon=True)
             t.start()
@@ -324,6 +332,9 @@ def register_kb_routes(app, protected=None, admin_required=None):
             real_doc_id = unquote(doc_id).replace('"', '\\"')
             res = client.delete(UNIFIED_COLLECTION, filter=f'doc_id == "{real_doc_id}"')
             client.flush(UNIFIED_COLLECTION)
+            # BM25 语料缓存含已删文档，失效之（含通知其它 worker）
+            from kb_store import invalidate_bm25_cache
+            invalidate_bm25_cache()
             return jsonify({"deleted": True, "doc_id": real_doc_id, "result": str(res)}), 200
         except Exception as e:
             import logging
@@ -352,6 +363,9 @@ def register_kb_routes(app, protected=None, admin_required=None):
             expr = ' or '.join([f'doc_id == "{unquote(i).replace(chr(34), chr(92)+chr(34))}"' for i in ids])
             res = client.delete(UNIFIED_COLLECTION, filter=expr)
             client.flush(UNIFIED_COLLECTION)
+            # BM25 语料缓存含已删文档，失效之（含通知其它 worker）
+            from kb_store import invalidate_bm25_cache
+            invalidate_bm25_cache()
             return jsonify({"deleted": True, "count": len(ids), "result": str(res)}), 200
         except Exception as e:
             import logging

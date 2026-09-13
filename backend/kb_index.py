@@ -25,6 +25,7 @@ import json
 import hashlib
 import argparse
 import logging
+from typing import List
 
 # ⚠️ 必须在 import kb_common 之前加载 .env，否则 kb_common 顶部读到的
 #    USE_LOCAL_MODE / LLM_PROVIDER 等都是 None，会误走远程 Milvus 分支。
@@ -88,6 +89,12 @@ DIR_DOC_TYPE = {
 # 刻意不入库的文件（非知识内容）
 SKIP_FILES = {"laws_corpus.jsonl", "法规采集清单.csv", "build_jsonl.py"}
 
+# org/general 单块长度上限。依据：本地 MiniLM 的 embedding 上下文只有 512 token
+# （约 450~500 汉字），超过部分向量里完全不存在——实测 1531 字的《运城市城市管理局》
+# 整块入库后，向量只覆盖开头，"主要职责"在 org 桶排不进 top6，查询召回不到。
+# 600 字给分词/特殊 token 留余量，切后每块语义都能被完整编码。
+ORG_CHUNK_CHARS = 600
+
 # 根目录下的局机关文档：不归属任何子目录，但属于 org 类知识，单独入库。
 # 键为文件名，值为 org_category 标记（供「组织架构」类查询直接命中总览文档、答案按类分组）。
 ROOT_ORG_FILES = {
@@ -97,12 +104,11 @@ ROOT_ORG_FILES = {
 
 
 def get_client():
-    from pymilvus import MilvusClient
-    if USE_LOCAL_MODE:
-        logger.info(f"本地模式：Milvus Lite @ {LOCAL_MILVUS_FILE}")
-        return MilvusClient(LOCAL_MILVUS_FILE)
-    logger.info(f"远程模式：Milvus @ {MILVUS_HOST}:{MILVUS_PORT}")
-    return MilvusClient(uri=f"http://{MILVUS_HOST}:{MILVUS_PORT}")
+    # 复用 kb_store 的进程级单例连接：同进程对本地 Milvus Lite 重复开 MilvusClient
+    # 会触发 500（见 kb_routes 顶部说明），而管理端"重建索引"走的正是本函数，
+    # 与检索（kb_store.get_client）共享同一连接才是安全做法。
+    from kb_store import get_client as _shared_client
+    return _shared_client()
 
 
 def define_schema():
@@ -198,18 +204,53 @@ def parse_standard(path):
     return {"chunks": chunks}
 
 
+def _split_lines_to_chunks(text: str, size: int = ORG_CHUNK_CHARS, overlap: int = 50) -> List[str]:
+    """按整行聚合切块：行依次累加，超过 size 即成块；超长单行硬切（带 overlap）。
+
+    职责/制度类文档的职能条目都是整行一条，按行聚合能保证条目不被拦腰截断
+    （仅单行本身超过 size 时才硬切）。
+    """
+    chunks, cur = [], ""
+    for line in text.splitlines():
+        line = line.rstrip()
+        if not line:
+            continue
+        if len(cur) + len(line) + 1 <= size:
+            cur = f"{cur}\n{line}" if cur else line
+            continue
+        if cur:
+            chunks.append(cur)
+        while len(line) > size:
+            chunks.append(line[:size])
+            line = line[size - overlap:]
+        cur = line
+    if cur:
+        chunks.append(cur)
+    return chunks
+
+
 def parse_org(path, category: str = ""):
-    """单位/科室职责 txt：整条切块，org_name = 文件名；category 标记机构类别
-    （内设科室 / 下属单位 / 架构总览 / 局机关），供答案按类分组。"""
+    """单位/科室职责 txt：短文档整条切块；长文档按行聚合成 ≤ORG_CHUNK_CHARS 的多块。
+
+    为什么不能整块入库（踩坑记录）：embedding 上下文只有 512 token（约450~500字），
+    1500+ 字的《运城市城市管理局》整块入库后向量只覆盖开头几条职能，且该文档用词
+    是"主要职能"而非"主要职责"，BM25 也接不住——「城市管理局的主要职责」在 org 桶
+    排不进 top6，直接召回不到。切块后每块 ≤600 字可被完整编码，标题带文档名+序号，
+    向量/BM25 两路都能命中任意一块，答案质量不受影响（text 是同一份内容的分段）。
+    """
     content = _read(path).strip()
     fn = os.path.splitext(os.path.basename(path))[0]
-    return {
-        "chunks": [{
-            "text": content,
-            "title": fn,
-            "meta": {"org_name": fn, "org_category": category},
-        }],
-    }
+    pieces = [content] if len(content) <= ORG_CHUNK_CHARS else _split_lines_to_chunks(content)
+    chunks = []
+    for i, piece in enumerate(pieces):
+        title = fn if i == 0 else f"{fn}（第{i + 1}部分）"
+        text = piece if i == 0 else f"{fn}（第{i + 1}部分）\n{piece}"
+        chunks.append({
+            "text": text,
+            "title": title,
+            "meta": {"org_name": fn, "org_category": category, "part": i + 1},
+        })
+    return {"chunks": chunks}
 
 
 def parse_qa(path):
@@ -241,8 +282,12 @@ def parse_qa(path):
     return {"chunks": chunks}
 
 
-def chunk_general(text, size=1500, overlap=100):
-    """通用文档（制度等大合集）：按空行分段聚合成 ~size 字块。"""
+def chunk_general(text, size=ORG_CHUNK_CHARS, overlap=60):
+    """通用文档（制度等大合集）：按空行分段聚合成 ~size 字块。
+
+    size 从 1500 降到 600（=ORG_CHUNK_CHARS）：与 org 同理，1500 字块的向量只覆盖
+    前 500 字，制度汇编后半段内容在向量里丢失；切块后制度条目均能被完整编码。
+    """
     segments = [s.strip() for s in re.split(r"\n\s*\n", text) if s.strip()]
     chunks, cur = [], ""
     for seg in segments:
@@ -252,8 +297,12 @@ def chunk_general(text, size=1500, overlap=100):
             if cur:
                 chunks.append(cur)
             while len(seg) > size:
-                chunks.append(seg[:size])
-                seg = seg[size - overlap:]
+                # 跳过纯空白切片（源文件里存在 600+ 字前导空格的段落，硬切会把
+                # 空格单独切成块，embed 对空文本返回 None 白白告警）
+                head = seg[:size]
+                if head.strip():
+                    chunks.append(head)
+                seg = seg[size - overlap:].lstrip()
             cur = seg
     if cur:
         chunks.append(cur)

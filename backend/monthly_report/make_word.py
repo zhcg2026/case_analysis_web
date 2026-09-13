@@ -11,8 +11,16 @@ for _f in glob.glob(os.path.join(_cache, 'fontlist*')):
     os.remove(_f)
 import matplotlib.font_manager as fm
 # 显式注册字体文件 + 直接设 font.family 为字体名（不走 sans-serif 中转）
-fm.fontManager.addfont('/usr/share/fonts/truetype/wqy/wqy-microhei.ttc')
-matplotlib.rcParams['font.family'] = 'WenQuanYi Micro Hei'
+# 字体随环境不同：服务器容器为文泉驿，Windows 为微软雅黑/黑体，取第一个存在的
+for _fp, _fam in (
+    ('/usr/share/fonts/truetype/wqy/wqy-microhei.ttc', 'WenQuanYi Micro Hei'),
+    ('C:/Windows/Fonts/msyh.ttc', 'Microsoft YaHei'),
+    ('C:/Windows/Fonts/simhei.ttf', 'SimHei'),
+):
+    if os.path.exists(_fp):
+        fm.fontManager.addfont(_fp)
+        matplotlib.rcParams['font.family'] = _fam
+        break
 matplotlib.rcParams['axes.unicode_minus'] = False
 import matplotlib.pyplot as plt
 import numpy as np

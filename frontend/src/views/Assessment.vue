@@ -9,6 +9,9 @@
         <el-button type="primary" @click="calculateScores" :loading="calculating" :disabled="!selectedBatch">
           计算得分
         </el-button>
+        <el-button type="success" @click="generateMonthlyReport" :loading="generatingReport" :disabled="!selectedBatch">
+          生成考核月报
+        </el-button>
       </div>
     </div>
 
@@ -66,7 +69,12 @@
                   <td>{{ displayScore(team, 'street') }}</td>
                   <td>{{ displayScore(team, 'extra') }}</td>
                   <td>
-                    <strong v-if="results?.[team]?.final_score != null">{{ results[team].final_score }}</strong>
+                    <template v-if="exemptInfo(team)">
+                      <span class="exempt-tag">不参与考核</span>
+                      <div class="exempt-note">{{ exemptInfo(team).note }}</div>
+                      <a v-if="exemptInfo(team).file_url" :href="exemptInfo(team).file_url" target="_blank" class="exempt-file">依据：{{ exemptInfo(team).file_name || '查看文件' }}</a>
+                    </template>
+                    <strong v-else-if="results?.[team]?.final_score != null">{{ results[team].final_score }}</strong>
                     <span v-else class="miss">未录入，不参与计算</span>
                   </td>
                 </tr>
@@ -104,7 +112,12 @@
                   <td>{{ displayScore(district, 'center', 'sanitation') }}</td>
                   <td>{{ displayScore(district, 'extra', 'sanitation') }}</td>
                   <td>
-                    <strong v-if="results?.[district]?.final_score != null">{{ results[district].final_score }}</strong>
+                    <template v-if="exemptInfo(district)">
+                      <span class="exempt-tag">不参与考核</span>
+                      <div class="exempt-note">{{ exemptInfo(district).note }}</div>
+                      <a v-if="exemptInfo(district).file_url" :href="exemptInfo(district).file_url" target="_blank" class="exempt-file">依据：{{ exemptInfo(district).file_name || '查看文件' }}</a>
+                    </template>
+                    <strong v-else-if="results?.[district]?.final_score != null">{{ results[district].final_score }}</strong>
                     <span v-else class="miss">未录入，不参与计算</span>
                   </td>
                 </tr>
@@ -143,7 +156,12 @@
                   <td>{{ displayScore(district, 'center', 'garden') }}</td>
                   <td>{{ displayScore(district, 'extra', 'garden') }}</td>
                   <td>
-                    <strong v-if="results?.[district]?.final_score != null">{{ results[district].final_score }}</strong>
+                    <template v-if="exemptInfo(district)">
+                      <span class="exempt-tag">不参与考核</span>
+                      <div class="exempt-note">{{ exemptInfo(district).note }}</div>
+                      <a v-if="exemptInfo(district).file_url" :href="exemptInfo(district).file_url" target="_blank" class="exempt-file">依据：{{ exemptInfo(district).file_name || '查看文件' }}</a>
+                    </template>
+                    <strong v-else-if="results?.[district]?.final_score != null">{{ results[district].final_score }}</strong>
                     <span v-else class="miss">未录入，不参与计算</span>
                   </td>
                 </tr>
@@ -172,7 +190,12 @@
                   <td>{{ displayScore(park, 'center', 'garden_park') }}</td>
                   <td>{{ displayScore(park, 'extra', 'garden_park') }}</td>
                   <td>
-                    <strong v-if="results?.[park]?.final_score != null">{{ results[park].final_score }}</strong>
+                    <template v-if="exemptInfo(park)">
+                      <span class="exempt-tag">不参与考核</span>
+                      <div class="exempt-note">{{ exemptInfo(park).note }}</div>
+                      <a v-if="exemptInfo(park).file_url" :href="exemptInfo(park).file_url" target="_blank" class="exempt-file">依据：{{ exemptInfo(park).file_name || '查看文件' }}</a>
+                    </template>
+                    <strong v-else-if="results?.[park]?.final_score != null">{{ results[park].final_score }}</strong>
                     <span v-else class="miss">未录入，不参与计算</span>
                   </td>
                 </tr>
@@ -208,7 +231,12 @@
                   <td>{{ formatRate(stats.rework, stats.total) }}</td>
                   <td>{{ displayScore(unit, 'extra', 'municipal') }}</td>
                   <td>
-                    <strong v-if="results?.[unit]?.final_score != null">{{ results[unit].final_score }}</strong>
+                    <template v-if="exemptInfo(unit)">
+                      <span class="exempt-tag">不参与考核</span>
+                      <div class="exempt-note">{{ exemptInfo(unit).note }}</div>
+                      <a v-if="exemptInfo(unit).file_url" :href="exemptInfo(unit).file_url" target="_blank" class="exempt-file">依据：{{ exemptInfo(unit).file_name || '查看文件' }}</a>
+                    </template>
+                    <strong v-else-if="results?.[unit]?.final_score != null">{{ results[unit].final_score }}</strong>
                     <span v-else class="miss">未录入，不参与计算</span>
                   </td>
                 </tr>
@@ -251,6 +279,7 @@ const loading = ref(false)
 const summary = ref(null)
 const results = ref(null)
 const calculating = ref(false)
+const generatingReport = ref(false)
 const activeTab = ref('overview')
 
 // 人工分值（库中）
@@ -259,6 +288,13 @@ const garbage = ref([]) // [{region, district_name, piece_count}]
 const hasManual = ref(false)
 const manualHint = ref('')
 const manualHintClass = ref('')
+
+// 豁免期：unit_name → {note, file_url, file_name}
+const exemptMap = ref({})
+
+function exemptInfo(unit) {
+  return exemptMap.value[unit] || null
+}
 
 const totalCount = computed(() => {
   if (!summary.value?.dept_groups) return 0
@@ -316,10 +352,12 @@ async function loadSummary() {
   summary.value = null
   results.value = null
   manualHint.value = ''
+  exemptMap.value = {}
   try {
-    const [sumRes, manRes] = await Promise.all([
+    const [sumRes, manRes, exRes] = await Promise.all([
       axios.get(`${API}/summary`, { params: { batch: selectedBatch.value } }),
       axios.get(`${API}/manual`, { params: { batch: selectedBatch.value } }),
+      axios.get(`${API}/exemptions`, { params: { batch: selectedBatch.value } }),
     ])
     if (sumRes.data?.success) summary.value = sumRes.data
     if (manRes.data?.success) {
@@ -332,6 +370,20 @@ async function loadSummary() {
       } else {
         manualHint.value = `已从库中读取人工分值 ${manualScores.value.length} 条。若需修改，请到「系统管理 → 考核数据录入」。`
         manualHintClass.value = 'info'
+      }
+    }
+    if (exRes.data?.success) {
+      const em = {}
+      for (const it of exRes.data.exemptions || []) {
+        for (const n of it.unit_names || [it.unit_name]) {
+          em[n] = it
+        }
+      }
+      exemptMap.value = em
+      if (Object.keys(em).length) {
+        manualHint.value = (manualHint.value ? manualHint.value + ' ' : '') +
+          `本月 ${Object.keys(em).length} 个部门设置豁免期，不参与考核。`
+        if (!manualHintClass.value) manualHintClass.value = 'warn'
       }
     }
   } catch (e) {
@@ -374,6 +426,33 @@ async function calculateScores() {
   }
 }
 
+async function generateMonthlyReport() {
+  if (!selectedBatch.value) return
+  try {
+    await ElMessageBox.confirm(
+      '将读取当月案件数据与考核录入数据，自动计算得分并生成 Word 运行月报（同月重复生成将覆盖），是否继续？',
+      '生成考核月报',
+      { type: 'info', confirmButtonText: '生成', cancelButtonText: '取消' }
+    )
+  } catch {
+    return
+  }
+  generatingReport.value = true
+  try {
+    const res = await axios.post(`${API}/report/generate`, { batch: selectedBatch.value })
+    if (res.data?.success) {
+      ElMessage.success('考核月报已生成')
+      window.open(res.data.file_url, '_blank')
+    } else {
+      ElMessage.error(res.data?.error || '生成失败')
+    }
+  } catch (e) {
+    ElMessage.error(e.response?.data?.error || '生成失败，请检查考核录入数据')
+  } finally {
+    generatingReport.value = false
+  }
+}
+
 onMounted(() => {
   fetchMonths()
 })
@@ -410,6 +489,12 @@ onMounted(() => {
 .total-row { background: var(--bg-secondary, #f8fafc); }
 .total-row td { font-weight: 600; }
 .miss { color: #b45309; font-size: 12px; }
+.exempt-tag {
+  display: inline-block; padding: 2px 8px; border-radius: 4px;
+  background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; font-size: 12px;
+}
+.exempt-note { font-size: 12px; color: var(--text-secondary, #6b7280); margin-top: 4px; }
+.exempt-file { font-size: 12px; color: var(--primary-600, #2563eb); display: inline-block; margin-top: 2px; }
 .formula-box {
   margin-top: 16px;
   padding: 12px 16px;

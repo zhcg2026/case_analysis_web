@@ -34,12 +34,19 @@ OLLAMA_EMBED_MODEL = os.getenv('OLLAMA_EMBED_MODEL', 'EntropyYue/jina-embeddings
 MILVUS_HOST = os.getenv('MILVUS_HOST', 'localhost')
 MILVUS_PORT = os.getenv('MILVUS_PORT', '19530')
 
-LOCAL_MILVUS_FILE = os.getenv('LOCAL_MILVUS_FILE', './local_milvus.db')
+# Milvus Lite 文件路径：默认锚定本文件所在目录（backend/）。此前默认 './local_milvus.db'
+# 按 CWD 解析，从项目根目录启动时会静默新建一个空库，检索永远为空且无任何报错
+# （根目录那个 2026-07-31 的空 local_milvus.db 就是这么来的）。
+LOCAL_MILVUS_FILE = os.getenv('LOCAL_MILVUS_FILE', os.path.join(_HERE, 'local_milvus.db'))
 LOCAL_EMBED_MODEL = os.getenv('LOCAL_EMBED_MODEL', 'paraphrase-multilingual-MiniLM-L12-v2')
 
 DOUBAO_API_KEY = os.getenv('DOUBAO_API_KEY', '')
 DOUBAO_API_URL = os.getenv('DOUBAO_API_URL', 'https://ark.cn-beijing.volces.com/api/v3/chat/completions')
 DOUBAO_MODEL = os.getenv('DOUBAO_MODEL', 'doubao-seed-1-8-251228')
+
+# 限制 LLM 生成上限：知识库问答要求输出 answer+citations 的 JSON，1024 token 足够。
+# 不限时生成长回答会显著拖慢响应（尤其豆包偶发慢时），也浪费 token。
+LLM_MAX_TOKENS = int(os.getenv('LLM_MAX_TOKENS', '1024'))
 
 # 评分权重（可通过环境变量覆盖）
 SCORE_WEIGHT_CORE = float(os.getenv('SCORE_WEIGHT_CORE', '0.45'))
@@ -209,7 +216,8 @@ def call_llm(prompt: str, provider: str = None, timeout: int = 120) -> Optional[
                 },
                 json={
                     "model": DOUBAO_MODEL,
-                    "messages": [{"role": "user", "content": [{"type": "text", "text": prompt}]}]
+                    "messages": [{"role": "user", "content": [{"type": "text", "text": prompt}]}],
+                    "max_tokens": LLM_MAX_TOKENS,
                 },
                 timeout=timeout
             )
@@ -225,7 +233,7 @@ def call_llm(prompt: str, provider: str = None, timeout: int = 120) -> Optional[
                     "model": OLLAMA_MODEL,
                     "prompt": prompt,
                     "stream": False,
-                    "options": {"num_ctx": 4096, "temperature": 0.3}
+                    "options": {"num_ctx": 4096, "temperature": 0.3, "num_predict": LLM_MAX_TOKENS}
                 },
                 timeout=timeout
             )

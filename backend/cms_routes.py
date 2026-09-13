@@ -204,6 +204,11 @@ def register_cms_routes(app, Session, Category, Article):
                         article_dict['file_path'] = article.file_path
                     except AttributeError:
                         article_dict['file_path'] = None
+                    # 尝试获取video_path字段，如果不存在则跳过
+                    try:
+                        article_dict['video_path'] = article.video_path
+                    except AttributeError:
+                        article_dict['video_path'] = None
                     articles_list.append(article_dict)
                 except Exception as article_error:
                     logging.warning(f"Error processing article {article.id}: {str(article_error)}")
@@ -249,6 +254,7 @@ def register_cms_routes(app, Session, Category, Article):
                 'status': article.status,
                 'view_count': article.view_count,
                 'file_path': article.file_path,
+                'video_path': article.video_path,
                 'created_at': article.created_at.strftime('%Y-%m-%d %H:%M:%S') if article.created_at else None,
                 'updated_at': article.updated_at.strftime('%Y-%m-%d %H:%M:%S') if article.updated_at else None,
                 'published_at': article.published_at.strftime('%Y-%m-%d %H:%M:%S') if article.published_at else None
@@ -275,6 +281,7 @@ def register_cms_routes(app, Session, Category, Article):
             summary = data.get('summary', '')
             status = data.get('status', 'draft')
             file_path = data.get('file_path', '')
+            video_path = data.get('video_path', '')
 
             if not title:
                 return jsonify({'error': '标题不能为空'}), 400
@@ -296,6 +303,7 @@ def register_cms_routes(app, Session, Category, Article):
                 author_id=request.user_id,
                 status=status,
                 file_path=file_path,
+                video_path=video_path,
                 published_at=datetime.datetime.now() if status == 'published' else None
             )
             session.add(article)
@@ -330,6 +338,7 @@ def register_cms_routes(app, Session, Category, Article):
             summary = data.get('summary', '')
             status = data.get('status', 'draft')
             file_path = data.get('file_path', '')
+            video_path = data.get('video_path', '')
 
             if title:
                 article.title = title
@@ -345,6 +354,8 @@ def register_cms_routes(app, Session, Category, Article):
                     article.published_at = datetime.datetime.now()
             if file_path is not None:
                 article.file_path = file_path
+            if video_path is not None:
+                article.video_path = video_path
 
             session.commit()
 

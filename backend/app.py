@@ -149,7 +149,7 @@ if not SECRET_KEY:
 TOKEN_EXPIRATION = int(os.getenv('TOKEN_EXPIRATION_SECONDS', str(24 * 60 * 60)))
 
 app = Flask(__name__)
-app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB 文件上传限制
+app.config['MAX_CONTENT_LENGTH'] = 200 * 1024 * 1024  # 200MB 文件上传限制（文章视频可能较大）
 CORS_ORIGINS = os.getenv('CORS_ORIGINS', '*')
 if CORS_ORIGINS == '*':
     CORS(app, resources={r"/*": {"origins": "*", "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"], "allow_headers": ["Content-Type", "Authorization"], "expose_headers": ["Content-Disposition"]}})
@@ -234,6 +234,7 @@ try:
         status = Column(String(20), default='draft')
         view_count = Column(Integer, default=0)
         file_path = Column(String(500))
+        video_path = Column(String(500))
         created_at = Column(DateTime(timezone=True), server_default=func.now())
         updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
         published_at = Column(DateTime(timezone=True))
@@ -366,6 +367,17 @@ try:
     except Exception as _e:
         logger.warning(f"permissions 表迁移检查失败: {_e}")
 
+    # 自动迁移：确保 articles 表包含 video_path 列（文章视频）
+    try:
+        with engine.connect() as _conn:
+            _cols = {r[0] for r in _conn.execute(text("SHOW COLUMNS FROM articles"))}
+            if 'video_path' not in _cols:
+                _conn.execute(text("ALTER TABLE articles ADD COLUMN video_path VARCHAR(500) COMMENT '文章视频URL'"))
+                _conn.commit()
+                logger.info("articles 表新增列: video_path")
+    except Exception as _e:
+        logger.warning(f"articles 表迁移检查失败: {_e}")
+
     # 注册认证路由
     register_auth_routes(app=app, Session=Session, User=User, engine=engine)
     logger.info("认证路由注册成功")
@@ -486,6 +498,17 @@ try:
     except Exception as e:
         logger.warning(f"月度分析报告路由注册失败: {e}")
 
+    # 考核月报（运行月报）路由
+    try:
+        try:
+            from backend.assessment_report.assessment_report_routes import register_assessment_report_routes
+        except ImportError:
+            from assessment_report.assessment_report_routes import register_assessment_report_routes
+        register_assessment_report_routes(app=app, engine=engine, protected=protected)
+        logger.info("考核月报路由注册成功")
+    except Exception as e:
+        logger.warning(f"考核月报路由注册失败: {e}")
+
 except Exception as e:
     logger.error(f"数据库初始化失败: {e}")
     engine = None
@@ -571,6 +594,37 @@ def upload_file():
         return jsonify({'success': True, 'file_path': url, 'url': url})
     except Exception as e:
         logger.warning(f"上传文件失败: {e}")
+        return jsonify({'error': '上传失败'}), 500
+
+
+# ===================== 视频上传（文章视频） =====================
+# 接收 multipart 文件（字段名 file），保存至 backend/uploads/，返回 file_path。
+# 仅允许浏览器可直接播放的格式；/uploads/ 静态路由基于 send_from_directory，
+# 自动支持 Range 请求，前端 <video> 可拖动进度条。
+ALLOWED_VIDEO_EXT = {'.mp4', '.webm', '.ogg', '.ogv', '.mov', '.m4v'}
+
+@app.route('/api/upload/video', methods=['POST'])
+@admin_required
+def upload_video():
+    try:
+        if 'file' not in request.files:
+            return jsonify({'error': '请选择视频文件'}), 400
+        file = request.files['file']
+        if not file or not file.filename:
+            return jsonify({'error': '请选择视频文件'}), 400
+        ext = os.path.splitext(file.filename)[1].lower()
+        if ext not in ALLOWED_VIDEO_EXT:
+            return jsonify({'error': '仅支持 mp4/webm/ogg/mov/m4v 视频格式，推荐 mp4'}), 400
+        upload_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
+        os.makedirs(upload_dir, exist_ok=True)
+        import uuid
+        save_name = f"{uuid.uuid4().hex}{ext}"
+        save_path = os.path.join(upload_dir, save_name)
+        file.save(save_path)
+        url = f"/uploads/{save_name}"
+        return jsonify({'success': True, 'file_path': url, 'url': url})
+    except Exception as e:
+        logger.warning(f"上传视频失败: {e}")
         return jsonify({'error': '上传失败'}), 500
 
 

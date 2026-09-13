@@ -20,17 +20,21 @@
         <h3>平台录入</h3>
         <div class="row">
           <div class="field">
-            <label>当月考核案件数</label>
+            <label>当月考核案件数（月报受理数）</label>
             <input type="number" v-model.number="monthly.assessment_case_cnt" min="0" />
           </div>
         </div>
         <div class="field">
-          <label>工作动态（整月总结）</label>
-          <textarea v-model="monthly.work_note" rows="3" placeholder="本月工作动态…"></textarea>
+          <label>工作动态（整月总结，一行一条，序号自行填写）</label>
+          <textarea v-model="monthly.work_note" rows="6" placeholder="一行一条，如：&#10;提升防汛实战能力。紧扣…&#10;加强部门协调联动。针对…"></textarea>
+        </div>
+        <div class="field">
+          <label>加减分项说明（月报市容秩序表注，可空）</label>
+          <textarea v-model="monthly.extra_note" rows="2" placeholder="如：未到 18:00 准许出摊时间，饭店提前店外经营，1处扣0.1分"></textarea>
         </div>
 
         <h4>市容秩序 · 执法分队</h4>
-        <table class="grid">
+        <table class="ami-grid">
           <thead>
             <tr><th>分队</th><th>队考核分</th><th>街道办分</th><th>加减分项</th></tr>
           </thead>
@@ -45,7 +49,7 @@
         </table>
 
         <h4>环境卫生 · 片区</h4>
-        <table class="grid">
+        <table class="ami-grid">
           <thead>
             <tr><th>片区</th><th>中心考核分</th><th>加减分项</th></tr>
           </thead>
@@ -59,7 +63,7 @@
         </table>
 
         <h4>园林绿化 · 片区</h4>
-        <table class="grid">
+        <table class="ami-grid">
           <thead>
             <tr><th>片区</th><th>中心考核分</th><th>加减分项</th></tr>
           </thead>
@@ -73,7 +77,7 @@
         </table>
 
         <h4>园林绿化 · 公园广场</h4>
-        <table class="grid">
+        <table class="ami-grid">
           <thead>
             <tr><th>单位</th><th>中心考核分</th><th>加减分项</th></tr>
           </thead>
@@ -87,7 +91,7 @@
         </table>
 
         <h4>市政公用 · 子单位</h4>
-        <table class="grid">
+        <table class="ami-grid">
           <thead>
             <tr><th>单位</th><th>加减分项</th></tr>
           </thead>
@@ -105,7 +109,7 @@
         <h3>台账材料</h3>
 
         <h4>部门挂账案件</h4>
-        <table class="grid">
+        <table class="ami-grid">
           <thead>
             <tr><th>单位</th><th>数量</th><th>主要内容</th><th>理由</th><th>截止时间</th><th></th></tr>
           </thead>
@@ -123,7 +127,7 @@
         <button class="btn" @click="ledgers.pending.push({unit_name:'',piece_cnt:null,content:'',reason:'',deadline:''})">+ 添加挂账</button>
 
         <h4>1月至今积压案件</h4>
-        <table class="grid">
+        <table class="ami-grid">
           <thead>
             <tr><th>单位</th><th>部门</th><th>数量</th><th>主要内容</th><th></th></tr>
           </thead>
@@ -140,7 +144,7 @@
         <button class="btn" @click="ledgers.backlog.push({unit_name:'',dept_name:'',piece_cnt:null,content:''})">+ 添加积压</button>
 
         <h4>表扬件</h4>
-        <table class="grid">
+        <table class="ami-grid">
           <thead>
             <tr><th>来源</th><th>单位</th><th>内容</th><th></th></tr>
           </thead>
@@ -182,7 +186,7 @@
         </div>
 
         <h4>专项采集明细（类别 + 件数）</h4>
-        <table class="grid">
+        <table class="ami-grid">
           <thead>
             <tr><th>大类</th><th>小类</th><th>件数</th><th></th></tr>
           </thead>
@@ -209,6 +213,51 @@
       </section>
     </div>
 
+    <!-- 豁免期（全局设置，不随月份变化） -->
+    <section class="card">
+      <h3>不参与考核设置（豁免期）</h3>
+      <p class="card-tip">
+        设置后，豁免期覆盖到的考核月份内，该部门整月不参与考核计算，考核计分页将显示备注及文件依据。此设置全局生效，不随上方考核月份变化。
+      </p>
+      <table class="ami-grid">
+        <thead>
+          <tr><th>部门</th><th>开始日期</th><th>截止日期</th><th>原因</th><th>文件依据</th><th></th></tr>
+        </thead>
+        <tbody>
+          <tr v-for="(it, i) in exemptions" :key="i">
+            <td><input list="assess-unit-list" v-model="it.unit_name" /></td>
+            <td><input type="date" v-model="it.start_date" /></td>
+            <td><input type="date" v-model="it.end_date" /></td>
+            <td><input v-model="it.reason" placeholder="不参与考核原因" /></td>
+            <td>
+              <template v-if="it.file_url">
+                <a :href="it.file_url" target="_blank" class="file-link">{{ it.file_name || '查看文件' }}</a>
+                <button class="link danger" @click="clearExemptFile(it)">删</button>
+              </template>
+              <button v-else class="link" :disabled="it._uploading" @click="pickExemptFile(i)">
+                {{ it._uploading ? '上传中…' : '+ 上传依据' }}
+              </button>
+            </td>
+            <td><button class="link danger" @click="exemptions.splice(i,1)">删</button></td>
+          </tr>
+          <tr v-if="!exemptions.length">
+            <td colspan="6" class="grid-empty">暂无豁免设置</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="exempt-actions">
+        <button class="btn" @click="addExempt">+ 添加豁免</button>
+        <button class="btn btn-primary" :disabled="savingExempt" @click="saveExemptions">
+          {{ savingExempt ? '保存中…' : '保存豁免设置' }}
+        </button>
+      </div>
+    </section>
+
+    <input ref="exemptFileInput" type="file" style="display:none" @change="onExemptFileChosen" />
+
+    <datalist id="assess-unit-list">
+      <option v-for="u in assessUnitOptions" :key="'a'+u" :value="u" />
+    </datalist>
     <datalist id="unit-list">
       <option v-for="u in allUnits" :key="u.id" :value="u.unit_name" />
     </datalist>
@@ -229,7 +278,7 @@ const tmpl = ref({
   dispatch_teams: [], sanitation_districts: [], garden_districts: [],
   parks: [], municipal_units: [], garbage_regions: [],
 })
-const monthly = reactive({ assessment_case_cnt: null, work_note: '' })
+const monthly = reactive({ assessment_case_cnt: null, work_note: '', extra_note: '' })
 const scoreMap = reactive({})
 const garbage = reactive({ 东: 0, 西: 0, 南: 0, 北: 0, 中: 0 })
 const selfDisposeCnt = ref(0)
@@ -240,6 +289,22 @@ const subOptions = reactive({})
 const allUnits = ref([])
 const saving = ref(false)
 const loadedHint = ref('')
+
+// 豁免期（全局，不随月份变化）
+const exemptions = ref([])
+const savingExempt = ref(false)
+const exemptFileIndex = ref(-1)
+const exemptFileInput = ref(null)
+
+const assessUnitOptions = computed(() => {
+  const t = tmpl.value
+  const seen = new Set()
+  const list = []
+  for (const u of [...t.dispatch_teams, ...t.sanitation_districts, ...t.garden_districts, ...t.parks, ...t.municipal_units]) {
+    if (u && !seen.has(u)) { seen.add(u); list.push(u) }
+  }
+  return list
+})
 
 const specialSummary = computed(() =>
   specialDetails.value.reduce((s, d) => s + (Number(d.piece_cnt) || 0), 0)
@@ -326,6 +391,7 @@ async function loadAll() {
   selfDisposeCnt.value = 0
   monthly.assessment_case_cnt = null
   monthly.work_note = ''
+  monthly.extra_note = ''
   loadedHint.value = '加载中…'
   try {
     const res = await axios.get('/api/assessment/manual', { params: { batch: batch.value } })
@@ -338,6 +404,7 @@ async function loadAll() {
     if (d.monthly) {
       monthly.assessment_case_cnt = d.monthly.assessment_case_cnt
       monthly.work_note = d.monthly.work_note || ''
+      monthly.extra_note = d.monthly.extra_note || ''
     }
     for (const s of d.scores || []) {
       scoreMap[scoreKey(s.unit_type, s.unit_name, s.score_type)] = s.score_value
@@ -386,6 +453,7 @@ async function saveAll() {
       monthly: {
         assessment_case_cnt: monthly.assessment_case_cnt,
         work_note: monthly.work_note,
+        extra_note: monthly.extra_note,
       },
       scores: collectScores(),
       garbage: { ...garbage },
@@ -411,8 +479,94 @@ async function saveAll() {
   }
 }
 
+// ---------- 豁免期 ----------
+async function fetchExemptions() {
+  try {
+    const res = await axios.get('/api/assessment/exemptions')
+    if (res.data?.success) {
+      exemptions.value = (res.data.exemptions || []).map(x => ({
+        unit_name: x.unit_name || '',
+        start_date: String(x.start_date || '').slice(0, 10),
+        end_date: String(x.end_date || '').slice(0, 10),
+        reason: x.reason || '',
+        file_url: x.file_url || '',
+        file_name: x.file_name || '',
+      }))
+    }
+  } catch (e) { /* ignore */ }
+}
+
+function addExempt() {
+  exemptions.value.push({ unit_name: '', start_date: '', end_date: '', reason: '', file_url: '', file_name: '' })
+}
+
+function clearExemptFile(it) {
+  it.file_url = ''
+  it.file_name = ''
+}
+
+function pickExemptFile(i) {
+  exemptFileIndex.value = i
+  if (exemptFileInput.value) {
+    exemptFileInput.value.value = ''
+    exemptFileInput.value.click()
+  }
+}
+
+async function onExemptFileChosen(e) {
+  const i = exemptFileIndex.value
+  const file = e.target.files && e.target.files[0]
+  if (i < 0 || i >= exemptions.value.length || !file) return
+  const row = exemptions.value[i]
+  row._uploading = true
+  try {
+    const fd = new FormData()
+    fd.append('file', file)
+    const res = await axios.post('/api/upload/file', fd)
+    if (res.data?.file_path) {
+      row.file_url = res.data.file_path
+      row.file_name = file.name
+    } else {
+      ElMessage.error(res.data?.error || '文件上传失败')
+    }
+  } catch (err) {
+    ElMessage.error(err.response?.data?.error || '文件上传失败')
+  } finally {
+    row._uploading = false
+    exemptFileIndex.value = -1
+  }
+}
+
+async function saveExemptions() {
+  const items = []
+  for (const it of exemptions.value) {
+    if (!it.unit_name && !it.start_date && !it.end_date && !it.reason && !it.file_url) continue
+    if (!it.unit_name) { ElMessage.error('存在未填写部门的豁免行'); return }
+    if (!it.start_date || !it.end_date) { ElMessage.error(`请补全「${it.unit_name}」的起止日期`); return }
+    if (it.end_date < it.start_date) { ElMessage.error(`「${it.unit_name}」的截止日期不能早于开始日期`); return }
+    items.push({
+      unit_name: it.unit_name, start_date: it.start_date, end_date: it.end_date,
+      reason: it.reason, file_url: it.file_url, file_name: it.file_name,
+    })
+  }
+  savingExempt.value = true
+  try {
+    const res = await axios.post('/api/assessment/exemptions', { items })
+    if (res.data?.success) {
+      ElMessage.success(`豁免设置已保存（${res.data.saved || items.length} 条）`)
+      fetchExemptions()
+    } else {
+      ElMessage.error(res.data?.error || '保存失败')
+    }
+  } catch (e) {
+    ElMessage.error(e.response?.data?.error || '保存失败')
+  } finally {
+    savingExempt.value = false
+  }
+}
+
 onMounted(async () => {
-  await Promise.all([fetchMonths(), fetchTemplate(), fetchDicts()])
+  await Promise.all([fetchMonths(), fetchTemplate(), fetchDicts(), fetchExemptions()])
 })
 </script>
 
@@ -420,7 +574,7 @@ onMounted(async () => {
 .ami-tab { display: flex; flex-direction: column; gap: 16px; }
 .toolbar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
 .lbl { font-size: 13px; color: var(--text-secondary); }
-.sel, .field input, .field select, .grid input, .grid select, .grid textarea, textarea {
+.sel, .field input, .field select, .ami-grid input, .ami-grid select, .ami-grid textarea, textarea {
   height: 32px; padding: 0 8px; border: 1px solid var(--border-lighter, #e5e7eb);
   border-radius: 6px; background: var(--bg-card, #fff); color: var(--text-primary); font-size: 13px;
 }
@@ -444,10 +598,15 @@ textarea, .field textarea { height: auto; padding: 8px; width: 100%; }
 .row { display: flex; flex-wrap: wrap; gap: 16px; margin-bottom: 12px; }
 .field { display: flex; flex-direction: column; gap: 4px; min-width: 120px; }
 .field label { font-size: 12px; color: var(--text-tertiary); }
-.grid { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 8px; }
-.grid th, .grid td { border-bottom: 1px solid var(--border-lighter, #e5e7eb); padding: 6px 8px; text-align: left; }
-.grid th { color: var(--text-secondary); font-weight: 600; background: var(--bg-secondary, #f8fafc); }
-.grid input, .grid select { width: 100%; min-width: 80px; }
+.ami-grid { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 8px; }
+.ami-grid th, .ami-grid td { border-bottom: 1px solid var(--border-lighter, #e5e7eb); padding: 6px 8px; text-align: left; }
+.ami-grid th { color: var(--text-secondary); font-weight: 600; background: var(--bg-secondary, #f8fafc); }
+/* 输入框水平内边距收窄，使输入值与表头文字左对齐（否则值比表头右缩进约9px） */
+.ami-grid input, .ami-grid select { width: 100%; min-width: 80px; padding: 0 2px; }
 .link { border: none; background: none; color: var(--primary-600, #2563eb); cursor: pointer; font-size: 12px; }
 .link.danger { color: #dc2626; }
+.card-tip { margin: 0 0 12px; font-size: 12px; color: var(--text-tertiary, #6b7280); line-height: 1.6; }
+.file-link { font-size: 12px; color: var(--primary-600, #2563eb); margin-right: 6px; word-break: break-all; }
+.grid-empty { text-align: center; color: var(--text-tertiary, #9ca3af); font-size: 12px; padding: 12px 0; }
+.exempt-actions { display: flex; justify-content: space-between; gap: 12px; }
 </style>

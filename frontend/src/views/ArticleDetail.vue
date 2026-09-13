@@ -39,6 +39,11 @@
         <p>{{ article.summary }}</p>
       </div>
 
+      <!-- 视频播放区域 -->
+      <div class="article-video" v-if="article.video_path">
+        <video :src="videoUrl" controls controlsList="nodownload" preload="metadata" playsinline></video>
+      </div>
+
       <div class="article-content" v-html="formattedContent"></div>
 
       <!-- 附件区域 -->
@@ -132,6 +137,13 @@ const isHtml = computed(() => {
 const previewUrl = computed(() => {
   if (!article.value?.file_path) return ''
   const path = article.value.file_path
+  return path.startsWith('/') ? path : '/' + path
+})
+
+// 视频 URL（确保路径以 / 开头）
+const videoUrl = computed(() => {
+  if (!article.value?.video_path) return ''
+  const path = article.value.video_path
   return path.startsWith('/') ? path : '/' + path
 })
 
@@ -324,6 +336,18 @@ onMounted(fetchArticle)
   max-width: 100%;
   border-radius: var(--radius-md);
   margin: var(--space-4) 0;
+}
+
+.article-video {
+  margin: 0 0 var(--space-6);
+}
+
+.article-video video {
+  display: block;
+  width: 100%;
+  max-height: 520px;
+  border-radius: var(--radius-md);
+  background: #000;
 }
 
 .attachment-section {

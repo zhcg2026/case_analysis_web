@@ -15,13 +15,16 @@ kb_store.py —— 统一知识库检索 / 问答（阶段0 重写核心）
 """
 import json
 import logging
+import os
 import re
+import time
+import tempfile
 from typing import List, Dict, Any, Optional
 
 import jieba
 from rank_bm25 import BM25Okapi
 
-from kb_common import USE_LOCAL_MODE, LOCAL_MILVUS_FILE, MILVUS_HOST, MILVUS_PORT  # noqa: E402
+from kb_common import USE_LOCAL_MODE, LOCAL_MILVUS_FILE, MILVUS_HOST, MILVUS_PORT, LLM_PROVIDER  # noqa: E402
 from kb_embed import embed  # noqa: E402
 from kb_dispatch import match_department_dispatch, is_dispatch_question  # noqa: E402
 
@@ -160,6 +163,13 @@ def _raw_search(client, qvec, limit, flt) -> List[Dict[str, Any]]:
 
 _BM25_INDEX = None  # BM25Okapi 实例（对全库 title+text 建索引）
 _BM25_ROWS = None   # 与索引平行的原始行数据（doc_id/chunk_id/doc_type/...）
+_BM25_BUILD_TIME = 0.0  # 本进程索引构建时刻，用于和失效标记文件的 mtime 比对
+
+# 跨进程失效标记：管理端重建索引 / 删除文档时写此文件。gunicorn 多 worker 下
+# 每个 worker 各有一份 BM25 进程内缓存，重建/删除只发生在其中一个 worker，
+# 其余 worker 在检索前对比标记文件 mtime 晚于本进程构建时间即自动重建，
+# 避免"新灌的内容查不到、已删的内容还在"（此前必须重启进程才恢复）。
+_BM25_STAMP_FILE = os.path.join(tempfile.gettempdir(), "kb_bm25_version.stamp")
 
 _CJK_RE = re.compile(r"[\u4e00-\u9fff]+")
 
@@ -235,17 +245,36 @@ def expand_query(q: str) -> str:
     return q + " " + " ".join(extra)
 
 
+def invalidate_bm25_cache():
+    """知识库内容变更（重建索引/删除文档）后调用：失效本进程缓存，并写标记文件
+    通知其它 gunicorn worker 在下次检索时自动重建。"""
+    global _BM25_INDEX, _BM25_ROWS
+    _BM25_INDEX = None
+    _BM25_ROWS = None
+    try:
+        with open(_BM25_STAMP_FILE, "w") as f:
+            f.write(str(time.time()))
+    except Exception as e:
+        logger.warning(f"[kb_store] 写 BM25 失效标记失败: {e}")
+
+
 def _load_bm25_index(client):
     """从集合加载所有记录的 title+text，现场分词构建 BM25 索引（首次 search 时执行一次）。
 
     语料用 title+text 现场 _tokenize_for_bm25（而非灌库时存的 text_tokens 字段），
     这样分词策略升级不需要重灌库。
+    缓存失效：标记文件 mtime 晚于本进程构建时间（其它 worker 做过重建/删除）时重建。
     返回 (BM25Okapi, rows)。rows 与索引平行，存每条的 doc_id/chunk_id/doc_type/
     source/title/text/law_status/case_type/metadata，供命中后还原结构化结果。
     """
-    global _BM25_INDEX, _BM25_ROWS
+    global _BM25_INDEX, _BM25_ROWS, _BM25_BUILD_TIME
     if _BM25_INDEX is not None and _BM25_ROWS is not None:
-        return _BM25_INDEX, _BM25_ROWS
+        try:
+            if os.path.getmtime(_BM25_STAMP_FILE) <= _BM25_BUILD_TIME:
+                return _BM25_INDEX, _BM25_ROWS
+        except OSError:
+            return _BM25_INDEX, _BM25_ROWS  # 标记文件不存在（从未变更过）→ 沿用缓存
+        logger.info("[kb_store] 检测到知识库内容已变更，重建 BM25 索引")
     try:
         # Milvus Standalone 限制 offset+limit <= 16384，需分批查询
         all_rows = []
@@ -290,6 +319,7 @@ def _load_bm25_index(client):
         return None, None
     _BM25_INDEX = BM25Okapi(corpus)
     _BM25_ROWS = meta_rows
+    _BM25_BUILD_TIME = time.time()
     logger.info(f"[kb_store] BM25 索引已构建：{len(corpus)} 条语料（jieba词+bigram）")
     return _BM25_INDEX, _BM25_ROWS
 
@@ -383,10 +413,20 @@ def search(query: str,
     except Exception as e:
         logger.warning(f"load_collection 可能已加载，忽略: {e}")
 
-    # 指定单类时，走原逻辑（不做分桶/混合）
+    # 指定单类时：同样走混合检索（向量 + BM25 RRF），只是把两路都限制在该 doc_type。
+    # 旧版此处直接返回纯向量结果——实测「公交站台破损归谁管」+ standard 过滤连正确
+    # 条目都进不了 top3（MiniLM 对字序不同/同义改写匹配弱），必须吃到混合检索的收益。
     if doc_type:
         flt = build_filter(doc_type, include_invalid_laws)
-        return _raw_search(client, qvec, top_k, flt)
+        vector_hits = _raw_search(client, qvec, max(top_k, per_type_top_k), flt)
+        bm25_hits = [h for h in _bm25_search(client, expand_query(query), top_k=max(top_k * 2, 12))
+                     if h.get("doc_type") == doc_type]
+        fused = _rrf_fuse(vector_hits, bm25_hits)
+        if not include_invalid_laws:
+            fused = [h for h in fused if not (
+                h.get("doc_type") == "law" and h.get("law_status") in LAW_EXCLUDE_STATUS
+            )]
+        return fused[:top_k]
 
     # ---- 第一路：向量语义召回（按 doc_type 分桶，避免大类淹没小类） ----
     vector_merged = {}
@@ -581,27 +621,35 @@ def _qa_direct_answer(qa_hits: List[Dict[str, Any]]) -> str:
 
 
 def _call_llm_timeout(prompt: str, provider: Optional[str], per_call_timeout: int = 50) -> Optional[str]:
-    """带硬超时的 LLM 调用（线程池包裹）。
+    """带硬超时的 LLM 调用（requests 拆分超时 + 线程池兜底，真·限时）。
 
-    背景：call_llm 默认 timeout=120s，且 ask() 主 provider 失败还会顺序回退豆包再调一次，
-    最坏两次累计 240s，远超前端 90s 的 abort 阈值——后端干等到 120s+ 却被前端中断，
-    既超时又白白浪费已召回的 qa 片段。
-    这里把单次调用预算压到 50s，超时即视作失败返回 None，让 ask() 快速落到降级直出
-    （检索片段/qa 直答），避免无谓长等。超时不抛异常、不污染外层。
+    背景：ask() 主 provider 失败还会顺序回退再调一次，旧版最坏两次累计 240s，
+    远超前端 180s 的 abort 阈值——后端干等到超时却被前端中断，既慢又浪费已召回的片段。
+    旧版另一个致命伤：`with ThreadPoolExecutor` 块退出会 shutdown(wait=True) 等
+    底层 requests（timeout=120s）跑完，"50s 预算"实际最长阻塞 120s+，超时是假的。
+
+    现在：
+    1. 给 call_llm 传 requests 超时元组 (connect=5s, read=per_call_timeout)，底层请求自身被真正限时；
+    2. 线程池 fut.result 再给 per_call_timeout+10s 兜底，超时后 shutdown(wait=False)
+       立即返回、不等残留线程（残留线程最坏活到自身 read 超时后自行结束，不阻塞当前请求）。
+    超时不抛异常、不污染外层。
     """
     from kb_common import call_llm
     from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
 
-    with ThreadPoolExecutor(max_workers=1) as ex:
-        fut = ex.submit(call_llm, prompt, provider)
+    ex = ThreadPoolExecutor(max_workers=1)
+    try:
+        fut = ex.submit(call_llm, prompt, provider, (5, per_call_timeout))
         try:
-            return fut.result(timeout=per_call_timeout)
+            return fut.result(timeout=per_call_timeout + 10)
         except FuturesTimeout:
             logger.warning(f"[kb_store] LLM({provider}) 调用超过 {per_call_timeout}s 超时，放弃")
             return None
         except Exception as e:
             logger.warning(f"[kb_store] LLM({provider}) 调用异常: {e}")
             return None
+    finally:
+        ex.shutdown(wait=False, cancel_futures=True)
 
 
 def _extract_json(text: str) -> Optional[dict]:
@@ -667,11 +715,12 @@ def ask(query: str,
     # 3) 拼 prompt + 调 LLM（带硬超时，避免慢 LLM 把请求拖到前端 abort）
     context = _format_context(hits)
     prompt = _SYSTEM_TEMPLATE.format(context=context, query=query)
-    # 主 provider（默认 doubao，见 kb_common）先调，单次预算 50s；
-    # 失败（含超时）再回退豆包再给 50s。都失败 → raw=None → 落降级直出（qa 片段）。
-    # 不在这里用 call_llm 默认值（120s）顺序双调，否则最坏 240s 必超时。
+    # 主 provider（路由层不传时为 kb_common.LLM_PROVIDER，本地/生产均配 doubao）
+    # 先调，单次预算 50s；失败（含超时）才回退到【不同的】provider 再给 50s。
+    # 旧版用参数原值 `provider != "doubao"` 判断——provider=None 时实际主调已是
+    # 豆包，却仍判定"非豆包"又重打一次豆包，豆包一抖就是两次串行长等。
     raw = _call_llm_timeout(prompt, provider, per_call_timeout=50)
-    if raw is None and provider != "doubao":
+    if raw is None and (provider or LLM_PROVIDER) != "doubao":
         logger.warning("[kb_store] 主 LLM provider 调用失败/超时，自动回退豆包（预算 50s）")
         raw = _call_llm_timeout(prompt, "doubao", per_call_timeout=50)
     parsed = _extract_json(raw) if raw else None
@@ -681,21 +730,31 @@ def ask(query: str,
         citations = parsed.get("citations", []) or []
         # ---- LLM 误拒兜底：检索明明召回到了内容，LLM 却谎报“暂无” ----
         # 背景：检索成功（hits 非空）但 LLM 把“问法不同（怎么交/在哪里交）”
-        # 误判成“没有内容”，返回“知识库中暂无相关内容”。这会浪费已召回的 qa
-        # 直答（如 12345 第 159 条缴费流程），让市民拿到假空答案。
-        # 兜底：只要 hits 里存在 qa 类（市民问答直答）片段，即视为有答案源，
-        # 强制改用 qa 片段直出（带微信/支付宝/线下营业厅等办理方法），
+        # 误判成“没有内容”，返回“知识库中暂无相关内容”。这会浪费已召回的
+        # qa 直答（如 12345 第 159 条缴费流程），让用户拿到假空答案——体感即
+        # “召回不到”，其实内容召回到了。旧版兜底只认 qa 命中，standard/org/law
+        # 被谎报时假空照样透传；现泛化为：有 qa 用 qa 直出，否则用片段直出，
         # 绝不让“LLM 误判”伪装成“知识库无内容”。
-        if _looks_like_no_answer(answer) and any(h.get("doc_type") == "qa" for h in hits):
-            logger.warning("[kb_store] LLM 误判为暂无，但命中 qa 直答，强制改用 qa 片段直出")
+        if _looks_like_no_answer(answer):
             qa_hits = [h for h in hits if h.get("doc_type") == "qa"]
-            answer = _qa_direct_answer(qa_hits)
-            citations = [{
-                "title": h["title"],
-                "doc_type": h["doc_type"],
-                "source": h["source"],
-                "excerpt": (h["text"] or "")[:80],
-            } for h in qa_hits[:3]]
+            if qa_hits:
+                logger.warning("[kb_store] LLM 误判为暂无，但命中 qa 直答，强制改用 qa 片段直出")
+                answer = _qa_direct_answer(qa_hits)
+                citations = [{
+                    "title": h["title"],
+                    "doc_type": h["doc_type"],
+                    "source": h["source"],
+                    "excerpt": (h["text"] or "")[:80],
+                } for h in qa_hits[:3]]
+            else:
+                logger.warning("[kb_store] LLM 误判为暂无，改用检索片段直出（不返回假空）")
+                answer = _degraded_answer(hits)
+                citations = [{
+                    "title": h["title"],
+                    "doc_type": h["doc_type"],
+                    "source": h["source"],
+                    "excerpt": (h["text"] or "")[:80],
+                } for h in hits[:3]]
     else:
         if not raw:
             # LLM 全部不可用但检索成功：降级为检索片段直出，绝不谎报“暂无相关内容”

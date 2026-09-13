@@ -107,6 +107,13 @@
                 </svg>
                 附件
               </span>
+              <span v-if="article.video_path" class="attachment-tag">
+                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polygon points="23 7 16 12 23 17 23 7"/>
+                  <rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+                </svg>
+                视频
+              </span>
             </div>
             <div class="article-meta">
               <span class="category-tag">{{ getArticleCategoryName(article.category_id) }}</span>
@@ -196,6 +203,22 @@
                 {{ uploadingImage ? '上传中...' : '选择图片' }}
               </button>
               <span class="upload-hint">支持 jpg、png、gif 格式</span>
+            </div>
+          </div>
+
+          <!-- 视频上传区域 -->
+          <div class="form-group">
+            <label class="form-label">插入视频</label>
+            <div class="upload-area">
+              <input ref="videoInput" type="file" accept="video/mp4,video/webm,video/ogg,video/quicktime,.mp4,.webm,.ogg,.mov,.m4v" @change="handleVideoUpload" hidden />
+              <button class="btn btn-secondary" @click="$refs.videoInput.click()" :disabled="uploadingVideo">
+                {{ uploadingVideo ? '上传中...' : '选择视频' }}
+              </button>
+              <span class="upload-hint">支持 mp4、webm、mov 格式，推荐 mp4，最大 200MB</span>
+            </div>
+            <div v-if="articleForm.video_path" class="video-preview">
+              <video :key="articleForm.video_path" :src="articleForm.video_path" controls preload="metadata"></video>
+              <button class="btn-link" @click="articleForm.video_path = ''">移除视频</button>
             </div>
           </div>
 
@@ -1316,13 +1339,15 @@ const dragOverIndex = ref(null)
 const articleSaving = ref(false)
 const uploadingImage = ref(false)
 const uploadingFile = ref(false)
+const uploadingVideo = ref(false)
 const uploadingLogo = ref(false)
 const articleForm = ref({
   title: '',
   category_id: '',
   summary: '',
   content: '',
-  file_path: ''
+  file_path: '',
+  video_path: ''
 })
 
 // wangEditor配置
@@ -2158,7 +2183,8 @@ async function openArticleEditor(article = null) {
         category_id: fullArticle.category_id,
         summary: fullArticle.summary || '',
         content: fullArticle.content || '',
-        file_path: fullArticle.file_path || ''
+        file_path: fullArticle.file_path || '',
+        video_path: fullArticle.video_path || ''
       }
     } catch (error) {
       console.error('获取文章详情失败:', error)
@@ -2169,7 +2195,7 @@ async function openArticleEditor(article = null) {
     }
   } else {
     editingArticle.value = null
-    articleForm.value = { title: '', category_id: '', summary: '', content: '', file_path: '' }
+    articleForm.value = { title: '', category_id: '', summary: '', content: '', file_path: '', video_path: '' }
   }
   showArticleEditor.value = true
 }
@@ -2226,9 +2252,30 @@ async function handleFileUpload(e) {
     articleForm.value.file_path = response.data.file_path
   } catch (error) {
     console.error('上传附件失败:', error)
-    alert('上传附件失败')
+    alert(error.response?.data?.error || '上传附件失败')
   } finally {
     uploadingFile.value = false
+    e.target.value = ''
+  }
+}
+
+async function handleVideoUpload(e) {
+  const file = e.target.files[0]
+  if (!file) return
+  uploadingVideo.value = true
+  const formData = new FormData()
+  formData.append('file', file)
+  try {
+    const response = await axios.post('/api/upload/video', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 0
+    })
+    articleForm.value.video_path = response.data.file_path
+  } catch (error) {
+    console.error('上传视频失败:', error)
+    alert(error.response?.data?.error || '上传视频失败')
+  } finally {
+    uploadingVideo.value = false
     e.target.value = ''
   }
 }
@@ -3412,6 +3459,21 @@ watch(articlesCurrentPage, fetchArticles)
 }
 
 .attachment-info svg { color: var(--primary-500); }
+
+.video-preview {
+  margin-top: var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  align-items: flex-start;
+}
+
+.video-preview video {
+  max-width: 100%;
+  max-height: 260px;
+  border-radius: var(--radius-md);
+  background: #000;
+}
 
 .btn-link {
   background: none;

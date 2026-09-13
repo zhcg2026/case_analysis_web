@@ -131,7 +131,10 @@ def generate_ai_chapters(analysis_json_path, month='2026年8月'):
     """主入口：提取发现 → 调 LLM → 返回 {chapter7, chapter8}
     LLM 不可用时 fallback 到规则引擎 bullets
     """
-    from backend.monthly_report.findings_extractor import extract_findings, extract_key_metrics
+    try:
+        from backend.monthly_report.findings_extractor import extract_findings, extract_key_metrics
+    except ImportError:
+        from monthly_report.findings_extractor import extract_findings, extract_key_metrics
     import json
 
     with open(analysis_json_path, encoding='utf-8') as f:

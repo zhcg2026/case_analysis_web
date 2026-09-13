@@ -4,13 +4,14 @@
 安全约定：
 - 仅 CREATE TABLE IF NOT EXISTS 新表，不改 case_data 等既有业务表
 - 不 DROP 任何业务数据表
-- 保存接口仅写 assessment_manual_* / assessment_result / dict_unit
+- 保存接口仅写 assessment_manual_* / assessment_result / assessment_exempt_period / dict_unit
 """
 from __future__ import annotations
 
+import calendar
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, date
 
 from flask import request, jsonify
 from sqlalchemy import text
@@ -62,6 +63,35 @@ MUNICIPAL_UNITS = [
 ORG_MUNICIPAL = {
     '城市照明部': '城市照明部',
     '市政设施维护部': '市政设施维护部',
+}
+
+# 计算口径单位名 → case_data.department 名集合（豁免剔除案件用；环卫/园林/公园同名不在表内）
+CALC_TO_CASE_MAP = {
+    '东城执法分队': {'执法东片区'},
+    '西城执法分队': {'执法西片区'},
+    '南城执法分队': {'执法南片区'},
+    '北城执法分队': {'执法北片区'},
+    '中城执法分队': {'执法中片区'},
+    '姚孟执法分队': {'姚孟执法分队', '执法姚孟分队'},
+    '大渠执法分队': {'大渠执法分队', '执法大渠分队'},
+    '安邑执法分队': {'安邑执法分队', '执法安邑分队'},
+    '城市照明部': {'城市照明服务中心'},
+    '市政设施维护部': {'市政设施维护队'},
+    '排水服务中心': {'排水服务中心'},
+    '应急执法分队': {'应急执法分队'},
+}
+# case_data.department 名 → 计算口径单位名
+CASE_TO_CALC_MAP = {}
+for _calc, _cases in CALC_TO_CASE_MAP.items():
+    for _c in _cases:
+        CASE_TO_CALC_MAP[_c] = _calc
+
+# 组级名称 → 成员单位（豁免组级部门时展开到成员；成员为计算口径名）
+GROUP_MEMBER_MAP = {
+    '执法队': list(DISPATCH_TEAMS),
+    '市容环卫中心': list(SANITATION_REGION_MAP.values()),
+    '园林绿化服务中心': GARDEN_DISTRICTS + PARKS,
+    '市政公用服务中心': list(MUNICIPAL_UNITS),
 }
 
 CREATE_TABLES = [
@@ -161,6 +191,20 @@ CREATE_TABLES = [
         UNIQUE KEY uk_batch_unit (batch, unit_name)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='考核计算结果(同月覆盖)'
     """,
+    """
+    CREATE TABLE IF NOT EXISTS assessment_exempt_period (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        unit_name VARCHAR(100) NOT NULL COMMENT '考核单位名(兼容组织架构/计算口径)',
+        start_date DATE NOT NULL COMMENT '不参与考核起始日',
+        end_date DATE NOT NULL COMMENT '不参与考核截止日',
+        reason VARCHAR(500) NULL COMMENT '不参与考核原因',
+        file_url VARCHAR(300) NULL COMMENT '文件依据 /uploads/xx',
+        file_name VARCHAR(200) NULL COMMENT '文件依据原始文件名',
+        updated_by VARCHAR(50) NULL,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        KEY idx_unit (unit_name)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='考核豁免期(部门某时间段不参与考核)'
+    """,
 ]
 
 
@@ -172,7 +216,26 @@ def ensure_manual_tables(engine):
     with engine.begin() as conn:
         for sql in CREATE_TABLES:
             conn.execute(text(sql))
+        _ensure_columns(conn, 'assessment_result', [
+            ('exempt_note', "VARCHAR(500) NULL COMMENT '不参与考核备注'"),
+        ])
+        _ensure_columns(conn, 'assessment_manual_monthly', [
+            ('extra_note', "TEXT NULL COMMENT '加减分项说明(月报注)'"),
+        ])
+        _ensure_columns(conn, 'assessment_exempt_period', [
+            ('file_url', "VARCHAR(300) NULL COMMENT '文件依据 /uploads/xx'"),
+            ('file_name', "VARCHAR(200) NULL COMMENT '文件依据原始文件名'"),
+        ])
     logger.info('assessment_manual tables ensured')
+
+
+def _ensure_columns(conn, table: str, columns: list):
+    """旧库补列：columns 为 (列名, 列定义) 列表"""
+    cols = {r[0] for r in conn.execute(text(f"SHOW COLUMNS FROM {table}"))}
+    for name, ddl in columns:
+        if name not in cols:
+            conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}"))
+            logger.info(f'{table} 表新增列: {name}')
 
 
 def register_assessment_manual_routes(app, engine=None, protected=None, admin_required=None):
@@ -230,6 +293,66 @@ def register_assessment_manual_routes(app, engine=None, protected=None, admin_re
             ],
         })
 
+    # ---------- 豁免期（部门某时间段不参与考核） ----------
+    @app.route('/api/assessment/exemptions', methods=['GET'])
+    @protected
+    def assessment_exemptions_get():
+        """豁免期列表。可选 batch=YYYYMM：只返回命中该月的记录"""
+        batch = (request.args.get('batch') or '').strip()
+        try:
+            if batch:
+                items = load_exempt_for_batch(engine, batch)
+            else:
+                items = load_exempt_for_batch(engine, '')  # 非法 batch → 全量
+            return jsonify({'success': True, 'exemptions': items})
+        except Exception as e:
+            logger.error(f'读取豁免期失败: {e}')
+            return jsonify({'success': False, 'error': str(e)}), 500
+
+    @app.route('/api/assessment/exemptions', methods=['POST'])
+    @admin_required
+    def assessment_exemptions_save():
+        """整表替换保存豁免期。body: {items: [{unit_name, start_date, end_date, reason, file_url, file_name}]}"""
+        data = request.get_json(silent=True) or {}
+        items = data.get('items') or []
+        user = _now_user()
+        parsed = []
+        for it in items:
+            name = (it.get('unit_name') or '').strip()
+            if not name:
+                continue
+            try:
+                sd = date.fromisoformat((it.get('start_date') or '').strip()[:10])
+                ed = date.fromisoformat((it.get('end_date') or '').strip()[:10])
+            except ValueError:
+                return jsonify({'success': False, 'error': f'{name} 的起止日期无效'}), 400
+            if ed < sd:
+                return jsonify({'success': False, 'error': f'{name} 的截止日期不能早于起始日期'}), 400
+            furl = (it.get('file_url') or '').strip()
+            if furl and not furl.startswith('/uploads/'):
+                return jsonify({'success': False, 'error': f'{name} 的文件依据路径无效'}), 400
+            parsed.append({
+                'unit_name': name,
+                'sd': sd.isoformat(), 'ed': ed.isoformat(),
+                'reason': (it.get('reason') or '').strip() or None,
+                'file_url': furl or None,
+                'file_name': (it.get('file_name') or '').strip() or None,
+            })
+        try:
+            with engine.begin() as conn:
+                conn.execute(text("DELETE FROM assessment_exempt_period"))
+                for p in parsed:
+                    conn.execute(text(
+                        """INSERT INTO assessment_exempt_period
+                           (unit_name, start_date, end_date, reason, file_url, file_name, updated_by)
+                           VALUES (:u,:sd,:ed,:r,:fu,:fn,:by)"""
+                    ), {'u': p['unit_name'], 'sd': p['sd'], 'ed': p['ed'],
+                        'r': p['reason'], 'fu': p['file_url'], 'fn': p['file_name'], 'by': user})
+            return jsonify({'success': True, 'saved': len(parsed)})
+        except Exception as e:
+            logger.error(f'保存豁免期失败: {e}')
+            return jsonify({'success': False, 'error': str(e)}), 500
+
     # ---------- 读取当月全部人工数据 ----------
     @app.route('/api/assessment/manual', methods=['GET'])
     @protected
@@ -251,14 +374,14 @@ def register_assessment_manual_routes(app, engine=None, protected=None, admin_re
             }
             with engine.connect() as conn:
                 r = conn.execute(text(
-                    "SELECT batch, assessment_case_cnt, work_note, updated_by, updated_at "
+                    "SELECT batch, assessment_case_cnt, work_note, extra_note, updated_by, updated_at "
                     "FROM assessment_manual_monthly WHERE batch=:b"
                 ), {'b': batch}).fetchone()
                 if r:
                     out['monthly'] = {
                         'batch': r[0], 'assessment_case_cnt': r[1],
-                        'work_note': r[2], 'updated_by': r[3],
-                        'updated_at': str(r[4]) if r[4] else None,
+                        'work_note': r[2], 'extra_note': r[3], 'updated_by': r[4],
+                        'updated_at': str(r[5]) if r[5] else None,
                     }
 
                 rows = conn.execute(text(
@@ -337,11 +460,13 @@ def register_assessment_manual_routes(app, engine=None, protected=None, admin_re
         user = _now_user()
         with engine.begin() as conn:
             conn.execute(text(
-                """INSERT INTO assessment_manual_monthly (batch, assessment_case_cnt, work_note, updated_by)
-                   VALUES (:b, :c, :w, :u)
+                """INSERT INTO assessment_manual_monthly (batch, assessment_case_cnt, work_note, extra_note, updated_by)
+                   VALUES (:b, :c, :w, :en, :u)
                    ON DUPLICATE KEY UPDATE assessment_case_cnt=VALUES(assessment_case_cnt),
-                     work_note=VALUES(work_note), updated_by=VALUES(updated_by)"""
-            ), {'b': batch, 'c': cnt_i, 'w': work_note, 'u': user})
+                     work_note=VALUES(work_note), extra_note=VALUES(extra_note),
+                     updated_by=VALUES(updated_by)"""
+            ), {'b': batch, 'c': cnt_i, 'w': work_note,
+                'en': data.get('extra_note'), 'u': user})
         return jsonify({'success': True})
 
     # ---------- 保存：分值（整组替换某 unit_type） ----------
@@ -523,11 +648,13 @@ def register_assessment_manual_routes(app, engine=None, protected=None, admin_re
                 except (TypeError, ValueError):
                     return jsonify({'success': False, 'error': '当月考核案件数须为整数'}), 400
                 conn.execute(text(
-                    """INSERT INTO assessment_manual_monthly (batch, assessment_case_cnt, work_note, updated_by)
-                       VALUES (:b,:c,:w,:u)
+                    """INSERT INTO assessment_manual_monthly (batch, assessment_case_cnt, work_note, extra_note, updated_by)
+                       VALUES (:b,:c,:w,:en,:u)
                        ON DUPLICATE KEY UPDATE assessment_case_cnt=VALUES(assessment_case_cnt),
-                         work_note=VALUES(work_note), updated_by=VALUES(updated_by)"""
-                ), {'b': batch, 'c': cnt_i, 'w': monthly.get('work_note'), 'u': user})
+                         work_note=VALUES(work_note), extra_note=VALUES(extra_note),
+                         updated_by=VALUES(updated_by)"""
+                ), {'b': batch, 'c': cnt_i, 'w': monthly.get('work_note'),
+                    'en': monthly.get('extra_note'), 'u': user})
 
                 # scores by type replace
                 types = sorted({s.get('unit_type') for s in scores if s.get('unit_type')})
@@ -725,6 +852,73 @@ def load_external_data_from_db(engine, batch: str):
     return external, missing
 
 
+def normalize_to_calc_name(name: str) -> str:
+    """单位名归一到计算口径（results key）：兼容组织架构名/计算口径名"""
+    name = (name or '').strip()
+    if not name:
+        return ''
+    if name in CASE_TO_CALC_MAP:
+        return CASE_TO_CALC_MAP[name]
+    if name in CALC_TO_CASE_MAP:
+        return name
+    return name
+
+
+def calc_to_case_names(calc_name: str) -> set:
+    """计算口径单位名 → 对应 case_data.department 名集合（同名单位返回自身）"""
+    return CALC_TO_CASE_MAP.get(calc_name, {calc_name})
+
+
+def _batch_month_range(batch: str):
+    """batch(YYYYMM) → (月初 date, 月末 date)；非法返回 None"""
+    try:
+        year, month = int(batch[:4]), int(batch[4:6])
+        last_day = calendar.monthrange(year, month)[1]
+        return date(year, month, 1), date(year, month, last_day)
+    except (ValueError, TypeError, IndexError):
+        return None
+
+
+def load_exempt_for_batch(engine, batch: str) -> list:
+    """查询命中指定考核月份的豁免记录。
+
+    口径：豁免期与 [月初, 月末] 有交集即整月豁免；组级名称展开为成员单位。
+    返回 [{id, unit_name(原始输入), unit_names([计算口径成员]), start_date, end_date,
+           reason, file_url, file_name, note}]
+    """
+    if not engine:
+        return []
+    month_range = _batch_month_range(batch)
+    out = []
+    with engine.connect() as conn:
+        if month_range:
+            rows = conn.execute(text(
+                "SELECT id, unit_name, start_date, end_date, reason, file_url, file_name "
+                "FROM assessment_exempt_period "
+                "WHERE start_date <= :me AND end_date >= :ms ORDER BY id"
+            ), {'ms': month_range[0], 'me': month_range[1]}).fetchall()
+        else:
+            rows = conn.execute(text(
+                "SELECT id, unit_name, start_date, end_date, reason, file_url, file_name "
+                "FROM assessment_exempt_period ORDER BY id"
+            )).fetchall()
+    for rid, name, sd, ed, reason, furl, fname in rows:
+        calc_name = normalize_to_calc_name(name)
+        members = GROUP_MEMBER_MAP.get(calc_name, [calc_name])
+        sd_s = str(sd) if sd else ''
+        ed_s = str(ed) if ed else ''
+        note = f"{sd_s} 至 {ed_s} 不参与考核"
+        if reason:
+            note += f"（原因：{reason}）"
+        out.append({
+            'id': rid, 'unit_name': name, 'unit_names': members,
+            'start_date': sd_s, 'end_date': ed_s,
+            'reason': reason, 'file_url': furl, 'file_name': fname,
+            'note': note,
+        })
+    return out
+
+
 def _unit_type_of(name: str) -> str:
     if name in DISPATCH_TEAMS:
         return 'dispatch'
@@ -748,16 +942,18 @@ def persist_calc_results(engine, batch: str, results: dict, missing: dict, usern
             miss = missing.get(unit) or []
             # 独立部门等无 missing 也参与计算的：is_complete=1
             # 有 missing 且 final_score 置空的：is_complete=0
+            # 豁免单位：不参与考核，final_score 置空并记录 exempt_note
+            exempt = bool(r.get('exempt'))
             final = r.get('final_score')
-            complete = 0 if (miss or final is None) else 1
-            if miss:
+            complete = 0 if (miss or final is None or exempt) else 1
+            if miss or exempt:
                 final = None
             conn.execute(text(
                 """INSERT INTO assessment_result
                    (batch, unit_name, unit_type, total, closed, overtime, delayed_cnt, rework,
                     system_score, team_score, street_score, garbage_score, center_score, extra_points,
-                    final_score, missing_fields, is_complete, calc_by)
-                   VALUES (:b,:n,:t,:tot,:cl,:ot,:dl,:rw,:ss,:tm,:st,:gs,:cs,:ex,:fs,:mf,:ic,:by)"""
+                    final_score, missing_fields, is_complete, exempt_note, calc_by)
+                   VALUES (:b,:n,:t,:tot,:cl,:ot,:dl,:rw,:ss,:tm,:st,:gs,:cs,:ex,:fs,:mf,:ic,:en,:by)"""
             ), {
                 'b': batch, 'n': unit, 't': ut,
                 'tot': r.get('total'), 'cl': r.get('closed'),
@@ -769,5 +965,6 @@ def persist_calc_results(engine, batch: str, results: dict, missing: dict, usern
                 'fs': final,
                 'mf': ','.join(miss) if miss else None,
                 'ic': complete,
+                'en': r.get('exempt_note'),
                 'by': username,
             })

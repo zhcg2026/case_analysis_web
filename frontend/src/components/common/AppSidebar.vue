@@ -24,7 +24,7 @@
       </nav>
 
       <div class="sidebar-footer" v-show="!isCollapsed">
-        <div class="version">v2.0.0</div>
+        <div class="version">v2.0.1</div>
       </div>
     </div>
 
