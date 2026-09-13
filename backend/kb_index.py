@@ -341,7 +341,14 @@ def parse_law_md(path):
     matches = list(pat.finditer(body))
     articles = []
     if not matches:
-        articles.append(("全文", body.strip()))
+        # 无「第X条」条款的文件（指导意见、公告类，如 33_地下管线指导意见）：
+        # 整部做一块有 5000+ 字，除远超 embedding 512 token 外，UTF-8 字节数会
+        # 超 Milvus VARCHAR max_length（服务端按字节校验，16105>16000 整批拒绝），
+        # 降级为按空行段聚合的 ~600 字块，label 带（第N部分）便于引用定位。
+        articles = [
+            (f"全文（第{i + 1}部分）", piece)
+            for i, piece in enumerate(chunk_general(body.strip()))
+        ]
     else:
         pre = body[: matches[0].start()].strip()
         if pre:
@@ -389,6 +396,51 @@ def doc_id_of(rel_path):
     return rel_path.replace("\\", "/")[:256]
 
 
+def _utf8_truncate(s: str, max_bytes: int) -> str:
+    """按 UTF-8 字节数截断（errors=ignore 自动丢弃被切断的半个多字节字符）。
+
+    Milvus 服务端按字节校验 VARCHAR max_length（本地 milvus-lite 不校验，只有
+    上服务器才爆）：16000 个中文字符 ≈ 48000 字节，text[:16000] 字符截断挡不住，
+    33_地下管线指导意见的「全文」块 16105 字节曾让整批 insert 失败。
+    """
+    raw = s.encode("utf-8")
+    if len(raw) <= max_bytes:
+        return s
+    return raw[:max_bytes].decode("utf-8", errors="ignore")
+
+
+def _fit_meta_bytes(meta: dict, max_bytes: int) -> str:
+    """meta 序列化为紧凑 JSON 且保证字节数不超限。
+
+    不能对 JSON 串按字节硬截——会产出非法 JSON，检索端 json.loads 直接炸；
+    超限时等比截断各字符串值，结果始终可解析。
+    """
+    s = json.dumps(meta, ensure_ascii=False, separators=(",", ":"))
+    if len(s.encode("utf-8")) <= max_bytes:
+        return s
+    str_vals = [v for v in meta.values() if isinstance(v, str) and v]
+    fixed = len(s.encode("utf-8")) - sum(len(v.encode("utf-8")) for v in str_vals)
+    per = max(64, (max_bytes - fixed) // max(len(str_vals), 1))
+    fitted = {
+        k: (_utf8_truncate(v, per) if isinstance(v, str) else v)
+        for k, v in meta.items()
+    }
+    return json.dumps(fitted, ensure_ascii=False, separators=(",", ":"))
+
+
+def _fit_tokens_bytes(tokens: list, max_bytes: int) -> str:
+    """token 数组转 JSON 且保证字节数不超限：超限从尾部丢弃 token（保前缀）。"""
+    parts, size = [], 2  # 2 = "[]"
+    for t in tokens:
+        p = json.dumps(t, ensure_ascii=False)
+        add = len(p.encode("utf-8")) + (1 if parts else 0)
+        if parts and size + add > max_bytes:
+            break
+        parts.append(p)
+        size += add
+    return "[" + ",".join(parts) + "]"
+
+
 def make_row(doc_id, idx, chunk, doc_type, source):
     text = chunk["text"]
     vec = embed(text)
@@ -400,18 +452,19 @@ def make_row(doc_id, idx, chunk, doc_type, source):
     # 提升关键词一路对实体的命中率。去重保序，避免重复 token 稀释 BM25 的 tf 分。
     title = chunk.get("title") or ""
     tokens = list(dict.fromkeys(jieba.lcut(f"{title} {text}")))
+    # 字节预算留 ~5% 余量：text 15000/16000，meta 与 tokens 7800/8192
     return {
         "id": mid,
-        "doc_id": doc_id[:256],
+        "doc_id": _utf8_truncate(doc_id, 250),
         "chunk_id": str(idx),
         "doc_type": doc_type,
-        "source": source[:512],
-        "title": title[:512],
-        "text": text[:16000],
+        "source": _utf8_truncate(source, 500),
+        "title": _utf8_truncate(title, 500),
+        "text": _utf8_truncate(text, 15000),
         "law_status": (chunk.get("law_status") or "")[:16],
-        "case_type": (chunk.get("case_type") or "")[:128],
-        "metadata": json.dumps(chunk.get("meta", {}) or {}, ensure_ascii=False)[:8192],
-        "text_tokens": json.dumps(tokens, ensure_ascii=False)[:8192],
+        "case_type": _utf8_truncate(chunk.get("case_type") or "", 120),
+        "metadata": _fit_meta_bytes(chunk.get("meta", {}) or {}, 7800),
+        "text_tokens": _fit_tokens_bytes(tokens, 7800),
         "embedding": vec,
     }
 
