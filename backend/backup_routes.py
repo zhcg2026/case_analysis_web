@@ -158,29 +158,53 @@ def _backup_milvus():
     output_fields = ["doc_id", "chunk_id", "doc_type", "source", "title",
                      "text", "law_status", "case_type", "metadata", "text_tokens",
                      "embedding"]
-    batch_size = 16000
     total = 0
 
+    def _dump_row(row):
+        if "embedding" in row and not isinstance(row["embedding"], str):
+            row["embedding"] = list(row["embedding"])
+        f.write(json.dumps(row, ensure_ascii=False) + "\n")
+
     with gzip.open(filepath, 'wt', encoding='utf-8') as f:
-        offset = 0
-        while True:
-            rows = client.query(
+        if hasattr(client, "query_iterator"):
+            # 整段 query(limit, offset) 会触发 Milvus 服务端单查询结果大小上限
+            # （code=65535 query results exceed the limit size），改用游标分批拉取
+            iterator = client.query_iterator(
                 collection,
                 filter="",
                 output_fields=output_fields,
-                limit=batch_size,
-                offset=offset,
+                batch_size=1000,
             )
-            if not rows:
-                break
-            for row in rows:
-                if "embedding" in row and not isinstance(row["embedding"], str):
-                    row["embedding"] = list(row["embedding"])
-                f.write(json.dumps(row, ensure_ascii=False) + "\n")
-            total += len(rows)
-            if len(rows) < batch_size:
-                break
-            offset += batch_size
+            try:
+                while True:
+                    batch = iterator.next()
+                    if not batch:
+                        break
+                    for row in batch:
+                        _dump_row(row)
+                    total += len(batch)
+            finally:
+                iterator.close()
+        else:
+            # 无 query_iterator 的环境（旧客户端/Milvus Lite）退回 offset 分页
+            batch_size = 16000
+            offset = 0
+            while True:
+                rows = client.query(
+                    collection,
+                    filter="",
+                    output_fields=output_fields,
+                    limit=batch_size,
+                    offset=offset,
+                )
+                if not rows:
+                    break
+                for row in rows:
+                    _dump_row(row)
+                total += len(rows)
+                if len(rows) < batch_size:
+                    break
+                offset += batch_size
 
     logger.info(f"Milvus 备份完成: {total} 条记录 -> {filepath}")
     return filepath
