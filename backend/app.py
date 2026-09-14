@@ -130,6 +130,30 @@ try:
 except ImportError:
     from assessment_manual_routes import register_assessment_manual_routes
 
+# 值班表路由
+try:
+    from backend.duty_routes import register_duty_routes
+except ImportError:
+    from duty_routes import register_duty_routes
+
+# 值班记录路由
+try:
+    from backend.duty_record_routes import register_duty_record_routes
+except ImportError:
+    from duty_record_routes import register_duty_record_routes
+
+# 特殊事项处置对照路由
+try:
+    from backend.special_matter_routes import register_special_matter_routes
+except ImportError:
+    from special_matter_routes import register_special_matter_routes
+
+# 文件资料路由（台账管理-文件资料标签页）
+try:
+    from backend.notice_routes import register_notice_routes
+except ImportError:
+    from notice_routes import register_notice_routes
+
 # 字典路由（大小类/立结案标准）
 try:
     from backend.dict_routes import register_dict_routes
@@ -174,7 +198,7 @@ Base = None
 
 try:
     from sqlalchemy.orm import declarative_base
-    from sqlalchemy import Column, Integer, String, DateTime, Text, Boolean, Float
+    from sqlalchemy import Column, Integer, String, DateTime, Text, Boolean, Float, Date, UniqueConstraint
     from sqlalchemy.sql import func
     from sqlalchemy.orm import sessionmaker
 
@@ -325,6 +349,92 @@ try:
         trainer = Column(String(50), nullable=False, comment='培训人')
         content = Column(Text, comment='培训内容')
         images = Column(Text, comment='培训照片，JSON数组格式')
+        created_by = Column(Integer, comment='创建人ID')
+        created_at = Column(DateTime(timezone=True), server_default=func.now())
+        updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    class DutyRecord(Base):
+        """值班记录 - 一天两条(白班=统计+关注问题 / 夜班=事件流水),record_date+shift 唯一;
+        夜班跨天事件按值班开始日期归档;统计为手动填报(案件库按月导入,日粒度对不上)"""
+        __tablename__ = 'duty_records'
+        __table_args__ = (UniqueConstraint('record_date', 'shift', name='uq_duty_record_date_shift'),)
+        id = Column(Integer, primary_key=True, autoincrement=True)
+        record_date = Column(Date, nullable=False, comment='值班日期')
+        shift = Column(String(10), nullable=False, comment='班次:白班/夜班')
+        members = Column(String(500), comment='值班人员,顿号分隔')
+        is_normal = Column(Integer, default=0, comment='夜班一切正常标记:1=无事件')
+        stat_reported = Column(Integer, comment='上报件数(白班)')
+        stat_accepted = Column(Integer, comment='受理件数(白班)')
+        stat_completed = Column(Integer, comment='办结件数(白班)')
+        src_collector = Column(Integer, comment='采集员上报受理')
+        src_patrol = Column(Integer, comment='重点领域日常巡查受理')
+        src_12345 = Column(Integer, comment='12345系统转办')
+        src_minhu = Column(Integer, comment='民呼我应')
+        src_video = Column(Integer, comment='视频监控')
+        src_ai = Column(Integer, comment='智能分析')
+        src_public = Column(Integer, comment='市民举报系统受理')
+        note = Column(Text, comment='备注(如系统故障说明)')
+        created_by = Column(Integer, comment='创建人ID')
+        created_at = Column(DateTime(timezone=True), server_default=func.now())
+        updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    class DutyRecordEvent(Base):
+        """值班记录事件 - 白班"关注问题"(案件)与夜班"12345/市民来电"共用;
+        时间线以JSON存事件内(仅展示/导出用,不做SQL聚合)"""
+        __tablename__ = 'duty_record_events'
+        id = Column(Integer, primary_key=True, autoincrement=True)
+        record_id = Column(Integer, nullable=False, comment='关联duty_records.id')
+        category = Column(String(20), nullable=False, comment='事件类别:12345/市民来电/关注问题')
+        ticket_no = Column(String(50), comment='12345单号后缀或案件编号')
+        caller_name = Column(String(50), comment='来电人姓名(夜班)')
+        caller_phone = Column(String(30), comment='来电电话(夜班)')
+        location = Column(String(200), comment='位置')
+        description = Column(Text, comment='问题描述')
+        timeline = Column(Text, comment='处置时间线JSON:[{time:"HH:MM",text}]')
+        result = Column(Text, comment='处理结果/派遣去向')
+        sort_order = Column(Integer, default=0)
+        created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    class SpecialMatter(Base):
+        """特殊事项处置对照表 - 大小类标准之外的特例(移交历史等原因),
+        供案件归属判断时速查"谁实际管";纯展示清单,admin维护"""
+        __tablename__ = 'special_matters'
+        id = Column(Integer, primary_key=True, autoincrement=True)
+        matter = Column(String(200), nullable=False, comment='事项/路段,如:圣惠南路')
+        dept = Column(String(100), nullable=False, comment='处置部门,如:市政工程部')
+        contact = Column(String(50), comment='联系人')
+        phone = Column(String(30), comment='联系电话')
+        note = Column(String(500), comment='备注(如:未移交,暂由…负责)')
+        created_by = Column(Integer, comment='创建人ID')
+        created_at = Column(DateTime(timezone=True), server_default=func.now())
+        updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    class NoticeDoc(Base):
+        """文件资料 - 其他单位发给平台的文件/通知归集(如:某某事项不考核、
+        某路段开挖施工暂不采集);台账管理页展示,登录用户均可维护(与台账模块一致)"""
+        __tablename__ = 'notice_docs'
+        id = Column(Integer, primary_key=True, autoincrement=True)
+        title = Column(String(200), nullable=False, comment='标题')
+        tag = Column(String(50), comment='类型标签:考核豁免/采集豁免/通知公告等,自由填写')
+        source = Column(String(100), comment='发文单位')
+        doc_date = Column(Date, comment='文件日期')
+        content = Column(Text, comment='内容说明')
+        attachments = Column(Text, comment='附件JSON:[{name,path}]')
+        pinned = Column(Integer, default=0, comment='置顶标记')
+        created_by = Column(Integer, comment='创建人ID')
+        created_at = Column(DateTime(timezone=True), server_default=func.now())
+        updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    class DutySchedule(Base):
+        """值班表 - 按(日期,班次)结构化存储，班次名自由扩展；
+        is_holiday/note 为节假日排班预留（详见 duty_routes.py 模块注释）"""
+        __tablename__ = 'duty_schedule'
+        id = Column(Integer, primary_key=True, autoincrement=True)
+        duty_date = Column(Date, nullable=False, comment='值班日期')
+        shift = Column(String(50), nullable=False, comment='班次名：白班/夜班/中班等，自由扩展')
+        members = Column(String(500), nullable=False, comment='值班人员，顿号分隔')
+        is_holiday = Column(Integer, default=0, comment='节假日排班标记（预留）')
+        note = Column(String(200), comment='备注（如节假日名称）')
         created_by = Column(Integer, comment='创建人ID')
         created_at = Column(DateTime(timezone=True), server_default=func.now())
         updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
@@ -508,6 +618,34 @@ try:
         logger.info("考核月报路由注册成功")
     except Exception as e:
         logger.warning(f"考核月报路由注册失败: {e}")
+
+    # 值班表路由（首页今日值班 + 管理页值班表管理）
+    try:
+        register_duty_routes(app=app, Session=Session, DutySchedule=DutySchedule, protected=protected, admin_required=admin_required)
+        logger.info("值班表路由注册成功")
+    except Exception as e:
+        logger.warning(f"值班表路由注册失败: {e}")
+
+    # 值班记录路由（白班统计/夜班事件流水，前端值班记录页）
+    try:
+        register_duty_record_routes(app=app, Session=Session, DutyRecord=DutyRecord, DutyRecordEvent=DutyRecordEvent, protected=protected, admin_required=admin_required)
+        logger.info("值班记录路由注册成功")
+    except Exception as e:
+        logger.warning(f"值班记录路由注册失败: {e}")
+
+    # 特殊事项处置对照路由（案件归属页左面板展示，admin维护）
+    try:
+        register_special_matter_routes(app=app, Session=Session, SpecialMatter=SpecialMatter, protected=protected, admin_required=admin_required)
+        logger.info("特殊事项路由注册成功")
+    except Exception as e:
+        logger.warning(f"特殊事项路由注册失败: {e}")
+
+    # 文件资料路由（台账管理-文件资料标签页）
+    try:
+        register_notice_routes(app=app, Session=Session, NoticeDoc=NoticeDoc, protected=protected)
+        logger.info("文件资料路由注册成功")
+    except Exception as e:
+        logger.warning(f"文件资料路由注册失败: {e}")
 
 except Exception as e:
     logger.error(f"数据库初始化失败: {e}")

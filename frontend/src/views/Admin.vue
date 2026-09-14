@@ -503,6 +503,104 @@
       </table>
     </div>
 
+    <!-- 值班表管理 -->
+    <div v-else-if="activeTab === 'duty'" class="content-card">
+      <div class="card-header">
+        <h2 class="section-title">值班表管理</h2>
+        <button v-if="dutyEntries.length" class="btn btn-danger" @click="clearDuty">清空全部</button>
+      </div>
+      <p class="section-hint">
+        一行一天的格式：日期 白班：张三、李四、王五，夜班：赵六（人员分隔可用顿号/逗号/空格）。
+        支持 9月13日、2026-09-13 等日期写法；日期后可用括号加备注，如「10月1日（国庆节） 白班：张三」。
+        保存后首页欢迎区将显示今日值班。
+      </p>
+
+      <div class="duty-editor">
+        <textarea
+          v-model="dutyText"
+          class="form-input duty-textarea"
+          rows="6"
+          placeholder="9月13日 白班：张三、李四、王五，夜班：赵六&#10;9月14日 白班：王五，夜班：张三"
+        ></textarea>
+        <div class="duty-editor-actions">
+          <label class="btn btn-secondary duty-file-btn">
+            导入 txt 文件
+            <input type="file" accept=".txt,.csv" hidden @change="handleDutyFile" />
+          </label>
+          <label class="duty-append-label">
+            <input type="checkbox" v-model="dutyAppend" />
+            追加模式（保留现有排班）
+          </label>
+          <button class="btn btn-primary" :disabled="dutyBusy || !dutyText.trim()" @click="previewDuty">
+            {{ dutyBusy ? '解析中…' : '解析预览' }}
+          </button>
+        </div>
+      </div>
+
+      <!-- 解析预览 -->
+      <div v-if="dutyPreview" class="duty-preview">
+        <h3 class="subsection-title">
+          解析结果：{{ dutyPreview.days }} 天 / {{ dutyPreview.total }} 条排班
+          <span v-if="dutyPreview.errors.length" class="duty-error-count">（{{ dutyPreview.errors.length }} 行未识别）</span>
+        </h3>
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>日期</th>
+              <th>班次</th>
+              <th>人员</th>
+              <th>备注</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="(e, i) in dutyPreview.entries" :key="i">
+              <td>{{ e.date }}</td>
+              <td><span class="duty-shift-badge">{{ e.shift }}</span></td>
+              <td>{{ e.members.join('、') }}</td>
+              <td>{{ e.note || '—' }}</td>
+            </tr>
+          </tbody>
+        </table>
+        <ul v-if="dutyPreview.errors.length" class="duty-errors">
+          <li v-for="(err, i) in dutyPreview.errors" :key="i">{{ err }}</li>
+        </ul>
+        <div class="duty-preview-actions">
+          <button class="btn btn-primary" :disabled="dutySaving" @click="saveDuty">
+            {{ dutySaving ? '保存中…' : (dutyAppend ? '追加保存' : '保存（替换现有值班表）') }}
+          </button>
+          <button class="btn btn-secondary" @click="dutyPreview = null">取消</button>
+        </div>
+      </div>
+
+      <!-- 当前值班表 -->
+      <h3 class="subsection-title" style="margin-top:24px">当前值班表</h3>
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>日期</th>
+            <th>班次</th>
+            <th>人员</th>
+            <th>备注</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="e in dutyEntries" :key="e.id">
+            <td>{{ e.date }}</td>
+            <td><span class="duty-shift-badge">{{ e.shift }}</span></td>
+            <td>{{ e.members.join('、') }}</td>
+            <td>{{ e.note || '—' }}</td>
+            <td>
+              <button class="btn-text danger" @click="deleteDutyEntry(e)">删除</button>
+            </td>
+          </tr>
+          <tr v-if="dutyEntries.length === 0">
+            <td colspan="5" class="empty-text">暂无排班，请在上方粘贴或导入值班表</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
     <!-- 知识库管理 -->
     <div v-else-if="activeTab === 'knowledge'" class="content-card">
       <div class="card-header">
@@ -1137,6 +1235,7 @@ const tabs = [
   { key: 'standards', label: '立结案标准' },
   { key: 'assessment_input', label: '考核数据录入' },
   { key: 'business', label: '业务平台' },
+  { key: 'duty', label: '值班表' },
   { key: 'system', label: '系统设置' }
 ]
 
@@ -2116,11 +2215,88 @@ async function restoreData(type, event) {
   }
 }
 
+// ===== 值班表管理 =====
+const dutyText = ref('')
+const dutyAppend = ref(false)
+const dutyBusy = ref(false)
+const dutySaving = ref(false)
+const dutyPreview = ref(null)
+const dutyEntries = ref([])
+
+async function fetchDutyList() {
+  try {
+    const response = await axios.get('/api/duty/schedule')
+    dutyEntries.value = response.data.entries || []
+  } catch (e) {
+    console.error('获取值班表失败:', e)
+  }
+}
+
+function handleDutyFile(ev) {
+  const file = ev.target.files && ev.target.files[0]
+  if (!file) return
+  const reader = new FileReader()
+  reader.onload = () => { dutyText.value = String(reader.result || '') }
+  reader.readAsText(file, 'utf-8')
+  ev.target.value = ''
+}
+
+async function previewDuty() {
+  dutyBusy.value = true
+  try {
+    const response = await axios.post('/api/duty/preview', { text: dutyText.value })
+    dutyPreview.value = response.data
+  } catch (e) {
+    alert('解析失败: ' + (e.response?.data?.error || e.message))
+  } finally {
+    dutyBusy.value = false
+  }
+}
+
+async function saveDuty() {
+  dutySaving.value = true
+  try {
+    await axios.post('/api/duty/upload', {
+      text: dutyText.value,
+      mode: dutyAppend.value ? 'append' : 'replace'
+    })
+    dutyPreview.value = null
+    dutyText.value = ''
+    await fetchDutyList()
+  } catch (e) {
+    alert('保存失败: ' + (e.response?.data?.error || e.message))
+  } finally {
+    dutySaving.value = false
+  }
+}
+
+async function deleteDutyEntry(entry) {
+  if (!confirm(`删除 ${entry.date} ${entry.shift}（${entry.members.join('、')}）的排班？`)) return
+  try {
+    await axios.delete(`/api/duty/schedule/${entry.id}`)
+    await fetchDutyList()
+  } catch (e) {
+    alert('删除失败: ' + (e.response?.data?.error || e.message))
+  }
+}
+
+async function clearDuty() {
+  if (!confirm('确定清空全部值班表？首页将不再显示今日值班。')) return
+  try {
+    await axios.delete('/api/duty/schedule')
+    await fetchDutyList()
+  } catch (e) {
+    alert('清空失败: ' + (e.response?.data?.error || e.message))
+  }
+}
+
 // 加载备份相关数据
 watch(activeTab, (tab) => {
   if (tab === 'system') {
     loadBackupFiles()
     loadAutoBackupConfig()
+  } else if (tab === 'duty') {
+    fetchDutyList()
   }
 })
 
@@ -4380,5 +4556,67 @@ watch(articlesCurrentPage, fetchArticles)
   text-align: center;
   padding: var(--space-6);
   color: var(--text-secondary);
+}
+
+/* ===== 值班表管理 ===== */
+.duty-textarea {
+  width: 100%;
+  font-family: inherit;
+  line-height: 1.8;
+  resize: vertical;
+}
+
+.duty-editor-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.duty-file-btn {
+  cursor: pointer;
+}
+
+.duty-append-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.duty-preview {
+  margin-top: var(--space-5);
+}
+
+.duty-error-count {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.duty-errors {
+  margin: var(--space-3) 0 0;
+  padding-left: 20px;
+  font-size: 13px;
+  color: var(--danger);
+}
+
+.duty-preview-actions {
+  display: flex;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+
+.duty-shift-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--primary-50);
+  color: var(--primary-500);
 }
 </style>

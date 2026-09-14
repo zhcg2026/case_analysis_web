@@ -206,6 +206,82 @@
           />
         </div>
       </el-tab-pane>
+
+      <!-- 文件资料 -->
+      <el-tab-pane label="文件资料" name="docs">
+        <div class="tab-content">
+          <div class="toolbar">
+            <div class="toolbar-left">
+              <el-input v-model="docs.search" placeholder="搜索标题/发文单位/说明" clearable style="width: 250px" @keyup.enter="loadDocs">
+                <template #append>
+                  <el-button @click="loadDocs">
+                    <el-icon><Search /></el-icon>
+                  </el-button>
+                </template>
+              </el-input>
+              <el-select v-model="docs.tagFilter" placeholder="类型" clearable style="width: 140px" @change="loadDocs">
+                <el-option v-for="t in docsTagOptions" :key="t" :label="t" :value="t" />
+              </el-select>
+            </div>
+            <el-button type="primary" @click="openDocsDialog()">
+              <el-icon><Plus /></el-icon> 添加文件
+            </el-button>
+          </div>
+
+          <el-table :data="docs.data" v-loading="docs.loading" border stripe>
+            <el-table-column prop="title" label="标题" min-width="180" show-overflow-tooltip>
+              <template #default="{ row }">
+                <el-tag v-if="row.pinned" type="danger" size="small" style="margin-right: 6px">置顶</el-tag>
+                {{ row.title }}
+              </template>
+            </el-table-column>
+            <el-table-column prop="tag" label="类型" width="110" align="center">
+              <template #default="{ row }">
+                <el-tag v-if="row.tag" type="warning" size="small">{{ row.tag }}</el-tag>
+                <span v-else>-</span>
+              </template>
+            </el-table-column>
+            <el-table-column prop="source" label="发文单位" width="140" show-overflow-tooltip>
+              <template #default="{ row }">{{ row.source || '-' }}</template>
+            </el-table-column>
+            <el-table-column prop="doc_date" label="文件日期" width="110" align="center">
+              <template #default="{ row }">{{ row.doc_date || '-' }}</template>
+            </el-table-column>
+            <el-table-column prop="content" label="说明" min-width="150" show-overflow-tooltip>
+              <template #default="{ row }">{{ row.content || '-' }}</template>
+            </el-table-column>
+            <el-table-column label="附件" width="80" align="center">
+              <template #default="{ row }">
+                <el-badge :value="row.attachments.length" type="primary" v-if="row.attachments.length">
+                  <el-button type="primary" link size="small" @click="openDetail('docs', row)">查看</el-button>
+                </el-badge>
+                <span v-else>-</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="150" align="center" fixed="right">
+              <template #default="{ row }">
+                <el-button type="primary" link size="small" @click="openDetail('docs', row)">查看</el-button>
+                <el-button type="primary" link size="small" @click="openDocsDialog(row)">编辑</el-button>
+                <el-popconfirm title="确定删除该文件资料？" @confirm="deleteDocs(row.id)">
+                  <template #reference>
+                    <el-button type="danger" link size="small">删除</el-button>
+                  </template>
+                </el-popconfirm>
+              </template>
+            </el-table-column>
+          </el-table>
+
+          <el-pagination
+            v-model:current-page="docs.page"
+            v-model:page-size="docs.pageSize"
+            :total="docs.total"
+            :page-sizes="[10, 20, 50]"
+            layout="total, sizes, prev, pager, next, jumper"
+            @size-change="loadDocs"
+            @current-change="loadDocs"
+          />
+        </div>
+      </el-tab-pane>
     </el-tabs>
 
     <!-- 运维台账弹窗 -->
@@ -376,6 +452,63 @@
       </template>
     </el-dialog>
 
+    <!-- 文件资料弹窗 -->
+    <el-dialog v-model="docs.dialogVisible" :title="docs.editId ? '编辑文件资料' : '添加文件资料'" width="600px">
+      <el-form :model="docs.form" label-width="80px">
+        <el-form-item label="标题" required>
+          <el-input v-model="docs.form.title" placeholder="如：关于某某事项不考核的通知" />
+        </el-form-item>
+        <el-row :gutter="16">
+          <el-col :span="12">
+            <el-form-item label="类型">
+              <el-select v-model="docs.form.tag" filterable allow-create default-first-option clearable placeholder="选择或输入" style="width: 100%">
+                <el-option v-for="t in docTagPresets" :key="t" :label="t" :value="t" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="发文单位">
+              <el-input v-model="docs.form.source" placeholder="如：市城管局" />
+            </el-form-item>
+          </el-col>
+        </el-row>
+        <el-row :gutter="16">
+          <el-col :span="12">
+            <el-form-item label="文件日期">
+              <el-date-picker v-model="docs.form.doc_date" type="date" value-format="YYYY-MM-DD" placeholder="选择日期" style="width: 100%" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="置顶">
+              <el-switch v-model="docs.form.pinned" />
+            </el-form-item>
+          </el-col>
+        </el-row>
+        <el-form-item label="说明">
+          <el-input v-model="docs.form.content" type="textarea" :rows="3" placeholder="文件要点说明，如：某某路段开挖施工，暂不采集" />
+        </el-form-item>
+        <el-form-item label="附件">
+          <el-upload
+            :action="uploadFileUrl"
+            :headers="uploadHeaders"
+            multiple
+            v-model:file-list="docs.uploadFiles"
+            :on-success="handleDocUploadSuccess"
+            :on-remove="handleDocUploadRemove"
+          >
+            <el-button type="primary" plain>选择文件上传</el-button>
+            <template #tip>
+              <div class="el-upload__tip">支持文档/表格/图片/压缩包，可多选</div>
+            </template>
+          </el-upload>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="docs.dialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="saveDocs" :loading="docs.saving">保存</el-button>
+      </template>
+    </el-dialog>
+
     <!-- 查看详情弹窗 -->
     <el-dialog v-model="detail.visible" :title="detail.title" width="650px" top="6vh">
       <div class="detail-content" v-if="detail.data">
@@ -439,6 +572,26 @@
             <div class="detail-images-label">培训照片</div>
             <div class="detail-images-grid">
               <img v-for="(img, idx) in detail.images" :key="idx" :src="img" class="detail-img" @click="openImagePreview(detail.images, idx)" />
+            </div>
+          </div>
+        </template>
+        <!-- 文件资料详情 -->
+        <template v-if="detail.type === 'docs'">
+          <el-descriptions :column="2" border>
+            <el-descriptions-item label="标题" :span="2">{{ detail.data.title }}</el-descriptions-item>
+            <el-descriptions-item label="类型">{{ detail.data.tag || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="发文单位">{{ detail.data.source || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="文件日期">{{ detail.data.doc_date || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="说明" :span="2">
+              <div class="detail-text">{{ detail.data.content || '-' }}</div>
+            </el-descriptions-item>
+          </el-descriptions>
+          <div v-if="detail.attachments.length" class="detail-images">
+            <div class="detail-images-label">附件下载</div>
+            <div class="detail-attachments">
+              <a v-for="(att, idx) in detail.attachments" :key="idx" :href="att.path" target="_blank" class="detail-att-link">
+                {{ att.name }}
+              </a>
             </div>
           </div>
         </template>
@@ -506,13 +659,120 @@ const detail = reactive({
   type: '',
   title: '',
   data: null,
-  images: []
+  images: [],
+  attachments: []
 })
+
+// ===== 文件资料 =====
+const uploadFileUrl = '/api/upload/file'
+const docTagPresets = ['考核豁免', '采集豁免', '暂不采集', '通知公告', '其他']
+const docs = reactive({
+  data: [],
+  total: 0,
+  page: 1,
+  pageSize: 20,
+  loading: false,
+  loaded: false,
+  search: '',
+  tagFilter: '',
+  dialogVisible: false,
+  editId: null,
+  saving: false,
+  uploadFiles: [],
+  form: { title: '', tag: '', source: '', doc_date: null, content: '', pinned: false, attachments: [] }
+})
+
+const docsTagOptions = computed(() => {
+  const set = new Set([...docTagPresets])
+  for (const d of docs.data) if (d.tag) set.add(d.tag)
+  return [...set]
+})
+
+// 加载文件资料
+async function loadDocs() {
+  docs.loading = true
+  try {
+    const { data } = await axios.get('/api/notice-docs', { params: { keyword: docs.search, tag: docs.tagFilter } })
+    const all = data.docs || []
+    docs.total = all.length
+    const start = (docs.page - 1) * docs.pageSize
+    docs.data = all.slice(start, start + docs.pageSize)
+  } catch (e) {
+    ElMessage.error('加载文件资料失败')
+  } finally {
+    docs.loading = false
+  }
+}
+
+function openDocsDialog(row = null) {
+  if (row) {
+    docs.editId = row.id
+    docs.form = {
+      title: row.title, tag: row.tag || '', source: row.source || '',
+      doc_date: row.doc_date || null, content: row.content || '',
+      pinned: !!row.pinned, attachments: (row.attachments || []).map(a => ({ ...a }))
+    }
+    docs.uploadFiles = (row.attachments || []).map(a => ({ name: a.name, url: a.path }))
+  } else {
+    docs.editId = null
+    docs.form = { title: '', tag: '', source: '', doc_date: new Date().toISOString().slice(0, 10), content: '', pinned: false, attachments: [] }
+    docs.uploadFiles = []
+  }
+  docs.dialogVisible = true
+}
+
+function handleDocUploadSuccess(res, file) {
+  if (res.file_path) {
+    docs.form.attachments.push({ name: file.name, path: res.file_path })
+  } else {
+    ElMessage.error(res.error || '附件上传失败')
+  }
+}
+
+function handleDocUploadRemove(uploadFile) {
+  const p = uploadFile.response?.file_path || uploadFile.url
+  docs.form.attachments = docs.form.attachments.filter(a => a.path !== p)
+}
+
+async function saveDocs() {
+  if (!docs.form.title.trim()) {
+    ElMessage.warning('请填写标题')
+    return
+  }
+  docs.saving = true
+  try {
+    const payload = { ...docs.form, pinned: docs.form.pinned ? 1 : 0 }
+    if (docs.editId) {
+      await axios.put(`/api/notice-docs/${docs.editId}`, payload)
+      ElMessage.success('更新成功')
+    } else {
+      await axios.post('/api/notice-docs', payload)
+      ElMessage.success('添加成功')
+    }
+    docs.dialogVisible = false
+    await loadDocs()
+  } catch (e) {
+    ElMessage.error(e.response?.data?.error || '保存失败')
+  } finally {
+    docs.saving = false
+  }
+}
+
+async function deleteDocs(id) {
+  try {
+    await axios.delete(`/api/notice-docs/${id}`)
+    ElMessage.success('删除成功')
+    await loadDocs()
+  } catch (e) {
+    ElMessage.error('删除失败')
+  }
+}
 
 const DETAIL_TITLES = {
   maintenance: '运维记录详情',
   meeting: '会议记录详情',
-  training: '培训记录详情'
+  training: '培训记录详情',
+  docs: '文件资料详情'
 }
 
 function openDetail(type, row) {
@@ -520,6 +780,7 @@ function openDetail(type, row) {
   detail.title = DETAIL_TITLES[type] || '详情'
   detail.data = { ...row }
   detail.images = (type === 'meeting' || type === 'training') ? parseImageList(row.images) : []
+  detail.attachments = (type === 'docs' && Array.isArray(row.attachments)) ? row.attachments : []
   detail.visible = true
 }
 
@@ -815,6 +1076,9 @@ function handleTabChange(tab) {
   } else if (name === 'training' && training.data.length === 0 && !training.loaded) {
     loadTraining()
     training.loaded = true
+  } else if (name === 'docs' && !docs.loaded) {
+    loadDocs()
+    docs.loaded = true
   }
 }
 

@@ -107,24 +107,27 @@
     </aside>
 
     <!-- 右侧展开/收起按钮 -->
-    <button class="panel-toggle-btn right-toggle" :class="{ collapsed: rightPanelCollapsed }" @click="rightPanelCollapsed = !rightPanelCollapsed" :title="rightPanelCollapsed ? '展开结果' : '收起结果'">
+    <button class="panel-toggle-btn right-toggle" :class="{ collapsed: rightPanelCollapsed }" @click="rightPanelCollapsed = !rightPanelCollapsed" :title="rightPanelCollapsed ? '展开面板' : '收起面板'">
       <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <polyline :points="rightPanelCollapsed ? '15 18 9 12 15 6' : '9 18 15 12 9 6'"/>
       </svg>
     </button>
 
-    <!-- 右侧结果面板 -->
+    <!-- 右侧面板：归属结果 / 特殊事项 -->
     <aside class="floating-panel right-panel" :class="{ collapsed: rightPanelCollapsed }">
-      <div class="panel-header">
-        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
-          <polyline points="22 4 12 14.01 9 11.01"/>
-        </svg>
-        <h3>查询结果</h3>
+      <div class="panel-header rp-header">
+        <div class="rp-tabs">
+          <button class="rp-tab" :class="{ active: rightTab === 'result' }" @click="rightTab = 'result'">归属结果</button>
+          <button class="rp-tab" :class="{ active: rightTab === 'special' }" @click="switchSpecialTab">
+            特殊事项<span v-if="specialMatters.length" class="special-count">{{ specialMatters.length }}</span>
+          </button>
+        </div>
       </div>
 
-      <!-- 有结果 -->
-      <div v-if="dispatchResult" class="result-content">
+      <!-- 归属结果 -->
+      <div v-show="rightTab === 'result'" class="rp-pane">
+        <!-- 有结果 -->
+        <div v-if="dispatchResult" class="result-content">
         <div class="result-status" :class="dispatchResult.in_jurisdiction ? 'status-ok' : 'status-warn'">
           <svg v-if="dispatchResult.in_jurisdiction" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
           <svg v-else xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
@@ -166,7 +169,75 @@
         </svg>
         <p>选择案件类型并在地图上点选位置后查询</p>
       </div>
+      </div>
+
+      <!-- 特殊事项处置对照（大小类标准之外的特例） -->
+      <div v-show="rightTab === 'special'" class="rp-pane">
+        <div class="special-pane-head">
+          <span class="query-title">大小类标准外的特例</span>
+          <button v-if="userStore.isAdmin" class="special-add-btn" @click="openSpecialEditor()" title="添加特殊事项">＋ 添加</button>
+        </div>
+        <div class="special-list">
+          <div v-for="m in specialMatters" :key="m.id" class="special-item">
+            <div class="special-line1">
+              <span class="special-matter">{{ m.matter }}</span>
+              <span class="special-arrow">→</span>
+              <span class="special-dept">{{ m.dept }}</span>
+            </div>
+            <div class="special-line2" v-if="m.contact || m.phone">
+              <span v-if="m.contact" class="special-contact">{{ m.contact }}</span>
+              <a v-if="m.phone" :href="'tel:' + m.phone" class="special-phone">{{ m.phone }}</a>
+            </div>
+            <div class="special-note" v-if="m.note">{{ m.note }}</div>
+            <div class="special-ops" v-if="userStore.isAdmin">
+              <button @click="openSpecialEditor(m)">编辑</button>
+              <button class="danger" @click="deleteSpecial(m)">删除</button>
+            </div>
+          </div>
+          <div v-if="!specialMatters.length" class="special-empty">暂无特殊事项</div>
+        </div>
+      </div>
     </aside>
+
+    <!-- 特殊事项维护弹窗（admin） -->
+    <div v-if="showSpecialEditor" class="sm-overlay" @click.self="showSpecialEditor = false">
+      <div class="sm-modal">
+        <div class="sm-header">
+          <h3>{{ specialForm.id ? '编辑' : '添加' }}特殊事项</h3>
+          <button class="sm-close" @click="showSpecialEditor = false">&times;</button>
+        </div>
+        <div class="sm-body">
+          <div class="sm-field">
+            <label>事项/路段 <span class="req">*</span></label>
+            <input v-model="specialForm.matter" type="text" class="sm-input" placeholder="如：圣惠南路 / 南城墙路立面改造" />
+          </div>
+          <div class="sm-field">
+            <label>处置部门 <span class="req">*</span></label>
+            <input v-model="specialForm.dept" type="text" class="sm-input" placeholder="如：市政工程部" />
+          </div>
+          <div class="sm-field-row">
+            <div class="sm-field">
+              <label>联系人</label>
+              <input v-model="specialForm.contact" type="text" class="sm-input" placeholder="可选" />
+            </div>
+            <div class="sm-field">
+              <label>联系电话</label>
+              <input v-model="specialForm.phone" type="text" class="sm-input" placeholder="可选" />
+            </div>
+          </div>
+          <div class="sm-field">
+            <label>备注</label>
+            <textarea v-model="specialForm.note" rows="2" class="sm-input" placeholder="如：未移交，暂由市政工程部负责（可选）"></textarea>
+          </div>
+        </div>
+        <div class="sm-footer">
+          <button class="sm-btn" @click="showSpecialEditor = false">取消</button>
+          <button class="sm-btn primary" :disabled="specialSaving" @click="saveSpecial">
+            {{ specialSaving ? '保存中…' : '保存' }}
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -181,7 +252,64 @@ const themeStore = useThemeStore()
 
 // 面板状态
 const leftPanelCollapsed = ref(false)
-const rightPanelCollapsed = ref(true)
+const rightPanelCollapsed = ref(false)  // 默认展开, 打开页面即见特殊事项清单
+const rightTab = ref('special')  // special=特殊事项(默认) / result=归属结果(查询后自动切)
+
+// ===== 特殊事项处置对照（纯展示，admin 维护） =====
+const specialMatters = ref([])
+const showSpecialEditor = ref(false)
+const specialSaving = ref(false)
+const specialForm = ref({ id: null, matter: '', dept: '', contact: '', phone: '', note: '' })
+
+function switchSpecialTab() {
+  rightTab.value = 'special'
+  fetchSpecialMatters()
+}
+
+async function fetchSpecialMatters() {
+  try {
+    const resp = await axios.get('/api/special-matters')
+    specialMatters.value = resp.data.matters || []
+  } catch (e) {
+    console.error('获取特殊事项失败:', e)
+  }
+}
+
+function openSpecialEditor(m = null) {
+  specialForm.value = m
+    ? { id: m.id, matter: m.matter, dept: m.dept, contact: m.contact || '', phone: m.phone || '', note: m.note || '' }
+    : { id: null, matter: '', dept: '', contact: '', phone: '', note: '' }
+  showSpecialEditor.value = true
+}
+
+async function saveSpecial() {
+  if (!specialForm.value.matter.trim()) return alert('请填写事项/路段')
+  if (!specialForm.value.dept.trim()) return alert('请填写处置部门')
+  specialSaving.value = true
+  try {
+    if (specialForm.value.id) {
+      await axios.put(`/api/special-matters/${specialForm.value.id}`, specialForm.value)
+    } else {
+      await axios.post('/api/special-matters', specialForm.value)
+    }
+    showSpecialEditor.value = false
+    await fetchSpecialMatters()
+  } catch (e) {
+    alert('保存失败: ' + (e.response?.data?.error || e.message))
+  } finally {
+    specialSaving.value = false
+  }
+}
+
+async function deleteSpecial(m) {
+  if (!confirm(`删除特殊事项「${m.matter} → ${m.dept}」？`)) return
+  try {
+    await axios.delete(`/api/special-matters/${m.id}`)
+    await fetchSpecialMatters()
+  } catch (e) {
+    alert('删除失败: ' + (e.response?.data?.error || e.message))
+  }
+}
 
 // 查询状态
 const querying = ref(false)
@@ -337,6 +465,7 @@ async function doDispatch() {
     const res = await axios.post('/api/dispatch/query', payload, { headers: getAuthHeaders() })
     dispatchResult.value = res.data
     rightPanelCollapsed.value = false
+    rightTab.value = 'result'
   } catch (e) {
     console.error('归属查询失败:', e)
     dispatchResult.value = {
@@ -348,6 +477,7 @@ async function doDispatch() {
       answer: '查询失败，请稍后重试',
     }
     rightPanelCollapsed.value = false
+    rightTab.value = 'result'
   } finally {
     querying.value = false
   }
@@ -364,6 +494,7 @@ onMounted(async () => {
   await loadCaseTypes()
   await nextTick()
   await initMap()
+  fetchSpecialMatters()
 })
 
 onUnmounted(() => {
@@ -821,4 +952,351 @@ onUnmounted(() => {
 [data-theme="light"] .empty-result { color: rgba(0, 0, 0, 0.3); }
 [data-theme="light"] .status-ok { background: rgba(39, 174, 96, 0.1); border-color: rgba(39, 174, 96, 0.2); }
 [data-theme="light"] .status-warn { background: rgba(230, 162, 60, 0.1); border-color: rgba(230, 162, 60, 0.2); }
+
+/* ===== 右侧面板标签页（归属结果 / 特殊事项） ===== */
+.rp-header {
+  padding: 10px 12px 0;
+}
+
+.rp-tabs {
+  display: flex;
+  gap: 4px;
+  width: 100%;
+}
+
+.rp-tab {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 4px 10px;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+}
+
+.rp-tab.active {
+  color: #fff;
+  border-bottom-color: #409eff;
+}
+
+.rp-tab:hover {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.rp-pane {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.special-pane-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.special-list {
+  margin-top: 0;
+}
+
+/* ===== 特殊事项处置对照 ===== */
+.special-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: rgba(64, 158, 255, 0.25);
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 11px;
+  margin-left: 4px;
+}
+
+.special-add-btn {
+  border: 1px solid rgba(64, 158, 255, 0.4);
+  background: rgba(64, 158, 255, 0.12);
+  color: rgba(255, 255, 255, 0.85);
+  border-radius: 999px;
+  font-size: 12px;
+  padding: 2px 10px;
+  cursor: pointer;
+}
+
+.special-add-btn:hover {
+  background: rgba(64, 158, 255, 0.3);
+}
+
+.special-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.special-item {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(64, 158, 255, 0.12);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.special-line1 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.special-matter {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.special-arrow {
+  color: rgba(64, 158, 255, 0.7);
+  font-size: 12px;
+}
+
+.special-dept {
+  font-size: 12px;
+  font-weight: 600;
+  color: #409eff;
+  background: rgba(64, 158, 255, 0.15);
+  border-radius: 999px;
+  padding: 1px 8px;
+}
+
+.special-line2 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 4px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.special-phone {
+  color: rgba(255, 255, 255, 0.75);
+  text-decoration: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.special-phone:hover {
+  color: #409eff;
+}
+
+.special-note {
+  margin-top: 4px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.4);
+  line-height: 1.5;
+}
+
+.special-ops {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.special-ops button {
+  border: none;
+  background: none;
+  padding: 0;
+  font-size: 12px;
+  color: #409eff;
+  cursor: pointer;
+}
+
+.special-ops button.danger {
+  color: #f56c6c;
+}
+
+.special-empty {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.35);
+  text-align: center;
+  padding: 8px 0;
+}
+
+/* 维护弹窗 */
+.sm-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+}
+
+.sm-modal {
+  width: 440px;
+  max-width: 92vw;
+  background: var(--bg-card);
+  border: 1px solid var(--border-lighter);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: var(--card-shadow);
+}
+
+.sm-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border-lighter);
+}
+
+.sm-header h3 {
+  margin: 0;
+  font-size: 15px;
+  color: var(--text-primary);
+}
+
+.sm-close {
+  border: none;
+  background: none;
+  font-size: 22px;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  line-height: 1;
+}
+
+.sm-body {
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sm-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  flex: 1;
+}
+
+.sm-field label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.sm-field .req {
+  color: var(--danger);
+}
+
+.sm-field-row {
+  display: flex;
+  gap: 10px;
+}
+
+.sm-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  background: var(--fill-light);
+  border: 1px solid var(--border-light);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: 13px;
+  outline: none;
+}
+
+.sm-input:focus {
+  border-color: var(--primary-500);
+}
+
+.sm-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 12px 18px;
+  border-top: 1px solid var(--border-lighter);
+}
+
+.sm-btn {
+  padding: 7px 18px;
+  border-radius: 6px;
+  border: 1px solid var(--border-light);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.sm-btn.primary {
+  background: var(--primary-500);
+  border-color: var(--primary-500);
+  color: #fff;
+}
+
+.sm-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* ===== 特殊事项：亮色主题 ===== */
+[data-theme="light"] .rp-tab {
+  color: rgba(0, 0, 0, 0.45);
+}
+
+[data-theme="light"] .rp-tab.active {
+  color: #303133;
+  border-bottom-color: #409eff;
+}
+
+[data-theme="light"] .rp-tab:hover {
+  color: rgba(0, 0, 0, 0.7);
+}
+
+[data-theme="light"] .special-count {
+  background: rgba(64, 158, 255, 0.15);
+  color: #409eff;
+}
+
+[data-theme="light"] .special-add-btn {
+  color: #409eff;
+}
+
+[data-theme="light"] .special-item {
+  background: rgba(64, 158, 255, 0.05);
+  border-color: rgba(64, 158, 255, 0.18);
+}
+
+[data-theme="light"] .special-matter {
+  color: #303133;
+}
+
+[data-theme="light"] .special-line2 {
+  color: rgba(0, 0, 0, 0.5);
+}
+
+[data-theme="light"] .special-phone {
+  color: rgba(0, 0, 0, 0.65);
+}
+
+[data-theme="light"] .special-phone:hover {
+  color: #409eff;
+}
+
+[data-theme="light"] .special-note {
+  color: rgba(0, 0, 0, 0.35);
+}
+
+[data-theme="light"] .special-empty {
+  color: rgba(0, 0, 0, 0.3);
+}
 </style>

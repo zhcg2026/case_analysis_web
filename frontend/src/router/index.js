@@ -20,6 +20,7 @@ const ReportEmbed = () => import('../views/ReportEmbed.vue')
 const DataCleaning = () => import('../views/DataCleaning.vue')
 const Ledger = () => import('../views/Ledger.vue')
 const Assessment = () => import('../views/Assessment.vue')
+const DutyRecord = () => import('../views/DutyRecord.vue')
 
 
 const routes = [
@@ -82,6 +83,12 @@ const routes = [
     name: 'Ledger',
     component: Ledger,
     meta: { requiresAuth: true, title: '台账管理', permission: 'ledger' }
+  },
+  {
+    path: '/duty-record',
+    name: 'DutyRecord',
+    component: DutyRecord,
+    meta: { requiresAuth: true, title: '值班记录' }
   },
   {
     path: '/assessment',

@@ -6,6 +6,44 @@
         <h1 class="welcome-title">欢迎回来，{{ userStore.username }}</h1>
         <p class="welcome-subtitle">{{ config.name }} v2.0 - 智能数据分析平台</p>
       </div>
+      <div v-if="dutyShifts.length" class="welcome-duty">
+        <div class="duty-label">
+          今日值班
+          <span v-if="dutyNote" class="duty-note-tag">{{ dutyNote }}</span>
+        </div>
+        <div class="duty-shifts">
+          <div v-for="s in dutyShifts" :key="s.shift" class="duty-shift">
+            <span class="duty-chip" :class="isNightShift(s.shift) ? 'night' : 'day'">
+              <svg v-if="isNightShift(s.shift)" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+              </svg>
+              <svg v-else xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="4"/>
+                <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>
+              </svg>
+              {{ s.shift }}
+            </span>
+            <span class="duty-members">{{ s.members.join('、') }}</span>
+          </div>
+        </div>
+      </div>
+      <div class="welcome-record" @click="goDutyRecord" title="进入值班记录">
+        <div class="record-label">值班数据</div>
+        <div class="record-data-rows">
+          <div class="record-data-row">
+            <span class="rd-tag rd-tag--day">今日</span>
+            <span class="rd-item" v-for="k in ['reported', 'accepted', 'completed']" :key="k">
+              {{ rdLabel(k) }} <b :class="{ empty: recordData.today[k] == null }">{{ rdNum(recordData.today[k]) }}</b>
+            </span>
+          </div>
+          <div class="record-data-row">
+            <span class="rd-tag rd-tag--month">本月</span>
+            <span class="rd-item" v-for="k in ['reported', 'accepted', 'completed']" :key="k">
+              {{ rdLabel(k) }} <b :class="{ empty: !recordData.month[k] }">{{ rdNum(recordData.month[k]) }}</b>
+            </span>
+          </div>
+        </div>
+      </div>
       <div class="welcome-time">
         <div class="time-display">{{ currentTime }}</div>
         <div class="date-display">{{ currentDate }}</div>
@@ -62,6 +100,66 @@ let timeInterval = null
 
 const columns = ref([])
 
+// 今日值班（值班表为可选功能，接口异常时静默隐藏展示区）
+const dutyShifts = ref([])
+const dutyNote = ref('')
+
+function isNightShift(shift) {
+  return /夜|晚/.test(shift || '')
+}
+
+async function fetchDuty() {
+  try {
+    const response = await axios.get('/api/duty/today')
+    dutyShifts.value = response.data.shifts || []
+    dutyNote.value = dutyShifts.value.map(s => s.note).find(Boolean) || ''
+  } catch (error) {
+    console.error('获取今日值班失败:', error)
+  }
+}
+
+// 值班数据（当日白班统计 + 当月汇总；值班记录为可选功能，异常时静默）
+const recordData = ref({
+  today: { reported: null, accepted: null, completed: null },
+  month: { reported: 0, accepted: 0, completed: 0 },
+})
+
+function localDateStr(d = new Date()) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+async function fetchRecordStatus() {
+  try {
+    const response = await axios.get('/api/duty-record/status', { params: { date: localDateStr() } })
+    const dayStats = (response.data['白班'] || {}).stats || {}
+    recordData.value = {
+      today: {
+        reported: dayStats.stat_reported ?? null,
+        accepted: dayStats.stat_accepted ?? null,
+        completed: dayStats.stat_completed ?? null,
+      },
+      month: response.data.month_sums || { reported: 0, accepted: 0, completed: 0 },
+    }
+  } catch (error) {
+    console.error('获取值班数据失败:', error)
+  }
+}
+
+const RD_LABELS = { reported: '上报', accepted: '受理', completed: '办结' }
+
+function rdLabel(k) {
+  return RD_LABELS[k]
+}
+
+function rdNum(v) {
+  if (v == null || v === '') return '—'
+  return Number(v).toLocaleString('zh-CN')
+}
+
+function goDutyRecord() {
+  router.push('/duty-record')
+}
+
 function updateTime() {
   const now = new Date()
   currentTime.value = now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
@@ -101,6 +199,8 @@ onMounted(() => {
   updateTime()
   timeInterval = setInterval(updateTime, 1000)
   fetchColumns()
+  fetchDuty()
+  fetchRecordStatus()
 })
 
 onUnmounted(() => {
@@ -156,6 +256,159 @@ onUnmounted(() => {
   font-size: 14px;
   color: var(--text-tertiary);
   margin-top: var(--space-1);
+}
+
+/* 今日值班展示区 */
+.welcome-duty {
+  border-left: 1px solid var(--border-lighter);
+  padding-left: var(--space-6);
+  margin-right: var(--space-6);
+}
+
+.duty-label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 12px;
+  color: var(--text-tertiary);
+  margin-bottom: var(--space-2);
+}
+
+.duty-note-tag {
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  background: rgba(230, 162, 60, 0.14);
+  color: var(--warning-dark);
+}
+
+.duty-shifts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.duty-shift {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.duty-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.duty-chip svg {
+  width: 12px;
+  height: 12px;
+}
+
+.duty-chip.day {
+  background: rgba(230, 162, 60, 0.14);
+  color: var(--warning-dark);
+}
+
+.duty-chip.night {
+  background: rgba(99, 102, 241, 0.15);
+  color: #5a5fd0;
+}
+
+.duty-members {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+[data-theme="dark"] .duty-chip.day {
+  color: var(--warning);
+}
+
+[data-theme="dark"] .duty-chip.night {
+  color: #a5b4fc;
+}
+
+[data-theme="dark"] .duty-note-tag {
+  color: var(--warning);
+}
+
+/* 值班数据展示区 */
+.welcome-record {
+  border-left: 1px solid var(--border-lighter);
+  padding-left: var(--space-6);
+  margin-right: var(--space-6);
+  cursor: pointer;
+}
+
+.welcome-record:hover .record-label {
+  color: var(--primary-500);
+}
+
+.record-label {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  margin-bottom: var(--space-2);
+  transition: color var(--transition-fast);
+}
+
+.record-data-rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.record-data-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  white-space: nowrap;
+}
+
+.rd-tag {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 8px;
+  border-radius: 999px;
+}
+
+.rd-tag--day {
+  background: rgba(64, 158, 255, 0.14);
+  color: var(--primary-500);
+}
+
+.rd-tag--month {
+  background: rgba(103, 194, 58, 0.16);
+  color: var(--success-dark);
+}
+
+[data-theme="dark"] .rd-tag--month {
+  color: var(--success);
+}
+
+.rd-item {
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.rd-item b {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-left: 2px;
+  font-variant-numeric: tabular-nums;
+}
+
+.rd-item b.empty {
+  color: var(--text-placeholder);
+  font-weight: 400;
 }
 
 .cms-section {
@@ -277,6 +530,36 @@ onUnmounted(() => {
 
   .welcome-time {
     text-align: center;
+  }
+
+  .welcome-duty {
+    border-left: none;
+    padding-left: 0;
+    margin-right: 0;
+    width: 100%;
+  }
+
+  .welcome-record {
+    border-left: none;
+    padding-left: 0;
+    margin-right: 0;
+    width: 100%;
+  }
+
+  .duty-label {
+    justify-content: center;
+  }
+
+  .duty-shifts {
+    align-items: center;
+  }
+
+  .record-label {
+    text-align: center;
+  }
+
+  .record-data-rows {
+    align-items: center;
   }
 
   .cms-columns {
