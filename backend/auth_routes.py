@@ -9,9 +9,19 @@ from helpers import (
     clear_login_attempts, generate_token, get_json_payload
 )
 
-# 当前保留的权限列
-PERMISSION_COLUMNS = 'data_analysis, knowledge, map, case_map, dispatch, business, ledger, assessment, data_cleaning'
-PERMISSION_KEYS = ['data_analysis', 'knowledge', 'map', 'case_map', 'dispatch', 'business', 'ledger', 'assessment', 'data_cleaning']
+# 菜单级权限列（与前端 menuPermissions.js 一致）
+PERMISSION_KEYS = [
+    'map', 'knowledge',
+    'dispatch', 'dispatch_standards', 'dispatch_query', 'dispatch_special',
+    'data_mgmt', 'data_cleaning', 'data_browse', 'data_stats',
+    'assessment', 'assessment_input_platform', 'assessment_input_collector', 'assessment_exemption', 'assessment_score',
+    'data_analysis', 'case_map',
+    'ledger', 'ledger_maintenance', 'ledger_meeting', 'ledger_training', 'ledger_docs',
+    'ledger_monitor', 'ledger_drone',
+    'duty', 'duty_schedule', 'duty_records',
+    'business',
+]
+PERMISSION_COLUMNS = ', '.join(PERMISSION_KEYS)
 
 def register_auth_routes(app, Session, User, engine):
     """注册认证相关路由"""
@@ -183,7 +193,7 @@ def register_auth_routes(app, Session, User, engine):
             placeholders = ', '.join([f':{key}' for key in PERMISSION_KEYS])
             session.execute(text(f"INSERT INTO permissions (user_id, {cols}) VALUES (:user_id, {placeholders})"), {
                 'user_id': new_user.id,
-                **{key: False for key in PERMISSION_KEYS}
+                **{key: (1 if key == 'duty_records' else 0) for key in PERMISSION_KEYS}
             })
             session.commit()
 
@@ -191,7 +201,7 @@ def register_auth_routes(app, Session, User, engine):
                 'id': new_user.id,
                 'username': new_user.username,
                 'role': new_user.role,
-                'permissions': {key: False for key in PERMISSION_KEYS}
+                'permissions': {key: (key == 'duty_records') for key in PERMISSION_KEYS}
             }), 201
         except Exception as e:
             session.rollback()
@@ -255,7 +265,7 @@ def register_auth_routes(app, Session, User, engine):
             set_clause = ', '.join([f'{key} = :{key}' for key in PERMISSION_KEYS])
             session.execute(text(f"UPDATE permissions SET {set_clause} WHERE user_id = :user_id"), {
                 'user_id': user_id,
-                **{key: data.get(key, False) for key in PERMISSION_KEYS}
+                **{key: (1 if data.get(key) else 0) for key in PERMISSION_KEYS}
             })
             session.commit()
 

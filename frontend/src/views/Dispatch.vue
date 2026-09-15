@@ -113,19 +113,15 @@
       </svg>
     </button>
 
-    <!-- 右侧面板：归属结果 / 特殊事项 -->
+    <!-- 右侧面板：归属结果 -->
     <aside class="floating-panel right-panel" :class="{ collapsed: rightPanelCollapsed }">
       <div class="panel-header rp-header">
         <div class="rp-tabs">
-          <button class="rp-tab" :class="{ active: rightTab === 'result' }" @click="rightTab = 'result'">归属结果</button>
-          <button class="rp-tab" :class="{ active: rightTab === 'special' }" @click="switchSpecialTab">
-            特殊事项<span v-if="specialMatters.length" class="special-count">{{ specialMatters.length }}</span>
-          </button>
+          <span class="rp-tab active">归属结果</span>
         </div>
       </div>
 
-      <!-- 归属结果 -->
-      <div v-show="rightTab === 'result'" class="rp-pane">
+      <div class="rp-pane">
         <!-- 有结果 -->
         <div v-if="dispatchResult" class="result-content">
         <div class="result-status" :class="dispatchResult.in_jurisdiction ? 'status-ok' : 'status-warn'">
@@ -170,74 +166,7 @@
         <p>选择案件类型并在地图上点选位置后查询</p>
       </div>
       </div>
-
-      <!-- 特殊事项处置对照（大小类标准之外的特例） -->
-      <div v-show="rightTab === 'special'" class="rp-pane">
-        <div class="special-pane-head">
-          <span class="query-title">大小类标准外的特例</span>
-          <button v-if="userStore.isAdmin" class="special-add-btn" @click="openSpecialEditor()" title="添加特殊事项">＋ 添加</button>
-        </div>
-        <div class="special-list">
-          <div v-for="m in specialMatters" :key="m.id" class="special-item">
-            <div class="special-line1">
-              <span class="special-matter">{{ m.matter }}</span>
-              <span class="special-arrow">→</span>
-              <span class="special-dept">{{ m.dept }}</span>
-            </div>
-            <div class="special-line2" v-if="m.contact || m.phone">
-              <span v-if="m.contact" class="special-contact">{{ m.contact }}</span>
-              <a v-if="m.phone" :href="'tel:' + m.phone" class="special-phone">{{ m.phone }}</a>
-            </div>
-            <div class="special-note" v-if="m.note">{{ m.note }}</div>
-            <div class="special-ops" v-if="userStore.isAdmin">
-              <button @click="openSpecialEditor(m)">编辑</button>
-              <button class="danger" @click="deleteSpecial(m)">删除</button>
-            </div>
-          </div>
-          <div v-if="!specialMatters.length" class="special-empty">暂无特殊事项</div>
-        </div>
-      </div>
     </aside>
-
-    <!-- 特殊事项维护弹窗（admin） -->
-    <div v-if="showSpecialEditor" class="sm-overlay" @click.self="showSpecialEditor = false">
-      <div class="sm-modal">
-        <div class="sm-header">
-          <h3>{{ specialForm.id ? '编辑' : '添加' }}特殊事项</h3>
-          <button class="sm-close" @click="showSpecialEditor = false">&times;</button>
-        </div>
-        <div class="sm-body">
-          <div class="sm-field">
-            <label>事项/路段 <span class="req">*</span></label>
-            <input v-model="specialForm.matter" type="text" class="sm-input" placeholder="如：圣惠南路 / 南城墙路立面改造" />
-          </div>
-          <div class="sm-field">
-            <label>处置部门 <span class="req">*</span></label>
-            <input v-model="specialForm.dept" type="text" class="sm-input" placeholder="如：市政工程部" />
-          </div>
-          <div class="sm-field-row">
-            <div class="sm-field">
-              <label>联系人</label>
-              <input v-model="specialForm.contact" type="text" class="sm-input" placeholder="可选" />
-            </div>
-            <div class="sm-field">
-              <label>联系电话</label>
-              <input v-model="specialForm.phone" type="text" class="sm-input" placeholder="可选" />
-            </div>
-          </div>
-          <div class="sm-field">
-            <label>备注</label>
-            <textarea v-model="specialForm.note" rows="2" class="sm-input" placeholder="如：未移交，暂由市政工程部负责（可选）"></textarea>
-          </div>
-        </div>
-        <div class="sm-footer">
-          <button class="sm-btn" @click="showSpecialEditor = false">取消</button>
-          <button class="sm-btn primary" :disabled="specialSaving" @click="saveSpecial">
-            {{ specialSaving ? '保存中…' : '保存' }}
-          </button>
-        </div>
-      </div>
-    </div>
   </div>
 </template>
 
@@ -252,64 +181,7 @@ const themeStore = useThemeStore()
 
 // 面板状态
 const leftPanelCollapsed = ref(false)
-const rightPanelCollapsed = ref(false)  // 默认展开, 打开页面即见特殊事项清单
-const rightTab = ref('special')  // special=特殊事项(默认) / result=归属结果(查询后自动切)
-
-// ===== 特殊事项处置对照（纯展示，admin 维护） =====
-const specialMatters = ref([])
-const showSpecialEditor = ref(false)
-const specialSaving = ref(false)
-const specialForm = ref({ id: null, matter: '', dept: '', contact: '', phone: '', note: '' })
-
-function switchSpecialTab() {
-  rightTab.value = 'special'
-  fetchSpecialMatters()
-}
-
-async function fetchSpecialMatters() {
-  try {
-    const resp = await axios.get('/api/special-matters')
-    specialMatters.value = resp.data.matters || []
-  } catch (e) {
-    console.error('获取特殊事项失败:', e)
-  }
-}
-
-function openSpecialEditor(m = null) {
-  specialForm.value = m
-    ? { id: m.id, matter: m.matter, dept: m.dept, contact: m.contact || '', phone: m.phone || '', note: m.note || '' }
-    : { id: null, matter: '', dept: '', contact: '', phone: '', note: '' }
-  showSpecialEditor.value = true
-}
-
-async function saveSpecial() {
-  if (!specialForm.value.matter.trim()) return alert('请填写事项/路段')
-  if (!specialForm.value.dept.trim()) return alert('请填写处置部门')
-  specialSaving.value = true
-  try {
-    if (specialForm.value.id) {
-      await axios.put(`/api/special-matters/${specialForm.value.id}`, specialForm.value)
-    } else {
-      await axios.post('/api/special-matters', specialForm.value)
-    }
-    showSpecialEditor.value = false
-    await fetchSpecialMatters()
-  } catch (e) {
-    alert('保存失败: ' + (e.response?.data?.error || e.message))
-  } finally {
-    specialSaving.value = false
-  }
-}
-
-async function deleteSpecial(m) {
-  if (!confirm(`删除特殊事项「${m.matter} → ${m.dept}」？`)) return
-  try {
-    await axios.delete(`/api/special-matters/${m.id}`)
-    await fetchSpecialMatters()
-  } catch (e) {
-    alert('删除失败: ' + (e.response?.data?.error || e.message))
-  }
-}
+const rightPanelCollapsed = ref(false)
 
 // 查询状态
 const querying = ref(false)
@@ -465,7 +337,6 @@ async function doDispatch() {
     const res = await axios.post('/api/dispatch/query', payload, { headers: getAuthHeaders() })
     dispatchResult.value = res.data
     rightPanelCollapsed.value = false
-    rightTab.value = 'result'
   } catch (e) {
     console.error('归属查询失败:', e)
     dispatchResult.value = {
@@ -477,7 +348,6 @@ async function doDispatch() {
       answer: '查询失败，请稍后重试',
     }
     rightPanelCollapsed.value = false
-    rightTab.value = 'result'
   } finally {
     querying.value = false
   }
@@ -494,7 +364,6 @@ onMounted(async () => {
   await loadCaseTypes()
   await nextTick()
   await initMap()
-  fetchSpecialMatters()
 })
 
 onUnmounted(() => {

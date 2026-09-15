@@ -7,7 +7,7 @@
         <option v-for="m in months" :key="m.batch" :value="m.batch">{{ formatMonth(m.batch) }}</option>
       </select>
       <button class="btn btn-primary" :disabled="!batch || saving" @click="saveAll">
-        {{ saving ? '保存中…' : '保存本月数据' }}
+        {{ saving ? '保存中…' : saveLabel }}
       </button>
       <span v-if="loadedHint" class="hint">{{ loadedHint }}</span>
     </div>
@@ -16,7 +16,7 @@
 
     <div v-else class="sections">
       <!-- 平台 -->
-      <section class="card">
+      <section v-if="isPlatform" class="card">
         <h3>平台录入</h3>
         <div class="row">
           <div class="field">
@@ -104,8 +104,36 @@
         </table>
       </section>
 
+      <!-- 采集异常日（月报数据质量） -->
+      <section v-if="isPlatform" class="card">
+        <h3>采集异常日</h3>
+        <p class="card-tip">标记当月因降雨、系统故障等原因导致采集量异常的日期，生成月度分析报告时写入「数据质量」章节。增删后即时保存。</p>
+        <div v-if="anomaliesLoading" class="empty-hint">加载中…</div>
+        <div v-else>
+          <div v-if="!anomalies.length" class="empty-hint">本月暂无异常日</div>
+          <div v-for="(a, i) in anomalies" :key="i" class="anom-item">
+            <span class="anom-date">{{ a.date }}</span>
+            <span class="anom-type-tag" :class="anomTypeClass(a.type)">{{ a.type }}</span>
+            <span class="anom-note">{{ a.note || '—' }}</span>
+            <button class="link danger" type="button" @click="removeAnomaly(i)">删</button>
+          </div>
+          <div class="anom-form">
+            <input type="date" v-model="anomDate" class="anom-input" />
+            <select v-model="anomType" class="anom-input">
+              <option>降雨</option>
+              <option>系统故障</option>
+              <option>其他</option>
+            </select>
+            <input type="text" v-model="anomNote" class="anom-input anom-note-input" placeholder="说明（可选）" />
+            <button class="btn" type="button" :disabled="!anomDate || anomaliesSaving" @click="addAnomaly">
+              {{ anomaliesSaving ? '保存中…' : '+ 添加' }}
+            </button>
+          </div>
+        </div>
+      </section>
+
       <!-- 台账 -->
-      <section class="card">
+      <section v-if="isPlatform" class="card">
         <h3>台账材料</h3>
 
         <h4>部门挂账案件</h4>
@@ -161,7 +189,7 @@
       </section>
 
       <!-- 采集员 -->
-      <section class="card">
+      <section v-if="isCollector" class="card">
         <h3>采集员录入</h3>
         <h4>单体垃圾件数</h4>
         <div class="row">
@@ -213,51 +241,6 @@
       </section>
     </div>
 
-    <!-- 豁免期（全局设置，不随月份变化） -->
-    <section class="card">
-      <h3>不参与考核设置（豁免期）</h3>
-      <p class="card-tip">
-        设置后，豁免期覆盖到的考核月份内，该部门整月不参与考核计算，考核计分页将显示备注及文件依据。此设置全局生效，不随上方考核月份变化。
-      </p>
-      <table class="ami-grid">
-        <thead>
-          <tr><th>部门</th><th>开始日期</th><th>截止日期</th><th>原因</th><th>文件依据</th><th></th></tr>
-        </thead>
-        <tbody>
-          <tr v-for="(it, i) in exemptions" :key="i">
-            <td><input list="assess-unit-list" v-model="it.unit_name" /></td>
-            <td><input type="date" v-model="it.start_date" /></td>
-            <td><input type="date" v-model="it.end_date" /></td>
-            <td><input v-model="it.reason" placeholder="不参与考核原因" /></td>
-            <td>
-              <template v-if="it.file_url">
-                <a :href="it.file_url" target="_blank" class="file-link">{{ it.file_name || '查看文件' }}</a>
-                <button class="link danger" @click="clearExemptFile(it)">删</button>
-              </template>
-              <button v-else class="link" :disabled="it._uploading" @click="pickExemptFile(i)">
-                {{ it._uploading ? '上传中…' : '+ 上传依据' }}
-              </button>
-            </td>
-            <td><button class="link danger" @click="exemptions.splice(i,1)">删</button></td>
-          </tr>
-          <tr v-if="!exemptions.length">
-            <td colspan="6" class="grid-empty">暂无豁免设置</td>
-          </tr>
-        </tbody>
-      </table>
-      <div class="exempt-actions">
-        <button class="btn" @click="addExempt">+ 添加豁免</button>
-        <button class="btn btn-primary" :disabled="savingExempt" @click="saveExemptions">
-          {{ savingExempt ? '保存中…' : '保存豁免设置' }}
-        </button>
-      </div>
-    </section>
-
-    <input ref="exemptFileInput" type="file" style="display:none" @change="onExemptFileChosen" />
-
-    <datalist id="assess-unit-list">
-      <option v-for="u in assessUnitOptions" :key="'a'+u" :value="u" />
-    </datalist>
     <datalist id="unit-list">
       <option v-for="u in allUnits" :key="u.id" :value="u.unit_name" />
     </datalist>
@@ -271,6 +254,18 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import axios from 'axios'
+
+const props = defineProps({
+  mode: {
+    type: String,
+    default: 'platform',
+    validator: (v) => ['platform', 'collector'].includes(v)
+  }
+})
+
+const isPlatform = computed(() => props.mode !== 'collector')
+const isCollector = computed(() => props.mode === 'collector')
+const saveLabel = computed(() => (isCollector.value ? '保存本月采集数据' : '保存本月平台数据'))
 
 const batch = ref('')
 const months = ref([])
@@ -290,21 +285,67 @@ const allUnits = ref([])
 const saving = ref(false)
 const loadedHint = ref('')
 
-// 豁免期（全局，不随月份变化）
-const exemptions = ref([])
-const savingExempt = ref(false)
-const exemptFileIndex = ref(-1)
-const exemptFileInput = ref(null)
+// 采集异常日（月报 config）
+const anomalies = ref([])
+const anomaliesLoading = ref(false)
+const anomaliesSaving = ref(false)
+const anomDate = ref('')
+const anomType = ref('降雨')
+const anomNote = ref('')
 
-const assessUnitOptions = computed(() => {
-  const t = tmpl.value
-  const seen = new Set()
-  const list = []
-  for (const u of [...t.dispatch_teams, ...t.sanitation_districts, ...t.garden_districts, ...t.parks, ...t.municipal_units]) {
-    if (u && !seen.has(u)) { seen.add(u); list.push(u) }
+function anomTypeClass(type) {
+  if (type === '系统故障') return 'fault'
+  if (type === '降雨') return 'rain'
+  return 'other'
+}
+
+async function loadAnomalies() {
+  anomalies.value = []
+  anomDate.value = ''
+  anomNote.value = ''
+  if (!isPlatform.value || !batch.value) return
+  anomaliesLoading.value = true
+  try {
+    const res = await axios.get(`/api/monthly-report/${batch.value}/config`)
+    anomalies.value = res.data?.anomalies || []
+  } catch {
+    anomalies.value = []
+  } finally {
+    anomaliesLoading.value = false
   }
-  return list
-})
+}
+
+async function saveAnomalies() {
+  if (!isPlatform.value || !batch.value) return
+  anomaliesSaving.value = true
+  try {
+    const res = await axios.put(`/api/monthly-report/${batch.value}/config`, {
+      anomalies: anomalies.value,
+    })
+    if (res.data?.anomalies) anomalies.value = res.data.anomalies
+  } catch (e) {
+    ElMessage.error('采集异常日保存失败: ' + (e.response?.data?.error || e.message))
+  } finally {
+    anomaliesSaving.value = false
+  }
+}
+
+async function addAnomaly() {
+  if (!anomDate.value) return
+  anomalies.value = [...anomalies.value, {
+    date: anomDate.value,
+    type: anomType.value,
+    note: anomNote.value || '',
+  }]
+  anomDate.value = ''
+  anomNote.value = ''
+  await saveAnomalies()
+}
+
+async function removeAnomaly(idx) {
+  anomalies.value = anomalies.value.filter((_, i) => i !== idx)
+  await saveAnomalies()
+}
 
 const specialSummary = computed(() =>
   specialDetails.value.reduce((s, d) => s + (Number(d.piece_cnt) || 0), 0)
@@ -327,6 +368,7 @@ function scoreKey(ut, unit, st) {
 
 function initScores() {
   Object.keys(scoreMap).forEach(k => delete scoreMap[k])
+  if (!isPlatform.value) return
   for (const t of tmpl.value.dispatch_teams) {
     scoreMap[scoreKey('dispatch', t, 'team')] = 100
     scoreMap[scoreKey('dispatch', t, 'street')] = 100
@@ -364,12 +406,19 @@ async function fetchTemplate() {
 }
 
 async function fetchDicts() {
-  const [cats, units] = await Promise.all([
-    axios.get('/api/dict/categories'),
-    axios.get('/api/assessment/units'),
-  ])
-  if (cats.data?.success) categories.value = cats.data.categories || []
-  if (units.data?.success) allUnits.value = units.data.units || []
+  const tasks = []
+  if (isCollector.value) tasks.push(axios.get('/api/dict/categories'))
+  if (isPlatform.value) tasks.push(axios.get('/api/assessment/units'))
+  const results = await Promise.all(tasks)
+  let i = 0
+  if (isCollector.value) {
+    const cats = results[i++]
+    if (cats.data?.success) categories.value = cats.data.categories || []
+  }
+  if (isPlatform.value) {
+    const units = results[i++]
+    if (units.data?.success) allUnits.value = units.data.units || []
+  }
 }
 
 async function onMajorChange(row) {
@@ -401,33 +450,42 @@ async function loadAll() {
       return
     }
     const d = res.data
-    if (d.monthly) {
-      monthly.assessment_case_cnt = d.monthly.assessment_case_cnt
-      monthly.work_note = d.monthly.work_note || ''
-      monthly.extra_note = d.monthly.extra_note || ''
+    if (isPlatform.value) {
+      if (d.monthly) {
+        monthly.assessment_case_cnt = d.monthly.assessment_case_cnt
+        monthly.work_note = d.monthly.work_note || ''
+        monthly.extra_note = d.monthly.extra_note || ''
+      }
+      for (const s of d.scores || []) {
+        scoreMap[scoreKey(s.unit_type, s.unit_name, s.score_type)] = s.score_value
+      }
+      for (const l of d.ledgers || []) {
+        const item = { ...l }
+        if (item.deadline) item.deadline = String(item.deadline).slice(0, 10)
+        if (l.ledger_type === 'pending') ledgers.pending.push(item)
+        else if (l.ledger_type === 'backlog') ledgers.backlog.push(item)
+        else if (l.ledger_type === 'praise') ledgers.praise.push(item)
+      }
+      loadAnomalies()
     }
-    for (const s of d.scores || []) {
-      scoreMap[scoreKey(s.unit_type, s.unit_name, s.score_type)] = s.score_value
+    if (isCollector.value) {
+      for (const g of d.garbage || []) {
+        if (g.region) garbage[g.region] = g.piece_count
+      }
+      if (d.collector) selfDisposeCnt.value = d.collector.self_dispose_cnt || 0
+      specialDetails.value = (d.special_details || []).map(x => ({
+        major_name: x.major_name, minor_name: x.minor_name, piece_cnt: x.piece_cnt,
+      }))
+      for (const row of specialDetails.value) {
+        if (row.major_name && !subOptions[row.major_name]) await onMajorChange(row)
+      }
     }
-    for (const g of d.garbage || []) {
-      if (g.region) garbage[g.region] = g.piece_count
+    if (isPlatform.value) {
+      loadedHint.value = d.monthly || d.scores.length || (d.ledgers || []).length ? '已回填已录入数据' : '该月尚未录入'
+    } else {
+      const hasCollector = (d.garbage || []).length || d.collector || (d.special_details || []).length
+      loadedHint.value = hasCollector ? '已回填已录入数据' : '该月尚未录入'
     }
-    if (d.collector) selfDisposeCnt.value = d.collector.self_dispose_cnt || 0
-    specialDetails.value = (d.special_details || []).map(x => ({
-      major_name: x.major_name, minor_name: x.minor_name, piece_cnt: x.piece_cnt,
-    }))
-    for (const l of d.ledgers || []) {
-      const item = { ...l }
-      if (item.deadline) item.deadline = String(item.deadline).slice(0, 10)
-      if (l.ledger_type === 'pending') ledgers.pending.push(item)
-      else if (l.ledger_type === 'backlog') ledgers.backlog.push(item)
-      else if (l.ledger_type === 'praise') ledgers.praise.push(item)
-    }
-    // preload sub options for existing details
-    for (const row of specialDetails.value) {
-      if (row.major_name && !subOptions[row.major_name]) await onMajorChange(row)
-    }
-    loadedHint.value = d.monthly || d.scores.length ? '已回填已录入数据' : '该月尚未录入'
   } catch (e) {
     ElMessage.error('加载失败')
     loadedHint.value = ''
@@ -448,24 +506,31 @@ async function saveAll() {
   if (!batch.value) return
   saving.value = true
   try {
-    const payload = {
-      batch: batch.value,
-      monthly: {
-        assessment_case_cnt: monthly.assessment_case_cnt,
-        work_note: monthly.work_note,
-        extra_note: monthly.extra_note,
-      },
-      scores: collectScores(),
-      garbage: { ...garbage },
-      self_dispose_cnt: selfDisposeCnt.value,
-      special_details: specialDetails.value.filter(d => d.major_name && d.minor_name),
-      ledgers: {
-        pending: ledgers.pending,
-        backlog: ledgers.backlog,
-        praise: ledgers.praise,
-      },
-    }
-    const res = await axios.post('/api/assessment/manual/save-all', payload)
+    const url = isCollector.value
+      ? '/api/assessment/manual/save-collector'
+      : '/api/assessment/manual/save-platform'
+    const payload = isCollector.value
+      ? {
+          batch: batch.value,
+          garbage: { ...garbage },
+          self_dispose_cnt: selfDisposeCnt.value,
+          special_details: specialDetails.value.filter(d => d.major_name && d.minor_name),
+        }
+      : {
+          batch: batch.value,
+          monthly: {
+            assessment_case_cnt: monthly.assessment_case_cnt,
+            work_note: monthly.work_note,
+            extra_note: monthly.extra_note,
+          },
+          scores: collectScores(),
+          ledgers: {
+            pending: ledgers.pending,
+            backlog: ledgers.backlog,
+            praise: ledgers.praise,
+          },
+        }
+    const res = await axios.post(url, payload)
     if (res.data?.success) {
       ElMessage.success('已保存')
       loadedHint.value = '已保存 ' + new Date().toLocaleTimeString()
@@ -479,94 +544,8 @@ async function saveAll() {
   }
 }
 
-// ---------- 豁免期 ----------
-async function fetchExemptions() {
-  try {
-    const res = await axios.get('/api/assessment/exemptions')
-    if (res.data?.success) {
-      exemptions.value = (res.data.exemptions || []).map(x => ({
-        unit_name: x.unit_name || '',
-        start_date: String(x.start_date || '').slice(0, 10),
-        end_date: String(x.end_date || '').slice(0, 10),
-        reason: x.reason || '',
-        file_url: x.file_url || '',
-        file_name: x.file_name || '',
-      }))
-    }
-  } catch (e) { /* ignore */ }
-}
-
-function addExempt() {
-  exemptions.value.push({ unit_name: '', start_date: '', end_date: '', reason: '', file_url: '', file_name: '' })
-}
-
-function clearExemptFile(it) {
-  it.file_url = ''
-  it.file_name = ''
-}
-
-function pickExemptFile(i) {
-  exemptFileIndex.value = i
-  if (exemptFileInput.value) {
-    exemptFileInput.value.value = ''
-    exemptFileInput.value.click()
-  }
-}
-
-async function onExemptFileChosen(e) {
-  const i = exemptFileIndex.value
-  const file = e.target.files && e.target.files[0]
-  if (i < 0 || i >= exemptions.value.length || !file) return
-  const row = exemptions.value[i]
-  row._uploading = true
-  try {
-    const fd = new FormData()
-    fd.append('file', file)
-    const res = await axios.post('/api/upload/file', fd)
-    if (res.data?.file_path) {
-      row.file_url = res.data.file_path
-      row.file_name = file.name
-    } else {
-      ElMessage.error(res.data?.error || '文件上传失败')
-    }
-  } catch (err) {
-    ElMessage.error(err.response?.data?.error || '文件上传失败')
-  } finally {
-    row._uploading = false
-    exemptFileIndex.value = -1
-  }
-}
-
-async function saveExemptions() {
-  const items = []
-  for (const it of exemptions.value) {
-    if (!it.unit_name && !it.start_date && !it.end_date && !it.reason && !it.file_url) continue
-    if (!it.unit_name) { ElMessage.error('存在未填写部门的豁免行'); return }
-    if (!it.start_date || !it.end_date) { ElMessage.error(`请补全「${it.unit_name}」的起止日期`); return }
-    if (it.end_date < it.start_date) { ElMessage.error(`「${it.unit_name}」的截止日期不能早于开始日期`); return }
-    items.push({
-      unit_name: it.unit_name, start_date: it.start_date, end_date: it.end_date,
-      reason: it.reason, file_url: it.file_url, file_name: it.file_name,
-    })
-  }
-  savingExempt.value = true
-  try {
-    const res = await axios.post('/api/assessment/exemptions', { items })
-    if (res.data?.success) {
-      ElMessage.success(`豁免设置已保存（${res.data.saved || items.length} 条）`)
-      fetchExemptions()
-    } else {
-      ElMessage.error(res.data?.error || '保存失败')
-    }
-  } catch (e) {
-    ElMessage.error(e.response?.data?.error || '保存失败')
-  } finally {
-    savingExempt.value = false
-  }
-}
-
 onMounted(async () => {
-  await Promise.all([fetchMonths(), fetchTemplate(), fetchDicts(), fetchExemptions()])
+  await Promise.all([fetchMonths(), fetchTemplate(), fetchDicts()])
 })
 </script>
 
@@ -606,7 +585,28 @@ textarea, .field textarea { height: auto; padding: 8px; width: 100%; }
 .link { border: none; background: none; color: var(--primary-600, #2563eb); cursor: pointer; font-size: 12px; }
 .link.danger { color: #dc2626; }
 .card-tip { margin: 0 0 12px; font-size: 12px; color: var(--text-tertiary, #6b7280); line-height: 1.6; }
-.file-link { font-size: 12px; color: var(--primary-600, #2563eb); margin-right: 6px; word-break: break-all; }
 .grid-empty { text-align: center; color: var(--text-tertiary, #9ca3af); font-size: 12px; padding: 12px 0; }
-.exempt-actions { display: flex; justify-content: space-between; gap: 12px; }
+.empty-hint { font-size: 12px; color: var(--text-tertiary); padding: 4px 0 8px; }
+.anom-item {
+  display: flex; align-items: center; gap: 8px; padding: 8px 0;
+  border-bottom: 1px solid var(--border-lighter, #e5e7eb); font-size: 13px;
+}
+.anom-item:last-of-type { border-bottom: none; }
+.anom-date { font-weight: 600; color: var(--text-primary); min-width: 88px; }
+.anom-type-tag {
+  font-size: 11px; padding: 2px 6px; border-radius: 3px; white-space: nowrap;
+}
+.anom-type-tag.rain { background: #e6f7ff; color: #1890ff; }
+.anom-type-tag.fault { background: #fff2e8; color: #fa541c; }
+.anom-type-tag.other { background: #f0f0f0; color: #666; }
+.anom-note { flex: 1; color: var(--text-secondary); min-width: 0; }
+.anom-form {
+  display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; align-items: center;
+}
+.anom-input {
+  height: 32px; padding: 0 8px; border: 1px solid var(--border-lighter, #e5e7eb);
+  border-radius: 6px; background: var(--bg-card, #fff); color: var(--text-primary); font-size: 13px;
+}
+.anom-input:focus { outline: none; border-color: var(--primary-500); }
+.anom-note-input { flex: 1; min-width: 120px; }
 </style>

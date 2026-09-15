@@ -633,6 +633,16 @@ def register_assessment_manual_routes(app, engine=None, protected=None, admin_re
         self_d = data.get('self_dispose_cnt')
         details = data.get('special_details') or []
         ledgers = data.get('ledgers') or {}  # {pending:[], backlog:[], praise:[]}
+        do_monthly = bool(data.get('do_monthly', True))
+        do_scores = bool(data.get('do_scores', True))
+        do_collector = bool(data.get('do_collector', True))
+        do_ledgers = bool(data.get('do_ledgers', True))
+        # 分项保存时，显式传入的数组才整组替换；未传则保持原数据
+        has_monthly = isinstance(data.get('monthly'), (dict, type(None)))
+        has_scores = 'scores' in data
+        has_garbage = 'garbage' in data
+        has_collector = 'self_dispose_cnt' in data or 'special_details' in data or has_garbage
+        has_ledgers = 'ledgers' in data
 
         try:
             self_i = int(self_d) if self_d is not None and self_d != '' else 0
@@ -642,116 +652,133 @@ def register_assessment_manual_routes(app, engine=None, protected=None, admin_re
         try:
             with engine.begin() as conn:
                 # monthly
-                cnt = monthly.get('assessment_case_cnt')
-                try:
-                    cnt_i = int(cnt) if cnt is not None and cnt != '' else None
-                except (TypeError, ValueError):
-                    return jsonify({'success': False, 'error': '当月考核案件数须为整数'}), 400
-                conn.execute(text(
-                    """INSERT INTO assessment_manual_monthly (batch, assessment_case_cnt, work_note, extra_note, updated_by)
-                       VALUES (:b,:c,:w,:en,:u)
-                       ON DUPLICATE KEY UPDATE assessment_case_cnt=VALUES(assessment_case_cnt),
-                         work_note=VALUES(work_note), extra_note=VALUES(extra_note),
-                         updated_by=VALUES(updated_by)"""
-                ), {'b': batch, 'c': cnt_i, 'w': monthly.get('work_note'),
-                    'en': monthly.get('extra_note'), 'u': user})
+                if do_monthly and has_monthly:
+                    cnt = monthly.get('assessment_case_cnt')
+                    try:
+                        cnt_i = int(cnt) if cnt is not None and cnt != '' else None
+                    except (TypeError, ValueError):
+                        return jsonify({'success': False, 'error': '当月考核案件数须为整数'}), 400
+                    conn.execute(text(
+                        """INSERT INTO assessment_manual_monthly (batch, assessment_case_cnt, work_note, extra_note, updated_by)
+                           VALUES (:b,:c,:w,:en,:u)
+                           ON DUPLICATE KEY UPDATE assessment_case_cnt=VALUES(assessment_case_cnt),
+                             work_note=VALUES(work_note), extra_note=VALUES(extra_note),
+                             updated_by=VALUES(updated_by)"""
+                    ), {'b': batch, 'c': cnt_i, 'w': monthly.get('work_note'),
+                        'en': monthly.get('extra_note'), 'u': user})
 
                 # scores by type replace
-                types = sorted({s.get('unit_type') for s in scores if s.get('unit_type')})
-                for ut in types:
-                    conn.execute(text(
-                        "DELETE FROM assessment_manual_score WHERE batch=:b AND unit_type=:t"
-                    ), {'b': batch, 't': ut})
-                for s in scores:
-                    ut = (s.get('unit_type') or '').strip()
-                    un = (s.get('unit_name') or '').strip()
-                    st = (s.get('score_type') or '').strip()
-                    if not (ut and un and st):
-                        continue
-                    try:
-                        val = float(s.get('score_value'))
-                    except (TypeError, ValueError):
-                        return jsonify({'success': False, 'error': f'{un}/{st} 分值无效'}), 400
-                    conn.execute(text(
-                        """INSERT INTO assessment_manual_score
-                           (batch, unit_name, unit_type, score_type, score_value, updated_by)
-                           VALUES (:b,:u,:t,:st,:v,:by)"""
-                    ), {'b': batch, 'u': un, 't': ut, 'st': st, 'v': val, 'by': user})
+                if do_scores and has_scores:
+                    types = sorted({s.get('unit_type') for s in scores if s.get('unit_type')})
+                    for ut in types:
+                        conn.execute(text(
+                            "DELETE FROM assessment_manual_score WHERE batch=:b AND unit_type=:t"
+                        ), {'b': batch, 't': ut})
+                    for s in scores:
+                        ut = (s.get('unit_type') or '').strip()
+                        un = (s.get('unit_name') or '').strip()
+                        st = (s.get('score_type') or '').strip()
+                        if not (ut and un and st):
+                            continue
+                        try:
+                            val = float(s.get('score_value'))
+                        except (TypeError, ValueError):
+                            return jsonify({'success': False, 'error': f'{un}/{st} 分值无效'}), 400
+                        conn.execute(text(
+                            """INSERT INTO assessment_manual_score
+                               (batch, unit_name, unit_type, score_type, score_value, updated_by)
+                               VALUES (:b,:u,:t,:st,:v,:by)"""
+                        ), {'b': batch, 'u': un, 't': ut, 'st': st, 'v': val, 'by': user})
 
-                # garbage
-                for r in REGION_KEYS:
-                    dist = SANITATION_REGION_MAP[r]
-                    raw = garbage.get(r, garbage.get(dist, 0))
-                    try:
-                        n = int(raw) if raw is not None and raw != '' else 0
-                    except (TypeError, ValueError):
-                        return jsonify({'success': False, 'error': f'{r}片区件数无效'}), 400
-                    if n < 0:
-                        return jsonify({'success': False, 'error': f'{r}片区件数不能为负'}), 400
-                    conn.execute(text(
-                        """INSERT INTO assessment_manual_garbage
-                           (batch, region, district_name, piece_count, updated_by)
-                           VALUES (:b,:r,:d,:c,:u)
-                           ON DUPLICATE KEY UPDATE piece_count=VALUES(piece_count),
-                             district_name=VALUES(district_name), updated_by=VALUES(updated_by)"""
-                    ), {'b': batch, 'r': r, 'd': dist, 'c': n, 'u': user})
+                # garbage / collector / special
+                if do_collector and has_collector:
+                    if has_garbage:
+                        for r in REGION_KEYS:
+                            dist = SANITATION_REGION_MAP[r]
+                            raw = garbage.get(r, garbage.get(dist, 0))
+                            try:
+                                n = int(raw) if raw is not None and raw != '' else 0
+                            except (TypeError, ValueError):
+                                return jsonify({'success': False, 'error': f'{r}片区件数无效'}), 400
+                            if n < 0:
+                                return jsonify({'success': False, 'error': f'{r}片区件数不能为负'}), 400
+                            conn.execute(text(
+                                """INSERT INTO assessment_manual_garbage
+                                   (batch, region, district_name, piece_count, updated_by)
+                                   VALUES (:b,:r,:d,:c,:u)
+                                   ON DUPLICATE KEY UPDATE piece_count=VALUES(piece_count),
+                                     district_name=VALUES(district_name), updated_by=VALUES(updated_by)"""
+                            ), {'b': batch, 'r': r, 'd': dist, 'c': n, 'u': user})
 
-                # collector
-                conn.execute(text(
-                    """INSERT INTO assessment_manual_collector (batch, self_dispose_cnt, updated_by)
-                       VALUES (:b,:c,:u)
-                       ON DUPLICATE KEY UPDATE self_dispose_cnt=VALUES(self_dispose_cnt), updated_by=VALUES(updated_by)"""
-                ), {'b': batch, 'c': self_i, 'u': user})
+                    if 'self_dispose_cnt' in data:
+                        conn.execute(text(
+                            """INSERT INTO assessment_manual_collector (batch, self_dispose_cnt, updated_by)
+                               VALUES (:b,:c,:u)
+                               ON DUPLICATE KEY UPDATE self_dispose_cnt=VALUES(self_dispose_cnt), updated_by=VALUES(updated_by)"""
+                        ), {'b': batch, 'c': self_i, 'u': user})
 
-                # details
-                conn.execute(text("DELETE FROM assessment_manual_special_detail WHERE batch=:b"), {'b': batch})
-                for d in details:
-                    major = (d.get('major_name') or d.get('major') or '').strip()
-                    minor = (d.get('minor_name') or d.get('minor') or '').strip()
-                    try:
-                        cnt = int(d.get('piece_cnt', d.get('cnt', 0)) or 0)
-                    except (TypeError, ValueError):
-                        return jsonify({'success': False, 'error': '专项明细件数无效'}), 400
-                    if not major or not minor:
-                        continue
-                    conn.execute(text(
-                        """INSERT INTO assessment_manual_special_detail
-                           (batch, major_name, minor_name, piece_cnt, updated_by)
-                           VALUES (:b,:ma,:mi,:c,:u)"""
-                    ), {'b': batch, 'ma': major, 'mi': minor, 'c': cnt, 'u': user})
+                    if 'special_details' in data:
+                        conn.execute(text("DELETE FROM assessment_manual_special_detail WHERE batch=:b"), {'b': batch})
+                        for d in details:
+                            major = (d.get('major_name') or d.get('major') or '').strip()
+                            minor = (d.get('minor_name') or d.get('minor') or '').strip()
+                            try:
+                                cnt = int(d.get('piece_cnt', d.get('cnt', 0)) or 0)
+                            except (TypeError, ValueError):
+                                return jsonify({'success': False, 'error': '专项明细件数无效'}), 400
+                            if not major or not minor:
+                                continue
+                            conn.execute(text(
+                                """INSERT INTO assessment_manual_special_detail
+                                   (batch, major_name, minor_name, piece_cnt, updated_by)
+                                   VALUES (:b,:ma,:mi,:c,:u)"""
+                            ), {'b': batch, 'ma': major, 'mi': minor, 'c': cnt, 'u': user})
 
                 # ledgers
-                for ltype, items in ledgers.items():
-                    if ltype not in ('pending', 'backlog', 'praise'):
-                        continue
-                    conn.execute(text(
-                        "DELETE FROM assessment_manual_ledger WHERE batch=:b AND ledger_type=:t"
-                    ), {'b': batch, 't': ltype})
-                    for it in (items or []):
-                        try:
-                            cnt = it.get('piece_cnt')
-                            cnt_i = int(cnt) if cnt is not None and cnt != '' else None
-                        except (TypeError, ValueError):
-                            return jsonify({'success': False, 'error': '台账数量须为整数'}), 400
+                if do_ledgers and has_ledgers:
+                    for ltype, items in ledgers.items():
+                        if ltype not in ('pending', 'backlog', 'praise'):
+                            continue
                         conn.execute(text(
-                            """INSERT INTO assessment_manual_ledger
-                               (batch, ledger_type, unit_name, dept_name, source, piece_cnt, content, reason, deadline, updated_by)
-                               VALUES (:b,:t,:u,:d,:s,:c,:ct,:r,:dl,:by)"""
-                        ), {
-                            'b': batch, 't': ltype,
-                            'u': (it.get('unit_name') or '') or None,
-                            'd': (it.get('dept_name') or '') or None,
-                            's': (it.get('source') or '') or None,
-                            'c': cnt_i,
-                            'ct': it.get('content'),
-                            'r': it.get('reason'),
-                            'dl': it.get('deadline') or None,
-                            'by': user,
-                        })
+                            "DELETE FROM assessment_manual_ledger WHERE batch=:b AND ledger_type=:t"
+                        ), {'b': batch, 't': ltype})
+                        for it in (items or []):
+                            try:
+                                cnt = it.get('piece_cnt')
+                                cnt_i = int(cnt) if cnt is not None and cnt != '' else None
+                            except (TypeError, ValueError):
+                                return jsonify({'success': False, 'error': '台账数量须为整数'}), 400
+                            conn.execute(text(
+                                """INSERT INTO assessment_manual_ledger
+                                   (batch, ledger_type, unit_name, dept_name, source, piece_cnt, content, reason, deadline, updated_by)
+                                   VALUES (:b,:t,:u,:d,:s,:c,:ct,:r,:dl,:by)"""
+                            ), {
+                                'b': batch, 't': ltype,
+                                'u': (it.get('unit_name') or '') or None,
+                                'd': (it.get('dept_name') or '') or None,
+                                's': (it.get('source') or '') or None,
+                                'c': cnt_i,
+                                'ct': it.get('content'),
+                                'r': it.get('reason'),
+                                'dl': it.get('deadline') or None,
+                                'by': user,
+                            })
             return jsonify({'success': True})
         except Exception as e:
             logger.error(f'保存全部人工数据失败: {e}')
             return jsonify({'success': False, 'error': str(e)}), 500
+
+    # ---------- 保存：平台录入（月度 + 分值 + 台账） ----------
+    @app.route('/api/assessment/manual/save-platform', methods=['PUT', 'POST'])
+    @admin_required
+    def assessment_manual_save_platform_only():
+        return assessment_manual_save_all()
+
+    # ---------- 保存：采集员录入（垃圾件数 + 自行处置 + 专项明细） ----------
+    @app.route('/api/assessment/manual/save-collector', methods=['PUT', 'POST'])
+    @admin_required
+    def assessment_manual_save_collector_only():
+        return assessment_manual_save_all()
 
 
 def load_external_data_from_db(engine, batch: str):

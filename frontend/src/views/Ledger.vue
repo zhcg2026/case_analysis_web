@@ -1,13 +1,12 @@
 <template>
   <div class="ledger-page">
     <div class="page-header">
-      <h2>台账管理</h2>
+      <h2>{{ pageTitle }}</h2>
     </div>
 
-    <el-tabs v-model="activeTab" @tab-click="handleTabChange">
-      <!-- 运维台账 -->
-      <el-tab-pane label="运维台账" name="maintenance">
-        <div class="tab-content">
+    <div class="tab-content">
+    <!-- 运维台账 -->
+    <div v-show="activeTab === 'maintenance'">
           <div class="toolbar">
             <div class="toolbar-left">
               <el-input v-model="maintenance.search" placeholder="搜索标题/提报人/处理人" clearable style="width: 250px" @keyup.enter="loadMaintenance">
@@ -72,13 +71,11 @@
             @size-change="loadMaintenance"
             @current-change="loadMaintenance"
           />
-        </div>
-      </el-tab-pane>
+    </div>
 
-      <!-- 会议台账 -->
-      <el-tab-pane label="会议台账" name="meeting">
-        <div class="tab-content">
-          <div class="toolbar">
+    <!-- 会议台账 -->
+    <div v-show="activeTab === 'meeting'">
+      <div class="toolbar">
             <div class="toolbar-left">
               <el-input v-model="meeting.search" placeholder="搜索主题/主持人/参会人" clearable style="width: 250px" @keyup.enter="loadMeeting">
                 <template #append>
@@ -135,16 +132,14 @@
             :total="meeting.total"
             :page-sizes="[10, 20, 50]"
             layout="total, sizes, prev, pager, next, jumper"
-            @size-change="loadMeeting"
-            @current-change="loadMeeting"
-          />
-        </div>
-      </el-tab-pane>
+        @size-change="loadMeeting"
+        @current-change="loadMeeting"
+      />
+    </div>
 
-      <!-- 培训台账 -->
-      <el-tab-pane label="培训台账" name="training">
-        <div class="tab-content">
-          <div class="toolbar">
+    <!-- 培训台账 -->
+    <div v-show="activeTab === 'training'">
+      <div class="toolbar">
             <div class="toolbar-left">
               <el-input v-model="training.search" placeholder="搜索主题/培训人/参训人员" clearable style="width: 250px" @keyup.enter="loadTraining">
                 <template #append>
@@ -201,16 +196,14 @@
             :total="training.total"
             :page-sizes="[10, 20, 50]"
             layout="total, sizes, prev, pager, next, jumper"
-            @size-change="loadTraining"
-            @current-change="loadTraining"
-          />
-        </div>
-      </el-tab-pane>
+        @size-change="loadTraining"
+        @current-change="loadTraining"
+      />
+    </div>
 
-      <!-- 文件资料 -->
-      <el-tab-pane label="文件资料" name="docs">
-        <div class="tab-content">
-          <div class="toolbar">
+    <!-- 文件资料 -->
+    <div v-show="activeTab === 'docs'">
+      <div class="toolbar">
             <div class="toolbar-left">
               <el-input v-model="docs.search" placeholder="搜索标题/发文单位/说明" clearable style="width: 250px" @keyup.enter="loadDocs">
                 <template #append>
@@ -277,12 +270,239 @@
             :total="docs.total"
             :page-sizes="[10, 20, 50]"
             layout="total, sizes, prev, pager, next, jumper"
-            @size-change="loadDocs"
-            @current-change="loadDocs"
-          />
+      @size-change="loadDocs"
+      @current-change="loadDocs"
+      />
+    </div>
+
+    <!-- 外单位调取监控 -->
+    <div v-show="activeTab === 'monitor'">
+      <div class="toolbar">
+        <div class="toolbar-left">
+          <el-input v-model="monitor.search" placeholder="搜索单位/来访人/事由/点位" clearable style="width: 250px" @keyup.enter="loadMonitor">
+            <template #append>
+              <el-button @click="loadMonitor"><el-icon><Search /></el-icon></el-button>
+            </template>
+          </el-input>
+          <el-select v-model="monitor.filters.status" placeholder="状态" clearable style="width: 120px" @change="loadMonitor">
+            <el-option label="接待中" value="接待中" />
+            <el-option label="申请中" value="申请中" />
+            <el-option label="已调取" value="已调取" />
+            <el-option label="已归档" value="已归档" />
+          </el-select>
         </div>
-      </el-tab-pane>
-    </el-tabs>
+        <el-button type="primary" @click="openMonitorDialog()"><el-icon><Plus /></el-icon> 新增登记</el-button>
+      </div>
+      <el-table :data="monitor.data" v-loading="monitor.loading" border stripe>
+        <el-table-column prop="visit_time" label="来访时间" width="150" align="center" />
+        <el-table-column prop="unit_name" label="外单位" min-width="120" show-overflow-tooltip />
+        <el-table-column prop="visitor_name" label="来访人" width="80" align="center" />
+        <el-table-column label="证件" width="100" align="center">
+          <template #default="{ row }">{{ row.id_type || '-' }}<span v-if="row.id_no" style="opacity:.7">·{{ row.id_no }}</span></template>
+        </el-table-column>
+        <el-table-column label="介绍信" width="70" align="center">
+          <template #default="{ row }"><el-tag size="small" :type="row.has_intro_letter ? 'success' : 'info'">{{ row.has_intro_letter ? '有' : '无' }}</el-tag></template>
+        </el-table-column>
+        <el-table-column label="申请表" width="70" align="center">
+          <template #default="{ row }"><el-tag size="small" :type="row.has_application ? 'success' : 'info'">{{ row.has_application ? '已填' : '未填' }}</el-tag></template>
+        </el-table-column>
+        <el-table-column label="领导签字" width="80" align="center">
+          <template #default="{ row }"><el-tag size="small" :type="row.leader_signed ? 'success' : 'info'">{{ row.leader_signed ? '已签' : '未签' }}</el-tag></template>
+        </el-table-column>
+        <el-table-column prop="video_location" label="点位" min-width="100" show-overflow-tooltip />
+        <el-table-column prop="status" label="状态" width="90" align="center" />
+        <el-table-column prop="operator" label="经办人" width="80" align="center" />
+        <el-table-column label="操作" width="150" align="center" fixed="right">
+          <template #default="{ row }">
+            <el-button type="primary" link size="small" @click="openMonitorDialog(row)">编辑</el-button>
+            <el-popconfirm title="确定删除？" @confirm="deleteMonitor(row.id)">
+              <template #reference><el-button type="danger" link size="small">删除</el-button></template>
+            </el-popconfirm>
+          </template>
+        </el-table-column>
+      </el-table>
+      <el-pagination
+        v-model:current-page="monitor.page" v-model:page-size="monitor.pageSize" :total="monitor.total"
+        :page-sizes="[10, 20, 50]" layout="total, sizes, prev, pager, next, jumper"
+        @size-change="loadMonitor" @current-change="loadMonitor"
+      />
+    </div>
+
+    <!-- 无人机飞行登记 -->
+    <div v-show="activeTab === 'drone'">
+      <el-card shadow="never" class="drone-equip-card" style="margin-bottom:12px">
+        <div class="drone-equip">
+          <span class="equip-label">设备信息</span>
+          <span>型号：<b>{{ drone.equip.model || '未设置' }}</b></span>
+          <span>保管人：<b>{{ drone.equip.keeper || '未设置' }}</b></span>
+          <el-button v-if="!drone.equipEditing" type="primary" link size="small" @click="drone.equipEditing = true">编辑设备</el-button>
+          <template v-else>
+            <el-input v-model="drone.equipDraft.model" style="width:160px" placeholder="无人机型号" size="small" />
+            <el-input v-model="drone.equipDraft.keeper" style="width:120px" placeholder="保管人员" size="small" />
+            <el-button type="primary" size="small" @click="saveDroneEquip">保存</el-button>
+            <el-button size="small" @click="drone.equipEditing = false">取消</el-button>
+          </template>
+        </div>
+      </el-card>
+      <div class="toolbar">
+        <div class="toolbar-left">
+          <el-input v-model="drone.search" placeholder="搜索地点/目的/申请人" clearable style="width: 250px" @keyup.enter="loadDrone">
+            <template #append>
+              <el-button @click="loadDrone"><el-icon><Search /></el-icon></el-button>
+            </template>
+          </el-input>
+          <el-select v-model="drone.filters.status" placeholder="状态" clearable style="width: 120px" @change="loadDrone">
+            <el-option label="待批准" value="待批准" />
+            <el-option label="已批准" value="已批准" />
+            <el-option label="已完成" value="已完成" />
+            <el-option label="已取消" value="已取消" />
+          </el-select>
+        </div>
+        <el-button type="primary" @click="openDroneDialog()"><el-icon><Plus /></el-icon> 新增登记</el-button>
+      </div>
+      <el-table :data="drone.data" v-loading="drone.loading" border stripe>
+        <el-table-column prop="flight_date" label="飞行日期" width="110" align="center" />
+        <el-table-column prop="location" label="飞行地点" min-width="120" show-overflow-tooltip />
+        <el-table-column prop="purpose" label="飞行目的" min-width="140" show-overflow-tooltip />
+        <el-table-column label="飞行时间" width="180" align="center">
+          <template #default="{ row }">{{ fmtRange(row.start_time, row.end_time) }}</template>
+        </el-table-column>
+        <el-table-column prop="applicant" label="申请人" width="80" align="center" />
+        <el-table-column prop="approver" label="批准领导" width="90" align="center" />
+        <el-table-column prop="drone_model" label="型号" width="100" show-overflow-tooltip />
+        <el-table-column prop="keeper" label="保管人" width="80" align="center" />
+        <el-table-column prop="status" label="状态" width="90" align="center" />
+        <el-table-column label="操作" width="150" align="center" fixed="right">
+          <template #default="{ row }">
+            <el-button type="primary" link size="small" @click="openDroneDialog(row)">编辑</el-button>
+            <el-popconfirm title="确定删除？" @confirm="deleteDrone(row.id)">
+              <template #reference><el-button type="danger" link size="small">删除</el-button></template>
+            </el-popconfirm>
+          </template>
+        </el-table-column>
+      </el-table>
+      <el-pagination
+        v-model:current-page="drone.page" v-model:page-size="drone.pageSize" :total="drone.total"
+        :page-sizes="[10, 20, 50]" layout="total, sizes, prev, pager, next, jumper"
+        @size-change="loadDrone" @current-change="loadDrone"
+      />
+    </div>
+    </div>
+
+    <!-- 调监控弹窗 -->
+    <el-dialog v-model="monitor.dialogVisible" :title="monitor.editId ? '编辑调监控登记' : '新增调监控登记'" width="620px">
+      <el-form :model="monitor.form" label-width="100px">
+        <el-row :gutter="16">
+          <el-col :span="12">
+            <el-form-item label="外单位" required><el-input v-model="monitor.form.unit_name" /></el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="来访人" required><el-input v-model="monitor.form.visitor_name" /></el-form-item>
+          </el-col>
+        </el-row>
+        <el-row :gutter="16">
+          <el-col :span="12">
+            <el-form-item label="证件类型"><el-input v-model="monitor.form.id_type" placeholder="如：警官证" /></el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="证件号"><el-input v-model="monitor.form.id_no" /></el-form-item>
+          </el-col>
+        </el-row>
+        <el-row :gutter="16">
+          <el-col :span="8">
+            <el-form-item label="持介绍信"><el-switch v-model="monitor.form.has_intro_letter" /></el-form-item>
+          </el-col>
+          <el-col :span="8">
+            <el-form-item label="已填申请"><el-switch v-model="monitor.form.has_application" /></el-form-item>
+          </el-col>
+          <el-col :span="8">
+            <el-form-item label="领导签字"><el-switch v-model="monitor.form.leader_signed" /></el-form-item>
+          </el-col>
+        </el-row>
+        <el-form-item label="来访时间"><el-date-picker v-model="monitor.form.visit_time" type="datetime" style="width:100%" value-format="YYYY-MM-DD HH:mm:ss" /></el-form-item>
+        <el-form-item label="调取事由"><el-input v-model="monitor.form.purpose" type="textarea" :rows="2" placeholder="关联事项/案件说明" /></el-form-item>
+        <el-row :gutter="16">
+          <el-col :span="12">
+            <el-form-item label="监控点位"><el-input v-model="monitor.form.video_location" /></el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="监控时段"><el-input v-model="monitor.form.video_time_range" placeholder="如：2026-09-01 10:00-12:00" /></el-form-item>
+          </el-col>
+        </el-row>
+        <el-row :gutter="16">
+          <el-col :span="12">
+            <el-form-item label="经办人"><el-input v-model="monitor.form.operator" /></el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="状态">
+              <el-select v-model="monitor.form.status" style="width:100%">
+                <el-option label="接待中" value="接待中" />
+                <el-option label="申请中" value="申请中" />
+                <el-option label="已调取" value="已调取" />
+                <el-option label="已归档" value="已归档" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+        </el-row>
+        <el-form-item label="备注"><el-input v-model="monitor.form.notes" type="textarea" :rows="2" /></el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="monitor.dialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="monitor.saving" @click="saveMonitor">保存</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 无人机弹窗 -->
+    <el-dialog v-model="drone.dialogVisible" :title="drone.editId ? '编辑飞行登记' : '新增飞行登记'" width="620px">
+      <el-form :model="drone.form" label-width="100px">
+        <el-row :gutter="16">
+          <el-col :span="12">
+            <el-form-item label="飞行日期" required><el-date-picker v-model="drone.form.flight_date" type="date" style="width:100%" value-format="YYYY-MM-DD" /></el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="状态">
+              <el-select v-model="drone.form.status" style="width:100%">
+                <el-option label="待批准" value="待批准" />
+                <el-option label="已批准" value="已批准" />
+                <el-option label="已完成" value="已完成" />
+                <el-option label="已取消" value="已取消" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+        </el-row>
+        <el-form-item label="飞行地点" required><el-input v-model="drone.form.location" /></el-form-item>
+        <el-form-item label="飞行目的" required><el-input v-model="drone.form.purpose" type="textarea" :rows="2" /></el-form-item>
+        <el-row :gutter="16">
+          <el-col :span="12">
+            <el-form-item label="开始时间"><el-date-picker v-model="drone.form.start_time" type="datetime" style="width:100%" value-format="YYYY-MM-DD HH:mm:ss" /></el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="结束时间"><el-date-picker v-model="drone.form.end_time" type="datetime" style="width:100%" value-format="YYYY-MM-DD HH:mm:ss" /></el-form-item>
+          </el-col>
+        </el-row>
+        <el-row :gutter="16">
+          <el-col :span="12">
+            <el-form-item label="申请人"><el-input v-model="drone.form.applicant" /></el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="批准领导"><el-input v-model="drone.form.approver" /></el-form-item>
+          </el-col>
+        </el-row>
+        <el-row :gutter="16">
+          <el-col :span="12">
+            <el-form-item label="无人机型号"><el-input v-model="drone.form.drone_model" :placeholder="drone.equip.model || '默认用设备信息'" /></el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="保管人员"><el-input v-model="drone.form.keeper" :placeholder="drone.equip.keeper || '默认用设备信息'" /></el-form-item>
+          </el-col>
+        </el-row>
+        <el-form-item label="备注"><el-input v-model="drone.form.notes" type="textarea" :rows="2" /></el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="drone.dialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="drone.saving" @click="saveDrone">保存</el-button>
+      </template>
+    </el-dialog>
 
     <!-- 运维台账弹窗 -->
     <el-dialog v-model="maintenance.dialogVisible" :title="maintenance.editId ? '编辑运维记录' : '新增运维记录'" width="600px">
@@ -615,12 +835,264 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { reactive, computed, onMounted, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Search, Plus } from '@element-plus/icons-vue'
 import axios from 'axios'
 
-const activeTab = ref('maintenance')
+const route = useRoute()
+
+const TAB_TITLES = {
+  maintenance: '运维台账',
+  meeting: '会议台账',
+  training: '培训台账',
+  docs: '文件资料',
+  monitor: '调取监控',
+  drone: '无人机飞行'
+}
+
+const activeTab = computed(() => {
+  const tab = route.params.tab
+  return TAB_TITLES[tab] ? tab : 'maintenance'
+})
+
+const pageTitle = computed(() => TAB_TITLES[activeTab.value])
+
+function ensureTabLoaded(tab) {
+  if (tab === 'maintenance' && maintenance.data.length === 0 && !maintenance.loaded) {
+    loadMaintenance()
+    maintenance.loaded = true
+  } else if (tab === 'meeting' && meeting.data.length === 0 && !meeting.loaded) {
+    loadMeeting()
+    meeting.loaded = true
+  } else if (tab === 'training' && training.data.length === 0 && !training.loaded) {
+    loadTraining()
+    training.loaded = true
+  } else if (tab === 'docs' && !docs.loaded) {
+    loadDocs()
+    docs.loaded = true
+  } else if (tab === 'monitor' && !monitor.loaded) {
+    loadMonitor()
+    monitor.loaded = true
+  } else if (tab === 'drone' && !drone.loaded) {
+    loadDrone()
+    loadDroneEquip()
+    drone.loaded = true
+  }
+}
+
+// ===== 调取监控台账 =====
+const monitor = reactive({
+  data: [], total: 0, page: 1, pageSize: 20, loading: false, loaded: false,
+  search: '', filters: { status: '' },
+  dialogVisible: false, editId: null, saving: false,
+  form: emptyMonitorForm()
+})
+
+function emptyMonitorForm() {
+  return {
+    unit_name: '', visitor_name: '', id_type: '', id_no: '',
+    has_intro_letter: false, has_application: false, leader_signed: false,
+    visit_time: null, purpose: '', video_location: '', video_time_range: '',
+    operator: '', status: '接待中', notes: ''
+  }
+}
+
+async function loadMonitor() {
+  monitor.loading = true
+  try {
+    const { data } = await axios.get('/api/ledger/monitor-access', {
+      params: { page: monitor.page, pageSize: monitor.pageSize, keyword: monitor.search, status: monitor.filters.status }
+    })
+    monitor.data = data.data || []
+    monitor.total = data.total || 0
+  } catch (e) {
+    ElMessage.error('加载调监控台账失败')
+  } finally {
+    monitor.loading = false
+  }
+}
+
+function openMonitorDialog(row = null) {
+  if (row) {
+    monitor.editId = row.id
+    monitor.form = {
+      unit_name: row.unit_name || '',
+      visitor_name: row.visitor_name || '',
+      id_type: row.id_type || '',
+      id_no: row.id_no || '',
+      has_intro_letter: !!row.has_intro_letter,
+      has_application: !!row.has_application,
+      leader_signed: !!row.leader_signed,
+      visit_time: row.visit_time,
+      purpose: row.purpose || '',
+      video_location: row.video_location || '',
+      video_time_range: row.video_time_range || '',
+      operator: row.operator || '',
+      status: row.status || '接待中',
+      notes: row.notes || ''
+    }
+  } else {
+    monitor.editId = null
+    monitor.form = emptyMonitorForm()
+  }
+  monitor.dialogVisible = true
+}
+
+async function saveMonitor() {
+  if (!monitor.form.unit_name.trim() || !monitor.form.visitor_name.trim()) {
+    ElMessage.warning('请填写外单位与来访人')
+    return
+  }
+  monitor.saving = true
+  try {
+    const payload = { ...monitor.form }
+    if (monitor.editId) {
+      await axios.put(`/api/ledger/monitor-access/${monitor.editId}`, payload)
+    } else {
+      await axios.post('/api/ledger/monitor-access', payload)
+    }
+    ElMessage.success('保存成功')
+    monitor.dialogVisible = false
+    await loadMonitor()
+  } catch (e) {
+    ElMessage.error(e.response?.data?.error || '保存失败')
+  } finally {
+    monitor.saving = false
+  }
+}
+
+async function deleteMonitor(id) {
+  try {
+    await axios.delete(`/api/ledger/monitor-access/${id}`)
+    ElMessage.success('删除成功')
+    await loadMonitor()
+  } catch (e) {
+    ElMessage.error('删除失败')
+  }
+}
+
+// ===== 无人机 =====
+const drone = reactive({
+  data: [], total: 0, page: 1, pageSize: 20, loading: false, loaded: false,
+  search: '', filters: { status: '' },
+  dialogVisible: false, editId: null, saving: false,
+  form: emptyDroneForm(),
+  equip: { model: '', keeper: '' },
+  equipDraft: { model: '', keeper: '' },
+  equipEditing: false
+})
+
+function emptyDroneForm() {
+  return {
+    flight_date: null, location: '', purpose: '',
+    start_time: null, end_time: null,
+    applicant: '', approver: '', drone_model: '', keeper: '',
+    status: '待批准', notes: ''
+  }
+}
+
+function fmtRange(a, b) {
+  if (!a && !b) return '-'
+  const t = (s) => (s || '').slice(11, 16)
+  if (a && b) return `${t(a)}-${t(b)}`
+  return a ? t(a) : t(b)
+}
+
+async function loadDrone() {
+  drone.loading = true
+  try {
+    const { data } = await axios.get('/api/ledger/drone', {
+      params: { page: drone.page, pageSize: drone.pageSize, keyword: drone.search, status: drone.filters.status }
+    })
+    drone.data = data.data || []
+    drone.total = data.total || 0
+  } catch (e) {
+    ElMessage.error('加载无人机台账失败')
+  } finally {
+    drone.loading = false
+  }
+}
+
+async function loadDroneEquip() {
+  try {
+    const { data } = await axios.get('/api/ledger/drone-equipment')
+    drone.equip.model = data.drone_model || ''
+    drone.equip.keeper = data.keeper || ''
+    drone.equipDraft = { model: drone.equip.model, keeper: drone.equip.keeper }
+  } catch (e) { /* ignore */ }
+}
+
+async function saveDroneEquip() {
+  try {
+    await axios.post('/api/ledger/drone-equipment', {
+      drone_model: drone.equipDraft.model,
+      drone_keeper: drone.equipDraft.keeper
+    })
+    ElMessage.success('设备信息已保存')
+    drone.equipEditing = false
+    await loadDroneEquip()
+  } catch (e) {
+    ElMessage.error('保存设备信息失败')
+  }
+}
+
+function openDroneDialog(row = null) {
+  if (row) {
+    drone.editId = row.id
+    drone.form = {
+      flight_date: row.flight_date,
+      location: row.location || '',
+      purpose: row.purpose || '',
+      start_time: row.start_time,
+      end_time: row.end_time,
+      applicant: row.applicant || '',
+      approver: row.approver || '',
+      drone_model: row.drone_model || '',
+      keeper: row.keeper || '',
+      status: row.status || '待批准',
+      notes: row.notes || ''
+    }
+  } else {
+    drone.editId = null
+    drone.form = emptyDroneForm()
+  }
+  drone.dialogVisible = true
+}
+
+async function saveDrone() {
+  if (!drone.form.flight_date || !drone.form.location.trim() || !drone.form.purpose.trim()) {
+    ElMessage.warning('请填写日期、地点与目的')
+    return
+  }
+  drone.saving = true
+  try {
+    const payload = { ...drone.form }
+    if (drone.editId) {
+      await axios.put(`/api/ledger/drone/${drone.editId}`, payload)
+    } else {
+      await axios.post('/api/ledger/drone', payload)
+    }
+    ElMessage.success('保存成功')
+    drone.dialogVisible = false
+    await loadDrone()
+  } catch (e) {
+    ElMessage.error(e.response?.data?.error || '保存失败')
+  } finally {
+    drone.saving = false
+  }
+}
+
+async function deleteDrone(id) {
+  try {
+    await axios.delete(`/api/ledger/drone/${id}`)
+    ElMessage.success('删除成功')
+    await loadDrone()
+  } catch (e) {
+    ElMessage.error('删除失败')
+  }
+}
 
 // 上传相关
 const uploadUrl = '/api/upload/image'
@@ -791,6 +1263,7 @@ const maintenance = reactive({
   page: 1,
   pageSize: 20,
   loading: false,
+  loaded: false,
   search: '',
   filters: { status: '', fault_level: '' },
   dialogVisible: false,
@@ -1067,21 +1540,6 @@ async function deleteTraining(id) {
   }
 }
 
-// Tab切换
-function handleTabChange(tab) {
-  const name = tab.props.name || activeTab.value
-  if (name === 'meeting' && meeting.data.length === 0 && !meeting.loaded) {
-    loadMeeting()
-    meeting.loaded = true
-  } else if (name === 'training' && training.data.length === 0 && !training.loaded) {
-    loadTraining()
-    training.loaded = true
-  } else if (name === 'docs' && !docs.loaded) {
-    loadDocs()
-    docs.loaded = true
-  }
-}
-
 // 故障等级样式
 function getFaultLevelType(level) {
   const map = { '低': 'info', '中': 'warning', '高': 'danger', '紧急': 'danger' }
@@ -1095,8 +1553,15 @@ function getStatusType(status) {
 }
 
 onMounted(() => {
-  loadMaintenance()
+  ensureTabLoaded(activeTab.value)
 })
+
+watch(
+  () => route.params.tab,
+  (tab) => {
+    ensureTabLoaded(TAB_TITLES[tab] ? tab : 'maintenance')
+  }
+)
 </script>
 
 <style scoped>

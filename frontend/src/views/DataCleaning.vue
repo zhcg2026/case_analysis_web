@@ -1,7 +1,7 @@
 <template>
   <div class="cleaning-page">
     <div class="cleaning-header">
-      <h1>数据清洗</h1>
+      <h1>数据清洗入库</h1>
       <p>上传原始案件数据，执行清洗规则后入库</p>
     </div>
 

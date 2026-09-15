@@ -112,6 +112,12 @@ try:
 except ImportError:
     from data_cleaning_routes import register_data_cleaning_routes
 
+# 数据统计查询（只读汇总+反查）
+try:
+    from backend.data_stats_routes import register_data_stats_routes
+except ImportError:
+    from data_stats_routes import register_data_stats_routes
+
 # 台账路由
 try:
     from backend.ledger_routes import register_ledger_routes
@@ -233,6 +239,26 @@ try:
         dispatch = Column(Integer, nullable=False, default=0)
         business = Column(Integer, nullable=False, default=0)
         data_cleaning = Column(Integer, nullable=False, default=0)
+        dispatch_standards = Column(Integer, nullable=False, default=0)
+        dispatch_query = Column(Integer, nullable=False, default=0)
+        dispatch_special = Column(Integer, nullable=False, default=0)
+        data_mgmt = Column(Integer, nullable=False, default=0)
+        data_browse = Column(Integer, nullable=False, default=0)
+        data_stats = Column(Integer, nullable=False, default=0)
+        assessment_input = Column(Integer, nullable=False, default=0)
+        assessment_input_platform = Column(Integer, nullable=False, default=0)
+        assessment_input_collector = Column(Integer, nullable=False, default=0)
+        assessment_exemption = Column(Integer, nullable=False, default=0)
+        assessment_score = Column(Integer, nullable=False, default=0)
+        ledger_maintenance = Column(Integer, nullable=False, default=0)
+        ledger_meeting = Column(Integer, nullable=False, default=0)
+        ledger_training = Column(Integer, nullable=False, default=0)
+        ledger_docs = Column(Integer, nullable=False, default=0)
+        ledger_monitor = Column(Integer, nullable=False, default=0)
+        ledger_drone = Column(Integer, nullable=False, default=0)
+        duty = Column(Integer, nullable=False, default=0)
+        duty_schedule = Column(Integer, nullable=False, default=0)
+        duty_records = Column(Integer, nullable=False, default=1)
         created_at = Column(DateTime(timezone=True), server_default=func.now())
         updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
@@ -353,6 +379,47 @@ try:
         created_at = Column(DateTime(timezone=True), server_default=func.now())
         updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
+    class MonitorAccessLedger(Base):
+        """外单位人员调取视频监控台账（线下流程登记）"""
+        __tablename__ = 'monitor_access_ledger'
+        id = Column(Integer, primary_key=True, autoincrement=True)
+        unit_name = Column(String(200), nullable=False, comment='外单位名称')
+        visitor_name = Column(String(50), nullable=False, comment='来访人姓名')
+        id_type = Column(String(50), comment='证件类型，如警官证')
+        id_no = Column(String(50), comment='证件号码')
+        has_intro_letter = Column(Integer, default=0, comment='是否持介绍信:0/1')
+        visit_time = Column(DateTime, comment='来访时间')
+        purpose = Column(Text, comment='调取事由/关联事项')
+        video_location = Column(String(200), comment='监控点位/位置')
+        video_time_range = Column(String(200), comment='需调取的监控时段说明')
+        has_application = Column(Integer, default=0, comment='是否已填调取申请表:0/1')
+        leader_signed = Column(Integer, default=0, comment='领导是否签字:0/1')
+        operator = Column(String(50), comment='平台经办人')
+        status = Column(String(20), default='接待中', comment='接待中/申请中/已调取/已归档')
+        notes = Column(Text, comment='备注')
+        created_by = Column(Integer)
+        created_at = Column(DateTime(timezone=True), server_default=func.now())
+        updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    class DroneFlightLedger(Base):
+        """无人机飞行登记台账"""
+        __tablename__ = 'drone_flight_ledger'
+        id = Column(Integer, primary_key=True, autoincrement=True)
+        flight_date = Column(Date, nullable=False, comment='飞行日期')
+        location = Column(String(200), nullable=False, comment='飞行地点')
+        purpose = Column(Text, nullable=False, comment='飞行目的')
+        start_time = Column(DateTime, comment='飞行开始时间')
+        end_time = Column(DateTime, comment='飞行结束时间')
+        applicant = Column(String(50), comment='申请人')
+        approver = Column(String(50), comment='批准领导')
+        drone_model = Column(String(100), comment='无人机型号')
+        keeper = Column(String(50), comment='保管人员')
+        status = Column(String(20), default='待批准', comment='待批准/已批准/已完成/已取消')
+        notes = Column(Text, comment='备注')
+        created_by = Column(Integer)
+        created_at = Column(DateTime(timezone=True), server_default=func.now())
+        updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
     class DutyRecord(Base):
         """值班记录 - 一天两条(白班=统计+关注问题 / 夜班=事件流水),record_date+shift 唯一;
         夜班跨天事件按值班开始日期归档;统计为手动填报(案件库按月导入,日粒度对不上)"""
@@ -457,7 +524,7 @@ try:
 
     Session = sessionmaker(bind=engine)
 
-    # 自动迁移：确保 permissions 表包含新权限列
+    # 自动迁移：确保 permissions 表包含菜单级权限列
     try:
         _perm_migrations = [
             ("knowledge", "TINYINT(1) DEFAULT 0"),
@@ -466,6 +533,27 @@ try:
             ("data_cleaning", "TINYINT(1) DEFAULT 0"),
             ("ledger", "TINYINT(1) DEFAULT 0"),
             ("assessment", "TINYINT(1) DEFAULT 0"),
+            # 菜单树细化列
+            ("dispatch_standards", "TINYINT(1) DEFAULT 0"),
+            ("dispatch_query", "TINYINT(1) DEFAULT 0"),
+            ("dispatch_special", "TINYINT(1) DEFAULT 0"),
+            ("data_mgmt", "TINYINT(1) DEFAULT 0"),
+            ("data_browse", "TINYINT(1) DEFAULT 0"),
+            ("data_stats", "TINYINT(1) DEFAULT 0"),
+            ("assessment_input", "TINYINT(1) DEFAULT 0"),
+            ("assessment_input_platform", "TINYINT(1) DEFAULT 0"),
+            ("assessment_input_collector", "TINYINT(1) DEFAULT 0"),
+            ("assessment_exemption", "TINYINT(1) DEFAULT 0"),
+            ("assessment_score", "TINYINT(1) DEFAULT 0"),
+            ("ledger_maintenance", "TINYINT(1) DEFAULT 0"),
+            ("ledger_meeting", "TINYINT(1) DEFAULT 0"),
+            ("ledger_training", "TINYINT(1) DEFAULT 0"),
+            ("ledger_docs", "TINYINT(1) DEFAULT 0"),
+            ("ledger_monitor", "TINYINT(1) DEFAULT 0"),
+            ("ledger_drone", "TINYINT(1) DEFAULT 0"),
+            ("duty", "TINYINT(1) DEFAULT 0"),
+            ("duty_schedule", "TINYINT(1) DEFAULT 0"),
+            ("duty_records", "TINYINT(1) DEFAULT 1"),
         ]
         with engine.connect() as _conn:
             _cols = {r[0] for r in _conn.execute(text("SHOW COLUMNS FROM permissions"))}
@@ -474,6 +562,46 @@ try:
                     _conn.execute(text(f"ALTER TABLE permissions ADD COLUMN {_col_name} {_col_def}"))
                     _conn.commit()
                     logger.info(f"permissions 表新增列: {_col_name}")
+        # 一次性兼容：用父级权限回填子级（仅当子级全 0 时更合理，简化为直接覆盖新列首次迁移后的默认值）
+        with engine.connect() as _conn:
+            _cols2 = {r[0] for r in _conn.execute(text("SHOW COLUMNS FROM permissions"))}
+            if 'dispatch_standards' in _cols2 and 'dispatch' in _cols2:
+                _conn.execute(text("""
+                    UPDATE permissions SET
+                      dispatch_standards = dispatch,
+                      dispatch_query = dispatch,
+                      dispatch_special = dispatch,
+                      data_mgmt = data_cleaning,
+                      data_browse = COALESCE(data_management, 0),
+                      assessment_score = assessment,
+                      ledger_maintenance = ledger,
+                      ledger_meeting = ledger,
+                      ledger_training = ledger,
+                      ledger_docs = ledger,
+                      duty = duty_records
+                    WHERE dispatch_standards = 0 AND dispatch_query = 0 AND dispatch_special = 0
+                      AND assessment_score = 0 AND ledger_maintenance = 0
+                      AND data_mgmt = 0
+                """))
+                _conn.commit()
+            if 'assessment_input_platform' in _cols2 and 'assessment_input' in _cols2:
+                _conn.execute(text("""
+                    UPDATE permissions SET
+                      assessment_input_platform = assessment_input,
+                      assessment_input_collector = assessment_input
+                    WHERE assessment_input_platform = 0 AND assessment_input_collector = 0
+                      AND assessment_input = 1
+                """))
+                _conn.commit()
+            if 'assessment_input_platform' in _cols2:
+                _conn.execute(text("""
+                    UPDATE permissions SET
+                      assessment_input_platform = assessment_score,
+                      assessment_input_collector = assessment_score
+                    WHERE assessment_input_platform = 0 AND assessment_input_collector = 0
+                      AND assessment_score = 1
+                """))
+                _conn.commit()
     except Exception as _e:
         logger.warning(f"permissions 表迁移检查失败: {_e}")
 
@@ -552,6 +680,13 @@ try:
     except Exception as e:
         logger.warning(f"数据管理路由注册失败: {e}")
 
+    # 数据统计查询
+    try:
+        register_data_stats_routes(app=app, engine=engine, protected=protected)
+        logger.info("数据统计查询路由注册成功")
+    except Exception as e:
+        logger.warning(f"数据统计查询路由注册失败: {e}")
+
     # 归属判断路由
     try:
         register_dispatch_routes(app=app, protected=protected, engine=engine)
@@ -579,6 +714,23 @@ try:
         logger.info("台账路由注册成功")
     except Exception as e:
         logger.warning(f"台账路由注册失败: {e}")
+
+    # 台账扩展：调监控 / 无人机
+    try:
+        from backend.ledger_extra_routes import register_ledger_extra_routes
+    except ImportError:
+        from ledger_extra_routes import register_ledger_extra_routes
+    try:
+        register_ledger_extra_routes(
+            app=app, Session=Session,
+            MonitorAccessLedger=MonitorAccessLedger,
+            DroneFlightLedger=DroneFlightLedger,
+            SystemConfig=SystemConfig,
+            protected=protected,
+        )
+        logger.info("调监控/无人机台账路由注册成功")
+    except Exception as e:
+        logger.warning(f"调监控/无人机台账路由注册失败: {e}")
 
     # 考核计分路由
     try:

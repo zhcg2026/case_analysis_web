@@ -365,10 +365,10 @@ async function loadSummary() {
       garbage.value = manRes.data.garbage || []
       hasManual.value = manualScores.value.length > 0
       if (!hasManual.value) {
-        manualHint.value = '该月人工分值尚未录入。请到「系统管理 → 考核数据录入」维护后计算；确认后仍可计算，缺分单位不计总分。'
+        manualHint.value = '该月人工分值尚未录入。请到「考核管理 → 平台数据录入」维护后计算；确认后仍可计算，缺分单位不计总分。'
         manualHintClass.value = 'warn'
       } else {
-        manualHint.value = `已从库中读取人工分值 ${manualScores.value.length} 条。若需修改，请到「系统管理 → 考核数据录入」。`
+        manualHint.value = `已从库中读取人工分值 ${manualScores.value.length} 条。若需修改，请到「考核管理 → 平台数据录入」。`
         manualHintClass.value = 'info'
       }
     }

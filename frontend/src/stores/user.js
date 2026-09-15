@@ -2,22 +2,26 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 
 export const useUserStore = defineStore('user', () => {
-  // State
   const token = ref(localStorage.getItem('token') || '')
   const userInfo = ref(JSON.parse(localStorage.getItem('userInfo') || 'null'))
 
-  // Getters
   const isLoggedIn = computed(() => !!token.value && !!userInfo.value)
   const isAdmin = computed(() => userInfo.value?.role === 'admin')
   const username = computed(() => userInfo.value?.username || '')
 
-  // 用户权限列表
+  /** 权限 map：{ key: boolean }；兼容旧数组格式 */
   const permissions = computed(() => {
-    if (isAdmin.value) return ['all']
-    return userInfo.value?.permissions || []
+    const p = userInfo.value?.permissions
+    if (!p) return {}
+    if (Array.isArray(p)) {
+      const map = {}
+      for (const k of p) map[k] = true
+      if (p.includes('all')) map.all = true
+      return map
+    }
+    return p
   })
 
-  // Actions
   function login(tokenValue, user) {
     token.value = tokenValue
     userInfo.value = user
@@ -33,8 +37,11 @@ export const useUserStore = defineStore('user', () => {
   }
 
   function hasPermission(permission) {
+    if (!permission) return true
     if (isAdmin.value) return true
-    return permissions.value.includes(permission)
+    const perms = permissions.value
+    if (perms.all) return true
+    return Boolean(perms[permission])
   }
 
   function updateUserInfo(user) {
@@ -43,15 +50,12 @@ export const useUserStore = defineStore('user', () => {
   }
 
   return {
-    // State
     token,
     userInfo,
-    // Getters
     isLoggedIn,
     isAdmin,
     username,
     permissions,
-    // Actions
     login,
     logout,
     hasPermission,

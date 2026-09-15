@@ -393,16 +393,25 @@ def register_cms_routes(app, Session, Category, Article):
             session.close()
 
     # 首页栏目接口
+    NOTICE_SLUGS = {'通知公告', 'notice', 'notices', 'home-notice'}
+
+    def _is_notice_category(cat):
+        slug = (cat.slug or '').strip().lower()
+        name = (cat.name or '').strip()
+        return name == '通知公告' or slug in NOTICE_SLUGS or '通知公告' in name
+
     @app.route('/api/cms/home-columns', methods=['GET'])
     @protected
     def get_home_columns():
         session = Session()
         try:
-            # 获取所有栏目
+            # 获取所有栏目（通知公告走轮播条，不作为独立栏目块）
             categories = session.query(Category).order_by(Category.order).all()
 
             result = []
             for cat in categories:
+                if _is_notice_category(cat):
+                    continue
                 # 获取该栏目下最新的5篇已发布文章
                 articles = session.query(Article).filter_by(
                     category_id=cat.id,
@@ -434,5 +443,47 @@ def register_cms_routes(app, Session, Category, Article):
             session.rollback()
             logging.exception("Error in get_home_columns")
             return jsonify({"error": "操作失败，请稍后重试"}), 500
+        finally:
+            session.close()
+
+    @app.route('/api/cms/home-notices', methods=['GET'])
+    @protected
+    def get_home_notices():
+        """首页通知公告轮播：栏目「通知公告」下已发布文章（最多 10 条）"""
+        session = Session()
+        try:
+            cat = None
+            for slug in ('通知公告', 'notice', 'notices'):
+                cat = session.query(Category).filter_by(slug=slug).first()
+                if cat:
+                    break
+            if not cat:
+                cat = session.query(Category).filter_by(name='通知公告').first()
+            if not cat:
+                # 自动建栏目，便于管理员直接发文
+                cat = Category(name='通知公告', slug='通知公告', description='首页通知公告轮播（不作为独立栏目块展示）', order=0)
+                session.add(cat)
+                session.flush()
+
+            articles = session.query(Article).filter_by(
+                category_id=cat.id,
+                status='published'
+            ).order_by(Article.created_at.desc()).limit(10).all()
+
+            items = [{
+                'id': a.id,
+                'title': a.title,
+                'summary': a.summary,
+                'file_path': a.file_path,
+                'created_at': a.created_at.strftime('%Y-%m-%d %H:%M:%S') if a.created_at else None,
+                'url': f'/article/{a.id}',
+            } for a in articles]
+
+            session.commit()
+            return jsonify({'success': True, 'category_id': cat.id, 'notices': items}), 200
+        except Exception as e:
+            session.rollback()
+            logging.exception("Error in get_home_notices")
+            return jsonify({'error': '操作失败，请稍后重试'}), 500
         finally:
             session.close()

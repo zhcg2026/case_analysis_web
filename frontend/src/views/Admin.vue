@@ -375,43 +375,41 @@
           </button>
         </div>
         <div class="modal-body">
-          <div class="permissions-grid">
-            <label class="permission-item">
-              <input type="checkbox" v-model="editingPermissions.data_analysis" />
-              <span>数据分析</span>
-            </label>
-            <label class="permission-item">
-              <input type="checkbox" v-model="editingPermissions.data_cleaning" />
-              <span>数据清洗</span>
-            </label>
-            <label class="permission-item">
-              <input type="checkbox" v-model="editingPermissions.knowledge" />
-              <span>知识库</span>
-            </label>
-            <label class="permission-item">
-              <input type="checkbox" v-model="editingPermissions.map" />
-              <span>数图城管</span>
-            </label>
-            <label class="permission-item">
-              <input type="checkbox" v-model="editingPermissions.case_map" />
-              <span>案件地图</span>
-            </label>
-            <label class="permission-item">
-              <input type="checkbox" v-model="editingPermissions.dispatch" />
-              <span>案件归属</span>
-            </label>
-            <label class="permission-item">
-              <input type="checkbox" v-model="editingPermissions.business" />
-              <span>业务平台</span>
-            </label>
-            <label class="permission-item">
-              <input type="checkbox" v-model="editingPermissions.ledger" />
-              <span>台账管理</span>
-            </label>
-            <label class="permission-item">
-              <input type="checkbox" v-model="editingPermissions.assessment" />
-              <span>考核计分</span>
-            </label>
+          <p class="perm-hint">勾选用户可访问的菜单；二级菜单需单独开启。管理员始终拥有全部权限。</p>
+          <div class="permissions-tree">
+            <div v-for="node in menuPermissionTree" :key="node.key" class="perm-group">
+              <label v-if="!node.children" class="permission-item">
+                <input
+                  type="checkbox"
+                  :checked="!!editingPermissions[node.key]"
+                  @change="setPerm(node.key, $event.target.checked)"
+                />
+                <span>{{ node.label }}</span>
+              </label>
+              <template v-else>
+                <div class="perm-group-head">
+                  <label class="permission-item">
+                    <input
+                      type="checkbox"
+                      :checked="groupAllOn(node)"
+                      :indeterminate.prop="groupSomeOn(node)"
+                      @change="setGroup(node, $event.target.checked)"
+                    />
+                    <span class="perm-group-title">{{ node.label }}</span>
+                  </label>
+                </div>
+                <div class="perm-children">
+                  <label v-for="child in node.children" :key="child.key" class="permission-item">
+                    <input
+                      type="checkbox"
+                      :checked="!!editingPermissions[child.key]"
+                      @change="setPerm(child.key, $event.target.checked)"
+                    />
+                    <span>{{ child.label }}</span>
+                  </label>
+                </div>
+              </template>
+            </div>
           </div>
         </div>
         <div class="modal-footer">
@@ -498,104 +496,6 @@
           </tr>
           <tr v-if="platforms.length === 0">
             <td colspan="5" class="empty-text">暂无平台</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-
-    <!-- 值班表管理 -->
-    <div v-else-if="activeTab === 'duty'" class="content-card">
-      <div class="card-header">
-        <h2 class="section-title">值班表管理</h2>
-        <button v-if="dutyEntries.length" class="btn btn-danger" @click="clearDuty">清空全部</button>
-      </div>
-      <p class="section-hint">
-        一行一天的格式：日期 白班：张三、李四、王五，夜班：赵六（人员分隔可用顿号/逗号/空格）。
-        支持 9月13日、2026-09-13 等日期写法；日期后可用括号加备注，如「10月1日（国庆节） 白班：张三」。
-        保存后首页欢迎区将显示今日值班。
-      </p>
-
-      <div class="duty-editor">
-        <textarea
-          v-model="dutyText"
-          class="form-input duty-textarea"
-          rows="6"
-          placeholder="9月13日 白班：张三、李四、王五，夜班：赵六&#10;9月14日 白班：王五，夜班：张三"
-        ></textarea>
-        <div class="duty-editor-actions">
-          <label class="btn btn-secondary duty-file-btn">
-            导入 txt 文件
-            <input type="file" accept=".txt,.csv" hidden @change="handleDutyFile" />
-          </label>
-          <label class="duty-append-label">
-            <input type="checkbox" v-model="dutyAppend" />
-            追加模式（保留现有排班）
-          </label>
-          <button class="btn btn-primary" :disabled="dutyBusy || !dutyText.trim()" @click="previewDuty">
-            {{ dutyBusy ? '解析中…' : '解析预览' }}
-          </button>
-        </div>
-      </div>
-
-      <!-- 解析预览 -->
-      <div v-if="dutyPreview" class="duty-preview">
-        <h3 class="subsection-title">
-          解析结果：{{ dutyPreview.days }} 天 / {{ dutyPreview.total }} 条排班
-          <span v-if="dutyPreview.errors.length" class="duty-error-count">（{{ dutyPreview.errors.length }} 行未识别）</span>
-        </h3>
-        <table class="data-table">
-          <thead>
-            <tr>
-              <th>日期</th>
-              <th>班次</th>
-              <th>人员</th>
-              <th>备注</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="(e, i) in dutyPreview.entries" :key="i">
-              <td>{{ e.date }}</td>
-              <td><span class="duty-shift-badge">{{ e.shift }}</span></td>
-              <td>{{ e.members.join('、') }}</td>
-              <td>{{ e.note || '—' }}</td>
-            </tr>
-          </tbody>
-        </table>
-        <ul v-if="dutyPreview.errors.length" class="duty-errors">
-          <li v-for="(err, i) in dutyPreview.errors" :key="i">{{ err }}</li>
-        </ul>
-        <div class="duty-preview-actions">
-          <button class="btn btn-primary" :disabled="dutySaving" @click="saveDuty">
-            {{ dutySaving ? '保存中…' : (dutyAppend ? '追加保存' : '保存（替换现有值班表）') }}
-          </button>
-          <button class="btn btn-secondary" @click="dutyPreview = null">取消</button>
-        </div>
-      </div>
-
-      <!-- 当前值班表 -->
-      <h3 class="subsection-title" style="margin-top:24px">当前值班表</h3>
-      <table class="data-table">
-        <thead>
-          <tr>
-            <th>日期</th>
-            <th>班次</th>
-            <th>人员</th>
-            <th>备注</th>
-            <th>操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="e in dutyEntries" :key="e.id">
-            <td>{{ e.date }}</td>
-            <td><span class="duty-shift-badge">{{ e.shift }}</span></td>
-            <td>{{ e.members.join('、') }}</td>
-            <td>{{ e.note || '—' }}</td>
-            <td>
-              <button class="btn-text danger" @click="deleteDutyEntry(e)">删除</button>
-            </td>
-          </tr>
-          <tr v-if="dutyEntries.length === 0">
-            <td colspan="5" class="empty-text">暂无排班，请在上方粘贴或导入值班表</td>
           </tr>
         </tbody>
       </table>
@@ -889,23 +789,6 @@
     </div>
 
     <!-- 系统设置 -->
-    <div v-else-if="activeTab === 'data'" class="content-card" style="padding:0;border:none;background:transparent">
-      <DataManagementTab />
-    </div>
-    <div v-else-if="activeTab === 'standards'" class="content-card">
-      <div class="card-header">
-        <h2 class="section-title">立结案标准</h2>
-        <p class="section-hint">只读查看。数据来自《立案、处置和结案标准》，用于考核录入等场景的大小类字典核对。</p>
-      </div>
-      <CaseStandardsTab />
-    </div>
-    <div v-else-if="activeTab === 'assessment_input'" class="content-card">
-      <div class="card-header">
-        <h2 class="section-title">考核数据录入</h2>
-        <p class="section-hint">按月录入平台分值与采集员数据，供考核计分与后续报表使用。已录入月份可再次打开修改。</p>
-      </div>
-      <AssessmentInputTab />
-    </div>
     <div v-else-if="activeTab === 'system'" class="content-card">
       <h2 class="section-title">系统设置</h2>
       <div class="settings-form">
@@ -1219,23 +1102,17 @@ import axios from 'axios'
 import { Editor, Toolbar } from '@wangeditor/editor-for-vue'
 import '@wangeditor/editor/dist/css/style.css'
 import KbIcon from '../components/common/KbIcon.vue'
-import DataManagementTab from '../components/admin/DataManagementTab.vue'
-import CaseStandardsTab from '../components/admin/CaseStandardsTab.vue'
-import AssessmentInputTab from '../components/admin/AssessmentInputTab.vue'
 import { useSystemConfig } from '../composables/useSystemConfig'
+import { MENU_PERMISSION_TREE, ALL_MENU_PERMISSION_KEYS, emptyPermissions } from '../constants/menuPermissions'
 
 const router = useRouter()
 
 const tabs = [
   { key: 'users', label: '用户管理' },
   { key: 'articles', label: '文章管理' },
-  { key: 'data', label: '数据管理' },
   { key: 'reports', label: '报告模板' },
   { key: 'knowledge', label: '知识库管理' },
-  { key: 'standards', label: '立结案标准' },
-  { key: 'assessment_input', label: '考核数据录入' },
   { key: 'business', label: '业务平台' },
-  { key: 'duty', label: '值班表' },
   { key: 'system', label: '系统设置' }
 ]
 
@@ -1253,6 +1130,7 @@ const showPermissionsEditor = ref(false)
 const editingPermissionsUser = ref(null)
 const editingPermissions = ref({})
 const permissionsSaving = ref(false)
+const menuPermissionTree = MENU_PERMISSION_TREE
 const roleMap = {
   admin: '管理员',
   user: '普通用户'
@@ -1910,19 +1788,25 @@ async function deleteUser(user) {
 
 function openPermissionsEditor(user) {
   editingPermissionsUser.value = user
-  // 确保所有权限字段都有值，并将整数转换为布尔值
   const perms = user.permissions || {}
-  editingPermissions.value = {
-    data_analysis: Boolean(perms.data_analysis),
-    data_cleaning: Boolean(perms.data_cleaning),
-    knowledge: Boolean(perms.knowledge),
-    map: Boolean(perms.map),
-    case_map: Boolean(perms.case_map),
-    dispatch: Boolean(perms.dispatch),
-    business: Boolean(perms.business),
-    ledger: Boolean(perms.ledger),
-    assessment: Boolean(perms.assessment)
+  const next = emptyPermissions()
+  for (const key of ALL_MENU_PERMISSION_KEYS) {
+    next[key] = Boolean(perms[key])
   }
+  // 兼容旧用户：仅有父级 key 时回填子级
+  if (perms.dispatch) {
+    next.dispatch_standards = next.dispatch_standards || Boolean(perms.dispatch_standards) || Boolean(perms.dispatch)
+    next.dispatch_query = next.dispatch_query || Boolean(perms.dispatch_query) || Boolean(perms.dispatch)
+    next.dispatch_special = next.dispatch_special || Boolean(perms.dispatch_special) || Boolean(perms.dispatch)
+  }
+  if (perms.ledger) {
+    for (const k of ['ledger_maintenance', 'ledger_meeting', 'ledger_training', 'ledger_docs']) {
+      next[k] = next[k] || Boolean(perms[k]) || Boolean(perms.ledger)
+    }
+  }
+  if (perms.assessment) next.assessment_score = next.assessment_score || Boolean(perms.assessment_score) || Boolean(perms.assessment)
+  if (perms.data_cleaning) next.data_mgmt = next.data_mgmt || Boolean(perms.data_mgmt) || Boolean(perms.data_cleaning)
+  editingPermissions.value = next
   showPermissionsEditor.value = true
 }
 
@@ -1932,20 +1816,37 @@ function closePermissionsEditor() {
   editingPermissions.value = {}
 }
 
+function setPerm(key, val) {
+  editingPermissions.value = { ...editingPermissions.value, [key]: Boolean(val) }
+}
+
+function groupAllOn(node) {
+  return node.children.every((c) => editingPermissions.value[c.key])
+}
+
+function groupSomeOn(node) {
+  const on = node.children.filter((c) => editingPermissions.value[c.key]).length
+  return on > 0 && on < node.children.length
+}
+
+function setGroup(node, val) {
+  const next = { ...editingPermissions.value }
+  if (node.key) next[node.key] = Boolean(val)
+  for (const c of node.children) next[c.key] = Boolean(val)
+  editingPermissions.value = next
+}
+
 async function savePermissions() {
   permissionsSaving.value = true
   try {
-    // 确保发送布尔值
-    const dataToSend = {
-      data_analysis: Boolean(editingPermissions.value.data_analysis),
-      data_cleaning: Boolean(editingPermissions.value.data_cleaning),
-      knowledge: Boolean(editingPermissions.value.knowledge),
-      map: Boolean(editingPermissions.value.map),
-      case_map: Boolean(editingPermissions.value.case_map),
-      dispatch: Boolean(editingPermissions.value.dispatch),
-      business: Boolean(editingPermissions.value.business),
-      ledger: Boolean(editingPermissions.value.ledger),
-      assessment: Boolean(editingPermissions.value.assessment)
+    const dataToSend = {}
+    for (const key of ALL_MENU_PERMISSION_KEYS) {
+      dataToSend[key] = Boolean(editingPermissions.value[key])
+    }
+    // 父级分组：任一子级开启则父级开启，便于旧逻辑兼容
+    for (const node of MENU_PERMISSION_TREE) {
+      if (!node.children) continue
+      dataToSend[node.key] = node.children.some((c) => dataToSend[c.key])
     }
     await axios.put(`/api/users/${editingPermissionsUser.value.id}/permissions`, dataToSend)
     closePermissionsEditor()
@@ -2215,88 +2116,11 @@ async function restoreData(type, event) {
   }
 }
 
-// ===== 值班表管理 =====
-const dutyText = ref('')
-const dutyAppend = ref(false)
-const dutyBusy = ref(false)
-const dutySaving = ref(false)
-const dutyPreview = ref(null)
-const dutyEntries = ref([])
-
-async function fetchDutyList() {
-  try {
-    const response = await axios.get('/api/duty/schedule')
-    dutyEntries.value = response.data.entries || []
-  } catch (e) {
-    console.error('获取值班表失败:', e)
-  }
-}
-
-function handleDutyFile(ev) {
-  const file = ev.target.files && ev.target.files[0]
-  if (!file) return
-  const reader = new FileReader()
-  reader.onload = () => { dutyText.value = String(reader.result || '') }
-  reader.readAsText(file, 'utf-8')
-  ev.target.value = ''
-}
-
-async function previewDuty() {
-  dutyBusy.value = true
-  try {
-    const response = await axios.post('/api/duty/preview', { text: dutyText.value })
-    dutyPreview.value = response.data
-  } catch (e) {
-    alert('解析失败: ' + (e.response?.data?.error || e.message))
-  } finally {
-    dutyBusy.value = false
-  }
-}
-
-async function saveDuty() {
-  dutySaving.value = true
-  try {
-    await axios.post('/api/duty/upload', {
-      text: dutyText.value,
-      mode: dutyAppend.value ? 'append' : 'replace'
-    })
-    dutyPreview.value = null
-    dutyText.value = ''
-    await fetchDutyList()
-  } catch (e) {
-    alert('保存失败: ' + (e.response?.data?.error || e.message))
-  } finally {
-    dutySaving.value = false
-  }
-}
-
-async function deleteDutyEntry(entry) {
-  if (!confirm(`删除 ${entry.date} ${entry.shift}（${entry.members.join('、')}）的排班？`)) return
-  try {
-    await axios.delete(`/api/duty/schedule/${entry.id}`)
-    await fetchDutyList()
-  } catch (e) {
-    alert('删除失败: ' + (e.response?.data?.error || e.message))
-  }
-}
-
-async function clearDuty() {
-  if (!confirm('确定清空全部值班表？首页将不再显示今日值班。')) return
-  try {
-    await axios.delete('/api/duty/schedule')
-    await fetchDutyList()
-  } catch (e) {
-    alert('清空失败: ' + (e.response?.data?.error || e.message))
-  }
-}
-
 // 加载备份相关数据
 watch(activeTab, (tab) => {
   if (tab === 'system') {
     loadBackupFiles()
     loadAutoBackupConfig()
-  } else if (tab === 'duty') {
-    fetchDutyList()
   }
 })
 
@@ -3343,10 +3167,43 @@ watch(articlesCurrentPage, fetchArticles)
   max-width: 400px;
 }
 
-.permissions-grid {
+.permissions-tree {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 420px;
+  overflow: auto;
+}
+
+.perm-hint {
+  margin: 0 0 12px;
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.perm-group {
+  border: 1px solid var(--border-lighter);
+  border-radius: var(--radius-md);
+  padding: 6px 8px;
+}
+
+.perm-group-head {
+  font-weight: 600;
+}
+
+.perm-group-title {
+  font-weight: 600;
+}
+
+.perm-children {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: var(--space-3);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2px;
+  padding: 2px 0 4px 22px;
+}
+
+.permissions-editor {
+  max-width: 520px !important;
 }
 
 .permission-item {
@@ -3354,7 +3211,7 @@ watch(articlesCurrentPage, fetchArticles)
   align-items: center;
   gap: var(--space-2);
   cursor: pointer;
-  padding: var(--space-2);
+  padding: 6px 8px;
   border-radius: var(--radius-sm);
   transition: background var(--transition-fast);
 }
@@ -3384,8 +3241,7 @@ watch(articlesCurrentPage, fetchArticles)
 }
 
 /* 弹窗样式补充 */
-.add-user-editor,
-.permissions-editor {
+.add-user-editor {
   max-width: 400px;
 }
 
@@ -4556,67 +4412,5 @@ watch(articlesCurrentPage, fetchArticles)
   text-align: center;
   padding: var(--space-6);
   color: var(--text-secondary);
-}
-
-/* ===== 值班表管理 ===== */
-.duty-textarea {
-  width: 100%;
-  font-family: inherit;
-  line-height: 1.8;
-  resize: vertical;
-}
-
-.duty-editor-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  margin-top: var(--space-3);
-  flex-wrap: wrap;
-}
-
-.duty-file-btn {
-  cursor: pointer;
-}
-
-.duty-append-label {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  color: var(--text-secondary);
-  cursor: pointer;
-}
-
-.duty-preview {
-  margin-top: var(--space-5);
-}
-
-.duty-error-count {
-  color: var(--danger);
-  font-weight: 600;
-}
-
-.duty-errors {
-  margin: var(--space-3) 0 0;
-  padding-left: 20px;
-  font-size: 13px;
-  color: var(--danger);
-}
-
-.duty-preview-actions {
-  display: flex;
-  gap: var(--space-3);
-  margin-top: var(--space-4);
-}
-
-.duty-shift-badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 10px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 600;
-  background: var(--primary-50);
-  color: var(--primary-500);
 }
 </style>

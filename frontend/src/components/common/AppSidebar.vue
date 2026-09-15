@@ -10,17 +10,48 @@
       </div>
 
       <nav class="sidebar-nav">
-        <router-link
-          v-for="item in navItems"
-          :key="item.path"
-          :to="item.path"
-          class="sidebar-item"
-          :class="{ active: isActive(item.path) }"
-        >
-          <span class="item-icon" v-html="item.icon"></span>
-          <span class="item-text" v-show="!isCollapsed">{{ item.title }}</span>
-          <span class="item-badge" v-if="item.badge && !isCollapsed">{{ item.badge }}</span>
-        </router-link>
+        <template v-for="item in navItems" :key="item.path || item.key">
+          <!-- 可展开分组（台账管理） -->
+          <div v-if="item.children" class="sidebar-group" :class="{ open: isGroupOpen(item) }">
+            <button
+              type="button"
+              class="sidebar-item group-item"
+              :class="{ active: isActive(item.path) }"
+              @click="toggleGroup(item)"
+            >
+              <span class="item-icon" v-html="item.icon"></span>
+              <span class="item-text" v-show="!isCollapsed">{{ item.title }}</span>
+              <span class="group-arrow" v-show="!isCollapsed">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="9 18 15 12 9 6"></polyline>
+                </svg>
+              </span>
+            </button>
+            <div v-show="!isCollapsed && isGroupOpen(item)" class="sidebar-sub">
+              <router-link
+                v-for="child in item.children"
+                :key="child.path"
+                :to="child.path"
+                class="sidebar-item sub-item"
+                :class="{ active: isActive(child.path) }"
+              >
+                <span class="item-text">{{ child.title }}</span>
+              </router-link>
+            </div>
+          </div>
+
+          <!-- 普通一级菜单 -->
+          <router-link
+            v-else
+            :to="item.path"
+            class="sidebar-item"
+            :class="{ active: isActive(item.path) }"
+          >
+            <span class="item-icon" v-html="item.icon"></span>
+            <span class="item-text" v-show="!isCollapsed">{{ item.title }}</span>
+            <span class="item-badge" v-if="item.badge && !isCollapsed">{{ item.badge }}</span>
+          </router-link>
+        </template>
       </nav>
 
       <div class="sidebar-footer" v-show="!isCollapsed">
@@ -38,9 +69,10 @@
 
 <script setup>
 import { ref, computed } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '../../stores/user'
 import { useSystemConfig } from '../../composables/useSystemConfig'
+import { MENU_PERMISSION_TREE } from '../../constants/menuPermissions'
 import AppLogo from './AppLogo.vue'
 
 const props = defineProps({
@@ -52,6 +84,7 @@ const props = defineProps({
 
 const emit = defineEmits(['update:collapsed'])
 const route = useRoute()
+const router = useRouter()
 const userStore = useUserStore()
 const { config } = useSystemConfig()
 
@@ -73,31 +106,123 @@ const icons = {
   assessment: `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20V10"/><path d="M18 20V4"/><path d="M6 20v-4"/></svg>`
 }
 
-const navItems = computed(() => {
-  const items = [
-    { path: '/', title: '首页', icon: icons.home },
-    { path: '/map', title: '数图城管', icon: icons.map, permission: 'map' },
-    { path: '/knowledge', title: '知识库', icon: icons.knowledge, permission: 'knowledge' },
-    { path: '/dispatch', title: '案件归属', icon: icons.dispatch, permission: 'dispatch' },
-    { path: '/data-cleaning', title: '数据清洗', icon: icons.cleaning, permission: 'data_cleaning' },
-    { path: '/assessment', title: '考核计分', icon: icons.assessment, permission: 'assessment' },
-    { path: '/data-analysis', title: '数据分析', icon: icons.ai, permission: 'data_analysis' },
-    { path: '/case-map', title: '案件地图', icon: icons.caseMap, permission: 'case_map' },
-    { path: '/ledger', title: '台账管理', icon: icons.ledger, permission: 'ledger' },
-    { path: '/duty-record', title: '值班记录', icon: icons.dutyRecord },
-    { path: '/business', title: '业务平台', icon: icons.business, permission: 'business' },
-    { path: '/admin', title: '系统管理', icon: icons.admin, requiresAdmin: true }
-  ]
+const iconByKey = {
+  map: icons.map,
+  knowledge: icons.knowledge,
+  dispatch: icons.dispatch,
+  data_mgmt: icons.cleaning,
+  assessment: icons.assessment,
+  data_analysis: icons.ai,
+  case_map: icons.caseMap,
+  ledger: icons.ledger,
+  duty: icons.dutyRecord,
+  business: icons.business
+}
 
-  return items.filter(item => {
-    if (item.requiresAdmin && !userStore.isAdmin) return false
-    if (item.permission && !userStore.hasPermission(item.permission)) return false
-    return true
-  })
+const navItems = computed(() => {
+  const home = { path: '/', title: '首页', icon: icons.home }
+
+  const items = [home]
+  for (const node of MENU_PERMISSION_TREE) {
+    if (node.children) {
+      const children = node.children
+        .filter((c) => userStore.hasPermission(c.key))
+        .map((c) => ({ path: c.path || pathForPermissionKey(c.key), title: c.title || c.label, permission: c.key }))
+      if (!children.length) continue
+      // 父级无独立可见子项时不显示；父级权限关但子级有权限时仍显示分组
+      items.push({
+        key: node.key,
+        path: groupBasePath(node.key),
+        title: node.title || node.label,
+        icon: iconByKey[node.key] || icons.home,
+        permission: node.key,
+        children
+      })
+    } else {
+      if (!userStore.hasPermission(node.key)) continue
+      items.push({
+        path: node.path || pathForPermissionKey(node.key),
+        title: node.title || node.label,
+        icon: iconByKey[node.key] || icons.home,
+        permission: node.key
+      })
+    }
+  }
+
+  items.push({ path: '/admin', title: '系统管理', icon: icons.admin, requiresAdmin: true })
+  return items
 })
 
+function pathForPermissionKey(key) {
+  const map = {
+    map: '/map',
+    knowledge: '/knowledge',
+    data_analysis: '/data-analysis',
+    case_map: '/case-map',
+    business: '/business',
+    data_cleaning: '/data/cleaning',
+    data_browse: '/data/browse',
+    data_stats: '/data/stats',
+    assessment_input_platform: '/assessment/input/platform',
+    assessment_input_collector: '/assessment/input/collector',
+    assessment_exemption: '/assessment/exemption',
+    assessment_score: '/assessment/score',
+    dispatch_standards: '/dispatch/standards',
+    dispatch_query: '/dispatch/query',
+    dispatch_special: '/dispatch/special',
+    ledger_maintenance: '/ledger/maintenance',
+    ledger_meeting: '/ledger/meeting',
+    ledger_training: '/ledger/training',
+    ledger_docs: '/ledger/docs',
+    ledger_monitor: '/ledger/monitor',
+    ledger_drone: '/ledger/drone',
+    duty_schedule: '/duty/schedule',
+    duty_records: '/duty/records'
+  }
+  return map[key] || '/'
+}
+
+function groupBasePath(key) {
+  const map = {
+    dispatch: '/dispatch',
+    data_mgmt: '/data',
+    assessment: '/assessment',
+    ledger: '/ledger',
+    duty: '/duty'
+  }
+  return map[key] || '/'
+}
+
+// 手动展开状态；访问台账路由时自动展开
+const openGroups = ref(new Set())
+
+function isGroupOpen(item) {
+  if (isActive(item.path)) return true
+  return openGroups.value.has(item.key)
+}
+
+function toggleGroup(item) {
+  // 收起态下点击分组：跳到默认子菜单
+  if (isCollapsed.value) {
+    const first = item.children?.[0]
+    if (first) router.push(first.path)
+    return
+  }
+  const next = new Set(openGroups.value)
+  if (next.has(item.key)) next.delete(item.key)
+  else next.add(item.key)
+  openGroups.value = next
+}
+
 function isActive(path) {
-  if (path === '/') return route.path === '/'
+  if (!path) return false
+  if (path === '/' ) return route.path === '/'
+  if (
+    path === '/ledger' || path === '/duty' || path === '/dispatch' ||
+    path === '/assessment' || path === '/data'
+  ) {
+    return route.path === path || route.path.startsWith(path + '/')
+  }
   return route.path.startsWith(path)
 }
 
@@ -223,6 +348,58 @@ function toggleCollapse() {
   border-radius: var(--radius-full);
 }
 
+.sidebar-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.group-item {
+  width: 100%;
+  border: none;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.group-arrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--text-tertiary);
+  transition: transform var(--transition-fast);
+}
+
+.sidebar-group.open .group-arrow {
+  transform: rotate(90deg);
+}
+
+.sidebar-sub {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 2px 0 4px 0;
+  padding-left: 12px;
+  border-left: 1px solid var(--border-lighter);
+  margin-left: 18px;
+}
+
+.sub-item {
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.sub-item.active {
+  background: var(--primary-50);
+  color: var(--primary-500);
+}
+
+[data-theme="dark"] .sub-item.active {
+  background: rgba(64, 158, 255, 0.1);
+}
+
 .sidebar-footer {
   margin-top: auto;
   padding-top: var(--space-4);
@@ -268,6 +445,10 @@ function toggleCollapse() {
 .app-sidebar.collapsed .sidebar-item {
   justify-content: center;
   padding: var(--space-3);
+}
+
+.app-sidebar.collapsed .sidebar-sub {
+  display: none !important;
 }
 
 .app-sidebar.collapsed .sidebar-content {

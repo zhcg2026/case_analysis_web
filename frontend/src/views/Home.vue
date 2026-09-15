@@ -50,6 +50,37 @@
       </div>
     </div>
 
+    <!-- 通知公告轮播（栏目「通知公告」已发布文章；不作为独立栏目块） -->
+    <div v-if="notices.length" class="notice-bar" @mouseenter="pauseNotice" @mouseleave="resumeNotice">
+      <div class="notice-label">
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+          <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+        </svg>
+        通知公告
+      </div>
+      <button class="notice-arrow" type="button" title="上一条" @click="prevNotice">‹</button>
+      <a
+        class="notice-link"
+        :href="noticeHref"
+        target="_blank"
+        rel="noopener"
+        @click="openNotice($event)"
+      >{{ currentNotice?.title }}</a>
+      <button class="notice-arrow" type="button" title="下一条" @click="nextNotice">›</button>
+      <div v-if="notices.length > 1" class="notice-dots">
+        <button
+          v-for="(n, i) in notices"
+          :key="n.id"
+          type="button"
+          class="notice-dot"
+          :class="{ active: i === noticeIndex }"
+          :title="n.title"
+          @click="noticeIndex = i"
+        />
+      </div>
+    </div>
+
     <!-- 栏目文章区域 -->
     <div class="cms-section">
       <div class="cms-columns">
@@ -84,7 +115,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '../stores/user'
 import { useSystemConfig } from '../composables/useSystemConfig'
@@ -99,6 +130,84 @@ const currentDate = ref('')
 let timeInterval = null
 
 const columns = ref([])
+
+// 通知公告轮播
+const notices = ref([])
+const noticeIndex = ref(0)
+let noticeTimer = null
+const NOTICE_INTERVAL_MS = 5000
+
+const currentNotice = computed(() => notices.value[noticeIndex.value] || null)
+
+const noticeHref = computed(() => {
+  const n = currentNotice.value
+  if (!n) return '#'
+  const fp = (n.file_path || '').trim()
+  if (fp && fp.toLowerCase().endsWith('.html')) {
+    return fp.startsWith('/') ? fp : `/${fp}`
+  }
+  return n.url || `#/article/${n.id}`
+})
+
+function openNotice(e) {
+  e?.preventDefault?.()
+  const n = currentNotice.value
+  if (!n) return
+  const fp = (n.file_path || '').trim()
+  if (fp && fp.toLowerCase().endsWith('.html')) {
+    const url = fp.startsWith('/') ? fp : `/${fp}`
+    window.open(url, '_blank', 'noopener')
+  } else if (n.url) {
+    window.open(n.url, '_blank', 'noopener')
+  } else {
+    window.open(`/article/${n.id}`, '_blank', 'noopener')
+  }
+  resetNoticeTimer()
+}
+
+function nextNotice() {
+  if (!notices.value.length) return
+  noticeIndex.value = (noticeIndex.value + 1) % notices.value.length
+  resetNoticeTimer()
+}
+
+function prevNotice() {
+  if (!notices.value.length) return
+  noticeIndex.value = (noticeIndex.value - 1 + notices.value.length) % notices.value.length
+  resetNoticeTimer()
+}
+
+function pauseNotice() {
+  if (noticeTimer) {
+    clearInterval(noticeTimer)
+    noticeTimer = null
+  }
+}
+
+function resumeNotice() {
+  resetNoticeTimer()
+}
+
+function resetNoticeTimer() {
+  pauseNotice()
+  if (notices.value.length > 1) {
+    noticeTimer = setInterval(() => {
+      noticeIndex.value = (noticeIndex.value + 1) % notices.value.length
+    }, NOTICE_INTERVAL_MS)
+  }
+}
+
+async function fetchNotices() {
+  try {
+    const { data } = await axios.get('/api/cms/home-notices')
+    notices.value = data.notices || []
+    noticeIndex.value = 0
+    resetNoticeTimer()
+  } catch (e) {
+    notices.value = []
+    console.error('获取通知公告失败:', e)
+  }
+}
 
 // 今日值班（值班表为可选功能，接口异常时静默隐藏展示区）
 const dutyShifts = ref([])
@@ -199,6 +308,7 @@ onMounted(() => {
   updateTime()
   timeInterval = setInterval(updateTime, 1000)
   fetchColumns()
+  fetchNotices()
   fetchDuty()
   fetchRecordStatus()
 })
@@ -207,6 +317,7 @@ onUnmounted(() => {
   if (timeInterval) {
     clearInterval(timeInterval)
   }
+  pauseNotice()
 })
 </script>
 
@@ -217,10 +328,16 @@ onUnmounted(() => {
   margin: 0 auto;
 }
 
+.welcome-content {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 .welcome-banner {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: var(--space-4);
   padding: var(--space-6);
   background: var(--bg-card);
   border-radius: var(--radius-lg);
@@ -245,6 +362,91 @@ onUnmounted(() => {
   text-align: right;
 }
 
+/* 通知公告条：欢迎条下方、文章块上方（与上下卡片同底同边框） */
+.notice-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 42px;
+  padding: 8px var(--space-5);
+  margin-bottom: var(--space-6);
+  background: var(--bg-card);
+  border: 1px solid var(--border-lighter);
+  border-radius: var(--radius-lg);
+}
+
+.notice-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--primary-500);
+}
+
+.notice-arrow {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 50%;
+  background: var(--fill-light);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.notice-arrow:hover {
+  background: var(--primary-50);
+  color: var(--primary-500);
+}
+
+.notice-link {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+  text-decoration: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.notice-link:hover {
+  color: var(--primary-500);
+}
+
+.notice-dots {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.notice-dot {
+  width: 7px;
+  height: 7px;
+  border: none;
+  border-radius: 50%;
+  padding: 0;
+  background: var(--border-light);
+  cursor: pointer;
+}
+
+.notice-dot.active {
+  background: var(--primary-500);
+  width: 16px;
+  border-radius: 999px;
+}
+
 .time-display {
   font-size: 32px;
   font-weight: 700;
@@ -263,6 +465,8 @@ onUnmounted(() => {
   border-left: 1px solid var(--border-lighter);
   padding-left: var(--space-6);
   margin-right: var(--space-6);
+  flex: 0 1 auto;
+  min-width: 200px;
 }
 
 .duty-label {
@@ -293,6 +497,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: var(--space-3);
+  min-width: 0;
 }
 
 .duty-chip {
@@ -322,9 +527,12 @@ onUnmounted(() => {
 }
 
 .duty-members {
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 600;
   color: var(--text-primary);
+  min-width: 0;
+  white-space: nowrap;
+  line-height: 1.4;
 }
 
 [data-theme="dark"] .duty-chip.day {
