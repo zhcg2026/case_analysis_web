@@ -552,12 +552,12 @@
         <el-row :gutter="16">
           <el-col :span="12">
             <el-form-item label="提报时间">
-              <el-date-picker v-model="maintenance.form.reported_at" type="datetime" placeholder="选择时间" style="width: 100%" />
+              <el-date-picker v-model="maintenance.form.reported_at" type="datetime" placeholder="选择时间" style="width: 100%" value-format="YYYY-MM-DD HH:mm:ss" />
             </el-form-item>
           </el-col>
           <el-col :span="12">
             <el-form-item label="解决时间">
-              <el-date-picker v-model="maintenance.form.resolved_at" type="datetime" placeholder="选择时间" style="width: 100%" />
+              <el-date-picker v-model="maintenance.form.resolved_at" type="datetime" placeholder="选择时间" style="width: 100%" value-format="YYYY-MM-DD HH:mm:ss" />
             </el-form-item>
           </el-col>
         </el-row>
@@ -574,7 +574,7 @@
         <el-row :gutter="16">
           <el-col :span="12">
             <el-form-item label="会议时间" required>
-              <el-date-picker v-model="meeting.form.meeting_time" type="datetime" placeholder="选择时间" style="width: 100%" />
+              <el-date-picker v-model="meeting.form.meeting_time" type="datetime" placeholder="选择时间" style="width: 100%" value-format="YYYY-MM-DD HH:mm:ss" />
             </el-form-item>
           </el-col>
           <el-col :span="12">
@@ -626,7 +626,7 @@
         <el-row :gutter="16">
           <el-col :span="12">
             <el-form-item label="培训时间" required>
-              <el-date-picker v-model="training.form.training_time" type="datetime" placeholder="选择时间" style="width: 100%" />
+              <el-date-picker v-model="training.form.training_time" type="datetime" placeholder="选择时间" style="width: 100%" value-format="YYYY-MM-DD HH:mm:ss" />
             </el-form-item>
           </el-col>
           <el-col :span="12">
@@ -907,8 +907,8 @@ async function loadMonitor() {
     })
     monitor.data = data.data || []
     monitor.total = data.total || 0
-  } catch (e) {
-    ElMessage.error('加载调监控台账失败')
+  } catch {
+    // error toast via interceptor
   } finally {
     monitor.loading = false
   }
@@ -956,8 +956,8 @@ async function saveMonitor() {
     ElMessage.success('保存成功')
     monitor.dialogVisible = false
     await loadMonitor()
-  } catch (e) {
-    ElMessage.error(e.response?.data?.error || '保存失败')
+  } catch {
+    // error toast via interceptor
   } finally {
     monitor.saving = false
   }
@@ -968,8 +968,8 @@ async function deleteMonitor(id) {
     await axios.delete(`/api/ledger/monitor-access/${id}`)
     ElMessage.success('删除成功')
     await loadMonitor()
-  } catch (e) {
-    ElMessage.error('删除失败')
+  } catch {
+    // error toast via interceptor
   }
 }
 
@@ -1008,8 +1008,8 @@ async function loadDrone() {
     })
     drone.data = data.data || []
     drone.total = data.total || 0
-  } catch (e) {
-    ElMessage.error('加载无人机台账失败')
+  } catch {
+    // error toast via interceptor
   } finally {
     drone.loading = false
   }
@@ -1033,8 +1033,8 @@ async function saveDroneEquip() {
     ElMessage.success('设备信息已保存')
     drone.equipEditing = false
     await loadDroneEquip()
-  } catch (e) {
-    ElMessage.error('保存设备信息失败')
+  } catch {
+    // error toast via interceptor
   }
 }
 
@@ -1077,8 +1077,8 @@ async function saveDrone() {
     ElMessage.success('保存成功')
     drone.dialogVisible = false
     await loadDrone()
-  } catch (e) {
-    ElMessage.error(e.response?.data?.error || '保存失败')
+  } catch {
+    // error toast via interceptor
   } finally {
     drone.saving = false
   }
@@ -1089,8 +1089,8 @@ async function deleteDrone(id) {
     await axios.delete(`/api/ledger/drone/${id}`)
     ElMessage.success('删除成功')
     await loadDrone()
-  } catch (e) {
-    ElMessage.error('删除失败')
+  } catch {
+    // error toast via interceptor
   }
 }
 
@@ -1169,8 +1169,8 @@ async function loadDocs() {
     docs.total = all.length
     const start = (docs.page - 1) * docs.pageSize
     docs.data = all.slice(start, start + docs.pageSize)
-  } catch (e) {
-    ElMessage.error('加载文件资料失败')
+  } catch {
+    // error toast via interceptor
   } finally {
     docs.loading = false
   }
@@ -1197,7 +1197,7 @@ function handleDocUploadSuccess(res, file) {
   if (res.file_path) {
     docs.form.attachments.push({ name: file.name, path: res.file_path })
   } else {
-    ElMessage.error(res.error || '附件上传失败')
+    ElMessage.error(res.error || '操作失败，请稍后重试。')
   }
 }
 
@@ -1223,8 +1223,8 @@ async function saveDocs() {
     }
     docs.dialogVisible = false
     await loadDocs()
-  } catch (e) {
-    ElMessage.error(e.response?.data?.error || '保存失败')
+  } catch {
+    // error toast via interceptor
   } finally {
     docs.saving = false
   }
@@ -1235,8 +1235,8 @@ async function deleteDocs(id) {
     await axios.delete(`/api/notice-docs/${id}`)
     ElMessage.success('删除成功')
     await loadDocs()
-  } catch (e) {
-    ElMessage.error('删除失败')
+  } catch {
+    // error toast via interceptor
   }
 }
 
@@ -1317,8 +1317,8 @@ async function loadMaintenance() {
     const { data } = await axios.get('/api/ledger/maintenance', { params })
     maintenance.data = data.data
     maintenance.total = data.total
-  } catch (e) {
-    ElMessage.error('加载失败')
+  } catch {
+    // error toast via interceptor
   } finally {
     maintenance.loading = false
   }
@@ -1336,8 +1336,8 @@ async function loadMeeting() {
     const { data } = await axios.get('/api/ledger/meeting', { params })
     meeting.data = data.data
     meeting.total = data.total
-  } catch (e) {
-    ElMessage.error('加载失败')
+  } catch {
+    // error toast via interceptor
   } finally {
     meeting.loading = false
   }
@@ -1355,8 +1355,8 @@ async function loadTraining() {
     const { data } = await axios.get('/api/ledger/training', { params })
     training.data = data.data
     training.total = data.total
-  } catch (e) {
-    ElMessage.error('加载失败')
+  } catch {
+    // error toast via interceptor
   } finally {
     training.loading = false
   }
@@ -1454,8 +1454,8 @@ async function saveMaintenance() {
     ElMessage.success('保存成功')
     maintenance.dialogVisible = false
     loadMaintenance()
-  } catch (e) {
-    ElMessage.error(e.response?.data?.error || '保存失败')
+  } catch {
+    // error toast via interceptor
   } finally {
     maintenance.saving = false
   }
@@ -1477,8 +1477,8 @@ async function saveMeeting() {
     ElMessage.success('保存成功')
     meeting.dialogVisible = false
     loadMeeting()
-  } catch (e) {
-    ElMessage.error(e.response?.data?.error || '保存失败')
+  } catch {
+    // error toast via interceptor
   } finally {
     meeting.saving = false
   }
@@ -1500,8 +1500,8 @@ async function saveTraining() {
     ElMessage.success('保存成功')
     training.dialogVisible = false
     loadTraining()
-  } catch (e) {
-    ElMessage.error(e.response?.data?.error || '保存失败')
+  } catch {
+    // error toast via interceptor
   } finally {
     training.saving = false
   }
@@ -1513,8 +1513,8 @@ async function deleteMaintenance(id) {
     await axios.delete(`/api/ledger/maintenance/${id}`)
     ElMessage.success('删除成功')
     loadMaintenance()
-  } catch (e) {
-    ElMessage.error('删除失败')
+  } catch {
+    // error toast via interceptor
   }
 }
 
@@ -1524,8 +1524,8 @@ async function deleteMeeting(id) {
     await axios.delete(`/api/ledger/meeting/${id}`)
     ElMessage.success('删除成功')
     loadMeeting()
-  } catch (e) {
-    ElMessage.error('删除失败')
+  } catch {
+    // error toast via interceptor
   }
 }
 
@@ -1535,8 +1535,8 @@ async function deleteTraining(id) {
     await axios.delete(`/api/ledger/training/${id}`)
     ElMessage.success('删除成功')
     loadTraining()
-  } catch (e) {
-    ElMessage.error('删除失败')
+  } catch {
+    // error toast via interceptor
   }
 }
 

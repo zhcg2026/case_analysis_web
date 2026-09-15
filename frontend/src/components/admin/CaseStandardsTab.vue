@@ -161,10 +161,10 @@ async function loadSubcategories() {
     if (res.data?.success) {
       subcategories.value = res.data.subcategories || []
     } else {
-      ElMessage.error(res.data?.error || '加载失败')
+      ElMessage.error(res.data?.error || '操作失败，请稍后重试。')
     }
-  } catch (e) {
-    ElMessage.error('加载小类失败')
+  } catch {
+    // error toast via interceptor
   } finally {
     loadingList.value = false
   }
@@ -183,10 +183,10 @@ async function selectSub(item) {
       subMeta.value = res.data.subcategory || item
       standards.value = res.data.conditions || res.data.standards || []
     } else {
-      ElMessage.error(res.data?.error || '加载标准失败')
+      ElMessage.error(res.data?.error || '操作失败，请稍后重试。')
     }
-  } catch (e) {
-    ElMessage.error('加载标准失败')
+  } catch {
+    // error toast via interceptor
   } finally {
     loadingDetail.value = false
   }

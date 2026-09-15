@@ -313,7 +313,7 @@ async function runQuery() {
   try {
     const { data } = await axios.post('/api/data-stats/aggregate', { filters: fs })
     if (!data.success) {
-      ElMessage.error(data.error || '查询失败')
+      ElMessage.error(data.error || '操作失败，请稍后重试。')
       return
     }
     aggRows.value = data.rows || []
@@ -321,8 +321,8 @@ async function runQuery() {
     detailContext.value = null
     detailRows.value = []
     detailTotal.value = 0
-  } catch (e) {
-    ElMessage.error(e.response?.data?.error || '查询失败')
+  } catch {
+    // error toast via interceptor
   } finally {
     loading.value = false
   }
@@ -369,13 +369,13 @@ async function loadDetail() {
       page_size: detailPageSize.value
     })
     if (!data.success) {
-      ElMessage.error(data.error || '反查失败')
+      ElMessage.error(data.error || '操作失败，请稍后重试。')
       return
     }
     detailRows.value = data.rows || []
     detailTotal.value = data.total || 0
-  } catch (e) {
-    ElMessage.error(e.response?.data?.error || '反查失败')
+  } catch {
+    // error toast via interceptor
   } finally {
     detailLoading.value = false
   }

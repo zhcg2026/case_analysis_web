@@ -323,8 +323,8 @@ async function saveAnomalies() {
       anomalies: anomalies.value,
     })
     if (res.data?.anomalies) anomalies.value = res.data.anomalies
-  } catch (e) {
-    ElMessage.error('采集异常日保存失败: ' + (e.response?.data?.error || e.message))
+  } catch {
+    // error toast via interceptor
   } finally {
     anomaliesSaving.value = false
   }
@@ -445,7 +445,7 @@ async function loadAll() {
   try {
     const res = await axios.get('/api/assessment/manual', { params: { batch: batch.value } })
     if (!res.data?.success) {
-      ElMessage.error(res.data?.error || '加载失败')
+      ElMessage.error(res.data?.error || '操作失败，请稍后重试。')
       loadedHint.value = ''
       return
     }
@@ -487,7 +487,7 @@ async function loadAll() {
       loadedHint.value = hasCollector ? '已回填已录入数据' : '该月尚未录入'
     }
   } catch (e) {
-    ElMessage.error('加载失败')
+    // error toast via interceptor
     loadedHint.value = ''
   }
 }
@@ -535,10 +535,10 @@ async function saveAll() {
       ElMessage.success('已保存')
       loadedHint.value = '已保存 ' + new Date().toLocaleTimeString()
     } else {
-      ElMessage.error(res.data?.error || '保存失败')
+      ElMessage.error(res.data?.error || '操作失败，请稍后重试。')
     }
-  } catch (e) {
-    ElMessage.error(e.response?.data?.error || '保存失败')
+  } catch {
+    // error toast via interceptor
   } finally {
     saving.value = false
   }

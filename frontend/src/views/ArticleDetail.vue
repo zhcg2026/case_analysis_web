@@ -236,7 +236,6 @@ function downloadFile() {
     })
     .catch(error => {
       console.error('下载失败:', error)
-      alert('下载失败，请重试')
     })
 }
 

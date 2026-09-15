@@ -171,8 +171,8 @@ async function generateMonthlyReport() {
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }
     })
     router.push(`/report-embed/${batch}.html`)
-  } catch (e) {
-    alert('生成失败: ' + (e.response?.data?.error || e.message))
+  } catch {
+    // error toast via interceptor
   } finally {
     mrLoading.value = false
   }
@@ -199,8 +199,8 @@ async function exportMonthlyReport() {
     a.href = blobUrl; a.download = filename
     document.body.appendChild(a); a.click()
     window.URL.revokeObjectURL(blobUrl); document.body.removeChild(a)
-  } catch (e) {
-    alert('导出失败: ' + (e.response?.data?.error || e.message))
+  } catch {
+    // error toast via interceptor
   } finally {
     mrLoading.value = false
   }
@@ -369,7 +369,8 @@ async function executeAndExport(tpl) {
 
     const res = await axios.get(url, {
       headers: { 'Authorization': `Bearer ${token}` },
-      responseType: 'blob'
+      responseType: 'blob',
+      silentErrorHandler: true
     })
 
     const blob = res.data
@@ -405,7 +406,7 @@ async function executeAndExport(tpl) {
         errorMsg = errorData.error || errorMsg
       } catch { /* use default message */ }
     }
-    messages.value.push({ role: 'assistant', text: '报告生成失败: ' + errorMsg })
+    messages.value.push({ role: 'assistant', text: errorMsg || '操作失败，请稍后重试。' })
   } finally {
     loading.value = false
     await nextTick()

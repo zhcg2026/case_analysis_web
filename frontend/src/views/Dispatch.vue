@@ -334,7 +334,7 @@ async function doDispatch() {
       payload.location = { lng: parseFloat(selectedLng.value), lat: parseFloat(selectedLat.value) }
     }
 
-    const res = await axios.post('/api/dispatch/query', payload, { headers: getAuthHeaders() })
+    const res = await axios.post('/api/dispatch/query', payload, { headers: getAuthHeaders(), silentErrorHandler: true })
     dispatchResult.value = res.data
     rightPanelCollapsed.value = false
   } catch (e) {
@@ -345,7 +345,7 @@ async function doDispatch() {
       unit: null,
       in_jurisdiction: false,
       layer_status: 'error',
-      answer: '查询失败，请稍后重试',
+      answer: '操作失败，请稍后重试。',
     }
     rightPanelCollapsed.value = false
   } finally {

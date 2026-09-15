@@ -386,8 +386,8 @@ async function loadSummary() {
         if (!manualHintClass.value) manualHintClass.value = 'warn'
       }
     }
-  } catch (e) {
-    ElMessage.error('加载失败')
+  } catch {
+    // error toast via interceptor
   } finally {
     loading.value = false
   }
@@ -417,10 +417,10 @@ async function calculateScores() {
       results.value = res.data.results
       ElMessage.success('计算完成')
     } else {
-      ElMessage.error(res.data?.error || '计算失败')
+      ElMessage.error(res.data?.error || '操作失败，请稍后重试。')
     }
-  } catch (e) {
-    ElMessage.error(e.response?.data?.error || '计算失败')
+  } catch {
+    // error toast via interceptor
   } finally {
     calculating.value = false
   }
@@ -439,12 +439,12 @@ async function generateMonthlyReport() {
   }
   generatingReport.value = true
   try {
-    const res = await axios.post(`${API}/report/generate`, { batch: selectedBatch.value })
+    const res = await axios.post(`${API}/report/generate`, { batch: selectedBatch.value }, { silentErrorHandler: true })
     if (res.data?.success) {
       ElMessage.success('考核月报已生成')
       window.open(res.data.file_url, '_blank')
     } else {
-      ElMessage.error(res.data?.error || '生成失败')
+      ElMessage.error(res.data?.error || '生成失败，请检查考核录入数据')
     }
   } catch (e) {
     ElMessage.error(e.response?.data?.error || '生成失败，请检查考核录入数据')

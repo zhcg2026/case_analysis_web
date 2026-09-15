@@ -87,8 +87,8 @@ async function load() {
   try {
     const { data } = await axios.get('/api/special-matters')
     matters.value = data.matters || []
-  } catch (e) {
-    ElMessage.error('获取特殊事项失败')
+  } catch {
+    // error toast via interceptor
   } finally {
     loading.value = false
   }
@@ -120,8 +120,8 @@ async function save() {
     ElMessage.success('保存成功')
     dialogVisible.value = false
     await load()
-  } catch (e) {
-    ElMessage.error('保存失败: ' + (e.response?.data?.error || e.message))
+  } catch {
+    // error toast via interceptor
   } finally {
     saving.value = false
   }
@@ -132,8 +132,8 @@ async function remove(m) {
     await axios.delete(`/api/special-matters/${m.id}`)
     ElMessage.success('删除成功')
     await load()
-  } catch (e) {
-    ElMessage.error('删除失败: ' + (e.response?.data?.error || e.message))
+  } catch {
+    // error toast via interceptor
   }
 }
 

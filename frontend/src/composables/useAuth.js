@@ -2,6 +2,8 @@ import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '../stores/user'
 import axios from 'axios'
+import { ElMessage } from 'element-plus'
+import { MSG_OP_FAILED } from '../constants/messages'
 
 /**
  * 认证组合式函数
@@ -19,7 +21,7 @@ export function useAuth() {
     error.value = ''
 
     try {
-      const response = await axios.post('/api/login', { username, password })
+      const response = await axios.post('/api/login', { username, password }, { silentErrorHandler: true })
       const { token, user_id, username: name, role, permissions } = response.data
 
       // 构建用户对象
@@ -57,7 +59,8 @@ export function useAuth() {
 
     try {
       const response = await axios.get('/api/verify-token', {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${token}` },
+        silentErrorHandler: true
       })
       return response.data.valid
     } catch {
@@ -70,7 +73,8 @@ export function useAuth() {
   async function fetchUserInfo() {
     try {
       const response = await axios.get('/api/user-info', {
-        headers: { Authorization: `Bearer ${userStore.token}` }
+        headers: { Authorization: `Bearer ${userStore.token}` },
+        silentErrorHandler: true
       })
       userStore.updateUserInfo(response.data)
       return response.data
@@ -110,14 +114,36 @@ export function setupApiInterceptors() {
     (error) => Promise.reject(error)
   )
 
-  // 响应拦截器
+  // 响应拦截器：统一失败提示
   axios.interceptors.response.use(
     (response) => response,
     (error) => {
       if (error.response?.status === 401) {
         userStore.logout()
         window.location.href = '/login'
+        return Promise.reject(error)
       }
+
+      // 主动取消不提示
+      if (
+        error.code === 'ERR_CANCELED' ||
+        error.name === 'CanceledError' ||
+        error.name === 'AbortError' ||
+        /canceled|aborted/i.test(error.message || '')
+      ) {
+        return Promise.reject(error)
+      }
+
+      // 调用方自行处理提示时跳过
+      if (error.config?.silentErrorHandler) {
+        return Promise.reject(error)
+      }
+
+      const msg =
+        error.response?.data?.error ||
+        error.response?.data?.message ||
+        MSG_OP_FAILED
+      ElMessage.error(msg)
       return Promise.reject(error)
     }
   )

@@ -68,7 +68,8 @@ onMounted(async () => {
   if (userStore.isLoggedIn) {
     try {
       await axios.get('/api/verify-token', {
-        headers: { Authorization: `Bearer ${userStore.token}` }
+        headers: { Authorization: `Bearer ${userStore.token}` },
+        silentErrorHandler: true
       })
     } catch {
       userStore.logout()

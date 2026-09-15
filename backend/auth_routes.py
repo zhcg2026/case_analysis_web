@@ -188,12 +188,31 @@ def register_auth_routes(app, Session, User, engine):
             )
             session.add(new_user)
             session.flush()
-            
-            cols = ', '.join(PERMISSION_KEYS)
-            placeholders = ', '.join([f':{key}' for key in PERMISSION_KEYS])
+
+            perm_values = {key: (1 if key == 'duty_records' else 0) for key in PERMISSION_KEYS}
+            # 遗留列显式兜底（cases/huiwentai 等历史表结构无默认值）
+            for legacy in ('cases', 'huiwentai', 'spotcheck', 'dashboard', 'data_management', 'flood_monitor'):
+                perm_values.setdefault(legacy, 0)
+            # 再补齐表中其它 NOT NULL 且无默认值的列，避免 1364
+            try:
+                with engine.connect() as conn:
+                    for col in conn.execute(text("SHOW COLUMNS FROM permissions")).fetchall():
+                        # Field, Type, Null, Key, Default, Extra
+                        col_name = str(col[0])
+                        null_flag = str(col[2] or '').upper()
+                        default_val = col[4]
+                        if col_name in ('id', 'user_id', 'created_at', 'updated_at'):
+                            continue
+                        if null_flag == 'NO' and default_val is None and col_name not in perm_values:
+                            perm_values[col_name] = 1 if col_name == 'duty_records' else 0
+            except Exception:
+                logging.exception("Failed to inspect permissions columns for create_user")
+
+            cols = ', '.join(perm_values.keys())
+            placeholders = ', '.join([f':{key}' for key in perm_values.keys()])
             session.execute(text(f"INSERT INTO permissions (user_id, {cols}) VALUES (:user_id, {placeholders})"), {
                 'user_id': new_user.id,
-                **{key: (1 if key == 'duty_records' else 0) for key in PERMISSION_KEYS}
+                **perm_values
             })
             session.commit()
 
@@ -206,6 +225,46 @@ def register_auth_routes(app, Session, User, engine):
         except Exception as e:
             session.rollback()
             logging.exception("Error in create_user")
+            return jsonify({"error": "操作失败，请稍后重试"}), 500
+        finally:
+            session.close()
+
+    @app.route('/api/change-password', methods=['POST'])
+    @protected
+    def change_own_password():
+        """登录用户修改自己的密码"""
+        if engine is None:
+            return jsonify({'error': '数据库未连接，无法修改密码'}), 503
+
+        data = get_json_payload() or request.json or {}
+        current_password = data.get('current_password') or ''
+        new_password = data.get('new_password') or ''
+        confirm_password = data.get('confirm_password') or new_password
+
+        if not current_password or not new_password:
+            return jsonify({'error': '请填写当前密码与新密码'}), 400
+        if new_password != confirm_password:
+            return jsonify({'error': '两次输入的新密码不一致'}), 400
+        if new_password == current_password:
+            return jsonify({'error': '新密码不能与当前密码相同'}), 400
+
+        is_strong, strength_error = is_strong_password(new_password)
+        if not is_strong:
+            return jsonify({'error': strength_error}), 400
+
+        session = Session()
+        try:
+            user = session.query(User).filter_by(id=request.user_id).first()
+            if not user:
+                return jsonify({'error': '用户不存在'}), 404
+            if not verify_password(current_password, user.password):
+                return jsonify({'error': '当前密码不正确'}), 400
+            user.password = hash_password(new_password)
+            session.commit()
+            return jsonify({'message': '密码修改成功', 'success': True}), 200
+        except Exception:
+            session.rollback()
+            logging.exception("Error in change_own_password")
             return jsonify({"error": "操作失败，请稍后重试"}), 500
         finally:
             session.close()

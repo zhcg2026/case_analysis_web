@@ -114,14 +114,13 @@
         <div class="modal-header">
           <h3>{{ editor.date }} · {{ editor.shift }}值班记录</h3>
           <div class="header-right">
-            <span v-if="editor.exists && !editor.canEdit" class="ro-tag">仅创建人或管理员可修改</span>
             <button class="close-btn" @click="closeEditor">&times;</button>
           </div>
         </div>
 
         <div v-if="editor.loading" class="loading-state"><div class="loading-spinner"></div></div>
 
-        <fieldset v-else class="editor-fieldset" :disabled="!editor.canEdit">
+        <fieldset v-else class="editor-fieldset">
           <div class="editor-body">
           <!-- 值班人员 -->
           <div class="form-row">
@@ -231,7 +230,7 @@
           </div>
           <div class="footer-right">
             <button class="btn btn-secondary" @click="closeEditor">取消</button>
-            <button v-if="editor.canEdit" class="btn btn-primary" :disabled="editor.saving" @click="saveRecord">
+            <button class="btn btn-primary" :disabled="editor.saving" @click="saveRecord">
               {{ editor.saving ? '保存中…' : '保存' }}
             </button>
           </div>
@@ -552,8 +551,8 @@ async function saveRecord() {
     })
     closeEditor()
     await fetchMonth()
-  } catch (e) {
-    alert('保存失败: ' + (e.response?.data?.error || e.message))
+  } catch {
+    // error toast via interceptor
   } finally {
     editor.value.saving = false
   }
@@ -565,8 +564,8 @@ async function deleteRecord() {
     await axios.delete(`/api/duty-record/${editor.value.recordId}`)
     closeEditor()
     await fetchMonth()
-  } catch (e) {
-    alert('删除失败: ' + (e.response?.data?.error || e.message))
+  } catch {
+    // error toast via interceptor
   }
 }
 
@@ -590,7 +589,7 @@ async function downloadExport(params, filename) {
     if (e.response?.data instanceof Blob) {
       try { msg = JSON.parse(await e.response.data.text()).error || msg } catch {}
     }
-    alert('导出失败: ' + msg)
+    // error toast via interceptor
   } finally {
     exporting.value = false
   }

@@ -98,8 +98,8 @@ async function load() {
     if (unitRes?.data?.success) {
       unitOptions.value = (unitRes.data.units || []).map(u => u.unit_name || u)
     }
-  } catch (e) {
-    ElMessage.error('加载豁免设置失败')
+  } catch {
+    // error toast via interceptor
   } finally {
     loading.value = false
   }
@@ -135,10 +135,10 @@ async function onFileChosen(e) {
       row.file_url = res.data.file_path
       row.file_name = file.name
     } else {
-      ElMessage.error(res.data?.error || '文件上传失败')
+      ElMessage.error(res.data?.error || '操作失败，请稍后重试。')
     }
-  } catch (err) {
-    ElMessage.error(err.response?.data?.error || '文件上传失败')
+  } catch {
+    // error toast via interceptor
   } finally {
     uploadIndex.value = -1
   }
@@ -176,10 +176,10 @@ async function save() {
       ElMessage.success(`豁免设置已保存（${res.data.saved || items.length} 条）`)
       await load()
     } else {
-      ElMessage.error(res.data?.error || '保存失败')
+      ElMessage.error(res.data?.error || '操作失败，请稍后重试。')
     }
-  } catch (e) {
-    ElMessage.error(e.response?.data?.error || '保存失败')
+  } catch {
+    // error toast via interceptor
   } finally {
     saving.value = false
   }

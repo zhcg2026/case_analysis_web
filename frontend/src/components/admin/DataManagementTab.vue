@@ -551,10 +551,10 @@ async function uploadFile(file) {
       await fetchMonths()
       await fetchRecords()
     } else {
-      uploadError.value = res.data?.error || '上传失败'
+      uploadError.value = res.data?.error || '操作失败，请稍后重试。'
     }
-  } catch (e) {
-    uploadError.value = e.response?.data?.error || '上传失败'
+  } catch {
+    uploadError.value = '操作失败，请稍后重试。'
   } finally {
     uploadLoading.value = false
     if (fileInput.value) fileInput.value.value = ''
@@ -585,8 +585,8 @@ async function saveRecord() {
     }
     showRecordModal.value = false
     fetchRecords()
-  } catch (e) {
-    alert(e.response?.data?.error || '保存失败')
+  } catch {
+    // error toast via interceptor
   } finally { recordSaving.value = false }
 }
 
@@ -616,8 +616,8 @@ async function executeDelete() {
     selectedIds.value = []
     selectAll.value = false
     fetchRecords()
-  } catch (e) {
-    alert(e.response?.data?.error || '删除失败')
+  } catch {
+    // error toast via interceptor
   } finally { deleteSaving.value = false }
 }
 
@@ -703,9 +703,8 @@ async function exportData() {
     if (e.response?.data?.text) {
       const text = await e.response.data.text()
       const json = JSON.parse(text)
-      alert(json.error || '导出失败')
+      alert(json.error || '操作失败，请稍后重试。')
     } else {
-      alert('导出失败')
     }
   } finally { exportLoading.value = false }
 }

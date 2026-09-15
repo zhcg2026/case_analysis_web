@@ -31,9 +31,9 @@
         <div class="record-label">值班数据</div>
         <div class="record-data-rows">
           <div class="record-data-row">
-            <span class="rd-tag rd-tag--day">今日</span>
+            <span class="rd-tag" :class="recordData.dayLabel === '昨日' ? 'rd-tag--yesterday' : 'rd-tag--day'">{{ recordData.dayLabel }}</span>
             <span class="rd-item" v-for="k in ['reported', 'accepted', 'completed']" :key="k">
-              {{ rdLabel(k) }} <b :class="{ empty: recordData.today[k] == null }">{{ rdNum(recordData.today[k]) }}</b>
+              {{ rdLabel(k) }} <b :class="{ empty: recordData.day[k] == null }">{{ rdNum(recordData.day[k]) }}</b>
             </span>
           </div>
           <div class="record-data-row">
@@ -227,9 +227,10 @@ async function fetchDuty() {
   }
 }
 
-// 值班数据（当日白班统计 + 当月汇总；值班记录为可选功能，异常时静默）
+// 值班数据（今日白班已上报则显示今日，否则回退昨日；值班记录为可选功能，异常时静默）
 const recordData = ref({
-  today: { reported: null, accepted: null, completed: null },
+  dayLabel: '今日',
+  day: { reported: null, accepted: null, completed: null },
   month: { reported: 0, accepted: 0, completed: 0 },
 })
 
@@ -237,17 +238,54 @@ function localDateStr(d = new Date()) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
+function dayStatsFromStatus(status) {
+  const day = status?.['白班']
+  const filled = !!day?.filled
+  const stats = day?.stats || {}
+  return {
+    filled,
+    day: {
+      reported: filled ? (stats.stat_reported ?? null) : null,
+      accepted: filled ? (stats.stat_accepted ?? null) : null,
+      completed: filled ? (stats.stat_completed ?? null) : null,
+    },
+  }
+}
+
 async function fetchRecordStatus() {
   try {
-    const response = await axios.get('/api/duty-record/status', { params: { date: localDateStr() } })
-    const dayStats = (response.data['白班'] || {}).stats || {}
-    recordData.value = {
-      today: {
-        reported: dayStats.stat_reported ?? null,
-        accepted: dayStats.stat_accepted ?? null,
-        completed: dayStats.stat_completed ?? null,
-      },
-      month: response.data.month_sums || { reported: 0, accepted: 0, completed: 0 },
+    const today = new Date()
+    const todayStr = localDateStr(today)
+    const todayRes = await axios.get('/api/duty-record/status', { params: { date: todayStr } })
+    const todayView = dayStatsFromStatus(todayRes.data)
+
+    if (todayView.filled) {
+      recordData.value = {
+        dayLabel: '今日',
+        day: todayView.day,
+        month: todayRes.data.month_sums || { reported: 0, accepted: 0, completed: 0 },
+      }
+      return
+    }
+
+    const yest = new Date(today)
+    yest.setDate(yest.getDate() - 1)
+    const yestStr = localDateStr(yest)
+    try {
+      const yestRes = await axios.get('/api/duty-record/status', { params: { date: yestStr } })
+      const yestView = dayStatsFromStatus(yestRes.data)
+      recordData.value = {
+        dayLabel: '昨日',
+        day: yestView.day,
+        // 本月汇总仍取今日接口（同月时一致；跨月时以上月 31/1 日接口可能不同，以今日 month_sums 为准）
+        month: todayRes.data.month_sums || { reported: 0, accepted: 0, completed: 0 },
+      }
+    } catch {
+      recordData.value = {
+        dayLabel: '昨日',
+        day: { reported: null, accepted: null, completed: null },
+        month: todayRes.data.month_sums || { reported: 0, accepted: 0, completed: 0 },
+      }
     }
   } catch (error) {
     console.error('获取值班数据失败:', error)
@@ -590,6 +628,11 @@ onUnmounted(() => {
 .rd-tag--day {
   background: rgba(64, 158, 255, 0.14);
   color: var(--primary-500);
+}
+
+.rd-tag--yesterday {
+  background: rgba(230, 162, 60, 0.16);
+  color: var(--warning, #e6a23c);
 }
 
 .rd-tag--month {

@@ -554,6 +554,13 @@ try:
             ("duty", "TINYINT(1) DEFAULT 0"),
             ("duty_schedule", "TINYINT(1) DEFAULT 0"),
             ("duty_records", "TINYINT(1) DEFAULT 1"),
+            # 遗留/历史权限列：NOT NULL 且无默认值会导致创建用户 INSERT 失败
+            ("cases", "TINYINT(1) DEFAULT 0"),
+            ("huiwentai", "TINYINT(1) DEFAULT 0"),
+            ("spotcheck", "TINYINT(1) DEFAULT 0"),
+            ("dashboard", "TINYINT(1) DEFAULT 0"),
+            ("data_management", "TINYINT(1) DEFAULT 0"),
+            ("flood_monitor", "TINYINT(1) DEFAULT 0"),
         ]
         with engine.connect() as _conn:
             _cols = {r[0] for r in _conn.execute(text("SHOW COLUMNS FROM permissions"))}
@@ -562,6 +569,17 @@ try:
                     _conn.execute(text(f"ALTER TABLE permissions ADD COLUMN {_col_name} {_col_def}"))
                     _conn.commit()
                     logger.info(f"permissions 表新增列: {_col_name}")
+            # 已存在但 NOT NULL 且无默认值的列（如遗留 cases/huiwentai）补 DEFAULT，避免创建用户 1364
+            _col_rows = list(_conn.execute(text("SHOW COLUMNS FROM permissions")))
+            for r in _col_rows:
+                _cname, _ctype, _cnull, _cdef = r[0], r[1], r[2], r[4]
+                if _cname in ('id', 'user_id', 'created_at', 'updated_at'):
+                    continue
+                if str(_cnull).upper() == 'NO' and _cdef is None:
+                    # 保留 NOT NULL，同时补默认值，避免创建用户 INSERT 1364
+                    _conn.execute(text(f"ALTER TABLE permissions MODIFY {_cname} {_ctype} NOT NULL DEFAULT 0"))
+                    _conn.commit()
+                    logger.info(f"permissions 表补齐默认值: {_cname}")
         # 一次性兼容：用父级权限回填子级（仅当子级全 0 时更合理，简化为直接覆盖新列首次迁移后的默认值）
         with engine.connect() as _conn:
             _cols2 = {r[0] for r in _conn.execute(text("SHOW COLUMNS FROM permissions"))}

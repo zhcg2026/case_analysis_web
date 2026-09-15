@@ -116,8 +116,8 @@ async function fetchList() {
   try {
     const { data } = await axios.get('/api/duty/schedule')
     entries.value = data.entries || []
-  } catch (e) {
-    ElMessage.error('获取值班表失败')
+  } catch {
+    // error toast via interceptor
   } finally {
     loading.value = false
   }
@@ -137,8 +137,8 @@ async function preview() {
   try {
     const { data } = await axios.post('/api/duty/preview', { text: text.value })
     previewData.value = data
-  } catch (e) {
-    ElMessage.error('解析失败: ' + (e.response?.data?.error || e.message))
+  } catch {
+    // error toast via interceptor
   } finally {
     busy.value = false
   }
@@ -155,8 +155,8 @@ async function save() {
     text.value = ''
     ElMessage.success('保存成功')
     await fetchList()
-  } catch (e) {
-    ElMessage.error('保存失败: ' + (e.response?.data?.error || e.message))
+  } catch {
+    // error toast via interceptor
   } finally {
     saving.value = false
   }
@@ -167,8 +167,8 @@ async function removeEntry(entry) {
     await axios.delete(`/api/duty/schedule/${entry.id}`)
     ElMessage.success('已删除')
     await fetchList()
-  } catch (e) {
-    ElMessage.error('删除失败: ' + (e.response?.data?.error || e.message))
+  } catch {
+    // error toast via interceptor
   }
 }
 
@@ -177,8 +177,8 @@ async function clearAll() {
     await axios.delete('/api/duty/schedule')
     ElMessage.success('已清空')
     await fetchList()
-  } catch (e) {
-    ElMessage.error('清空失败: ' + (e.response?.data?.error || e.message))
+  } catch {
+    // error toast via interceptor
   }
 }
 

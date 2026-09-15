@@ -55,6 +55,7 @@
       </nav>
 
       <div class="sidebar-footer" v-show="!isCollapsed">
+        <div class="org-name">运城市智慧城市管理平台服务中心</div>
         <div class="version">v2.0.1</div>
       </div>
     </div>
@@ -149,7 +150,9 @@ const navItems = computed(() => {
     }
   }
 
-  items.push({ path: '/admin', title: '系统管理', icon: icons.admin, requiresAdmin: true })
+  if (userStore.isAdmin) {
+    items.push({ path: '/admin', title: '系统管理', icon: icons.admin, requiresAdmin: true })
+  }
   return items
 })
 
@@ -404,6 +407,16 @@ function toggleCollapse() {
   margin-top: auto;
   padding-top: var(--space-4);
   border-top: 1px solid var(--border-lighter);
+}
+
+.org-name {
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.4;
+  margin-bottom: 4px;
+  word-break: break-all;
+  padding: 0 2px;
 }
 
 .version {

@@ -432,8 +432,8 @@ async function handleFileChange(file) {
       originalFileData.value = res.data.preview
       ElMessage.success(`成功读取 ${res.data.total_rows} 条记录`)
     }
-  } catch (err) {
-    ElMessage.error(err.response?.data?.error || '上传失败')
+  } catch {
+    // error toast via interceptor
   }
 }
 
@@ -465,8 +465,8 @@ async function handleDelayReworkFile(file) {
       if (res.data.overtime_count) parts.push(`超时 ${res.data.overtime_count} 条`)
       ElMessage.success(parts.join('，') || '未匹配到记录')
     }
-  } catch (err) {
-    ElMessage.error(err.response?.data?.error || '解析失败')
+  } catch {
+    // error toast via interceptor
   }
 }
 
@@ -502,7 +502,7 @@ async function runPreview() {
       ElMessage.success(`清洗预览完成，共处理 ${res.data.total_rows} 条`)
     }
   } catch (err) {
-    ElMessage.error(err.response?.data?.error || '预览失败')
+    // error toast via interceptor
     currentStep.value = 1
   } finally {
     previewLoading.value = false
@@ -553,7 +553,7 @@ async function executeClean() {
     }
   } catch (err) {
     executeResult.value = { success: false, error: err.response?.data?.error || '入库失败' }
-    ElMessage.error(err.response?.data?.error || '入库失败')
+    // error toast via interceptor
   } finally {
     executeLoading.value = false
   }

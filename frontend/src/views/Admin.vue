@@ -1240,8 +1240,8 @@ async function deleteKbDoc(docId) {
     await axios.delete(`/api/kb/admin/documents/${encodeURIComponent(docId)}`)
     loadKbDocs()
     loadKbOverview()
-  } catch (e) {
-    alert('删除失败: ' + (e.response?.data?.error || e.message))
+  } catch {
+    // error toast via interceptor
   }
 }
 
@@ -1254,8 +1254,8 @@ async function batchDeleteKbDocs() {
     kbSelectedDocs.value = []
     loadKbDocs()
     loadKbOverview()
-  } catch (e) {
-    alert('批量删除失败: ' + (e.response?.data?.error || e.message))
+  } catch {
+    // error toast via interceptor
   }
 }
 
@@ -1439,8 +1439,8 @@ async function saveReport() {
     await axios.put(`/api/report-templates/${editingReport.value.id}`, payload)
     closeReportEditor()
     await loadReportTemplates()
-  } catch (e) {
-    alert('保存失败: ' + (e.response?.data?.error || e.message))
+  } catch {
+    // error toast via interceptor
   } finally {
     reportSaving.value = false
   }
@@ -1451,8 +1451,8 @@ async function deleteReport(template) {
   try {
     await axios.delete(`/api/report-templates/${template.id}`)
     await loadReportTemplates()
-  } catch (e) {
-    alert('删除失败: ' + (e.response?.data?.error || e.message))
+  } catch {
+    // error toast via interceptor
   }
 }
 
@@ -1500,10 +1500,10 @@ async function uploadTemplate(file) {
     if (res.data.success) {
       templateUploadResult.value = res.data
     } else {
-      alert('上传失败: ' + (res.data.error || '未知错误'))
+      alert(res.data.error || '操作失败，请稍后重试。')
     }
-  } catch (e) {
-    alert('上传失败: ' + (e.response?.data?.error || e.message))
+  } catch {
+    // error toast via interceptor
   } finally {
     templateUploading.value = false
   }
@@ -1549,11 +1549,11 @@ async function createFromTemplate() {
       closeTemplateUploader()
       await loadReportTemplates()
     } else {
-      alert('创建失败: ' + (res.data.error || '未知错误'))
+      alert(res.data.error || '操作失败，请稍后重试。')
     }
   } catch (e) {
     console.error('Create template error:', e)
-    alert('创建失败: ' + (e.response?.data?.error || e.message))
+    // error toast via interceptor
   } finally {
     templateSaving.value = false
   }
@@ -1604,7 +1604,7 @@ async function processToolFile(tool, endpoint) {
     link.remove()
     toolMessages.value[tool] = '处理完成，文件已下载'
   } catch (error) {
-    toolErrors.value[tool] = error.response?.data?.error || '处理失败'
+    toolErrors.value[tool] = error.response?.data?.error || '操作失败，请稍后重试。'
   } finally {
     toolLoading.value[tool] = false
   }
@@ -1764,8 +1764,8 @@ async function saveUser() {
     }
     closeUserEditor()
     fetchUsers()
-  } catch (error) {
-    alert(error.response?.data?.error || '保存失败')
+  } catch {
+    // error toast via interceptor
   } finally {
     userSaving.value = false
   }
@@ -1781,8 +1781,8 @@ async function deleteUser(user) {
   try {
     await axios.delete(`/api/users/${user.id}`)
     fetchUsers()
-  } catch (error) {
-    alert(error.response?.data?.error || '删除失败')
+  } catch {
+    // error toast via interceptor
   }
 }
 
@@ -1851,8 +1851,8 @@ async function savePermissions() {
     await axios.put(`/api/users/${editingPermissionsUser.value.id}/permissions`, dataToSend)
     closePermissionsEditor()
     fetchUsers()
-  } catch (error) {
-    alert(error.response?.data?.error || '保存失败')
+  } catch {
+    // error toast via interceptor
   } finally {
     permissionsSaving.value = false
   }
@@ -1912,7 +1912,7 @@ async function savePlatform() {
     fetchPlatforms()
   } catch (error) {
     console.error('保存平台失败:', error)
-    alert(error.response?.data?.error || '保存失败')
+    // error toast via interceptor
   } finally {
     platformSaving.value = false
   }
@@ -1926,7 +1926,7 @@ async function deletePlatform(platform) {
     fetchPlatforms()
   } catch (error) {
     console.error('删除平台失败:', error)
-    alert(error.response?.data?.error || '删除失败')
+    // error toast via interceptor
   }
 }
 
@@ -1961,7 +1961,7 @@ async function handlePlatformImage(e) {
     platformForm.value.image_path = response.data.location
   } catch (error) {
     console.error('上传图片失败:', error)
-    alert(error.response?.data?.error || '上传失败')
+    // error toast via interceptor
   }
 
   // 清空input，允许重复选择同一文件
@@ -1988,7 +1988,6 @@ async function saveSystemConfig() {
     alert('保存成功，全站名称与图标已更新')
   } catch (error) {
     console.error('保存系统配置失败:', error)
-    alert('保存失败')
   }
 }
 
@@ -2007,7 +2006,7 @@ async function handleLogoUpload(e) {
     alert('Logo 已上传，点击"保存设置"即可全站生效')
   } catch (error) {
     console.error('上传 Logo 失败:', error)
-    alert('上传 Logo 失败：' + (error.response?.data?.error || error.message))
+    // error toast via interceptor
   } finally {
     uploadingLogo.value = false
     e.target.value = ''
@@ -2022,8 +2021,8 @@ async function triggerBackup(type) {
     const { data } = await axios.post(`/api/backup/${type}`)
     alert(data.message || '备份成功')
     await loadBackupFiles()
-  } catch (err) {
-    alert('备份失败：' + (err.response?.data?.error || err.message))
+  } catch {
+    // error toast via interceptor
   } finally {
     backupLoading.value = false
   }
@@ -2061,8 +2060,8 @@ async function saveAutoBackupConfig() {
       interval_hours: data.interval_hours,
       max_count: data.max_count,
     }
-  } catch (err) {
-    alert('保存失败：' + (err.response?.data?.error || err.message))
+  } catch {
+    // error toast via interceptor
   } finally {
     backupConfigSaving.value = false
   }
@@ -2079,8 +2078,8 @@ async function downloadBackup(filename) {
     link.click()
     document.body.removeChild(link)
     window.URL.revokeObjectURL(url)
-  } catch (err) {
-    alert('下载失败：' + (err.response?.data?.error || err.message))
+  } catch {
+    // error toast via interceptor
   }
 }
 
@@ -2089,8 +2088,8 @@ async function deleteBackup(filename) {
   try {
     await axios.delete(`/api/backup/${filename}`)
     await loadBackupFiles()
-  } catch (err) {
-    alert('删除失败：' + (err.response?.data?.error || err.message))
+  } catch {
+    // error toast via interceptor
   }
 }
 
@@ -2109,8 +2108,8 @@ async function restoreData(type, event) {
       headers: { 'Content-Type': 'multipart/form-data' }
     })
     alert(data.message || '恢复成功')
-  } catch (err) {
-    alert('恢复失败：' + (err.response?.data?.error || err.message))
+  } catch {
+    // error toast via interceptor
   } finally {
     event.target.value = ''
   }
@@ -2188,7 +2187,6 @@ async function openArticleEditor(article = null) {
       }
     } catch (error) {
       console.error('获取文章详情失败:', error)
-      alert('获取文章详情失败')
       return
     } finally {
       articlesLoading.value = false
@@ -2232,7 +2230,6 @@ async function handleImageUpload(e) {
     }
   } catch (error) {
     console.error('上传图片失败:', error)
-    alert('上传图片失败')
   } finally {
     uploadingImage.value = false
     e.target.value = ''
@@ -2252,7 +2249,7 @@ async function handleFileUpload(e) {
     articleForm.value.file_path = response.data.file_path
   } catch (error) {
     console.error('上传附件失败:', error)
-    alert(error.response?.data?.error || '上传附件失败')
+    // error toast via interceptor
   } finally {
     uploadingFile.value = false
     e.target.value = ''
@@ -2273,7 +2270,7 @@ async function handleVideoUpload(e) {
     articleForm.value.video_path = response.data.file_path
   } catch (error) {
     console.error('上传视频失败:', error)
-    alert(error.response?.data?.error || '上传视频失败')
+    // error toast via interceptor
   } finally {
     uploadingVideo.value = false
     e.target.value = ''
@@ -2297,7 +2294,7 @@ async function saveArticle() {
     fetchArticles()
   } catch (error) {
     console.error('保存文章失败:', error)
-    alert(error.response?.data?.error || '保存失败')
+    // error toast via interceptor
   } finally {
     articleSaving.value = false
   }
@@ -2310,7 +2307,7 @@ async function deleteArticle(article) {
     fetchArticles()
   } catch (error) {
     console.error('删除文章失败:', error)
-    alert(error.response?.data?.error || '删除失败')
+    // error toast via interceptor
   }
 }
 
@@ -2322,7 +2319,7 @@ async function addCategory() {
     fetchCategories()
   } catch (error) {
     console.error('添加栏目失败:', error)
-    alert(error.response?.data?.error || '添加失败')
+    // error toast via interceptor
   }
 }
 
@@ -2342,7 +2339,7 @@ async function updateCategory() {
     fetchCategories()
   } catch (error) {
     console.error('更新栏目失败:', error)
-    alert(error.response?.data?.error || '更新失败')
+    // error toast via interceptor
   }
 }
 
@@ -2353,7 +2350,7 @@ async function deleteCategory(category) {
     fetchCategories()
   } catch (error) {
     console.error('删除栏目失败:', error)
-    alert(error.response?.data?.error || '删除失败')
+    // error toast via interceptor
   }
 }
 

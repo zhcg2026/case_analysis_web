@@ -5,7 +5,7 @@
 - duty_records 一天两条, (record_date, shift) 唯一; 夜班跨天事件按值班开始日期归档;
 - duty_record_events 白班"关注问题"与夜班"12345/市民来电"事件共用, 时间线JSON存事件内;
 - 系统运行统计为手动填报(案件库按月导入, 日粒度对不上, 不做自动带出)。
-权限: 登录用户可填报; 修改/删除限定 记录创建人 或 admin。
+权限: 登录并具备值班记录权限的用户可填报/修改; 删除仍限管理员。
 """
 import re
 import io
@@ -93,8 +93,8 @@ def register_duty_record_routes(app, Session, DutyRecord, DutyRecordEvent, prote
             'is_normal': r.is_normal or 0,
             'note': r.note,
             'created_by': r.created_by,
-            'can_edit': (r.created_by is None or r.created_by == getattr(request, 'user_id', None)
-                         or getattr(request, 'role', '') == 'admin'),
+            # 有登录态即可改（页面本身已按 duty_records 权限控制入口）
+            'can_edit': True,
             'stats': {f: getattr(r, f) for f in STAT_FIELDS},
         }
         if with_events:
@@ -222,11 +222,8 @@ def register_duty_record_routes(app, Session, DutyRecord, DutyRecordEvent, prote
                 return jsonify({'error': '班次应为 白班/夜班'}), 400
 
             user_id = getattr(request, 'user_id', None)
-            role = getattr(request, 'role', '')
             with Session() as session:
                 rec = session.query(DutyRecord).filter_by(record_date=d, shift=shift).first()
-                if rec and rec.created_by not in (None, user_id) and role != 'admin':
-                    return jsonify({'error': '只有记录创建人或管理员可以修改'}), 403
                 if not rec:
                     rec = DutyRecord(record_date=d, shift=shift, created_by=user_id)
                     session.add(rec)

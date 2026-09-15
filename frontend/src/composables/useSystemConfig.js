@@ -16,7 +16,7 @@ let loaded = false
 export function useSystemConfig() {
   async function loadSystemConfig() {
     try {
-      const { data } = await axios.get('/api/system/config')
+      const { data } = await axios.get('/api/system/config', { silentErrorHandler: true })
       if (data && data.system_name) state.name = data.system_name
       if (data && typeof data.system_logo === 'string') state.logo = data.system_logo
     } catch (e) {
