@@ -4,6 +4,7 @@ import io
 import json
 import datetime
 import logging
+from functools import wraps
 from flask import request, jsonify, send_file
 from sqlalchemy import text
 import pandas as pd
@@ -12,8 +13,10 @@ logger = logging.getLogger(__name__)
 
 try:
     from common import protected as _protected, admin_required as _admin_required
+    from common import verify_token as _verify_token
 except ImportError:
     from helpers import protected as _protected, admin_required as _admin_required
+    from helpers import verify_token as _verify_token
 
 try:
     from common import process_excel_upload, COLUMN_MAP, _normalize_bool
@@ -97,8 +100,41 @@ def register_data_management_routes(app, engine=None, protected=None, admin_requ
     protected = protected or _protected
     admin_required = admin_required or _admin_required
 
+    def dm_access(f):
+        """数据编辑浏览鉴权：admin 直接放行；普通用户需 permissions.data_browse=1"""
+        @wraps(f)
+        def decorated(*args, **kwargs):
+            token = request.headers.get("Authorization")
+            if not token:
+                return jsonify({"error": "Missing token"}), 401
+            if token.startswith("Bearer "):
+                token = token[7:]
+            payload = _verify_token(token)
+            if not payload:
+                return jsonify({"error": "Invalid or expired token"}), 401
+            request.user_id = payload["user_id"]
+            request.username = payload["username"]
+            request.role = payload["role"]
+            if payload.get("role") == "admin":
+                return f(*args, **kwargs)
+            if engine is None:
+                return jsonify({"error": "数据库未连接，无法校验权限"}), 503
+            try:
+                with engine.connect() as conn:
+                    row = conn.execute(
+                        text("SELECT data_browse FROM permissions WHERE user_id = :uid"),
+                        {"uid": payload["user_id"]}
+                    ).fetchone()
+                if not row or not row[0]:
+                    return jsonify({"error": "Permission denied"}), 403
+            except Exception as e:
+                logger.error(f"数据编辑浏览权限校验失败: {e}")
+                return jsonify({"error": "Permission check failed"}), 500
+            return f(*args, **kwargs)
+        return decorated
+
     @app.route('/api/data-management/months', methods=['GET'])
-    @admin_required
+    @dm_access
     def dm_months():
         try:
             if not engine:
@@ -118,7 +154,7 @@ def register_data_management_routes(app, engine=None, protected=None, admin_requ
             return jsonify({'success': False, 'error': str(e)}), 500
 
     @app.route('/api/data-management/records', methods=['GET'])
-    @admin_required
+    @dm_access
     def dm_records():
         try:
             if not engine:
@@ -195,7 +231,7 @@ def register_data_management_routes(app, engine=None, protected=None, admin_requ
             return jsonify({'success': False, 'error': str(e)}), 500
 
     @app.route('/api/data-management/record', methods=['POST'])
-    @admin_required
+    @dm_access
     def dm_create_record():
         try:
             data = request.get_json(silent=True) or {}
@@ -249,7 +285,7 @@ def register_data_management_routes(app, engine=None, protected=None, admin_requ
             return jsonify({'success': False, 'error': str(e)}), 500
 
     @app.route('/api/data-management/record/<int:record_id>', methods=['PUT'])
-    @admin_required
+    @dm_access
     def dm_update_record(record_id):
         try:
             data = request.get_json(silent=True) or {}
@@ -296,7 +332,7 @@ def register_data_management_routes(app, engine=None, protected=None, admin_requ
             return jsonify({'success': False, 'error': str(e)}), 500
 
     @app.route('/api/data-management/record/<int:record_id>', methods=['DELETE'])
-    @admin_required
+    @dm_access
     def dm_delete_record(record_id):
         try:
             if not engine:
@@ -322,7 +358,7 @@ def register_data_management_routes(app, engine=None, protected=None, admin_requ
             return jsonify({'success': False, 'error': str(e)}), 500
 
     @app.route('/api/data-management/batch-delete', methods=['POST'])
-    @admin_required
+    @dm_access
     def dm_batch_delete():
         try:
             data = request.get_json(silent=True) or {}
@@ -360,7 +396,7 @@ def register_data_management_routes(app, engine=None, protected=None, admin_requ
             return jsonify({'success': False, 'error': str(e)}), 500
 
     @app.route('/api/data-management/batch-update', methods=['POST'])
-    @admin_required
+    @dm_access
     def dm_batch_update():
         try:
             data = request.get_json(silent=True) or {}
@@ -414,7 +450,7 @@ def register_data_management_routes(app, engine=None, protected=None, admin_requ
             return jsonify({'success': False, 'error': str(e)}), 500
 
     @app.route('/api/data-management/upload', methods=['POST'])
-    @admin_required
+    @dm_access
     def dm_upload():
         try:
             if 'file' not in request.files:
@@ -442,7 +478,7 @@ def register_data_management_routes(app, engine=None, protected=None, admin_requ
             return jsonify({'success': False, 'error': f'上传失败: {str(e)}'}), 500
 
     @app.route('/api/data-management/detect-delay-rework', methods=['POST'])
-    @admin_required
+    @dm_access
     def dm_detect_delay_rework():
         """检测延期/返工/超时任务号属于哪个批次，返回匹配结果"""
         try:
@@ -513,7 +549,7 @@ def register_data_management_routes(app, engine=None, protected=None, admin_requ
             return jsonify({'success': False, 'error': str(e)}), 500
 
     @app.route('/api/data-management/apply-delay-rework', methods=['POST'])
-    @admin_required
+    @dm_access
     def dm_apply_delay_rework():
         """确认更新延期/返工/超时标记"""
         try:
@@ -598,7 +634,7 @@ def register_data_management_routes(app, engine=None, protected=None, admin_requ
             return jsonify({'success': False, 'error': str(e)}), 500
 
     @app.route('/api/data-management/export', methods=['GET'])
-    @admin_required
+    @dm_access
     def dm_export():
         try:
             if not engine:
@@ -670,7 +706,7 @@ def register_data_management_routes(app, engine=None, protected=None, admin_requ
     # ===== 操作日志 =====
 
     @app.route('/api/data-management/logs', methods=['GET'])
-    @admin_required
+    @dm_access
     def dm_logs():
         try:
             if not engine:
@@ -720,7 +756,7 @@ def register_data_management_routes(app, engine=None, protected=None, admin_requ
             return jsonify({'success': False, 'error': str(e)}), 500
 
     @app.route('/api/data-management/rollback', methods=['POST'])
-    @admin_required
+    @dm_access
     def dm_rollback():
         try:
             data = request.get_json(silent=True) or {}
