@@ -15,13 +15,16 @@ from datetime import datetime, date
 
 from flask import request, jsonify
 from sqlalchemy import text
+from functools import wraps
 
 logger = logging.getLogger(__name__)
 
 try:
     from common import protected as _protected, admin_required as _admin_required
+    from common import verify_token as _verify_token
 except ImportError:
     from helpers import protected as _protected, admin_required as _admin_required
+    from helpers import verify_token as _verify_token
 
 # 环卫片区（考核部门名）与采集员片区对应
 SANITATION_REGION_MAP = {
@@ -241,6 +244,41 @@ def _ensure_columns(conn, table: str, columns: list):
 def register_assessment_manual_routes(app, engine=None, protected=None, admin_required=None):
     protected = protected or _protected
     admin_required = admin_required or _admin_required
+
+    def input_access(permission_key):
+        """考核录入鉴权：admin 直接放行；普通用户需 permissions 表对应录入权限列=1"""
+        def decorator(f):
+            @wraps(f)
+            def decorated(*args, **kwargs):
+                token = request.headers.get("Authorization")
+                if not token:
+                    return jsonify({"error": "Missing token"}), 401
+                if token.startswith("Bearer "):
+                    token = token[7:]
+                payload = _verify_token(token)
+                if not payload:
+                    return jsonify({"error": "Invalid or expired token"}), 401
+                request.user_id = payload["user_id"]
+                request.username = payload["username"]
+                request.role = payload["role"]
+                if payload.get("role") == "admin":
+                    return f(*args, **kwargs)
+                if engine is None:
+                    return jsonify({"error": "数据库未连接，无法校验权限"}), 503
+                try:
+                    with engine.connect() as conn:
+                        row = conn.execute(
+                            text(f"SELECT {permission_key} FROM permissions WHERE user_id = :uid"),
+                            {"uid": payload["user_id"]}
+                        ).fetchone()
+                    if not row or not row[0]:
+                        return jsonify({"error": "Permission denied"}), 403
+                except Exception as e:
+                    logger.error(f"考核录入权限校验失败: {e}")
+                    return jsonify({"error": "Permission check failed"}), 500
+                return f(*args, **kwargs)
+            return decorated
+        return decorator
 
     if engine:
         try:
@@ -622,6 +660,9 @@ def register_assessment_manual_routes(app, engine=None, protected=None, admin_re
     @app.route('/api/assessment/manual/save-all', methods=['PUT', 'POST'])
     @admin_required
     def assessment_manual_save_all():
+        return _assessment_manual_save_all_impl()
+
+    def _assessment_manual_save_all_impl():
         data = request.get_json(silent=True) or {}
         batch = (data.get('batch') or '').strip()
         if not batch:
@@ -770,15 +811,15 @@ def register_assessment_manual_routes(app, engine=None, protected=None, admin_re
 
     # ---------- 保存：平台录入（月度 + 分值 + 台账） ----------
     @app.route('/api/assessment/manual/save-platform', methods=['PUT', 'POST'])
-    @admin_required
+    @input_access('assessment_input_platform')
     def assessment_manual_save_platform_only():
-        return assessment_manual_save_all()
+        return _assessment_manual_save_all_impl()
 
     # ---------- 保存：采集员录入（垃圾件数 + 自行处置 + 专项明细） ----------
     @app.route('/api/assessment/manual/save-collector', methods=['PUT', 'POST'])
-    @admin_required
+    @input_access('assessment_input_collector')
     def assessment_manual_save_collector_only():
-        return assessment_manual_save_all()
+        return _assessment_manual_save_all_impl()
 
 
 def load_external_data_from_db(engine, batch: str):
