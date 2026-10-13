@@ -589,7 +589,12 @@ def parse_delay_rework_excel(df):
     type_col = df.columns[1]
 
     for _, row in df.iterrows():
-        task_no = str(row[task_col]).strip()
+        raw_task = row[task_col]
+        # 含空单元格的列会被 pandas 读成浮点，如 202609290335.0，需还原为整数串
+        if isinstance(raw_task, float) and raw_task.is_integer():
+            task_no = str(int(raw_task))
+        else:
+            task_no = str(raw_task).strip()
         case_type = str(row[type_col]).strip()
         if not task_no.isdigit():
             continue

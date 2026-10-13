@@ -315,6 +315,7 @@ try:
         record_id = Column(String(100))
         old_value = Column(Text)
         new_value = Column(Text)
+        snapshot_data = Column(Text, comment='变更前快照JSON')
         created_at = Column(DateTime, default=datetime.datetime.now)
 
     class MapMarker(Base):
@@ -634,6 +635,33 @@ try:
     except Exception as _e:
         logger.warning(f"articles 表迁移检查失败: {_e}")
 
+    # 自动迁移：确保 operation_logs 表包含 snapshot_data 列（变更前快照，用于回滚）
+    # 并对批量操作所需的容量扩容：record_id 存逗号分隔的ID列表（批量可达数千字符），
+    # snapshot_data 存整批记录快照（百余条即可超过 TEXT 的 64KB 上限），否则报 1406 Data too long。
+    try:
+        with engine.connect() as _conn:
+            _cols = {r[0]: (r[1] or '') for r in _conn.execute(text("SHOW COLUMNS FROM operation_logs"))}
+            _changed = False
+            if 'snapshot_data' not in _cols:
+                _conn.execute(text("ALTER TABLE operation_logs ADD COLUMN snapshot_data TEXT COMMENT '变更前快照JSON'"))
+                _cols['snapshot_data'] = 'text'
+                _changed = True
+                logger.info("operation_logs 表新增列: snapshot_data")
+            if _cols.get('record_id', '').lower().startswith('varchar'):
+                _conn.execute(text("ALTER TABLE operation_logs MODIFY record_id TEXT COMMENT '受影响记录ID列表(逗号分隔)'"))
+                _cols['record_id'] = 'text'
+                _changed = True
+                logger.info("operation_logs.record_id 扩容为 TEXT")
+            if _cols.get('snapshot_data', '').lower() == 'text':
+                _conn.execute(text("ALTER TABLE operation_logs MODIFY snapshot_data MEDIUMTEXT COMMENT '变更前快照JSON'"))
+                _cols['snapshot_data'] = 'mediumtext'
+                _changed = True
+                logger.info("operation_logs.snapshot_data 扩容为 MEDIUMTEXT")
+            if _changed:
+                _conn.commit()
+    except Exception as _e:
+        logger.warning(f"operation_logs 表迁移检查失败: {_e}")
+
     # 注册认证路由
     register_auth_routes(app=app, Session=Session, User=User, engine=engine)
     logger.info("认证路由注册成功")
@@ -822,12 +850,76 @@ except Exception as e:
     engine = None
     Session = None
 
-# 注册统一知识库路由（不依赖 MySQL，独立可用，便于本地单独测试 KB 模块）
+# 知识库查询日志表（kb_query_log）：纯新增表，CREATE TABLE IF NOT EXISTS，
+# 不动任何既有业务表；建表失败只 warning，不影响主流程
+def ensure_kb_log_table(eng):
+    if eng is None:
+        return
+    try:
+        with eng.begin() as conn:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS kb_query_log (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    question VARCHAR(500) NOT NULL COMMENT '用户问题',
+                    username VARCHAR(50) NULL COMMENT '提问用户',
+                    hit_count INT NOT NULL DEFAULT 0 COMMENT '召回条数',
+                    top_titles VARCHAR(1000) NULL COMMENT 'top3标题JSON',
+                    doc_types VARCHAR(200) NULL COMMENT '命中文档类型JSON',
+                    llm_ok TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'LLM是否响应',
+                    json_ok TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'LLM是否按JSON输出',
+                    degraded TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否走了降级直出',
+                    no_answer_fixed TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'LLM误报无内容是否被兜底纠正',
+                    dispatch_status VARCHAR(40) NULL COMMENT '派单判定状态',
+                    llm_ms INT NOT NULL DEFAULT 0 COMMENT 'LLM耗时ms',
+                    total_ms INT NOT NULL DEFAULT 0 COMMENT '全链路耗时ms',
+                    feedback TINYINT(1) NULL COMMENT '用户反馈1有用0没用',
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    KEY idx_created (created_at),
+                    KEY idx_question (question(100))
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='知识库问答查询日志'
+            """))
+    except Exception as e:
+        logger.warning(f"kb_query_log 建表失败（不影响主流程）: {e}")
+
+ensure_kb_log_table(engine)
+
+# 注册统一知识库路由（不依赖 MySQL 检索本身独立可用；注入 Session 仅用于查询日志）
 try:
-    register_kb_routes(app=app, protected=protected, admin_required=admin_required)
+    register_kb_routes(app=app, protected=protected, admin_required=admin_required, Session=Session)
     logger.info("统一知识库路由注册成功")
 except Exception as e:
     logger.warning(f"统一知识库路由注册失败: {e}")
+
+# 知识库检索预热：gunicorn 每 worker 各自 import 本模块，起后台线程提前构建 BM25
+# 索引并打通 Milvus/Ollama 链路，把用户首问约 7s 的冷启动（6451 条全量分词）摊到
+# 容器启动阶段。KB_WARMUP=0 可关闭。预热是 best-effort，失败不影响正常使用。
+def _kb_warmup():
+    import time as _t
+    _t.sleep(5)  # 等 worker 完成绑定就绪
+    try:
+        from kb_store import search as _kb_search
+        _kb_search("知识库预热")
+        logger.info("知识库检索预热完成（BM25 索引已构建）")
+    except Exception as e:
+        logger.warning(f"知识库检索预热失败（不影响使用，首问会稍慢）: {e}")
+    # LLM 预热：实测进程内首次调用豆包要 ~50s（Ark 连接冷启动），正好顶穿单次
+    # 50s 预算把首问拖成降级回答；启动时先打一次极小调用把连接池焐热。
+    # KB_WARMUP_LLM=0 可关闭；同样 best-effort。
+    if os.getenv('KB_WARMUP_LLM', '1') == '1':
+        try:
+            from kb_common import call_llm as _kb_call_llm
+            _t0 = _t.time()
+            _kb_call_llm("只回复两个字：正常", provider=None, timeout=60)
+            logger.info(f"知识库 LLM 预热完成（{_t.time() - _t0:.1f}s）")
+        except Exception as e:
+            logger.warning(f"知识库 LLM 预热失败（不影响使用，首问可能稍慢）: {e}")
+
+if os.getenv('KB_WARMUP', '1') == '1':
+    try:
+        import threading
+        threading.Thread(target=_kb_warmup, daemon=True, name="kb-warmup").start()
+    except Exception:
+        pass
 
 # 文件上传路由
 @app.route('/uploads/<path:filename>')

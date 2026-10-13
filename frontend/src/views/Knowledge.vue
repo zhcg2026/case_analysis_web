@@ -43,7 +43,8 @@
             >
               <div class="sr-card-top">
                 <span class="type-tag" :style="tagStyle(r.doc_type)">{{ typeLabel(r.doc_type) }}</span>
-                <span class="sr-score" v-if="typeof r.score === 'number'">{{ Math.round(r.score * 100) }}%</span>
+                <!-- similarity 为向量相似度(0~1)；纯 BM25 命中没有相似度，隐藏百分比 -->
+                <span class="sr-score" v-if="typeof r.similarity === 'number'">{{ Math.round(r.similarity * 100) }}%</span>
               </div>
               <div class="sr-title">{{ r.title }}</div>
               <div class="sr-excerpt">{{ excerpt(r.text) }}</div>
@@ -105,9 +106,9 @@
               v-model="question"
               placeholder="请输入城市管理相关问题…"
               rows="2"
-              @keydown.enter.exact.prevent="askQuestion"
+              @keydown.enter.exact.prevent="askQuestion()"
             ></textarea>
-            <button class="send-btn" @click="askQuestion" :disabled="asking || !question.trim()">
+            <button class="send-btn" @click="askQuestion()" :disabled="asking || !question.trim()">
               <KbIcon v-if="asking" name="spinner" :size="18" />
               <KbIcon v-else name="arrow-up" :size="18" />
             </button>
@@ -133,12 +134,26 @@
             </div>
             <div class="msg-content">
               <div class="chat-bubble" v-html="renderMarkdown(msg.content)"></div>
+              <!-- 派单结果卡片：ask() 返回 dispatch 时展示（归口部门/辖区判定） -->
+              <div class="dispatch-card" v-if="msg.dispatch && msg.dispatch.answer">
+                <span class="dispatch-label">派单结果</span>
+                <span class="dispatch-text">{{ msg.dispatch.answer }}</span>
+                <span class="dispatch-dept" v-if="msg.dispatch.department">{{ msg.dispatch.department }}</span>
+              </div>
               <div class="chat-sources" v-if="msg.sources && msg.sources.length">
                 <span class="source-label">来源：</span>
                 <span class="source-tag" v-for="s in msg.sources" :key="s">{{ s }}</span>
               </div>
               <div class="chat-actions" v-if="msg.role === 'assistant'">
                 <button class="action-btn" @click="copyMessage(msg.content)">复制</button>
+                <template v-if="msg.logId">
+                  <button class="action-btn fb" :class="{ active: msg.feedback === 1 }"
+                          :disabled="msg.feedback !== null && msg.feedback !== undefined"
+                          @click="submitFeedback(msg, 1)" title="答案有帮助">有用</button>
+                  <button class="action-btn fb" :class="{ active: msg.feedback === 0 }"
+                          :disabled="msg.feedback !== null && msg.feedback !== undefined"
+                          @click="submitFeedback(msg, 0)" title="答案不相关/不准确">没用</button>
+                </template>
               </div>
             </div>
           </div>
@@ -165,10 +180,10 @@
               v-model="question"
               placeholder="输入城市管理相关问题…"
               rows="2"
-              @keydown.enter.exact.prevent="askQuestion"
+              @keydown.enter.exact.prevent="askQuestion()"
               ref="textareaRef"
             ></textarea>
-            <button class="send-btn" @click="askQuestion" :disabled="asking || !question.trim()">
+            <button class="send-btn" @click="askQuestion()" :disabled="asking || !question.trim()">
               <KbIcon v-if="asking" name="spinner" :size="18" />
               <KbIcon v-else name="arrow-up" :size="18" />
             </button>
@@ -229,6 +244,8 @@ const mapInitError = ref('')
 const selectedLng = ref('')
 const selectedLat = ref('')
 const needLocation = ref(false)
+// 需要补定位时挂起当前问题：地图点选确认后用原问题带上坐标重新提问
+const pendingQuestion = ref('')
 
 let modalMapInstance = null
 let pointMarker = null
@@ -292,6 +309,8 @@ function renderMarkdown(text) {
     .replace(/^\d+\.\s+(.*)$/gm, '<li>$1</li>')
   // 连续 <li> 包裹为 <ul>
   html = html.replace(/(?:<li>[\s\S]*?<\/li>)(?:\s*<li>[\s\S]*?<\/li>)*/g, m => '<ul>' + m + '</ul>')
+  // LLM 内联引用 [标题] → 高亮角标（负向断言避开 markdown 链接 [text](url)）
+  html = html.replace(/\[([^\[\]()]{2,50})\](?!\()/g, '<span class="cite-ref">[$1]</span>')
   // 换行转 <br>
   html = html.replace(/\n/g, '<br>')
   return html
@@ -324,6 +343,21 @@ function copyMessage(content) {
   })
 }
 
+// 问答反馈：有用/没用，关联 ask 返回的 log_id 写入 kb_query_log
+async function submitFeedback(msg, useful) {
+  if (!msg.logId || (msg.feedback !== null && msg.feedback !== undefined)) return
+  msg.feedback = useful
+  try {
+    await fetch('/api/kb/feedback', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ log_id: msg.logId, useful: !!useful })
+    })
+  } catch (e) {
+    console.error('反馈提交失败:', e)
+  }
+}
+
 // 滚动到底部
 function scrollToBottom() {
   nextTick(() => {
@@ -344,14 +378,19 @@ async function loadStats() {
   }
 }
 
-// 统一问答
-async function askQuestion() {
+// 统一问答（silent=true 用于补定位后的重问：不再重复插入用户消息）。
+// 注意：模板里的 @click/@keydown 必须写成 askQuestion() 显式无参调用——
+// 直接写 askQuestion 会把 DOM 事件对象传进来当 silent，导致用户问题不显示。
+// silent !== true 是双保险：即使误传事件对象也不会走进静默分支。
+async function askQuestion(silent = false) {
   if (!question.value.trim()) return
 
   asking.value = true
   const currentQuestion = question.value.trim()
 
-  chatHistory.value.push({ role: 'user', content: currentQuestion })
+  if (silent !== true) {
+    chatHistory.value.push({ role: 'user', content: currentQuestion })
+  }
   question.value = ''
   scrollToBottom()
 
@@ -398,7 +437,9 @@ async function askQuestion() {
     }
 
     if (data.need_location) {
+      // 派单判定"部门已识别但缺坐标"：挂起问题，弹地图点选后带坐标重问
       needLocation.value = true
+      pendingQuestion.value = currentQuestion
       chatHistory.value.push({
         role: 'assistant',
         content: data.message || '请在地图上点选具体位置'
@@ -410,7 +451,10 @@ async function askQuestion() {
     chatHistory.value.push({
       role: 'assistant',
       content: data.answer,
-      sources: (data.citations || []).map(c => c.title || c.source || '')
+      sources: (data.citations || []).map(c => c.title || c.source || ''),
+      dispatch: data.dispatch || null,
+      logId: data.log_id || null,
+      feedback: null
     })
     scrollToBottom()
   } catch (e) {
@@ -432,11 +476,12 @@ function clearChat() {
   selectedLat.value = ''
 }
 
-// 确认位置
+// 确认位置：用挂起的问题带上坐标重新提问（silent 不重复插用户消息）
 function confirmLocation() {
   needLocation.value = false
-  if (question.value.trim()) {
-    askQuestion()
+  if (pendingQuestion.value.trim()) {
+    question.value = pendingQuestion.value
+    nextTick(() => askQuestion(true))
   }
 }
 
@@ -1119,6 +1164,52 @@ onUnmounted(() => {
 }
 .action-btn:hover {
   color: var(--primary-500);
+}
+.action-btn.fb.active {
+  color: var(--primary-500);
+  font-weight: 600;
+}
+.action-btn:disabled {
+  cursor: default;
+  opacity: 0.75;
+}
+/* 派单结果卡片 */
+.dispatch-card {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--warning-light, #fff7e6);
+  border: 1px solid var(--warning, #fa8c16);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+}
+.dispatch-label {
+  font-weight: 600;
+  color: var(--warning, #fa8c16);
+  white-space: nowrap;
+}
+.dispatch-text {
+  color: var(--text-primary);
+  flex: 1 1 auto;
+}
+.dispatch-dept {
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+/* LLM 答案内联引用角标 */
+.chat-bubble .cite-ref {
+  display: inline-block;
+  margin: 0 2px;
+  padding: 0 5px;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--primary-500);
+  background: var(--primary-50);
+  border-radius: 8px;
+  vertical-align: middle;
 }
 
 /* 输入区 */

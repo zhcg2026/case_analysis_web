@@ -130,7 +130,7 @@ async function onFileChosen(e) {
   try {
     const fd = new FormData()
     fd.append('file', file)
-    const res = await axios.post('/api/upload/file', fd)
+    const res = await axios.post('/api/assessment/exemptions/upload', fd)
     if (res.data?.file_path) {
       row.file_url = res.data.file_path
       row.file_name = file.name

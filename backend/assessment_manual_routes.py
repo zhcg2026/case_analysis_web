@@ -11,6 +11,7 @@ from __future__ import annotations
 import calendar
 import json
 import logging
+import os
 from datetime import datetime, date
 
 from flask import request, jsonify
@@ -18,6 +19,11 @@ from sqlalchemy import text
 from functools import wraps
 
 logger = logging.getLogger(__name__)
+
+# 豁免期文件依据允许的类型（与 app.py /api/upload/file 的 ALLOWED_FILE_EXT 一致）
+ALLOWED_EXEMPT_FILE_EXT = {'.doc', '.docx', '.xls', '.xlsx', '.pdf', '.ppt', '.pptx',
+                           '.txt', '.csv', '.zip', '.rar', '.md', '.html',
+                           '.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'}
 
 try:
     from common import protected as _protected, admin_required as _admin_required
@@ -68,6 +74,39 @@ ORG_MUNICIPAL = {
     '市政设施维护部': '市政设施维护部',
 }
 
+# 片区（公园/子单位）挂账：分组 key → 录入单位与部门口径
+# 部门别名用于把台账「部门挂账案件」的单位名归到对应录入组做合计校验
+PENDING_GROUPS = {
+    'dispatch': {
+        'label': '市容秩序（执法队）',
+        'units': DISPATCH_TEAMS,
+        'dept_aliases': ['运城市城市综合行政执法队', '城市管理综合行政执法队',
+                         '城市综合行政执法队', '执法队'],
+    },
+    'sanitation': {
+        'label': '环境卫生（市容环卫中心）',
+        'units': list(SANITATION_REGION_MAP.values()),
+        'dept_aliases': ['运城市市容环卫中心', '市容环卫中心', '市容环卫服务中心', '环卫中心'],
+    },
+    'garden': {
+        'label': '园林绿化（园林绿化服务中心）',
+        'units': GARDEN_DISTRICTS + PARKS,
+        'dept_aliases': ['运城市园林绿化服务中心', '园林绿化服务中心', '园林绿化中心', '园林中心'],
+    },
+    'municipal': {
+        'label': '市政公用（市政公用服务中心）',
+        'units': MUNICIPAL_UNITS,
+        'dept_aliases': ['运城市市政公用服务中心', '市政公用服务中心', '市政公用中心',
+                         '运城市排水服务中心', '排水服务中心'],
+    },
+}
+PENDING_UNIT_TYPES = ('dispatch', 'sanitation', 'garden', 'garden_park', 'municipal')
+# 片区级单位名：台账部门行出现时不参与部门合计，避免与部门行重复计数
+# （排水服务中心既是市政子单位也是独立部门，保留参与合计）
+PENDING_SUBUNIT_ONLY = set(DISPATCH_TEAMS) | set(SANITATION_REGION_MAP.values()) \
+    | set(GARDEN_DISTRICTS) | set(PARKS) \
+    | {'城市照明部', '市政设施维护部', '应急执法分队'}
+
 # 计算口径单位名 → case_data.department 名集合（豁免剔除案件用；环卫/园林/公园同名不在表内）
 CALC_TO_CASE_MAP = {
     '东城执法分队': {'执法东片区'},
@@ -90,9 +129,11 @@ for _calc, _cases in CALC_TO_CASE_MAP.items():
         CASE_TO_CALC_MAP[_c] = _calc
 
 # 组级名称 → 成员单位（豁免组级部门时展开到成员；成员为计算口径名）
+# 市容环卫中心含五个环卫片区 + 局属单位（福龙马公司-垃圾清运、公共卫生间管理部），与 assessment_routes._is_sanitation_center_dept 同口径
+SANITATION_CENTER_MEMBERS = list(SANITATION_REGION_MAP.values()) + ['福龙马公司', '公共卫生间管理部']
 GROUP_MEMBER_MAP = {
     '执法队': list(DISPATCH_TEAMS),
-    '市容环卫中心': list(SANITATION_REGION_MAP.values()),
+    '市容环卫中心': SANITATION_CENTER_MEMBERS,
     '园林绿化服务中心': GARDEN_DISTRICTS + PARKS,
     '市政公用服务中心': list(MUNICIPAL_UNITS),
 }
@@ -170,6 +211,18 @@ CREATE_TABLES = [
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='考核人工-台账(挂账/积压/表扬)'
     """,
     """
+    CREATE TABLE IF NOT EXISTS assessment_manual_pending (
+        batch VARCHAR(10) NOT NULL,
+        unit_name VARCHAR(100) NOT NULL COMMENT '片区/公园/子单位名',
+        unit_type VARCHAR(30) NOT NULL COMMENT 'dispatch/sanitation/garden/garden_park/municipal',
+        pending_cnt INT NOT NULL DEFAULT 0 COMMENT '挂账案件数',
+        updated_by VARCHAR(50) NULL,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uk_batch_unit (batch, unit_name),
+        KEY idx_batch (batch)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='考核人工-片区(公园/子单位)挂账数'
+    """,
+    """
     CREATE TABLE IF NOT EXISTS assessment_result (
         id INT AUTO_INCREMENT PRIMARY KEY,
         batch VARCHAR(10) NOT NULL,
@@ -245,8 +298,8 @@ def register_assessment_manual_routes(app, engine=None, protected=None, admin_re
     protected = protected or _protected
     admin_required = admin_required or _admin_required
 
-    def input_access(permission_key):
-        """考核录入鉴权：admin 直接放行；普通用户需 permissions 表对应录入权限列=1"""
+    def perm_access(permission_key):
+        """细粒度权限鉴权：admin 直接放行；普通用户需 permissions 表对应列=1"""
         def decorator(f):
             @wraps(f)
             def decorated(*args, **kwargs):
@@ -329,6 +382,10 @@ def register_assessment_manual_routes(app, engine=None, protected=None, admin_re
             'garbage_regions': [
                 {'region': r, 'district': SANITATION_REGION_MAP[r]} for r in REGION_KEYS
             ],
+            'pending_groups': {
+                g: {'label': cfg['label'], 'dept_aliases': cfg['dept_aliases']}
+                for g, cfg in PENDING_GROUPS.items()
+            },
         })
 
     # ---------- 豁免期（部门某时间段不参与考核） ----------
@@ -348,7 +405,7 @@ def register_assessment_manual_routes(app, engine=None, protected=None, admin_re
             return jsonify({'success': False, 'error': str(e)}), 500
 
     @app.route('/api/assessment/exemptions', methods=['POST'])
-    @admin_required
+    @perm_access('assessment_exemption')
     def assessment_exemptions_save():
         """整表替换保存豁免期。body: {items: [{unit_name, start_date, end_date, reason, file_url, file_name}]}"""
         data = request.get_json(silent=True) or {}
@@ -391,6 +448,34 @@ def register_assessment_manual_routes(app, engine=None, protected=None, admin_re
             logger.error(f'保存豁免期失败: {e}')
             return jsonify({'success': False, 'error': str(e)}), 500
 
+    # ---------- 豁免期文件依据上传 ----------
+    @app.route('/api/assessment/exemptions/upload', methods=['POST'])
+    @perm_access('assessment_exemption')
+    def assessment_exemptions_upload():
+        """豁免期文件依据上传（与 /api/upload/file 同目录同类型限制，
+        但按 assessment_exemption 权限放行，普通用户也可上传）"""
+        try:
+            if 'file' not in request.files:
+                return jsonify({'error': '请选择文件'}), 400
+            file = request.files['file']
+            if not file or not file.filename:
+                return jsonify({'error': '请选择文件'}), 400
+            ext = os.path.splitext(file.filename)[1].lower()
+            if ext not in ALLOWED_EXEMPT_FILE_EXT:
+                return jsonify({'error': '不支持的文件类型，仅允许文档/表格/压缩包/图片'}), 400
+            upload_dir = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)), 'uploads')
+            os.makedirs(upload_dir, exist_ok=True)
+            import uuid
+            save_name = f"{uuid.uuid4().hex}{ext}"
+            save_path = os.path.join(upload_dir, save_name)
+            file.save(save_path)
+            url = f"/uploads/{save_name}"
+            return jsonify({'success': True, 'file_path': url, 'url': url})
+        except Exception as e:
+            logger.warning(f"豁免期文件上传失败: {e}")
+            return jsonify({'error': '上传失败'}), 500
+
     # ---------- 读取当月全部人工数据 ----------
     @app.route('/api/assessment/manual', methods=['GET'])
     @protected
@@ -405,6 +490,7 @@ def register_assessment_manual_routes(app, engine=None, protected=None, admin_re
                 'batch': batch,
                 'monthly': None,
                 'scores': [],
+                'pending_counts': [],
                 'garbage': [],
                 'collector': None,
                 'special_details': [],
@@ -427,6 +513,15 @@ def register_assessment_manual_routes(app, engine=None, protected=None, admin_re
                 ), {'b': batch}).fetchall()
                 out['scores'] = [
                     {'unit_name': x[0], 'unit_type': x[1], 'score_type': x[2], 'score_value': float(x[3])}
+                    for x in rows
+                ]
+
+                rows = conn.execute(text(
+                    "SELECT unit_name, unit_type, pending_cnt FROM assessment_manual_pending "
+                    "WHERE batch=:b ORDER BY unit_type, unit_name"
+                ), {'b': batch}).fetchall()
+                out['pending_counts'] = [
+                    {'unit_name': x[0], 'unit_type': x[1], 'pending_cnt': int(x[2] or 0)}
                     for x in rows
                 ]
 
@@ -690,6 +785,27 @@ def register_assessment_manual_routes(app, engine=None, protected=None, admin_re
         except (TypeError, ValueError):
             return jsonify({'success': False, 'error': '自行处置数须为整数'}), 400
 
+        # 片区（公园/子单位）挂账数：先校验后入库，避免入库中途报错回滚丢数据
+        pending_rows = []
+        if 'pending_counts' in data:
+            pcounts = data.get('pending_counts')
+            if not isinstance(pcounts, list):
+                return jsonify({'success': False, 'error': 'pending_counts 须为数组'}), 400
+            for p in pcounts:
+                ut = (p.get('unit_type') or '').strip()
+                un = (p.get('unit_name') or '').strip()
+                if ut not in PENDING_UNIT_TYPES or not un:
+                    continue
+                if _pending_unit_group(un) is None:
+                    continue
+                try:
+                    cnt = int(p.get('pending_cnt') or 0)
+                except (TypeError, ValueError):
+                    return jsonify({'success': False, 'error': f'{un} 挂账数须为整数'}), 400
+                if cnt < 0:
+                    return jsonify({'success': False, 'error': f'{un} 挂账数不能为负'}), 400
+                pending_rows.append((un, ut, cnt))
+
         try:
             with engine.begin() as conn:
                 # monthly
@@ -804,20 +920,39 @@ def register_assessment_manual_routes(app, engine=None, protected=None, admin_re
                                 'dl': it.get('deadline') or None,
                                 'by': user,
                             })
-            return jsonify({'success': True})
+
+                # 片区（公园/子单位）挂账数：payload 即全量，整月替换
+                if 'pending_counts' in data:
+                    conn.execute(text(
+                        "DELETE FROM assessment_manual_pending WHERE batch=:b"
+                    ), {'b': batch})
+                    for un, ut, cnt in pending_rows:
+                        conn.execute(text(
+                            """INSERT INTO assessment_manual_pending
+                               (batch, unit_name, unit_type, pending_cnt, updated_by)
+                               VALUES (:b,:u,:t,:c,:by)"""
+                        ), {'b': batch, 'u': un, 't': ut, 'c': cnt, 'by': user})
+
+            # 挂账合计校验：片区合计应与台账部门挂账数量一致，不一致时提醒（不阻断保存）
+            try:
+                warnings = check_pending_totals(engine, batch)
+            except Exception as e:
+                logger.warning(f'挂账合计校验失败: {e}')
+                warnings = []
+            return jsonify({'success': True, 'warnings': warnings})
         except Exception as e:
             logger.error(f'保存全部人工数据失败: {e}')
             return jsonify({'success': False, 'error': str(e)}), 500
 
     # ---------- 保存：平台录入（月度 + 分值 + 台账） ----------
     @app.route('/api/assessment/manual/save-platform', methods=['PUT', 'POST'])
-    @input_access('assessment_input_platform')
+    @perm_access('assessment_input_platform')
     def assessment_manual_save_platform_only():
         return _assessment_manual_save_all_impl()
 
     # ---------- 保存：采集员录入（垃圾件数 + 自行处置 + 专项明细） ----------
     @app.route('/api/assessment/manual/save-collector', methods=['PUT', 'POST'])
-    @input_access('assessment_input_collector')
+    @perm_access('assessment_input_collector')
     def assessment_manual_save_collector_only():
         return _assessment_manual_save_all_impl()
 
@@ -930,6 +1065,62 @@ def normalize_to_calc_name(name: str) -> str:
     if name in CALC_TO_CASE_MAP:
         return name
     return name
+
+
+def _pending_unit_group(unit_name: str):
+    """片区（公园/子单位）名 → 挂账分组 key；未识别返回 None"""
+    name = (unit_name or '').strip()
+    for g, cfg in PENDING_GROUPS.items():
+        if name in cfg['units']:
+            return g
+    return None
+
+
+def _pending_dept_group(unit_name: str):
+    """台账「部门挂账案件」单位名 → 挂账分组 key；无法识别返回 None"""
+    name = (unit_name or '').strip()
+    if not name or name in PENDING_SUBUNIT_ONLY:
+        return None
+    for g, cfg in PENDING_GROUPS.items():
+        if name in cfg['dept_aliases']:
+            return g
+    core = name.replace('运城市', '')
+    if '执法队' in core:
+        return 'dispatch'
+    if '环卫' in core:
+        return 'sanitation'
+    if '园林' in core:
+        return 'garden'
+    if '市政' in core:
+        return 'municipal'
+    return None
+
+
+def check_pending_totals(engine, batch: str) -> list:
+    """各分组片区挂账合计 vs 台账部门挂账数量，返回不一致说明列表（空=一致）"""
+    if not engine:
+        return []
+    unit_sums = {g: 0 for g in PENDING_GROUPS}
+    dept_sums = {g: 0 for g in PENDING_GROUPS}
+    with engine.connect() as conn:
+        for unit_name, cnt in conn.execute(text(
+            "SELECT unit_name, pending_cnt FROM assessment_manual_pending WHERE batch=:b"
+        ), {'b': batch}).fetchall():
+            g = _pending_unit_group(unit_name)
+            if g:
+                unit_sums[g] += int(cnt or 0)
+        for unit_name, cnt in conn.execute(text(
+            "SELECT unit_name, piece_cnt FROM assessment_manual_ledger "
+            "WHERE batch=:b AND ledger_type='pending'"
+        ), {'b': batch}).fetchall():
+            g = _pending_dept_group(unit_name)
+            if g:
+                dept_sums[g] += int(cnt or 0)
+    return [
+        f"{cfg['label']}：片区挂账合计 {unit_sums[g]}，部门挂账数量 {dept_sums[g]}，不一致"
+        for g, cfg in PENDING_GROUPS.items()
+        if unit_sums[g] != dept_sums[g]
+    ]
 
 
 def calc_to_case_names(calc_name: str) -> set:

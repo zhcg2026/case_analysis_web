@@ -14,9 +14,14 @@ except ImportError:
 # ============================================================
 # 部门分组映射规则
 # ============================================================
+def _is_sanitation_center_dept(dept_name):
+    """是否归属市容环卫中心考核口径：五个环卫片区 + 局属单位（福龙马公司-垃圾清运、公共卫生间管理部）"""
+    return '环卫' in dept_name or '福龙马' in dept_name or '公共卫生间' in dept_name
+
+
 DEPT_GROUP_RULES = {
     '执法队': lambda d: '执法' in d,
-    '市容环卫中心': lambda d: '环卫' in d,
+    '市容环卫中心': _is_sanitation_center_dept,
     '园林绿化服务中心': lambda d: '园林' in d or '公园' in d or '广场' in d,
     '市政公用服务中心': lambda d: '市政' in d or '照明' in d,
 }
@@ -452,19 +457,19 @@ def _calculate_scores(departments, external_data, missing=None):
 
     # 环卫
     san_total = sum(
-        departments.get(d, {}).get('total', 0) for d in departments if '环卫' in d
+        departments.get(d, {}).get('total', 0) for d in departments if _is_sanitation_center_dept(d)
     )
     san_closed = sum(
-        departments.get(d, {}).get('closed', 0) for d in departments if '环卫' in d
+        departments.get(d, {}).get('closed', 0) for d in departments if _is_sanitation_center_dept(d)
     )
     san_overtime = sum(
-        departments.get(d, {}).get('overtime', 0) for d in departments if '环卫' in d
+        departments.get(d, {}).get('overtime', 0) for d in departments if _is_sanitation_center_dept(d)
     )
     san_delayed = sum(
-        departments.get(d, {}).get('delayed', 0) for d in departments if '环卫' in d
+        departments.get(d, {}).get('delayed', 0) for d in departments if _is_sanitation_center_dept(d)
     )
     san_rework = sum(
-        departments.get(d, {}).get('rework', 0) for d in departments if '环卫' in d
+        departments.get(d, {}).get('rework', 0) for d in departments if _is_sanitation_center_dept(d)
     )
 
     san_extra = external_data.get('san_extra', 0)

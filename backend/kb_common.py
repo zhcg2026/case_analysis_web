@@ -44,9 +44,21 @@ DOUBAO_API_KEY = os.getenv('DOUBAO_API_KEY', '')
 DOUBAO_API_URL = os.getenv('DOUBAO_API_URL', 'https://ark.cn-beijing.volces.com/api/v3/chat/completions')
 DOUBAO_MODEL = os.getenv('DOUBAO_MODEL', 'doubao-seed-1-8-251228')
 
-# 限制 LLM 生成上限：知识库问答要求输出 answer+citations 的 JSON，1024 token 足够。
-# 不限时生成长回答会显著拖慢响应（尤其豆包偶发慢时），也浪费 token。
-LLM_MAX_TOKENS = int(os.getenv('LLM_MAX_TOKENS', '1024'))
+# 知识库问答可独立指定模型/Key（KB_LLM_* 优先，缺省回落 DOUBAO_*）。
+# 背景：analysis_routes / template_export_routes 共用 DOUBAO_MODEL，不能随
+# 知识库一起换模型；2026-10-13 知识库切到 deepseek-v4-1-flash-260910
+# （混合推理模型，必须关思考，详见部署文档），用独立变量隔离影响面。
+KB_LLM_MODEL = os.getenv('KB_LLM_MODEL', DOUBAO_MODEL)
+KB_LLM_API_KEY = os.getenv('KB_LLM_API_KEY', DOUBAO_API_KEY)
+
+# V4 系混合推理模型默认把生成写进 reasoning_content：content 为空、
+# finish=length（max_tokens 全被思考吃光），问答 JSON 解析必败。须显式
+# 关闭思考；换非混合推理模型时可用环境变量关掉此参数。
+LLM_THINKING_DISABLED = os.getenv('LLM_THINKING_DISABLED', 'true').lower() == 'true'
+
+# 限制 LLM 生成上限：知识库问答要求输出 answer+citations 的 JSON，关思考后
+# 单答案约 500~1000 token；4096 给长答案留余量（1024 时思考模式会被截断）。
+LLM_MAX_TOKENS = int(os.getenv('LLM_MAX_TOKENS', '4096'))
 
 # 评分权重（可通过环境变量覆盖）
 SCORE_WEIGHT_CORE = float(os.getenv('SCORE_WEIGHT_CORE', '0.45'))
@@ -208,17 +220,20 @@ def call_llm(prompt: str, provider: str = None, timeout: int = 120) -> Optional[
 
     try:
         if provider == 'doubao':
+            body = {
+                "model": KB_LLM_MODEL,
+                "messages": [{"role": "user", "content": [{"type": "text", "text": prompt}]}],
+                "max_tokens": LLM_MAX_TOKENS,
+            }
+            if LLM_THINKING_DISABLED:
+                body["thinking"] = {"type": "disabled"}
             response = requests.post(
                 DOUBAO_API_URL,
                 headers={
                     "Content-Type": "application/json",
-                    "Authorization": f"Bearer {DOUBAO_API_KEY}"
+                    "Authorization": f"Bearer {KB_LLM_API_KEY}"
                 },
-                json={
-                    "model": DOUBAO_MODEL,
-                    "messages": [{"role": "user", "content": [{"type": "text", "text": prompt}]}],
-                    "max_tokens": LLM_MAX_TOKENS,
-                },
+                json=body,
                 timeout=timeout
             )
             if response.status_code == 200:

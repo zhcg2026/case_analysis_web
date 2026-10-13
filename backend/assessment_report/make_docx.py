@@ -283,12 +283,12 @@ def _fmt_rate(n, d):
     return f'{n / d * 100:.2f}%'
 
 
-# 各表列宽（twips，按参考月报保留各表独立网格）
+# 各表列宽（twips，按参考月报保留各表独立网格；挂账列为条件列，宽度在 _append_pending_col 内压缩分配）
 W_DISPOSAL = [3450, 1288, 1204, 1284, 1269]
 W_DISPATCH = [1489, 631, 775, 784, 796, 799, 600, 807, 681, 635, 605, 796]
 W_SANITATION = [1256, 634, 600, 854, 766, 774, 813, 648, 704, 665, 717]
-W_GARDEN = [1402, 618, 833, 853, 866, 842, 796, 704, 831, 615]
-W_PARK = [1108, 635, 784, 831, 795, 810, 1090, 998, 831, 518]
+W_GARDEN = [1402, 618, 833, 853, 866, 842, 796, 704, 831]
+W_PARK = [1108, 635, 784, 831, 795, 810, 1090, 998, 831]
 W_MUNICIPAL = [1673, 996, 791, 832, 846, 755, 805, 641, 545]
 W_PENDING = [2223, 873, 3460, 2167]
 W_BACKLOG = [2188, 842, 5254]
@@ -320,6 +320,25 @@ def _score_rows(data, unit_names, dp, extra_cols):
     return rows
 
 
+def _pending_vals(data, unit_names):
+    """各单位挂账数（与 unit_names 顺序一致）"""
+    by_unit = data.get('pending_cnt_by_unit') or {}
+    return [int(by_unit.get(n) or 0) for n in unit_names]
+
+
+def _append_pending_col(headers, rows, widths, pending_vals):
+    """挂账列：全部为 0 时不显示；有数据时追加末列，原列宽等比压缩保持总宽不变"""
+    if not any(v > 0 for v in pending_vals):
+        return headers, rows, widths
+    w_extra = 620
+    total = sum(widths)
+    scale = (total - w_extra) / total if total > w_extra else 1
+    scaled = [max(1, int(round(w * scale))) for w in widths]
+    return (headers + ['挂账'],
+            [row + [str(v)] for row, v in zip(rows, pending_vals)],
+            scaled + [w_extra])
+
+
 def _dispatch_extra(name, r):
     缓办率 = '0'
     return [
@@ -344,22 +363,22 @@ def _sanitation_extra(name, r):
 
 def _garden_extra(data):
     def _cols(name, r):
-        pending = data['pending_by_unit'].get(name, 0)
         return [
             _fmt_score(r.get('system_score'), 2),
             _fmt_score(r.get('center_score'), 1),
             _fmt_score(r.get('final_score'), 2),
-            str(pending) if pending else '0',
         ]
     return _cols
 
 
 def _municipal_rows(data):
     rows = []
+    keys = []
     for key, display in MUNICIPAL_ROWS:
         r = data['scores'].get(key, {})
         if not r:
             continue
+        keys.append(key)
         total = r.get('total', 0)
         if r.get('score_mode') == 'close_rate':
             rate_cols = ['—', '—', '—', '—']
@@ -374,7 +393,7 @@ def _municipal_rows(data):
         rows.append([display, total or 0, r.get('closed', 0), *rate_cols,
                      _fmt_score(r.get('final_score'), 2),
                      str(backlog) if backlog else ''])
-    return rows
+    return rows, keys
 
 
 def generate_word(data: dict, img1: str, img2: str, out_path: str) -> str:
@@ -481,10 +500,11 @@ def generate_word(data: dict, img1: str, img2: str, out_path: str) -> str:
     _add_para(doc, '1、市容秩序', cn_font=F_KAI, size_pt=16, indent_chars=2, line_pt=22)
     teams = _sorted_units(results, list(DISPATCH_TEAM_MAP.values()))
     dispatch_rows = _score_rows(data, teams, 3, _dispatch_extra)
-    _add_table(doc,
-               ['执法\n分队', '应结\n案数', '结案数', '超期率', '延期率', '返工率', '缓办率',
-                '系统\n分数', '队考\n核分', '街道\n办分', '扣分', '总分'],
-               dispatch_rows, W_DISPATCH)
+    dispatch_headers = ['执法\n分队', '应结\n案数', '结案数', '超期率', '延期率', '返工率', '缓办率',
+                        '系统\n分数', '队考\n核分', '街道\n办分', '扣分', '总分']
+    dispatch_headers, dispatch_rows, dispatch_widths = _append_pending_col(
+        dispatch_headers, dispatch_rows, W_DISPATCH, _pending_vals(data, teams))
+    _add_table(doc, dispatch_headers, dispatch_rows, dispatch_widths)
     notes = [f'注：1.计算公式：执法队各队考核得分=系统考核得分*70%+队考核得分*15%+街道办考核得分*15%；{sys_formula}。']
     if data.get('extra_note'):
         notes.append(f'2.{data["extra_note"]}')
@@ -495,10 +515,11 @@ def generate_word(data: dict, img1: str, img2: str, out_path: str) -> str:
     san_names = [n for n in results if '环卫' in n and n != '市容环卫中心']
     san_names = _sorted_units(results, san_names)
     san_rows = _score_rows(data, san_names, 2, _sanitation_extra)
-    _add_table(doc,
-               ['环卫\n片区', '应结\n案数', '结案数', '超期率', '延期率', '返工率', '缓办率',
-                '系统\n分数', '单体\n垃圾', '中心\n分数', '总分'],
-               san_rows, W_SANITATION)
+    san_headers = ['环卫\n片区', '应结\n案数', '结案数', '超期率', '延期率', '返工率', '缓办率',
+                   '系统\n分数', '单体\n垃圾', '中心\n分数', '总分']
+    san_headers, san_rows, san_widths = _append_pending_col(
+        san_headers, san_rows, W_SANITATION, _pending_vals(data, san_names))
+    _add_table(doc, san_headers, san_rows, san_widths)
     _add_note(doc, [
         f'注：计算公式：环卫考核得分=系统考核得分*30%+单体垃圾得分*30%+中心得分*40%；'
         f'其中单体垃圾得分=100-案件*0.01；{sys_formula}。'
@@ -508,16 +529,18 @@ def generate_word(data: dict, img1: str, img2: str, out_path: str) -> str:
     _add_para(doc, '3、园林绿化', cn_font=F_KAI, size_pt=16, indent_chars=2, line_pt=22)
     garden_names = _sorted_units(results, list(GARDEN_DISTRICT_MAP.keys()))
     garden_rows = _score_rows(data, garden_names, 2, _garden_extra(data))
-    _add_table(doc,
-               ['园林\n片区', '应结\n案数', '结案数', '超期率', '延期率', '返工率',
-                '系统\n分数', '中心\n分数', '总分', '挂账'],
-               garden_rows, W_GARDEN)
+    garden_headers = ['园林\n片区', '应结\n案数', '结案数', '超期率', '延期率', '返工率',
+                      '系统\n分数', '中心\n分数', '总分']
+    garden_headers, garden_rows, garden_widths = _append_pending_col(
+        garden_headers, garden_rows, W_GARDEN, _pending_vals(data, garden_names))
+    _add_table(doc, garden_headers, garden_rows, garden_widths)
     park_names = _sorted_units(results, list(PARK_MAP.keys()))
     park_rows = _score_rows(data, park_names, 2, _garden_extra(data))
-    _add_table(doc,
-               ['公园\n广场', '应结\n案数', '结案数', '超期率', '延期率', '返工率',
-                '系统\n分数', '中心\n分数', '总分', '挂账'],
-               park_rows, W_PARK)
+    park_headers = ['公园\n广场', '应结\n案数', '结案数', '超期率', '延期率', '返工率',
+                    '系统\n分数', '中心\n分数', '总分']
+    park_headers, park_rows, park_widths = _append_pending_col(
+        park_headers, park_rows, W_PARK, _pending_vals(data, park_names))
+    _add_table(doc, park_headers, park_rows, park_widths)
     y, m = data['batch'][:4], int(data['batch'][4:6])
     _add_note(doc, [
         f'注：1.挂帐数为{m}月底前案件数；',
@@ -526,10 +549,12 @@ def generate_word(data: dict, img1: str, img2: str, out_path: str) -> str:
 
     # 4、市政公用
     _add_para(doc, '4、市政公用', cn_font=F_KAI, size_pt=16, indent_chars=2, line_pt=22)
-    muni_rows = _municipal_rows(data)
-    _add_table(doc,
-               ['市政\n考核', '应结\n案数', '结案数', '结案率', '超期率', '延期率', '返工率', '分数', '积压'],
-               muni_rows, W_MUNICIPAL)
+    muni_rows, muni_keys = _municipal_rows(data)
+    muni_headers = ['市政\n考核', '应结\n案数', '结案数', '结案率', '超期率', '延期率', '返工率',
+                    '分数', '积压']
+    muni_headers, muni_rows, muni_widths = _append_pending_col(
+        muni_headers, muni_rows, W_MUNICIPAL, _pending_vals(data, muni_keys))
+    _add_table(doc, muni_headers, muni_rows, muni_widths)
     _add_note(doc, [
         f'注：1、挂帐数为{m}月底前案件数；积压数为{y}年1月至今案件数。',
         f'计算公式：照明、排水系统考核得分=（按期结案率*100%+超期结案率*40%）*80%'

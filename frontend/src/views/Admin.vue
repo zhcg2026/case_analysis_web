@@ -512,6 +512,9 @@
         <button class="sub-tab" :class="{ active: knowledgeSubTab === 'general' }" @click="knowledgeSubTab = 'general'">
           通用知识库
         </button>
+        <button class="sub-tab" :class="{ active: knowledgeSubTab === 'logs' }" @click="knowledgeSubTab = 'logs'">
+          查询日志
+        </button>
       </div>
 
       <!-- 通用知识库管理（对齐统一库 unified_kb） -->
@@ -541,12 +544,9 @@
             <div>
               <h3 class="subsection-title">重建索引</h3>
               <p class="kb-rebuild-hint">
-                <strong>重建步骤：</strong>① 本地打包知识库目录 → ② 上传到服务器 → ③ 配置环境变量 → ④ 点击重建。<br/>
-                1. 本地执行 <code>Compress-Archive -Path "D:\常用\知识库" -DestinationPath "D:\kb_source.zip"</code> 打包<br/>
-                2. 执行 <code>scp D:\kb_source.zip ubuntu@192.168.101.3:/tmp/kb_source.zip</code> 上传<br/>
-                3. 服务器上解压：<code>sudo mkdir -p /home/ubuntu/kb_data && sudo unzip -o /tmp/kb_source.zip -d /home/ubuntu/kb_data</code><br/>
-                4. 在 docker-compose 的 environment 中设置 <code>KB_SOURCE_DIR=/home/ubuntu/kb_data/知识库</code>，或挂载 volume 后指向容器内路径<br/>
-                5. 重启容器后，点击下方「重建索引（全量）」按钮执行重建
+                <strong>重建说明：</strong>重建会删除并重新灌入统一库（约 6000+ 条），耗时约 1-2 分钟，期间问答不可用。<br/>
+                源码目录需先在宿主机 <code>/home/ubuntu/kb_data</code> 准备好，并设置环境变量 <code>KB_SOURCE_DIR</code> 指向知识库目录；未配置时重建按钮会直接失败，不影响现有数据。<br/>
+                日常增删文档请用下方「已入库文档」的删除功能，无需全量重建。
               </p>
             </div>
             <button class="btn btn-primary" @click="rebuildKb" :disabled="kbRebuilding">
@@ -611,6 +611,112 @@
           </div>
           <div v-else class="empty-state">暂无文档</div>
         </div>
+      </div>
+
+      <!-- 查询日志：问答质量观测 -->
+      <div v-show="knowledgeSubTab === 'logs'" class="kb-logs-panel">
+        <div class="section-header">
+          <h3 class="subsection-title">问答查询日志</h3>
+          <div class="section-actions">
+            <button class="btn btn-secondary" @click="loadKbLogs" :disabled="kbLogsLoading">刷新</button>
+          </div>
+        </div>
+
+        <div v-if="kbLogs.available === false" class="empty-state">
+          日志表不可用（数据库未连接或 kb_query_log 未创建）
+        </div>
+        <template v-else>
+          <!-- 汇总指标 -->
+          <div class="kb-log-summary">
+            <div class="kb-log-stat">
+              <span class="kb-log-num">{{ kbLogs.summary?.total || 0 }}</span>
+              <span class="kb-log-label">总提问</span>
+            </div>
+            <div class="kb-log-stat warn">
+              <span class="kb-log-num">{{ kbLogs.summary?.zero_hit || 0 }}</span>
+              <span class="kb-log-label">零命中</span>
+            </div>
+            <div class="kb-log-stat warn">
+              <span class="kb-log-num">{{ kbLogs.summary?.degraded || 0 }}</span>
+              <span class="kb-log-label">降级回答</span>
+            </div>
+            <div class="kb-log-stat warn">
+              <span class="kb-log-num">{{ kbLogs.summary?.no_answer_fixed || 0 }}</span>
+              <span class="kb-log-label">兜底改写</span>
+            </div>
+            <div class="kb-log-stat good">
+              <span class="kb-log-num">{{ kbLogs.summary?.useful || 0 }}</span>
+              <span class="kb-log-label">有用</span>
+            </div>
+            <div class="kb-log-stat bad">
+              <span class="kb-log-num">{{ kbLogs.summary?.useless || 0 }}</span>
+              <span class="kb-log-label">没用</span>
+            </div>
+            <div class="kb-log-stat">
+              <span class="kb-log-num">{{ formatMs(kbLogs.summary?.avg_ms) }}</span>
+              <span class="kb-log-label">平均耗时</span>
+            </div>
+          </div>
+
+          <!-- Top 问题 -->
+          <div v-if="kbLogs.top_questions?.length" class="kb-top-questions">
+            <h4 class="kb-log-subtitle">高频问题 Top {{ kbLogs.top_questions.length }}</h4>
+            <div v-for="(q, i) in kbLogs.top_questions" :key="i" class="kb-top-row">
+              <span class="kb-top-rank">{{ i + 1 }}</span>
+              <span class="kb-top-q" :title="q.question">{{ q.question }}</span>
+              <span class="kb-top-cnt">{{ q.cnt }} 次</span>
+              <span v-if="q.useful || q.useless" class="kb-top-fb">
+                <em class="good">有用 {{ q.useful }}</em><em class="bad">没用 {{ q.useless }}</em>
+              </span>
+            </div>
+          </div>
+
+          <!-- 最近明细 -->
+          <h4 class="kb-log-subtitle">最近提问</h4>
+          <div v-if="kbLogsLoading" class="loading-state"><div class="loading-spinner"></div></div>
+          <div v-else-if="kbLogs.items?.length" class="kb-log-table-wrap">
+            <table class="kb-log-table">
+              <thead>
+                <tr>
+                  <th>时间</th>
+                  <th>用户</th>
+                  <th>问题</th>
+                  <th>命中</th>
+                  <th>状态</th>
+                  <th>耗时</th>
+                  <th>反馈</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="it in kbLogs.items" :key="it.id">
+                  <td class="kb-td-time">{{ it.created_at }}</td>
+                  <td>{{ it.username || '-' }}</td>
+                  <td class="kb-td-q" :title="it.question">{{ it.question }}</td>
+                  <td>{{ it.hit_count }}</td>
+                  <td>
+                    <span v-if="it.json_ok === 0 || it.llm_ok === 0" class="kb-log-flag bad">降级</span>
+                    <span v-else-if="it.no_answer_fixed === 1" class="kb-log-flag warn">兜底</span>
+                    <span v-else-if="it.hit_count === 0" class="kb-log-flag warn">零命中</span>
+                    <span v-else class="kb-log-flag good">正常</span>
+                  </td>
+                  <td>{{ formatMs(it.total_ms) }}</td>
+                  <td>
+                    <span v-if="it.feedback === 1" class="good">有用</span>
+                    <span v-else-if="it.feedback === 0" class="bad">没用</span>
+                    <span v-else class="kb-td-muted">-</span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+            <!-- 分页 -->
+            <div v-if="kbLogs.total > kbLogPageSize" class="kb-pager">
+              <button class="btn btn-secondary" :disabled="kbLogPage <= 1" @click="kbLogPage--; loadKbLogs()">上一页</button>
+              <span class="kb-pager-info">第 {{ kbLogPage }} 页 / 共 {{ Math.ceil(kbLogs.total / kbLogPageSize) }} 页</span>
+              <button class="btn btn-secondary" :disabled="kbLogPage >= Math.ceil(kbLogs.total / kbLogPageSize)" @click="kbLogPage++; loadKbLogs()">下一页</button>
+            </div>
+          </div>
+          <div v-else class="empty-state">暂无提问记录</div>
+        </template>
       </div>
 
     </div>
@@ -1256,6 +1362,31 @@ async function batchDeleteKbDocs() {
     loadKbOverview()
   } catch {
     // error toast via interceptor
+  }
+}
+
+// 查询日志（问答质量观测）
+const kbLogs = ref({ available: true, summary: {}, top_questions: [], items: [], total: 0 })
+const kbLogsLoading = ref(false)
+const kbLogPage = ref(1)
+const kbLogPageSize = 20
+
+function formatMs(ms) {
+  if (ms === null || ms === undefined || ms === '') return '-'
+  return ms >= 1000 ? (ms / 1000).toFixed(1) + 's' : ms + 'ms'
+}
+
+async function loadKbLogs() {
+  kbLogsLoading.value = true
+  try {
+    const res = await axios.get('/api/kb/admin/logs', {
+      params: { page: kbLogPage.value, page_size: kbLogPageSize }
+    })
+    kbLogs.value = res.data || { available: true, summary: {}, top_questions: [], items: [], total: 0 }
+  } catch (e) {
+    console.error('加载查询日志失败:', e)
+  } finally {
+    kbLogsLoading.value = false
   }
 }
 
@@ -2487,9 +2618,13 @@ watch(activeTab, (newTab) => {
 
 // 切换知识库子标签时加载对应数据
 watch(knowledgeSubTab, (newSubTab) => {
-  if (activeTab.value === 'knowledge' && newSubTab === 'general') {
+  if (activeTab.value !== 'knowledge') return
+  if (newSubTab === 'general') {
     loadKbOverview()
     loadKbDocs()
+  } else if (newSubTab === 'logs') {
+    kbLogPage.value = 1
+    loadKbLogs()
   }
 })
 
@@ -3877,6 +4012,94 @@ watch(articlesCurrentPage, fetchArticles)
   color: var(--text-secondary);
 }
 .kb-pager-info { color: var(--text-tertiary); }
+
+/* 查询日志面板 */
+.kb-log-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: var(--space-3);
+  margin-bottom: var(--space-5);
+}
+.kb-log-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: var(--space-3);
+  background: var(--bg-card, #fff);
+  border: 1px solid var(--border-lighter);
+  border-radius: var(--radius-md, 8px);
+}
+.kb-log-num { font-size: 20px; font-weight: 600; color: var(--text-primary); }
+.kb-log-label { font-size: 12px; color: var(--text-tertiary); }
+.kb-log-stat.warn .kb-log-num { color: var(--warning); }
+.kb-log-stat.good .kb-log-num { color: var(--success); }
+.kb-log-stat.bad .kb-log-num { color: var(--danger); }
+.kb-log-subtitle {
+  margin: var(--space-4) 0 var(--space-2);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.kb-top-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border-lighter);
+  font-size: 13px;
+}
+.kb-top-rank {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  line-height: 20px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--primary-500);
+  background: var(--primary-50);
+  border-radius: 50%;
+}
+.kb-top-q { flex: 1; min-width: 0; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kb-top-cnt { flex-shrink: 0; color: var(--text-tertiary); }
+.kb-top-fb { flex-shrink: 0; display: flex; gap: var(--space-2); font-style: normal; }
+.kb-top-fb .good { color: var(--success); }
+.kb-top-fb .bad { color: var(--danger); }
+.kb-log-table-wrap { overflow-x: auto; }
+.kb-log-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.kb-log-table th {
+  text-align: left;
+  padding: var(--space-2) var(--space-3);
+  color: var(--text-tertiary);
+  font-weight: 500;
+  border-bottom: 1px solid var(--border-light);
+  white-space: nowrap;
+}
+.kb-log-table td {
+  padding: var(--space-2) var(--space-3);
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border-lighter);
+  vertical-align: top;
+}
+.kb-td-time { color: var(--text-tertiary); white-space: nowrap; }
+.kb-td-q { max-width: 320px; }
+.kb-td-muted { color: var(--text-tertiary); }
+.kb-log-table .good { color: var(--success); }
+.kb-log-table .bad { color: var(--danger); }
+.kb-log-flag {
+  display: inline-block;
+  padding: 1px 6px;
+  font-size: 11px;
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+}
+.kb-log-flag.good { color: var(--success); background: var(--success-light); }
+.kb-log-flag.warn { color: var(--warning); background: var(--warning-light); }
+.kb-log-flag.bad { color: var(--danger); background: var(--danger-light); }
 
 /* 知识库子标签样式 */
 .knowledge-sub-tabs {

@@ -22,6 +22,7 @@ import tempfile
 from typing import List, Dict, Any, Optional
 
 import jieba
+import jieba.posseg  # 词性标注（误拒闸门按名词性取实体词，需显式导入子模块）
 from rank_bm25 import BM25Okapi
 
 from kb_common import USE_LOCAL_MODE, LOCAL_MILVUS_FILE, MILVUS_HOST, MILVUS_PORT, LLM_PROVIDER  # noqa: E402
@@ -367,7 +368,7 @@ def _rrf_fuse(vector_hits: List[Dict[str, Any]],
     返回按 RRF 分降序的合并列表，每条带 rrf_score / vector_rank / bm25_rank。
     """
     fused = {}
-    # 向量一路：按 score（COSINE 相似度）降序排名
+    # 向量一路：按 score（Milvus COSINE 返回即相似度，0~1 越大越像；自查实测精确命中 1.0）降序排名
     for rank, h in enumerate(sorted(vector_hits, key=lambda x: x.get("score") or 0, reverse=True), 1):
         key = (h["doc_id"], h["chunk_id"])
         if key not in fused:
@@ -375,6 +376,8 @@ def _rrf_fuse(vector_hits: List[Dict[str, Any]],
             fused[key]["rrf_score"] = 0.0
         fused[key]["rrf_score"] += 1.0 / (k + rank)
         fused[key]["vector_rank"] = rank
+        # similarity 透传给前端展示：向量一路的 score 本身就是 0~1 相似度
+        fused[key]["similarity"] = h.get("score")
     # BM25 一路：按 bm25_rank（已按 BM25 分降序）排名，权重 bm25_weight
     for h in bm25_hits:
         key = (h["doc_id"], h["chunk_id"])
@@ -382,6 +385,9 @@ def _rrf_fuse(vector_hits: List[Dict[str, Any]],
         if key not in fused:
             fused[key] = dict(h)
             fused[key]["rrf_score"] = 0.0
+            # 纯 BM25 命中没有向量相似度（score 是 BM25 原始分，量纲完全不同），
+            # 置 None 让前端隐藏百分比，避免把 BM25 分当相似度展示成 "630%"
+            fused[key]["similarity"] = None
         fused[key]["rrf_score"] += bm25_weight / (k + rank)
         fused[key]["bm25_rank"] = rank
     # 按 RRF 分降序
@@ -527,6 +533,16 @@ _SYSTEM_TEMPLATE = """你是运城市城市管理局智慧城管知识库问答�
      可在末尾单列「相关法律法规参考」，不要混入制度清单。
    - 若某归属下未检索到相关制度文件，明确说明「未检索到该归属下相关制度」，不要编造。
 
+=== 对话历史（仅供理解追问的指代对象，回答依据仍仅限于检索片段）===
+{history_section}
+
+=== 输出格式（硬性要求，违反即任务失败）===
+必须且只能输出一个 JSON 对象，不要输出 JSON 以外的任何文字，不要用 ``` 代码块包裹：
+{{"answer":"给用户的完整答复","citations":[{{"title":"片段标题","doc_type":"片段类型","excerpt":"支撑该结论的片段原文摘录，80字以内"}}]}}
+- citations 只能使用「检索片段」中出现过的标题，最多 5 条；无引用则为 []。
+- answer 中每处事实性陈述都要有引用，内联写成 [标题]，与 citations 一一对应。
+- answer 可用 markdown 列表/加粗，面向一线城管人员或市民，简洁、可操作。
+
 === 检索片段（按相关性从高到低）===
 {context}
 
@@ -563,13 +579,15 @@ def _format_context(hits: List[Dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
-def _degraded_answer(hits: List[Dict[str, Any]]) -> str:
+def _degraded_answer(hits: List[Dict[str, Any]], reason: str = "大模型暂时未响应") -> str:
     """LLM 全部不可用时，把检索到的前几条片段直出，作为降级答案。
 
     绝不返回“知识库中暂无相关内容”——那种话只在「检索本身为空」时才是真话。
     LLM 挂了但内容明明召回到了，应如实把片段摆出来，避免掩盖真实故障。
+    reason 说明为何走原文直出（超时/未按 JSON 出/误拒被闸门放行），
+    让用户知道眼前不是大模型的综合答案。
     """
-    lines = [f"（已检索到 {len(hits)} 条相关内容，但大模型暂时未响应，以下为原文片段供参考）", ""]
+    lines = [f"（已检索到 {len(hits)} 条相关内容，但{reason}，以下为原文片段供参考）", ""]
     for i, h in enumerate(hits[:3], 1):
         lines.append(f"{i}. 【{h['title']}】（{h['doc_type']}）")
         lines.append((h["text"] or "").strip()[:300])
@@ -597,6 +615,58 @@ def _looks_like_no_answer(answer: str) -> bool:
         "知识库中未找到",
     )
     return any(m in s for m in markers)
+
+
+# 误拒兜底倒出 qa 原文时的框定语：让用户知道这不是大模型的综合答案，
+# 而是知识库条目的原文摘录，避免把“没组织的库中内容”当成正式答复。
+_QA_FALLBACK_PREFIX = "（大模型未能给出综合回答，以下为知识库中相关问答条目原文，供参考）\n\n"
+
+
+def _refusal_is_false(query: str, hits: List[Dict[str, Any]]) -> bool:
+    """判断 LLM 的“暂无相关内容”是否为误拒：问题的最稀有实体词是否真实出现在命中片段里。
+
+    背景：拒答有两种，必须区分——
+      ① 误拒：问题实体就在命中片段里（问“在哪里交水费”，158/159 正文含“水费”），
+         此时倒出片段原文是有用的补救；
+      ② 正确拒绝：知识库确实没有该实体（问“银龙水务电话”，全库 0 处“银龙”），
+         此时倒出的是首创水费/供热电话等不相关原文，比诚实拒答更糟。
+    旧版不区分，两种都覆盖，用户拿到过不相关片段的生硬堆砌。
+
+    判定用“文档频率”而非人工通用词表：查询分词后在知识库全量语料里统计每个词
+    出现在多少条片段中，取最稀有的词——越稀越可能是指名实体（“银龙”df=0 ＜
+    “水务”df=11 ＜ “电话”df=高）。最稀有的词在任一命中片段的标题/正文中原文
+    出现，才认为片段与问题同主题，允许覆盖拒答；否则保留 LLM 的诚实拒答。
+    只取名词性词（银龙→nr、解放南路→nz、水费/水务→n）：疑问词（哪个/哪里→r）、
+    动词、语气词不参与——否则“哪个”这类全库不出现的功能词会抢走“最稀有”名额，
+    把本该放行的误拒也拦掉。
+    """
+    if not hits:
+        return False
+    words = {w for w, f in jieba.posseg.cut(query or "")
+             if len(w) >= 2 and f.startswith("n") and not w.isspace()}
+    if not words:
+        return False
+    rows = _BM25_ROWS or []
+    if not rows:
+        # 语料未加载（异常路径）：无法证明同主题，保守保留拒答
+        return False
+    blobs = [f"{r.get('title') or ''}\n{r.get('text') or ''}" for r in rows]
+
+    def _df(w: str) -> int:
+        return sum(1 for b in blobs if w in b)
+
+    dfs = {w: _df(w) for w in words}
+    rarest_df = min(dfs.values())
+    rarest_words = sorted(w for w, d in dfs.items() if d == rarest_df)
+    if rarest_df == 0:
+        # 实体词全库不存在——LLM 拒答成立
+        logger.info(f"[kb_store] 误拒闸门：实体词{rarest_words}全库不存在，保留 LLM 拒答")
+        return False
+    hit_blobs = [f"{h.get('title') or ''}\n{h.get('text') or ''}" for h in hits]
+    if any(rw in b for rw in rarest_words for b in hit_blobs):
+        return True
+    logger.info(f"[kb_store] 误拒闸门：实体词{rarest_words}未出现在命中片段，保留 LLM 拒答")
+    return False
 
 
 def _qa_direct_answer(qa_hits: List[Dict[str, Any]]) -> str:
@@ -653,33 +723,113 @@ def _call_llm_timeout(prompt: str, provider: Optional[str], per_call_timeout: in
 
 
 def _extract_json(text: str) -> Optional[dict]:
-    """从 LLM 输出里尽量抠出 JSON。"""
+    """从 LLM 输出里尽量抠出 JSON。
+
+    模型偶发不守"只输出 JSON"的约定：包 ```json 代码块、JSON 字符串里写字面
+    换行、对象末尾多逗号都见过。这里按代价从低到高逐级兜底，尽量把结构化答案
+    救回来——解析失败只会让答案退化成"片段直出"，用户体感明显变差。
+    """
     if not text:
         return None
     s = text.strip()
-    # 去 ```json 包裹
-    if s.startswith("```"):
-        s = s.strip("`")
-        if s.lower().startswith("json"):
-            s = s[4:]
-    try:
-        return json.loads(s)
-    except Exception:
-        pass
-    # 找第一个 { 到最后一个 }
+    # 去 ```json / ``` 包裹
+    s = re.sub(r"^```(?:json|JSON)?\s*", "", s)
+    s = re.sub(r"\s*```$", "", s)
+    s = s.strip()
+
+    candidates = [s]
     a, b = s.find("{"), s.rfind("}")
-    if a != -1 and b != -1 and b > a:
+    if a != -1 and b > a:
+        candidates.append(s[a:b + 1])
+
+    # 1) 直接解析；strict=False 放行字符串里的字面换行/制表符
+    for cand in candidates:
+        for strict in (True, False):
+            try:
+                obj = json.loads(cand, strict=strict)
+                if isinstance(obj, dict) and obj.get("answer"):
+                    return obj
+            except Exception:
+                pass
+    # 2) 去掉对象/数组末尾多余的逗号再试（模型常见手滑）
+    for cand in candidates:
+        fixed = re.sub(r",\s*([}\]])", r"\1", cand)
         try:
-            return json.loads(s[a:b + 1])
+            obj = json.loads(fixed, strict=False)
+            if isinstance(obj, dict) and obj.get("answer"):
+                return obj
         except Exception:
-            return None
+            pass
     return None
+
+
+def _format_history(history: Optional[List[Dict[str, Any]]]) -> str:
+    """把前端传来的对话历史压成 prompt 用的文本段（只取最近 6 条，每条截 300 字）。
+
+    没有 history 时返回占位文案——模板里该段固定存在，避免 .format 缺键报错。
+    """
+    if not history:
+        return "（无，本轮为对话首问）"
+    lines = []
+    for m in history[-6:]:
+        if not isinstance(m, dict):
+            continue
+        content = (m.get("content") or "").strip()
+        if not content:
+            continue
+        who = "用户" if m.get("role") == "user" else "助手"
+        lines.append(f"{who}：{content[:300]}")
+    return "\n".join(lines) if lines else "（无，本轮为对话首问）"
+
+
+def _log_query(session_factory: Any, **fields: Any) -> Optional[int]:
+    """把一次问答的检索/生成质量指标写入 kb_query_log（best-effort，失败不影响回答）。
+
+    session_factory 为 app.py 注入的 SQLAlchemy sessionmaker；未注入（本地单测 KB 模块）
+    时直接跳过。任何异常只 warning，绝不向上抛——日志是观测手段，不能变成新故障点。
+    """
+    if session_factory is None:
+        return None
+    try:
+        from sqlalchemy import text
+        session = session_factory()
+        try:
+            res = session.execute(text(
+                "INSERT INTO kb_query_log "
+                "(question, username, hit_count, top_titles, doc_types, llm_ok, json_ok, "
+                " degraded, no_answer_fixed, dispatch_status, llm_ms, total_ms) "
+                "VALUES (:question, :username, :hit_count, :top_titles, :doc_types, :llm_ok, "
+                "        :json_ok, :degraded, :no_answer_fixed, :dispatch_status, :llm_ms, :total_ms)"
+            ), {
+                "question": (fields.get("question") or "")[:500],
+                "username": (fields.get("username") or None),
+                "hit_count": int(fields.get("hit_count") or 0),
+                "top_titles": json.dumps(fields.get("top_titles") or [], ensure_ascii=False),
+                "doc_types": json.dumps(fields.get("doc_types") or [], ensure_ascii=False),
+                "llm_ok": 1 if fields.get("llm_ok") else 0,
+                "json_ok": 1 if fields.get("json_ok") else 0,
+                "degraded": 1 if fields.get("degraded") else 0,
+                "no_answer_fixed": 1 if fields.get("no_answer_fixed") else 0,
+                "dispatch_status": (fields.get("dispatch_status") or None),
+                "llm_ms": int(fields.get("llm_ms") or 0),
+                "total_ms": int(fields.get("total_ms") or 0),
+            })
+            session.commit()
+            return getattr(res, "lastrowid", None)
+        finally:
+            session.close()
+    except Exception as e:
+        logger.warning(f"[kb_store] 查询日志写入失败（不影响回答）: {e}")
+        return None
 
 
 def ask(query: str,
         location: Any = None,
         top_k: int = 6,
-        provider: Optional[str] = None) -> Dict[str, Any]:
+        provider: Optional[str] = None,
+        history: Optional[List[Dict[str, Any]]] = None,
+        session_factory: Any = None,
+        username: Optional[str] = None) -> Dict[str, Any]:
     """
     统一问答入口。
     返回：
@@ -688,9 +838,18 @@ def ask(query: str,
       "citations": [{"title","doc_type","source","excerpt"}],
       "dispatch": dict|None,   # 地理派单结果（若有坐标/派单意图）
       "retrieved": [...]       # 原始召回，供调试
+      "log_id": int|None,      # kb_query_log 主键（供前端"有用/没用"反馈关联）
+      "need_location": bool,   # 派单需要坐标时为 True，前端弹地图点选
+      "message": str           # need_location 时的提示语
     }
     """
     from kb_common import call_llm
+
+    _t0 = time.time()
+    _llm_ms = 0
+    _llm_ok = False       # LLM 是否有响应（含超时/失败）
+    _json_ok = False      # LLM 是否按 prompt 要求输出结构化 JSON
+    _no_answer_fixed = False  # LLM 误报"暂无相关内容"是否被兜底纠正
 
     # 1) 地理派单（与检索解耦，独立业务）
     dispatch = None
@@ -700,32 +859,60 @@ def ask(query: str,
         except Exception as e:
             logger.warning(f"[kb_store] 派单调用异常: {e}")
 
+    # 派单判定为"部门已识别但缺坐标"时，通知前端弹地图点选（旧版前端等的
+    # need_location 后端从不返回，地图弹窗实际点不动，此处补上）
+    need_location = bool(dispatch and dispatch.get("layer_status") == "no_location")
+    dispatch_status = (dispatch or {}).get("layer_status")
+
+    def _finish(result: Dict[str, Any], degraded: bool) -> Dict[str, Any]:
+        """统一出口：补 degraded/log_id/need_location 并落查询日志。"""
+        result.setdefault("dispatch", dispatch)
+        result.setdefault("need_location", need_location)
+        result["degraded"] = degraded
+        if need_location:
+            result.setdefault("message", (dispatch or {}).get("answer") or "请在地图上点选具体位置")
+        result["log_id"] = _log_query(
+            session_factory,
+            question=query, username=username,
+            hit_count=len(result.get("retrieved") or []),
+            top_titles=[h.get("title") for h in (result.get("retrieved") or [])[:3]],
+            doc_types=sorted({h.get("doc_type") for h in (result.get("retrieved") or []) if h.get("doc_type")}),
+            llm_ok=_llm_ok, json_ok=_json_ok, degraded=degraded,
+            no_answer_fixed=_no_answer_fixed, dispatch_status=dispatch_status,
+            llm_ms=_llm_ms, total_ms=int((time.time() - _t0) * 1000),
+        )
+        return result
+
     # 2) 语义召回（默认排除废止法规；分桶后检索量放大，保证小类标准进入上下文）
     hits = search(query, top_k=max(int(top_k), 12))
     retrieved = hits
 
     if not hits:
-        return {
+        return _finish({
             "answer": "知识库中暂无相关内容",
             "citations": [],
-            "dispatch": dispatch,
             "retrieved": [],
-        }
+        }, degraded=False)
 
     # 3) 拼 prompt + 调 LLM（带硬超时，避免慢 LLM 把请求拖到前端 abort）
     context = _format_context(hits)
-    prompt = _SYSTEM_TEMPLATE.format(context=context, query=query)
+    prompt = _SYSTEM_TEMPLATE.format(context=context, query=query,
+                                     history_section=_format_history(history))
     # 主 provider（路由层不传时为 kb_common.LLM_PROVIDER，本地/生产均配 doubao）
     # 先调，单次预算 50s；失败（含超时）才回退到【不同的】provider 再给 50s。
     # 旧版用参数原值 `provider != "doubao"` 判断——provider=None 时实际主调已是
     # 豆包，却仍判定"非豆包"又重打一次豆包，豆包一抖就是两次串行长等。
+    _llm_t0 = time.perf_counter()
     raw = _call_llm_timeout(prompt, provider, per_call_timeout=50)
     if raw is None and (provider or LLM_PROVIDER) != "doubao":
         logger.warning("[kb_store] 主 LLM provider 调用失败/超时，自动回退豆包（预算 50s）")
         raw = _call_llm_timeout(prompt, "doubao", per_call_timeout=50)
+    _llm_ms = int((time.perf_counter() - _llm_t0) * 1000)
+    _llm_ok = raw is not None
     parsed = _extract_json(raw) if raw else None
 
     if parsed and isinstance(parsed, dict) and parsed.get("answer"):
+        _json_ok = True
         answer = parsed["answer"]
         citations = parsed.get("citations", []) or []
         # ---- LLM 误拒兜底：检索明明召回到了内容，LLM 却谎报“暂无” ----
@@ -735,11 +922,15 @@ def ask(query: str,
         # “召回不到”，其实内容召回到了。旧版兜底只认 qa 命中，standard/org/law
         # 被谎报时假空照样透传；现泛化为：有 qa 用 qa 直出，否则用片段直出，
         # 绝不让“LLM 误判”伪装成“知识库无内容”。
-        if _looks_like_no_answer(answer):
+        # 但拒答分“误拒”与“正确拒绝”（知识库确实没有该实体），必须经
+        # _refusal_is_false 主题闸门确认片段与问题同主题才覆盖——否则问
+        # “银龙水务电话”会倒出首创水费/供热电话等不相关原文，比诚实拒答更糟。
+        if _looks_like_no_answer(answer) and _refusal_is_false(query, hits):
+            _no_answer_fixed = True
             qa_hits = [h for h in hits if h.get("doc_type") == "qa"]
             if qa_hits:
-                logger.warning("[kb_store] LLM 误判为暂无，但命中 qa 直答，强制改用 qa 片段直出")
-                answer = _qa_direct_answer(qa_hits)
+                logger.warning("[kb_store] LLM 误判为暂无，闸门确认同主题，强制改用 qa 片段直出")
+                answer = _QA_FALLBACK_PREFIX + _qa_direct_answer(qa_hits)
                 citations = [{
                     "title": h["title"],
                     "doc_type": h["doc_type"],
@@ -747,8 +938,8 @@ def ask(query: str,
                     "excerpt": (h["text"] or "")[:80],
                 } for h in qa_hits[:3]]
             else:
-                logger.warning("[kb_store] LLM 误判为暂无，改用检索片段直出（不返回假空）")
-                answer = _degraded_answer(hits)
+                logger.warning("[kb_store] LLM 误判为暂无，闸门确认同主题，改用检索片段直出（不返回假空）")
+                answer = _degraded_answer(hits, reason="大模型未能给出综合回答")
                 citations = [{
                     "title": h["title"],
                     "doc_type": h["doc_type"],
@@ -789,9 +980,10 @@ def ask(query: str,
             "excerpt": c.get("excerpt", ""),
         })
 
-    return {
+    # degraded = LLM 没按 JSON 出（答案走原文/片段直出兜底）或误报暂无被纠正——
+    # 两者都意味着"用户拿到的不是 LLM 结构化答案"，是查询日志里要重点盯的指标
+    return _finish({
         "answer": answer,
         "citations": norm_citations,
-        "dispatch": dispatch,
         "retrieved": retrieved,
-    }
+    }, degraded=(not _json_ok) or _no_answer_fixed)

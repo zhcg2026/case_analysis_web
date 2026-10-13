@@ -264,7 +264,8 @@ def register_data_cleaning_routes(app, engine=None):
                 content = file.read().decode('utf-8')
                 result = parse_delay_rework_txt(content)
             elif ext in ('.xlsx', '.xls'):
-                df = pd.read_excel(io.BytesIO(file.read()))
+                # header=None：清单可能没有表头，若按默认读取会把首行数据当列名丢掉
+                df = pd.read_excel(io.BytesIO(file.read()), header=None)
                 result = parse_delay_rework_excel(df)
             else:
                 return jsonify({'error': '仅支持 .txt / .xlsx 格式'}), 400

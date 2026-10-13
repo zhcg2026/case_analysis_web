@@ -13,6 +13,7 @@
 避免 Flask 请求超时与并发写库冲突。
 """
 import os
+from decimal import Decimal
 from dotenv import load_dotenv
 from flask import request, jsonify
 from kb_store import get_client  # 复用 milvus 单例连接，避免同进程对本地 db 重复开 MilvusClient 触发 500
@@ -24,8 +25,12 @@ UNIFIED_COLLECTION = "unified_kb"
 DOC_TYPES = ["standard", "org", "qa", "general", "law"]
 
 
-def register_kb_routes(app, protected=None, admin_required=None):
-    """注册统一知识库相关路由（真实实现）。"""
+def register_kb_routes(app, protected=None, admin_required=None, Session=None):
+    """注册统一知识库相关路由（真实实现）。
+
+    Session：app.py 注入的 SQLAlchemy sessionmaker，用于查询日志读写；
+    未注入（本地单测）时日志功能自动跳过，检索/问答不受影响。
+    """
     # protected / admin_required 由 app.py 注入；缺省时退化为无鉴权（便于本地调试）
     def _protected(fn):
         return (protected or (lambda f: f))(fn)
@@ -44,11 +49,17 @@ def register_kb_routes(app, protected=None, admin_required=None):
             question = (data.get('question') or '').strip()
             location = data.get('location')
             top_k = int(data.get('top_k', 6))
+            # 对话历史：[{role: user/assistant, content: str}]，用于多轮追问指代消解
+            history = data.get('history')
+            if not isinstance(history, list):
+                history = None
 
             if not question:
                 return jsonify({'error': '请提供问题'}), 400
 
-            result = _ask(question, location=location, top_k=top_k)
+            result = _ask(question, location=location, top_k=top_k,
+                          history=history, session_factory=Session,
+                          username=getattr(request, 'username', None))
             return jsonify(result), 200
         except Exception as e:
             import logging
@@ -349,13 +360,13 @@ def register_kb_routes(app, protected=None, admin_required=None):
             data = request.get_json(force=True, silent=True) or {}
             ids = data.get('doc_ids') or []
             if not ids:
-                return jsonify({"error": "请提供 doc_ids"}), 400
+                return jsonify({'error': '请提供 doc_ids'}), 400
             from pymilvus import MilvusClient
             from urllib.parse import unquote
             from kb_common import USE_LOCAL_MODE, LOCAL_MILVUS_FILE, MILVUS_HOST, MILVUS_PORT
             client = get_client()
             if not client.has_collection(UNIFIED_COLLECTION):
-                return jsonify({"error": "集合不存在"}), 404
+                return jsonify({'error': '集合不存在'}), 404
             try:
                 client.load_collection(UNIFIED_COLLECTION)
             except Exception:
@@ -367,6 +378,99 @@ def register_kb_routes(app, protected=None, admin_required=None):
             from kb_store import invalidate_bm25_cache
             invalidate_bm25_cache()
             return jsonify({"deleted": True, "count": len(ids), "result": str(res)}), 200
+        except Exception as e:
+            import logging
+            logging.exception("KB route error")
+            return jsonify({"error": "知识库操作失败"}), 500
+
+    # ================= 问答反馈与查询日志（观测用） =================
+
+    @app.route('/api/kb/feedback', methods=['POST'])
+    @_protected
+    def kb_feedback():
+        """用户对某次问答的反馈：{log_id, useful}，useful=true 有用 / false 没用。
+
+        log_id 来自 /api/kb/ask 响应。未注入 Session 或 log_id 缺失时静默跳过
+        （返回 saved=false），反馈是观测增强，不能变成新故障点。
+        """
+        try:
+            data = request.get_json(force=True, silent=True) or {}
+            log_id = data.get('log_id')
+            useful = data.get('useful')
+            if Session is None or not isinstance(log_id, int):
+                return jsonify({"saved": False}), 200
+            from sqlalchemy import text
+            session = Session()
+            try:
+                session.execute(
+                    text("UPDATE kb_query_log SET feedback = :fb WHERE id = :id"),
+                    {"fb": 1 if useful else 0, "id": log_id})
+                session.commit()
+            finally:
+                session.close()
+            return jsonify({"saved": True}), 200
+        except Exception as e:
+            import logging
+            logging.exception("KB route error")
+            return jsonify({"saved": False}), 200
+
+    @app.route('/api/kb/admin/logs', methods=['GET'])
+    @_admin
+    def kb_admin_logs():
+        """查询日志面板：汇总指标 + Top 问题 + 最近明细（分页）。"""
+        try:
+            if Session is None:
+                return jsonify({"summary": {}, "top_questions": [], "items": [], "total": 0,
+                                "available": False}), 200
+            from sqlalchemy import text
+            page = max(1, int(request.args.get('page', 1)))
+            page_size = min(100, int(request.args.get('page_size', 20)))
+            session = Session()
+            try:
+                summary_row = session.execute(text(
+                    "SELECT COUNT(*) AS total,"
+                    " COALESCE(SUM(hit_count = 0), 0) AS zero_hit,"
+                    " COALESCE(SUM(degraded = 1), 0) AS degraded,"
+                    " COALESCE(SUM(no_answer_fixed = 1), 0) AS no_answer_fixed,"
+                    " COALESCE(SUM(feedback = 1), 0) AS useful,"
+                    " COALESCE(SUM(feedback = 0), 0) AS useless,"
+                    " COALESCE(ROUND(AVG(total_ms)), 0) AS avg_ms"
+                    " FROM kb_query_log")).fetchone()
+                # SUM/AVG 在 MySQL 返回 Decimal，直接 jsonify 会变成字符串，统一转 int
+                summary = {k: int(v) if v is not None else 0
+                           for k, v in dict(zip(summary_row._fields, summary_row)).items()} if summary_row else {}
+
+                top_rows = session.execute(text(
+                    "SELECT question, COUNT(*) AS cnt,"
+                    " COALESCE(SUM(feedback = 1), 0) AS useful,"
+                    " COALESCE(SUM(feedback = 0), 0) AS useless"
+                    " FROM kb_query_log GROUP BY question ORDER BY cnt DESC LIMIT 20")).fetchall()
+                top_questions = [{k: int(v) if isinstance(v, Decimal) else v
+                                  for k, v in dict(zip(r._fields, r)).items()} for r in top_rows]
+
+                total = session.execute(text("SELECT COUNT(*) FROM kb_query_log")).scalar() or 0
+                rows = session.execute(text(
+                    "SELECT id, question, username, hit_count, top_titles, doc_types, llm_ok,"
+                    " json_ok, degraded, no_answer_fixed, dispatch_status, llm_ms, total_ms,"
+                    " feedback, created_at FROM kb_query_log"
+                    " ORDER BY id DESC LIMIT :lim OFFSET :off"),
+                    {"lim": page_size, "off": (page - 1) * page_size}).fetchall()
+                items = []
+                for r in rows:
+                    d = dict(zip(r._fields, r))
+                    d["created_at"] = str(d.get("created_at") or "")
+                    items.append(d)
+            finally:
+                session.close()
+            return jsonify({
+                "available": True,
+                "summary": summary,
+                "top_questions": top_questions,
+                "items": items,
+                "total": total,
+                "page": page,
+                "page_size": page_size,
+            }), 200
         except Exception as e:
             import logging
             logging.exception("KB route error")

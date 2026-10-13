@@ -16,10 +16,12 @@ except ImportError:
 try:
     from backend.assessment_manual_routes import (
         load_external_data_from_db, load_exempt_for_batch, calc_to_case_names,
+        check_pending_totals,
     )
 except ImportError:
     from assessment_manual_routes import (
         load_external_data_from_db, load_exempt_for_batch, calc_to_case_names,
+        check_pending_totals,
     )
 
 # 期号基数：2021年5月 = 总第1期（2026年7月 = 总第63期 倒推）
@@ -192,6 +194,16 @@ def collect_report_data(engine, batch: str) -> dict:
         except Exception as e:
             logger.warning(f'读取台账失败: {e}')
 
+        # 片区（公园/子单位）挂账数：月报考核得分表「挂账」列数据源
+        pending_cnt_by_unit = {}
+        try:
+            for r in conn.execute(text(
+                "SELECT unit_name, pending_cnt FROM assessment_manual_pending WHERE batch = :b"
+            ), {'b': batch}).fetchall():
+                pending_cnt_by_unit[r[0]] = int(r[1] or 0)
+        except Exception as e:
+            logger.warning(f'读取片区挂账失败: {e}')
+
     # 4. 考核计分（与 /api/assessment/calculate 同一套逻辑）
     scoring_depts = dict(departments)
     missing = {}
@@ -249,6 +261,15 @@ def collect_report_data(engine, batch: str) -> dict:
 
     no_assess_total = collector_cnt + garbage_cnt + special_total
 
+    # 挂账合计校验：片区合计与部门挂账数量不一致时记日志提醒（不阻断出报）
+    pending_warnings = []
+    try:
+        pending_warnings = check_pending_totals(engine, batch)
+        for w in pending_warnings:
+            logger.warning(f'月报挂账校验[{batch}] {w}')
+    except Exception as e:
+        logger.warning(f'挂账合计校验失败: {e}')
+
     return {
         'batch': batch,
         'org_name': ORG_NAME,
@@ -274,6 +295,8 @@ def collect_report_data(engine, batch: str) -> dict:
         'exemptions': exemptions,
         'ledger': ledger,
         'pending_by_unit': pending_by_unit,
+        'pending_cnt_by_unit': pending_cnt_by_unit,
+        'pending_warnings': pending_warnings,
         'backlog_by_unit': backlog_by_unit,
         'garbage_by_district': garbage_by_district,
         'work_note': work_note,

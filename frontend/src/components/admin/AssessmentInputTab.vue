@@ -15,6 +15,11 @@
     <div v-if="!batch" class="empty">请先选择考核月份</div>
 
     <div v-else class="sections">
+      <div v-if="pendingWarnings.length" class="pending-warn">
+        <div class="pending-warn-title">挂账数量不一致，请核对（各片区/公园/子单位挂账合计应等于部门挂账案件数量）：</div>
+        <div v-for="w in pendingWarnings" :key="w" class="pending-warn-item">{{ w }}</div>
+      </div>
+
       <!-- 平台 -->
       <section v-if="isPlatform" class="card">
         <h3>平台录入</h3>
@@ -36,7 +41,7 @@
         <h4>市容秩序 · 执法分队</h4>
         <table class="ami-grid">
           <thead>
-            <tr><th>分队</th><th>队考核分</th><th>街道办分</th><th>加减分项</th></tr>
+            <tr><th>分队</th><th>队考核分</th><th>街道办分</th><th>加减分项</th><th>挂账</th></tr>
           </thead>
           <tbody>
             <tr v-for="t in tmpl.dispatch_teams" :key="t">
@@ -44,6 +49,7 @@
               <td><input type="number" step="0.1" v-model.number="scoreMap[`dispatch|${t}|team`]" /></td>
               <td><input type="number" step="0.1" v-model.number="scoreMap[`dispatch|${t}|street`]" /></td>
               <td><input type="number" step="0.1" v-model.number="scoreMap[`dispatch|${t}|extra`]" /></td>
+              <td><input type="number" min="0" step="1" v-model.number="pendingMap[`dispatch|${t}`]" /></td>
             </tr>
           </tbody>
         </table>
@@ -51,13 +57,14 @@
         <h4>环境卫生 · 片区</h4>
         <table class="ami-grid">
           <thead>
-            <tr><th>片区</th><th>中心考核分</th><th>加减分项</th></tr>
+            <tr><th>片区</th><th>中心考核分</th><th>加减分项</th><th>挂账</th></tr>
           </thead>
           <tbody>
             <tr v-for="d in tmpl.sanitation_districts" :key="d">
               <td>{{ d }}</td>
               <td><input type="number" step="0.1" v-model.number="scoreMap[`sanitation|${d}|center`]" /></td>
               <td><input type="number" step="0.1" v-model.number="scoreMap[`sanitation|${d}|extra`]" /></td>
+              <td><input type="number" min="0" step="1" v-model.number="pendingMap[`sanitation|${d}`]" /></td>
             </tr>
           </tbody>
         </table>
@@ -65,13 +72,14 @@
         <h4>园林绿化 · 片区</h4>
         <table class="ami-grid">
           <thead>
-            <tr><th>片区</th><th>中心考核分</th><th>加减分项</th></tr>
+            <tr><th>片区</th><th>中心考核分</th><th>加减分项</th><th>挂账</th></tr>
           </thead>
           <tbody>
             <tr v-for="d in tmpl.garden_districts" :key="d">
               <td>{{ d }}</td>
               <td><input type="number" step="0.1" v-model.number="scoreMap[`garden|${d}|center`]" /></td>
               <td><input type="number" step="0.1" v-model.number="scoreMap[`garden|${d}|extra`]" /></td>
+              <td><input type="number" min="0" step="1" v-model.number="pendingMap[`garden|${d}`]" /></td>
             </tr>
           </tbody>
         </table>
@@ -79,13 +87,14 @@
         <h4>园林绿化 · 公园广场</h4>
         <table class="ami-grid">
           <thead>
-            <tr><th>单位</th><th>中心考核分</th><th>加减分项</th></tr>
+            <tr><th>单位</th><th>中心考核分</th><th>加减分项</th><th>挂账</th></tr>
           </thead>
           <tbody>
             <tr v-for="p in tmpl.parks" :key="p">
               <td>{{ p }}</td>
               <td><input type="number" step="0.1" v-model.number="scoreMap[`garden_park|${p}|center`]" /></td>
               <td><input type="number" step="0.1" v-model.number="scoreMap[`garden_park|${p}|extra`]" /></td>
+              <td><input type="number" min="0" step="1" v-model.number="pendingMap[`garden_park|${p}`]" /></td>
             </tr>
           </tbody>
         </table>
@@ -93,12 +102,13 @@
         <h4>市政公用 · 子单位</h4>
         <table class="ami-grid">
           <thead>
-            <tr><th>单位</th><th>加减分项</th></tr>
+            <tr><th>单位</th><th>加减分项</th><th>挂账</th></tr>
           </thead>
           <tbody>
             <tr v-for="u in tmpl.municipal_units" :key="u">
               <td>{{ u }}</td>
               <td><input type="number" step="0.1" v-model.number="scoreMap[`municipal|${u}|extra`]" /></td>
+              <td><input type="number" min="0" step="1" v-model.number="pendingMap[`municipal|${u}`]" /></td>
             </tr>
           </tbody>
         </table>
@@ -271,10 +281,11 @@ const batch = ref('')
 const months = ref([])
 const tmpl = ref({
   dispatch_teams: [], sanitation_districts: [], garden_districts: [],
-  parks: [], municipal_units: [], garbage_regions: [],
+  parks: [], municipal_units: [], garbage_regions: [], pending_groups: {},
 })
 const monthly = reactive({ assessment_case_cnt: null, work_note: '', extra_note: '' })
 const scoreMap = reactive({})
+const pendingMap = reactive({})
 const garbage = reactive({ 东: 0, 西: 0, 南: 0, 北: 0, 中: 0 })
 const selfDisposeCnt = ref(0)
 const specialDetails = ref([])
@@ -366,28 +377,92 @@ function scoreKey(ut, unit, st) {
   return `${ut}|${unit}|${st}`
 }
 
+function pendingKey(ut, unit) {
+  return `${ut}|${unit}`
+}
+
+// 挂账分组：组 key → [[unit_type, unit_name], ...]（园林含片区+公园两种 unit_type）
+function pendingGroupEntries(g) {
+  const t = tmpl.value
+  if (g === 'dispatch') return (t.dispatch_teams || []).map(u => ['dispatch', u])
+  if (g === 'sanitation') return (t.sanitation_districts || []).map(u => ['sanitation', u])
+  if (g === 'garden') return [
+    ...(t.garden_districts || []).map(u => ['garden', u]),
+    ...(t.parks || []).map(u => ['garden_park', u]),
+  ]
+  if (g === 'municipal') return (t.municipal_units || []).map(u => ['municipal', u])
+  return []
+}
+
+// 台账「部门挂账案件」单位名 → 挂账分组 key（与后端 _pending_dept_group 同口径）
+function matchPendingDeptGroup(name) {
+  const n = (name || '').trim()
+  if (!n) return null
+  const groups = tmpl.value.pending_groups || {}
+  for (const [g, cfg] of Object.entries(groups)) {
+    if ((cfg.dept_aliases || []).includes(n)) return g
+  }
+  const subunits = new Set([
+    ...(tmpl.value.dispatch_teams || []),
+    ...(tmpl.value.sanitation_districts || []),
+    ...(tmpl.value.garden_districts || []),
+    ...(tmpl.value.parks || []),
+    ...(tmpl.value.municipal_units || []).filter(u => u !== '排水服务中心'),
+  ])
+  if (subunits.has(n)) return null
+  const core = n.replace(/运城市/g, '')
+  if (core.includes('执法队')) return 'dispatch'
+  if (core.includes('环卫')) return 'sanitation'
+  if (core.includes('园林')) return 'garden'
+  if (core.includes('市政')) return 'municipal'
+  return null
+}
+
+// 各分组片区挂账合计 vs 部门挂账案件数量，不一致给出提醒
+const pendingWarnings = computed(() => {
+  if (!isPlatform.value) return []
+  const groups = tmpl.value.pending_groups || {}
+  const warnings = []
+  for (const [g, cfg] of Object.entries(groups)) {
+    const unitTotal = pendingGroupEntries(g).reduce(
+      (s, [ut, u]) => s + (Number(pendingMap[pendingKey(ut, u)]) || 0), 0)
+    const deptTotal = ledgers.pending.reduce(
+      (s, it) => (matchPendingDeptGroup(it.unit_name) === g ? s + (Number(it.piece_cnt) || 0) : s), 0)
+    if (unitTotal !== deptTotal) {
+      warnings.push(`${cfg.label}：片区挂账合计 ${unitTotal}，部门挂账数量 ${deptTotal}，不一致`)
+    }
+  }
+  return warnings
+})
+
 function initScores() {
   Object.keys(scoreMap).forEach(k => delete scoreMap[k])
+  Object.keys(pendingMap).forEach(k => delete pendingMap[k])
   if (!isPlatform.value) return
   for (const t of tmpl.value.dispatch_teams) {
     scoreMap[scoreKey('dispatch', t, 'team')] = 100
     scoreMap[scoreKey('dispatch', t, 'street')] = 100
     scoreMap[scoreKey('dispatch', t, 'extra')] = 0
+    pendingMap[pendingKey('dispatch', t)] = 0
   }
   for (const d of tmpl.value.sanitation_districts) {
     scoreMap[scoreKey('sanitation', d, 'center')] = 100
     scoreMap[scoreKey('sanitation', d, 'extra')] = 0
+    pendingMap[pendingKey('sanitation', d)] = 0
   }
   for (const d of tmpl.value.garden_districts) {
     scoreMap[scoreKey('garden', d, 'center')] = 100
     scoreMap[scoreKey('garden', d, 'extra')] = 0
+    pendingMap[pendingKey('garden', d)] = 0
   }
   for (const p of tmpl.value.parks) {
     scoreMap[scoreKey('garden_park', p, 'center')] = 100
     scoreMap[scoreKey('garden_park', p, 'extra')] = 0
+    pendingMap[pendingKey('garden_park', p)] = 0
   }
   for (const u of tmpl.value.municipal_units) {
     scoreMap[scoreKey('municipal', u, 'extra')] = 0
+    pendingMap[pendingKey('municipal', u)] = 0
   }
   for (const r of ['东', '西', '南', '北', '中']) garbage[r] = 0
 }
@@ -459,6 +534,9 @@ async function loadAll() {
       for (const s of d.scores || []) {
         scoreMap[scoreKey(s.unit_type, s.unit_name, s.score_type)] = s.score_value
       }
+      for (const p of d.pending_counts || []) {
+        pendingMap[pendingKey(p.unit_type, p.unit_name)] = p.pending_cnt
+      }
       for (const l of d.ledgers || []) {
         const item = { ...l }
         if (item.deadline) item.deadline = String(item.deadline).slice(0, 10)
@@ -481,7 +559,7 @@ async function loadAll() {
       }
     }
     if (isPlatform.value) {
-      loadedHint.value = d.monthly || d.scores.length || (d.ledgers || []).length ? '已回填已录入数据' : '该月尚未录入'
+      loadedHint.value = d.monthly || d.scores.length || (d.ledgers || []).length || (d.pending_counts || []).length ? '已回填已录入数据' : '该月尚未录入'
     } else {
       const hasCollector = (d.garbage || []).length || d.collector || (d.special_details || []).length
       loadedHint.value = hasCollector ? '已回填已录入数据' : '该月尚未录入'
@@ -500,6 +578,18 @@ function collectScores() {
     scores.push({ unit_type, unit_name, score_type, score_value: v })
   }
   return scores
+}
+
+function collectPending() {
+  const out = []
+  for (const [k, v] of Object.entries(pendingMap)) {
+    const [unit_type, unit_name] = k.split('|')
+    out.push({
+      unit_type, unit_name,
+      pending_cnt: (v === '' || v === null || v === undefined) ? 0 : v,
+    })
+  }
+  return out
 }
 
 async function saveAll() {
@@ -524,6 +614,7 @@ async function saveAll() {
             extra_note: monthly.extra_note,
           },
           scores: collectScores(),
+          pending_counts: collectPending(),
           ledgers: {
             pending: ledgers.pending,
             backlog: ledgers.backlog,
@@ -532,7 +623,12 @@ async function saveAll() {
         }
     const res = await axios.post(url, payload)
     if (res.data?.success) {
-      ElMessage.success('已保存')
+      const warns = res.data.warnings || []
+      if (warns.length) {
+        ElMessage.warning(`已保存，但${warns.join('；')}`)
+      } else {
+        ElMessage.success('已保存')
+      }
       loadedHint.value = '已保存 ' + new Date().toLocaleTimeString()
     } else {
       ElMessage.error(res.data?.error || '操作失败，请稍后重试。')
@@ -568,6 +664,12 @@ textarea, .field textarea { height: auto; padding: 8px; width: 100%; }
 .btn:disabled { opacity: 0.6; cursor: not-allowed; }
 .hint { font-size: 12px; color: var(--text-tertiary); }
 .empty { padding: 40px; text-align: center; color: var(--text-tertiary); }
+.pending-warn {
+  border: 1px solid #f59e0b; background: #fffbeb; color: #92400e;
+  border-radius: 8px; padding: 10px 12px; font-size: 13px; line-height: 1.7;
+}
+.pending-warn-title { font-weight: 600; }
+.pending-warn-item { padding-left: 12px; }
 .card {
   border: 1px solid var(--border-lighter, #e5e7eb); border-radius: 10px; padding: 16px;
   background: var(--bg-card, #fff);

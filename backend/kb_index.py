@@ -174,6 +174,7 @@ def parse_standard(path):
     responsibility = field("责任主体")
     legal_basis = field("法律依据")
     collection_req = field("采集要求")
+    aliases = field("口语同义词")
 
     # 业务块：案件类型实体重复 3 遍（标题已含 1 次，共 4 次），强化实体权重，
     # 缓解同模板标准无法靠语义区分实体的问题。
@@ -186,6 +187,10 @@ def parse_standard(path):
         v = field(name)
         if v:
             business.append(f"【{name}】{v}")
+    # 口语同义词进业务块：市民口语（深坑/大暖）与标准文本（坑凹不平/供暖）
+    # 分词后零重叠，不加别称向量和 BM25 都召不到，LLM 只能答"暂无"。
+    if aliases:
+        business.append(f"【口语同义词】{aliases}")
     business_text = "\n".join(business)
 
     meta_common = {
