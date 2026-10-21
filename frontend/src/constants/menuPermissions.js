@@ -54,6 +54,18 @@ export const MENU_PERMISSION_TREE = [
       { key: 'duty_records', label: '值班记录' }
     ]
   },
+  {
+    key: 'cyw',
+    label: '创文管理',
+    children: [
+      { key: 'cyw_requirement', label: '管理要求' },
+      { key: 'cyw_input', label: '快速录入' },
+      { key: 'cyw_ledger', label: '问题台账' },
+      { key: 'cyw_report', label: '数据统计' },
+      { key: 'cyw_check', label: '在岗抽查' },
+      { key: 'cyw_dict', label: '字典管理' }
+    ]
+  },
   { key: 'business', label: '业务平台' }
 ]
 

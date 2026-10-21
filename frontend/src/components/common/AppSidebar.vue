@@ -104,7 +104,8 @@ const icons = {
   cleaning: `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/><path d="m9 12 2 2 4-4"/></svg>`,
   ledger: `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1-2-1z"/><path d="M8 10h8"/><path d="M8 14h4"/></svg>`,
   dutyRecord: `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M9 12h6"/><path d="M9 16h4"/></svg>`,
-  assessment: `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20V10"/><path d="M18 20V4"/><path d="M6 20v-4"/></svg>`
+  assessment: `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20V10"/><path d="M18 20V4"/><path d="M6 20v-4"/></svg>`,
+  cyw: `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/><circle cx="12" cy="10" r="2.5"/></svg>`
 }
 
 const iconByKey = {
@@ -117,6 +118,7 @@ const iconByKey = {
   case_map: icons.caseMap,
   ledger: icons.ledger,
   duty: icons.dutyRecord,
+  cyw: icons.cyw,
   business: icons.business
 }
 
@@ -180,7 +182,13 @@ function pathForPermissionKey(key) {
     ledger_monitor: '/ledger/monitor',
     ledger_drone: '/ledger/drone',
     duty_schedule: '/duty/schedule',
-    duty_records: '/duty/records'
+    duty_records: '/duty/records',
+    cyw_input: '/cyw/input',
+    cyw_ledger: '/cyw/ledger',
+    cyw_report: '/cyw/report',
+    cyw_check: '/cyw/check',
+    cyw_dict: '/cyw/dict',
+    cyw_requirement: '/cyw/requirement'
   }
   return map[key] || '/'
 }
@@ -191,7 +199,8 @@ function groupBasePath(key) {
     data_mgmt: '/data',
     assessment: '/assessment',
     ledger: '/ledger',
-    duty: '/duty'
+    duty: '/duty',
+    cyw: '/cyw'
   }
   return map[key] || '/'
 }
@@ -222,7 +231,7 @@ function isActive(path) {
   if (path === '/' ) return route.path === '/'
   if (
     path === '/ledger' || path === '/duty' || path === '/dispatch' ||
-    path === '/assessment' || path === '/data'
+    path === '/assessment' || path === '/data' || path === '/cyw'
   ) {
     return route.path === path || route.path.startsWith(path + '/')
   }

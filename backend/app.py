@@ -166,6 +166,12 @@ try:
 except ImportError:
     from dict_routes import register_dict_routes
 
+# 创文问题处置路由（cyw_ 前缀新表，与现有案件表完全解耦）
+try:
+    from backend.cyw_routes import register_cyw_routes
+except ImportError:
+    from cyw_routes import register_cyw_routes
+
 # 月度分析报告路由
 try:
     from backend.monthly_report.monthly_report_routes import register_monthly_report_routes
@@ -555,6 +561,13 @@ try:
             ("duty", "TINYINT(1) DEFAULT 0"),
             ("duty_schedule", "TINYINT(1) DEFAULT 0"),
             ("duty_records", "TINYINT(1) DEFAULT 1"),
+            ("cyw", "TINYINT(1) DEFAULT 0"),
+            ("cyw_input", "TINYINT(1) DEFAULT 0"),
+            ("cyw_ledger", "TINYINT(1) DEFAULT 0"),
+            ("cyw_report", "TINYINT(1) DEFAULT 0"),
+            ("cyw_dict", "TINYINT(1) DEFAULT 0"),
+            ("cyw_check", "TINYINT(1) DEFAULT 0"),
+            ("cyw_requirement", "TINYINT(1) DEFAULT 0"),
             # 遗留/历史权限列：NOT NULL 且无默认值会导致创建用户 INSERT 失败
             ("cases", "TINYINT(1) DEFAULT 0"),
             ("huiwentai", "TINYINT(1) DEFAULT 0"),
@@ -844,6 +857,13 @@ try:
         logger.info("文件资料路由注册成功")
     except Exception as e:
         logger.warning(f"文件资料路由注册失败: {e}")
+
+    # 创文问题处置路由（快速录入/台账/详单/日报，字典admin维护、案件凭cyw_input/cyw_ledger权限）
+    try:
+        register_cyw_routes(app=app, Session=Session, engine=engine, protected=protected, admin_required=admin_required)
+        logger.info("创文问题处置路由注册成功")
+    except Exception as e:
+        logger.warning(f"创文问题处置路由注册失败: {e}")
 
 except Exception as e:
     logger.error(f"数据库初始化失败: {e}")

@@ -29,6 +29,12 @@ const SpecialMatters = () => import('../views/SpecialMatters.vue')
 const AssessmentInputPlatform = () => import('../views/AssessmentInputPlatform.vue')
 const AssessmentInputCollector = () => import('../views/AssessmentInputCollector.vue')
 const ExemptionSettings = () => import('../views/ExemptionSettings.vue')
+const CywInput = () => import('../views/CywInput.vue')
+const CywLedger = () => import('../views/CywLedger.vue')
+const CywReport = () => import('../views/CywReport.vue')
+const CywDict = () => import('../views/CywDict.vue')
+const CywCheck = () => import('../views/CywCheck.vue')
+const CywRequirement = () => import('../views/CywRequirement.vue')
 
 
 const routes = [
@@ -166,6 +172,46 @@ const routes = [
   {
     path: '/duty-record',
     redirect: '/duty/records'
+  },
+  {
+    path: '/cyw',
+    redirect: '/cyw/input'
+  },
+  {
+    path: '/cyw/requirement',
+    name: 'CywRequirement',
+    component: CywRequirement,
+    meta: { requiresAuth: true, title: '管理要求', permission: 'cyw_requirement' }
+  },
+  {
+    path: '/cyw/input',
+    name: 'CywInput',
+    component: CywInput,
+    meta: { requiresAuth: true, title: '快速录入', permission: 'cyw_input' }
+  },
+  {
+    path: '/cyw/ledger',
+    name: 'CywLedger',
+    component: CywLedger,
+    meta: { requiresAuth: true, title: '问题台账', permission: 'cyw_ledger' }
+  },
+  {
+    path: '/cyw/report',
+    name: 'CywReport',
+    component: CywReport,
+    meta: { requiresAuth: true, title: '日报', permission: 'cyw_report' }
+  },
+  {
+    path: '/cyw/dict',
+    name: 'CywDict',
+    component: CywDict,
+    meta: { requiresAuth: true, title: '字典管理', permission: 'cyw_dict' }
+  },
+  {
+    path: '/cyw/check',
+    name: 'CywCheck',
+    component: CywCheck,
+    meta: { requiresAuth: true, title: '在岗抽查', permission: 'cyw_check' }
   },
   {
     path: '/assessment',

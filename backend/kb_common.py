@@ -161,9 +161,12 @@ def get_embedding(text: str, max_retries: int = 3, max_chars: int = 1500) -> Opt
         import time
         for attempt in range(max_retries):
             try:
+                # num_gpu=0：嵌入模型钉 CPU——该 jina GGUF 在 CUDA 上出 NaN（实测复现），
+                # CPU 路径正常且百毫秒级无感知；VL/LLM 生成不受影响（不设此选项）
                 response = requests.post(
                     f"{OLLAMA_HOST}/api/embed",
-                    json={"model": OLLAMA_EMBED_MODEL, "input": text},
+                    json={"model": OLLAMA_EMBED_MODEL, "input": text,
+                          "options": {"num_gpu": 0}},
                     timeout=60
                 )
                 if response.status_code == 200:
@@ -176,7 +179,8 @@ def get_embedding(text: str, max_retries: int = 3, max_chars: int = 1500) -> Opt
 
                 response = requests.post(
                     f"{OLLAMA_HOST}/api/embeddings",
-                    json={"model": OLLAMA_EMBED_MODEL, "prompt": text},
+                    json={"model": OLLAMA_EMBED_MODEL, "prompt": text,
+                          "options": {"num_gpu": 0}},
                     timeout=60
                 )
                 if response.status_code == 200:
