@@ -66,6 +66,15 @@ export const MENU_PERMISSION_TREE = [
       { key: 'cyw_dict', label: '字典管理' }
     ]
   },
+  {
+    key: 'inspection',
+    label: '巡查台账',
+    children: [
+      { key: 'inspection', label: '数据入库', path: '/inspection/import' },
+      { key: 'inspection', label: '问题台账', path: '/inspection/ledger' },
+      { key: 'inspection', label: '数据统计', path: '/inspection/stats' }
+    ]
+  },
   { key: 'business', label: '业务平台' }
 ]
 

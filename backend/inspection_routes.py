@@ -820,6 +820,34 @@ def register_inspection_routes(app, Session=None, engine=None, protected=None, a
             return jsonify({'ok': True, 'action': 'new', 'case_id': case_id,
                             'photos_saved': saved}), 200
 
+    @app.route('/api/inspection/cases/<int:cid>', methods=['PUT'])
+    @insp_access
+    def insp_case_update(cid):
+        """回填/更正整改结果。只改 result/status/rectified_at，不改位置、问题、
+        责任单位、日期与来源行（那些是巡查现场的原始记录，改了就对不上上游表）。
+        status 仍走 judge_status 两值化——处理结果命中拒绝口径时即使传已整改也按待整改。"""
+        body = request.get_json(silent=True) or {}
+        if 'result' not in body and 'status' not in body:
+            return jsonify({'error': '没有要更新的字段（result / status）'}), 400
+        result = (body.get('result') or '').strip()
+        with engine.begin() as conn:
+            row = conn.execute(text(
+                "SELECT id, result FROM insp_case WHERE id = :i"), {'i': cid}).fetchone()
+            if not row:
+                return jsonify({'error': '案件不存在'}), 404
+            if 'result' in body:
+                final_result = result
+            else:
+                final_result = row[1] or ''
+            status = judge_status(body.get('status') or '待整改', final_result)
+            conn.execute(text(
+                "UPDATE insp_case SET result = :rs, status = :st, "
+                "rectified_at = :ra WHERE id = :i"
+            ), {'rs': final_result, 'st': status,
+                'ra': _now() if status == '已整改' else None, 'i': cid})
+        logger.info(f'[INSP] 案件 {cid} 回填整改：status={status}')
+        return jsonify({'ok': True, 'id': cid, 'status': status, 'result': final_result}), 200
+
     # ---------------------------------------------------------------- 导出
 
     EXPORT_HEADERS = ['序号', '日期', '道路', '具体位置', '问题', '责任单位',

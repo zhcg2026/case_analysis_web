@@ -35,6 +35,9 @@ const CywReport = () => import('../views/CywReport.vue')
 const CywDict = () => import('../views/CywDict.vue')
 const CywCheck = () => import('../views/CywCheck.vue')
 const CywRequirement = () => import('../views/CywRequirement.vue')
+const InspectionPatrolImport = () => import('../views/InspectionPatrolImport.vue')
+const InspectionPatrolLedger = () => import('../views/InspectionPatrolLedger.vue')
+const InspectionPatrolStats = () => import('../views/InspectionPatrolStats.vue')
 
 
 const routes = [
@@ -212,6 +215,28 @@ const routes = [
     name: 'CywCheck',
     component: CywCheck,
     meta: { requiresAuth: true, title: '在岗抽查', permission: 'cyw_check' }
+  },
+  {
+    path: '/inspection',
+    redirect: '/inspection/ledger'
+  },
+  {
+    path: '/inspection/import',
+    name: 'InspectionPatrolImport',
+    component: InspectionPatrolImport,
+    meta: { requiresAuth: true, title: '巡查数据入库', permission: 'inspection' }
+  },
+  {
+    path: '/inspection/ledger',
+    name: 'InspectionPatrolLedger',
+    component: InspectionPatrolLedger,
+    meta: { requiresAuth: true, title: '巡查问题台账', permission: 'inspection' }
+  },
+  {
+    path: '/inspection/stats',
+    name: 'InspectionPatrolStats',
+    component: InspectionPatrolStats,
+    meta: { requiresAuth: true, title: '巡查数据统计', permission: 'inspection' }
   },
   {
     path: '/assessment',
