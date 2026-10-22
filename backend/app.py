@@ -172,6 +172,12 @@ try:
 except ImportError:
     from cyw_routes import register_cyw_routes
 
+# 领导巡查问题台账路由（insp_ 前缀新表，与现有案件表完全解耦）
+try:
+    from backend.inspection_routes import register_inspection_routes
+except ImportError:
+    from inspection_routes import register_inspection_routes
+
 # 月度分析报告路由
 try:
     from backend.monthly_report.monthly_report_routes import register_monthly_report_routes
@@ -568,6 +574,7 @@ try:
             ("cyw_dict", "TINYINT(1) DEFAULT 0"),
             ("cyw_check", "TINYINT(1) DEFAULT 0"),
             ("cyw_requirement", "TINYINT(1) DEFAULT 0"),
+            ("inspection", "TINYINT(1) DEFAULT 0"),
             # 遗留/历史权限列：NOT NULL 且无默认值会导致创建用户 INSERT 失败
             ("cases", "TINYINT(1) DEFAULT 0"),
             ("huiwentai", "TINYINT(1) DEFAULT 0"),
@@ -864,6 +871,13 @@ try:
         logger.info("创文问题处置路由注册成功")
     except Exception as e:
         logger.warning(f"创文问题处置路由注册失败: {e}")
+
+    # 领导巡查问题台账路由（导入/查询/统计/疑似重复人工确认/导出，凭 inspection 权限）
+    try:
+        register_inspection_routes(app=app, Session=Session, engine=engine, protected=protected, admin_required=admin_required)
+        logger.info("巡查问题台账路由注册成功")
+    except Exception as e:
+        logger.warning(f"巡查问题台账路由注册失败: {e}")
 
 except Exception as e:
     logger.error(f"数据库初始化失败: {e}")

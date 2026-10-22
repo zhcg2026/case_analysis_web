@@ -20,6 +20,7 @@ PERMISSION_KEYS = [
     'ledger_monitor', 'ledger_drone',
     'duty', 'duty_schedule', 'duty_records',
     'cyw', 'cyw_input', 'cyw_ledger', 'cyw_report', 'cyw_dict', 'cyw_check', 'cyw_requirement',
+    'inspection',
     'business',
 ]
 PERMISSION_COLUMNS = ', '.join(PERMISSION_KEYS)

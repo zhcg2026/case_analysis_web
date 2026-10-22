@@ -22,6 +22,7 @@ cryptography>=3.0.0
 python-docx>=0.8.0
 openpyxl>=3.1.0
 Pillow>=8.0.0
+imagehash>=4.3.0  # 巡查问题台账：照片感知哈希，用于识别"同一张图被重复导入"
 
 # 网络
 requests>=2.25.0
