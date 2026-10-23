@@ -188,6 +188,7 @@ function pathForPermissionKey(key) {
     cyw_input: '/cyw/input',
     cyw_ledger: '/cyw/ledger',
     cyw_report: '/cyw/report',
+    cyw_analysis: '/cyw/analysis',
     cyw_check: '/cyw/check',
     cyw_dict: '/cyw/dict',
     cyw_requirement: '/cyw/requirement',

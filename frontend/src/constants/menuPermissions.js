@@ -62,6 +62,7 @@ export const MENU_PERMISSION_TREE = [
       { key: 'cyw_input', label: '快速录入' },
       { key: 'cyw_ledger', label: '问题台账' },
       { key: 'cyw_report', label: '数据统计' },
+      { key: 'cyw_analysis', label: '数据分析' },
       { key: 'cyw_check', label: '在岗抽查' },
       { key: 'cyw_dict', label: '字典管理' }
     ]

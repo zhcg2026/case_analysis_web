@@ -571,6 +571,7 @@ try:
             ("cyw_input", "TINYINT(1) DEFAULT 0"),
             ("cyw_ledger", "TINYINT(1) DEFAULT 0"),
             ("cyw_report", "TINYINT(1) DEFAULT 0"),
+            ("cyw_analysis", "TINYINT(1) DEFAULT 0"),
             ("cyw_dict", "TINYINT(1) DEFAULT 0"),
             ("cyw_check", "TINYINT(1) DEFAULT 0"),
             ("cyw_requirement", "TINYINT(1) DEFAULT 0"),

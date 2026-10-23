@@ -298,6 +298,7 @@
 
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import axios from 'axios'
 
@@ -313,6 +314,8 @@ const loading = ref(false)
 const types = ref([])
 const depts = ref([])
 const uploadHeaders = computed(() => ({ Authorization: `Bearer ${localStorage.getItem('token')}` }))
+const route = useRoute()
+const router = useRouter()
 
 const filters = reactive({
   status: '', type_id: '', dept_id: '', dateRange: null, keyword: ''
@@ -348,6 +351,25 @@ function resetFilters() {
   filters.keyword = ''
   page.value = 1
   load()
+}
+
+// 数据分析页跳转带过来的过滤条件：keyword 直接模糊匹配，type_name/dept_name 回查成 id，
+// date/date_from+date_to 还原统计区间。应用后清掉 query，避免刷新时条件重复叠加
+function applyQueryFilters() {
+  const q = route.query
+  if (!q || !Object.keys(q).length) return
+  if (q.keyword) filters.keyword = String(q.keyword)
+  if (q.type_name) {
+    const t = types.value.find(x => x.name === q.type_name)
+    if (t) filters.type_id = String(t.id)
+  }
+  if (q.dept_name) {
+    const d = depts.value.find(x => x.name === q.dept_name)
+    if (d) filters.dept_id = String(d.id)
+  }
+  if (q.date_from && q.date_to) filters.dateRange = [String(q.date_from), String(q.date_to)]
+  else if (q.date) filters.dateRange = [String(q.date), String(q.date)]
+  router.replace({ path: '/cyw/ledger', query: {} })
 }
 
 // ---- 详单 ----
@@ -485,9 +507,15 @@ async function confirmImport() {
   finally { importState.saving = false }
 }
 
-onMounted(() => {
-  axios.get('/api/cyw/types').then((r) => { types.value = r.data.types || [] })
-  axios.get('/api/cyw/depts').then((r) => { depts.value = r.data.depts || [] })
+onMounted(async () => {
+  // 字典就绪后再应用 URL 查询条件（数据分析页跳转带 type_name/dept_name），否则按名字回查 id 会落空
+  const [typesRes, deptsRes] = await Promise.all([
+    axios.get('/api/cyw/types').catch(() => ({ data: {} })),
+    axios.get('/api/cyw/depts').catch(() => ({ data: {} }))
+  ])
+  types.value = typesRes.data.types || []
+  depts.value = deptsRes.data.depts || []
+  applyQueryFilters()
   load()
 })
 </script>

@@ -2659,6 +2659,113 @@ def register_cyw_routes(app, Session=None, engine=None, protected=None, admin_re
             f'attachment; filename="{ascii_name}"; filename*=UTF-8\'\'{quote(fname)}')
         return resp
 
+    # ---------------------------------------------------------------- 数据分析（只读聚合）
+
+    @app.route('/api/cyw/report/analysis', methods=['GET'])
+    @perm_access('cyw_analysis')
+    def cyw_report_analysis():
+        """数据分析：高发点位/高发问题/点位×问题交叉榜 + 按天趋势（方案 2026-10-23）。
+
+        与 /api/cyw/report/daily 同口径——「高发」按 found_at 落在统计区间内计数，
+        不发明新口径；办结数取该区间新增案件里当前已办结的（与数据统计第二节相加一致）。
+        纯 SELECT 只读，不写库不建表；数据量在万件级以内实时聚合足够快。
+        支持 dimension 参数换维度（spot/road/dept）看同一张榜，交叉榜固定点位×类型。
+        """
+        try:
+            range_start, range_end, is_single, day_text = _resolve_stat_range(request.args)
+        except ValueError as e:
+            return jsonify({'success': False, 'error': str(e)}), 400
+        dimension = (request.args.get('dimension') or 'spot').strip()
+        if dimension not in ('spot', 'road', 'dept'):
+            return jsonify({'success': False, 'error': 'dimension 仅支持 spot/road/dept'}), 400
+
+        # 每个维度一套 label 表达式与关联表：label 为展示名，join 为取 label 的 SQL 片段。
+        # road 维度：道路为空时打「未填路段」——库里 road 列确实有空值，不能让它从榜上消失。
+        # dept 维度：案件必然带 dept_id（建表 NOT NULL），「未分配部门」只为字典行被删后的兜底。
+        DIM = {
+            'spot': ("COALESCE(NULLIF(s.name, ''), '未命名点位')", "cyw_spot s ON s.id = i.spot_id"),
+            'road': ("COALESCE(NULLIF(s.road, ''), '未填路段')", "cyw_spot s ON s.id = i.spot_id"),
+            'dept': ("COALESCE(NULLIF(d.name, ''), '未分配部门')", "cyw_dept d ON d.id = i.dept_id"),
+        }
+        label_expr, join_sql = DIM[dimension]
+
+        # 只读聚合 SQL 模板：label/join 来自上面的白名单字典，时间参数一律走绑定，无外部字符串拼接
+        RANK_SQL = (
+            f"SELECT {label_expr} AS label, COUNT(*) AS total, "
+            f"SUM(CASE WHEN i.status = '{ST_DONE}' THEN 1 ELSE 0 END) AS closed "
+            f"FROM cyw_issue i JOIN {join_sql} "
+            "WHERE i.found_at BETWEEN :ds AND :de "
+            "GROUP BY label ORDER BY total DESC, label LIMIT 10"
+        )
+
+        with engine.connect() as conn:
+            # 主榜：随 dimension 切换（点位/路段/部门）
+            ranking = [dict(r) for r in conn.execute(text(RANK_SQL),
+                       {'ds': range_start, 'de': range_end}).mappings().fetchall()]
+            # 高发问题榜：固定按问题类型，不随 dimension 变——它是独立的一张榜
+            by_type = [dict(r) for r in conn.execute(text(
+                "SELECT COALESCE(NULLIF(t.name, ''), '未分类') AS label, COUNT(*) AS total, "
+                f"SUM(CASE WHEN i.status = '{ST_DONE}' THEN 1 ELSE 0 END) AS closed "
+                "FROM cyw_issue i JOIN cyw_type t ON t.id = i.type_id "
+                "WHERE i.found_at BETWEEN :ds AND :de "
+                "GROUP BY label ORDER BY total DESC, label LIMIT 10"
+            ), {'ds': range_start, 'de': range_end}).mappings().fetchall()]
+            # 交叉榜：点位 × 问题类型，最 actionable——直接说明「该去哪个点位重点管哪类问题」
+            cross = [dict(r) for r in conn.execute(text(
+                "SELECT s.name AS spot_name, s.monitor_no, s.road AS spot_road, "
+                "t.name AS type_name, COUNT(*) AS total, "
+                f"SUM(CASE WHEN i.status = '{ST_DONE}' THEN 1 ELSE 0 END) AS closed "
+                "FROM cyw_issue i JOIN cyw_spot s ON s.id = i.spot_id "
+                "JOIN cyw_type t ON t.id = i.type_id "
+                "WHERE i.found_at BETWEEN :ds AND :de "
+                "GROUP BY s.id, t.id ORDER BY total DESC, s.name, t.name LIMIT 10"
+            ), {'ds': range_start, 'de': range_end}).mappings().fetchall()]
+            # 按天趋势：区间内逐日新增/办结。存量曲线由前端按累计差自行算，不在这里拼
+            trend = [dict(r) for r in conn.execute(text(
+                "SELECT DATE(i.found_at) AS day, COUNT(*) AS total, "
+                f"SUM(CASE WHEN i.status = '{ST_DONE}' THEN 1 ELSE 0 END) AS closed "
+                "FROM cyw_issue i WHERE i.found_at BETWEEN :ds AND :de "
+                "GROUP BY day ORDER BY day"
+            ), {'ds': range_start, 'de': range_end}).mappings().fetchall()]
+            # 占比分母一律取区间案件总数：road/dept 维度下按行汇总会与总数不一致
+            # （spot 维度每案只归一格所以恰好相等），用总数口径三个维度才可比
+            grand_total = conn.execute(text(
+                "SELECT COUNT(*) FROM cyw_issue WHERE found_at BETWEEN :ds AND :de"),
+                {'ds': range_start, 'de': range_end}).scalar() or 0
+
+        def decorate(rows):
+            out = []
+            for r in rows:
+                total = int(r['total'] or 0)
+                closed = int(r['closed'] or 0)
+                out.append({
+                    'label': r.get('label'),
+                    'spot_name': r.get('spot_name'),
+                    'monitor_no': r.get('monitor_no'),
+                    'spot_road': r.get('spot_road'),
+                    'type_name': r.get('type_name'),
+                    'total': total,
+                    'closed': closed,
+                    'doing': total - closed,
+                    'ratio': round(total / grand_total * 100, 1) if grand_total else 0.0,
+                })
+            return out
+
+        return jsonify({
+            'success': True,
+            'date': day_text,
+            'date_from': range_start.strftime('%Y-%m-%d'),
+            'date_to': range_end.strftime('%Y-%m-%d'),
+            'is_single': is_single,
+            'dimension': dimension,
+            'grand_total': grand_total,
+            'ranking': decorate(ranking),
+            'by_type': decorate(by_type),
+            'cross': decorate(cross),
+            'trend': [{'day': str(r['day']), 'total': int(r['total'] or 0),
+                       'closed': int(r['closed'] or 0)} for r in trend],
+        })
+
     return {
         'ensure_tables': ensure_cyw_tables,
     }

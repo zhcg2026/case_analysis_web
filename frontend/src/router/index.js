@@ -32,6 +32,7 @@ const ExemptionSettings = () => import('../views/ExemptionSettings.vue')
 const CywInput = () => import('../views/CywInput.vue')
 const CywLedger = () => import('../views/CywLedger.vue')
 const CywReport = () => import('../views/CywReport.vue')
+const CywAnalysis = () => import('../views/CywAnalysis.vue')
 const CywDict = () => import('../views/CywDict.vue')
 const CywCheck = () => import('../views/CywCheck.vue')
 const CywRequirement = () => import('../views/CywRequirement.vue')
@@ -202,7 +203,13 @@ const routes = [
     path: '/cyw/report',
     name: 'CywReport',
     component: CywReport,
-    meta: { requiresAuth: true, title: '日报', permission: 'cyw_report' }
+    meta: { requiresAuth: true, title: '数据统计', permission: 'cyw_report' }
+  },
+  {
+    path: '/cyw/analysis',
+    name: 'CywAnalysis',
+    component: CywAnalysis,
+    meta: { requiresAuth: true, title: '数据分析', permission: 'cyw_analysis' }
   },
   {
     path: '/cyw/dict',
