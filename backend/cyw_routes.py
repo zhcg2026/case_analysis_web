@@ -514,6 +514,24 @@ def _spot_full_name(name, road):
     return f'{road}{name}'
 
 
+def _cyw_cross_ranking(conn, range_start, range_end):
+    """点位 × 问题类型交叉榜 TOP 10（analysis 接口与 Excel 导出共用同一段 SQL）。
+
+    抽成函数是防漂移：页面看到什么就该导出什么，两处各写一份 SQL 的话，
+    改了一处忘了另一处，导出的数和屏幕上的数就会对不上。
+    一案只归一格（spot_id × type_id 唯一），所以各行 total 之和 ≤ 区间案件总数。
+    """
+    return [dict(r) for r in conn.execute(text(
+        "SELECT s.name AS spot_name, s.monitor_no, s.road AS spot_road, "
+        "t.name AS type_name, COUNT(*) AS total, "
+        f"SUM(CASE WHEN i.status = '{ST_DONE}' THEN 1 ELSE 0 END) AS closed "
+        "FROM cyw_issue i JOIN cyw_spot s ON s.id = i.spot_id "
+        "JOIN cyw_type t ON t.id = i.type_id "
+        "WHERE i.found_at BETWEEN :ds AND :de "
+        "GROUP BY s.id, t.id ORDER BY total DESC, s.name, t.name LIMIT 10"
+    ), {'ds': range_start, 'de': range_end}).mappings().fetchall()]
+
+
 def _load_batch_items(conn, batch_id):
     rows = conn.execute(text(
         "SELECT id, batch_id, spot_id, spot_no, spot_name, dept_label, person, phone, pick_rule, "
@@ -2713,15 +2731,8 @@ def register_cyw_routes(app, Session=None, engine=None, protected=None, admin_re
                 "GROUP BY label ORDER BY total DESC, label LIMIT 10"
             ), {'ds': range_start, 'de': range_end}).mappings().fetchall()]
             # 交叉榜：点位 × 问题类型，最 actionable——直接说明「该去哪个点位重点管哪类问题」
-            cross = [dict(r) for r in conn.execute(text(
-                "SELECT s.name AS spot_name, s.monitor_no, s.road AS spot_road, "
-                "t.name AS type_name, COUNT(*) AS total, "
-                f"SUM(CASE WHEN i.status = '{ST_DONE}' THEN 1 ELSE 0 END) AS closed "
-                "FROM cyw_issue i JOIN cyw_spot s ON s.id = i.spot_id "
-                "JOIN cyw_type t ON t.id = i.type_id "
-                "WHERE i.found_at BETWEEN :ds AND :de "
-                "GROUP BY s.id, t.id ORDER BY total DESC, s.name, t.name LIMIT 10"
-            ), {'ds': range_start, 'de': range_end}).mappings().fetchall()]
+            # （SQL 与 Excel 导出共用 _cyw_cross_ranking，勿在此另写一份）
+            cross = _cyw_cross_ranking(conn, range_start, range_end)
             # 按天趋势：区间内逐日新增/办结。存量曲线由前端按累计差自行算，不在这里拼
             trend = [dict(r) for r in conn.execute(text(
                 "SELECT DATE(i.found_at) AS day, COUNT(*) AS total, "
@@ -2767,6 +2778,127 @@ def register_cyw_routes(app, Session=None, engine=None, protected=None, admin_re
             'trend': [{'day': str(r['day']), 'total': int(r['total'] or 0),
                        'closed': int(r['closed'] or 0)} for r in trend],
         })
+
+    @app.route('/api/cyw/report/analysis/export', methods=['GET'])
+    @perm_access('cyw_analysis')
+    def cyw_report_analysis_export():
+        """数据分析导出 Excel：交叉榜 + 两张 TOP 榜，共三个 sheet（2026-10-30）。
+
+        与 /api/cyw/report/analysis 完全同口径同排序——交叉榜直接复用 _cyw_cross_ranking，
+        两张 TOP 榜复用同一条 RANK_SQL，导出的数必须和屏幕上看到的一致。
+        时段参数与 analysis 一致：单日 date / 时间段 date_from+date_to，非法区间 400。
+        纯 SELECT 只读，不写库不建表。
+        """
+        import openpyxl
+        from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+        from openpyxl.utils import get_column_letter
+
+        try:
+            range_start, range_end, is_single, day_text = _resolve_stat_range(request.args)
+        except ValueError as e:
+            return jsonify({'success': False, 'error': str(e)}), 400
+
+        with engine.connect() as conn:
+            cross = _cyw_cross_ranking(conn, range_start, range_end)
+            grand_total = conn.execute(text(
+                "SELECT COUNT(*) FROM cyw_issue WHERE found_at BETWEEN :ds AND :de"),
+                {'ds': range_start, 'de': range_end}).scalar() or 0
+
+        # 两张 TOP 榜：SQL 与 analysis 的 RANK_SQL 逐字一致，只在此重新执行一次
+        TYPE_RANK_SQL = (
+            "SELECT COALESCE(NULLIF(t.name, ''), '未分类') AS label, COUNT(*) AS total, "
+            f"SUM(CASE WHEN i.status = '{ST_DONE}' THEN 1 ELSE 0 END) AS closed "
+            "FROM cyw_issue i JOIN cyw_type t ON t.id = i.type_id "
+            "WHERE i.found_at BETWEEN :ds AND :de "
+            "GROUP BY label ORDER BY total DESC, label LIMIT 10"
+        )
+        with engine.connect() as conn:
+            by_type = [dict(r) for r in conn.execute(text(TYPE_RANK_SQL),
+                       {'ds': range_start, 'de': range_end}).mappings().fetchall()]
+
+        def ratio_of(total):
+            return round(total / grand_total * 100, 1) if grand_total else 0.0
+
+        # 时段文案：与数据统计页的 txt 导出同一套说法，别在 Excel 里另起炉灶
+        if is_single:
+            span_text = range_start.strftime('%Y年%m月%d日')
+            span_file = day_text.replace('-', '')
+        else:
+            span_text = (f'{range_start.strftime("%Y年%m月%d日")} 至 '
+                         f'{range_end.strftime("%Y年%m月%d日")}')
+            span_file = (f'{range_start.strftime("%Y%m%d")}-'
+                         f'{range_end.strftime("%Y%m%d")}')
+
+        title_font = Font(name='宋体', size=16, bold=True)
+        head_font = Font(name='宋体', size=11, bold=True, color='FFFFFF')
+        body_font = Font(name='宋体', size=10)
+        head_fill = PatternFill('solid', fgColor='4472C4')
+        thin = Side(style='thin', color='999999')
+        border = Border(left=thin, right=thin, top=thin, bottom=thin)
+        center = Alignment(horizontal='center', vertical='center', wrap_text=True)
+        left_wrap = Alignment(horizontal='left', vertical='center', wrap_text=True)
+
+        wb = openpyxl.Workbook()
+
+        def build_sheet(ws, title, headers, rows, widths, left_cols):
+            """统一版式：第1行标题（含时段）、第2行表头、数据从第3行起。"""
+            ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(headers))
+            tcell = ws.cell(row=1, column=1, value=f'{title}（{span_text}）')
+            tcell.font = title_font
+            tcell.alignment = center
+            ws.row_dimensions[1].height = 32
+            for i, h in enumerate(headers, start=1):
+                c = ws.cell(row=2, column=i, value=h)
+                c.font = head_font
+                c.fill = head_fill
+                c.alignment = center
+                c.border = border
+            ws.row_dimensions[2].height = 24
+            for i, w in enumerate(widths, start=1):
+                ws.column_dimensions[get_column_letter(i)].width = w
+            for r, values in enumerate(rows, start=3):
+                for ci, v in enumerate(values, start=1):
+                    c = ws.cell(row=r, column=ci, value=v)
+                    c.font = body_font
+                    c.border = border
+                    c.alignment = left_wrap if ci in left_cols else center
+                ws.row_dimensions[r].height = 22
+            ws.freeze_panes = 'A3'
+
+        # ---- sheet1：点位 × 问题交叉榜 ----
+        ws1 = wb.active
+        ws1.title = '点位×问题交叉榜'
+        build_sheet(
+            ws1, '点位 × 问题交叉榜 TOP 10',
+            ['排名', '点位', '监控序号', '所属道路', '问题类型', '件数', '已办结', '处置中', '占周期比'],
+            [[idx, _spot_full_name(r['spot_name'], r['spot_road']), r['monitor_no'] or '',
+              r['spot_road'] or '', r['type_name'], int(r['total'] or 0),
+              int(r['closed'] or 0), int(r['total'] or 0) - int(r['closed'] or 0),
+              f"{ratio_of(int(r['total'] or 0))}%"]
+             for idx, r in enumerate(cross, start=1)],
+            [6, 34, 12, 16, 18, 8, 9, 9, 10], left_cols=(2, 4, 5))
+
+        # ---- sheet2：高发问题 TOP 10 ----
+        ws2 = wb.create_sheet('高发问题TOP10')
+        build_sheet(
+            ws2, '高发问题 TOP 10',
+            ['排名', '问题类型', '件数', '已办结', '处置中', '占周期比'],
+            [[idx, r['label'], int(r['total'] or 0), int(r['closed'] or 0),
+              int(r['total'] or 0) - int(r['closed'] or 0),
+              f"{ratio_of(int(r['total'] or 0))}%"]
+             for idx, r in enumerate(by_type, start=1)],
+            [6, 24, 8, 9, 9, 10], left_cols=(2,))
+
+        buf = io.BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+        fname = f'创文数据分析_{span_file}.xlsx'
+        return Response(
+            buf.getvalue(),
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            headers={'Content-Disposition':
+                     "attachment; filename*=UTF-8''" + quote(fname)},
+        )
 
     return {
         'ensure_tables': ensure_cyw_tables,

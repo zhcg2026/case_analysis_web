@@ -107,7 +107,12 @@
       <template #header>
         <div class="chart-title">
           <span>点位 × 问题交叉榜 TOP 10</span>
-          <span class="detail-count">同一位置反复出同类问题，说明该点位需要针对性治理</span>
+          <span class="detail-count">
+            同一位置反复出同类问题，说明该点位需要针对性治理
+            <el-button size="small" type="primary" link :loading="exporting" @click="exportCross">
+              导出 Excel
+            </el-button>
+          </span>
         </div>
       </template>
       <el-table :data="cross" border size="small" max-height="300" @row-click="onCrossRowClick">
@@ -326,6 +331,43 @@ function onTypeRowClick(row) {
 function onCrossRowClick(row) {
   if (!row?.spot_name) return
   goLedger({ keyword: row.spot_name, type_name: row.type_name })
+}
+
+// ---------- 导出 Excel ----------
+// 后端按当前时段重新聚合一模一样的一份（含高发问题 TOP 10 sheet），
+// 所以导出的数和屏幕上看到的一致；时段参数与上面 load 完全同源
+const exporting = ref(false)
+
+async function exportCross() {
+  if (exporting.value) return
+  exporting.value = true
+  try {
+    const resp = await axios.get('/api/cyw/report/analysis/export', {
+      params: rangeParams(), responseType: 'blob',
+    })
+    // 文件名走后端 Content-Disposition（RFC5987），拿不到就按当前时段兜底拼一个
+    let filename = `创文数据分析_${rangeParams().date_from || rangeParams().date}.xlsx`
+    const disposition = resp.headers['content-disposition']
+    if (disposition) {
+      const m = disposition.match(/filename\*=UTF-8''([^;]+)/i)
+      if (m) filename = decodeURIComponent(m[1])
+    }
+    const url = URL.createObjectURL(new Blob([resp.data]))
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    URL.revokeObjectURL(url)
+    document.body.removeChild(a)
+    ElMessage.success('导出成功')
+  } catch (e) {
+    // 失败时响应体是 blob（拦截器读不到 error 字段），自己解析出后端的中文提示
+    const msg = await e?.response?.data?.text?.()
+    ElMessage.error(msg ? (JSON.parse(msg).error || '导出失败') : '导出失败')
+  } finally {
+    exporting.value = false
+  }
 }
 
 onMounted(() => {
