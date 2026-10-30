@@ -101,12 +101,21 @@ def normalized_key(location, problem) -> str:
 
 
 def normalize_dept(raw):
-    """责任单位归一化。返回 (归一化值, 是否命中字典)。"""
+    """责任单位归一化。返回 (归一化值, 是否命中字典)。
+
+    合写单位（如"市政、环卫"）取第一个作为主责单位，其余单位记在 dept_raw 里留痕
+    （需求方 2026-10-22 确认：指定第一个为主办，不拆成多案）。
+    """
     if raw is None:
         return None, False
     s = str(raw).strip()
     if not s:
         return None, False
+    # 合写：按中文顿号/逗号/斜杠/加号拆，取第一个
+    if re.search(r'[、,，/＋+]', s):
+        first = re.split(r'[、,，/＋+]', s)[0].strip()
+        if first:
+            s = first
     if s in DEPT_ALIAS:
         return DEPT_ALIAS[s], True
     # 去掉"中心/服务中心"等后缀再试一次，提高上游脏写法命中率
