@@ -400,9 +400,11 @@ def _resolve_stat_range(args):
 # 抽查时长（分钟）：点击「电话」后开始倒计时，到点未点「在岗」即自动判不在岗
 CHECK_WINDOW_MINUTES = 5
 
-# 抽查池排除的点位监控序号：摄像头不在线，抽中也没法核岗，白占一个名额（2026-11 用户确认）
+# 抽查池排除的点位监控序号：摄像头不在线，抽中也没法核岗，白占一个名额。
+# 2026-11-30：JCDD055/SSJ046/HXL005/PAJ008 已恢复在线，移出排除名单（用户确认）。
+# 仍不在线（用户确认，恢复后再移出）：GJ01、GJ02（盬街）、YM01、YM02（黄河夜市）。
 CHECK_POOL_EXCLUDE_NOS = (
-    'GJ01', 'GJ02', 'YM01', 'YM02', 'JCDD055', 'SSJ046', 'HXL005', 'PAJ008',
+    'GJ01', 'GJ02', 'YM01', 'YM02',
 )
 
 
@@ -2264,7 +2266,7 @@ def register_cyw_routes(app, Session=None, engine=None, protected=None, admin_re
 
             # 随机抽点位：只抽管理单位为「城市管理局」的——开发区的点位不归本系统考核口径，
             # 且开发区那 6 个未登记联系人的点位正好都在其内，一并排除。
-            # 摄像头不在线的 8 个点位（CHECK_POOL_EXCLUDE_NOS）也排除：抽中了核不了岗。
+            # 摄像头不在线的点位（CHECK_POOL_EXCLUDE_NOS：盬街 GJ01/GJ02、夜市 YM01/YM02）也排除：抽中了核不了岗。
             # RAND() 在几十行的小表上无所谓性能。
             spots = conn.execute(
                 text(
