@@ -56,7 +56,7 @@ export const MENU_PERMISSION_TREE = [
   },
   {
     key: 'cyw',
-    label: '创文管理',
+    label: '城市文明建设',
     children: [
       { key: 'cyw_requirement', label: '管理要求' },
       { key: 'cyw_input', label: '快速录入' },
