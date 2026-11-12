@@ -1,0 +1,256 @@
+{
+  "snapshot_date": "2026-11-12",
+  "scope": "Local static evidence; not a tested build or installation lock",
+  "source_inputs_sha256": {
+    "Dockerfile": "4aff2b45ddfdc534290416edb19f13cce4095d1923d2d32d3e8eb4c6263b1bd3",
+    "requirements.txt": "9a8171640241fdfdaf366fc0cf301163aad55a3345d93faa94ad417e1ec55145",
+    ".dockerignore": "6cf9805b75f1009a5bc3ebd5a9dfffe77bb7eedd62d00179fbf976961e681454",
+    "frontend/package-lock.json": "10173295e2d23c554637855084b9ef6193948c84829aca2eefbadeaedae9c9b3"
+  },
+  "observed_runtime": {
+    "python": "3.11.15",
+    "platform": "linux/amd64",
+    "python_distribution_count": 110,
+    "distribution_versions": "observed-python-packages.txt",
+    "system_package_versions": "observed-debian-packages.json"
+  },
+  "base_image": {
+    "dockerfile_reference": "python:3.11-slim",
+    "digest_pinned": false,
+    "observed_application_image_id": "sha256:c97b7d21e74bdc1255aedd8282a2aee16ffa9bedd8b95da8d058c04b84a571a9",
+    "application_image_includes_later_runtime_changes": false
+  },
+  "torch_build_input": {
+    "dockerfile_copy_source": "torch-2.13.0+cpu-cp311-cp311-manylinux_2_28_x86_64.whl",
+    "exists_at_required_root": false,
+    "cache_candidate": {
+      "path": "pip_cache/torch-2.13.0+cpu-cp311-cp311-manylinux_2_28_x86_64.whl",
+      "bytes": 191794682,
+      "sha256": "6746dbcbeb526eb61330b76b41ff1b4eb848951103a892eeb080dfa2b264667b",
+      "zip_crc_verified": true,
+      "distribution": "torch",
+      "version": "2.13.0+cpu",
+      "wheel_tags": [
+        "cp311-cp311-manylinux_2_28_x86_64"
+      ],
+      "requires_python": ">=3.10",
+      "installed_or_executed": false
+    },
+    "observed_runtime_distribution_version": "2.13.0",
+    "cpu_variant_equivalence_to_runtime_verified": false,
+    "local_cache_imported_or_installed": false
+  },
+  "direct_requirements": [
+    {
+      "name": "Flask",
+      "declared": ">=2.0.0",
+      "observed_version": "3.1.3",
+      "observed_satisfies_declaration": true
+    },
+    {
+      "name": "Flask-CORS",
+      "declared": ">=4.0.0",
+      "observed_version": "6.0.5",
+      "observed_satisfies_declaration": true
+    },
+    {
+      "name": "gunicorn",
+      "declared": ">=20.0.0",
+      "observed_version": "26.0.0",
+      "observed_satisfies_declaration": true
+    },
+    {
+      "name": "gevent",
+      "declared": ">=21.0.0",
+      "observed_version": "26.7.0",
+      "observed_satisfies_declaration": true
+    },
+    {
+      "name": "pandas",
+      "declared": ">=1.0.0",
+      "observed_version": "3.0.5",
+      "observed_satisfies_declaration": true
+    },
+    {
+      "name": "numpy",
+      "declared": ">=1.10.0",
+      "observed_version": "2.4.6",
+      "observed_satisfies_declaration": true
+    },
+    {
+      "name": "sqlalchemy",
+      "declared": ">=1.4.0",
+      "observed_version": "2.0.51",
+      "observed_satisfies_declaration": true
+    },
+    {
+      "name": "mysql-connector-python",
+      "declared": ">=8.0.0",
+      "observed_version": "26.7.0",
+      "observed_satisfies_declaration": true
+    },
+    {
+      "name": "pymysql",
+      "declared": ">=1.0.0",
+      "observed_version": "1.2.0",
+      "observed_satisfies_declaration": true
+    },
+    {
+      "name": "PyJWT",
+      "declared": ">=2.0.0",
+      "observed_version": "2.13.0",
+      "observed_satisfies_declaration": true
+    },
+    {
+      "name": "bcrypt",
+      "declared": ">=4.0.0",
+      "observed_version": "5.0.0",
+      "observed_satisfies_declaration": true
+    },
+    {
+      "name": "cryptography",
+      "declared": ">=3.0.0",
+      "observed_version": "49.0.0",
+      "observed_satisfies_declaration": true
+    },
+    {
+      "name": "python-docx",
+      "declared": ">=0.8.0",
+      "observed_version": "1.2.0",
+      "observed_satisfies_declaration": true
+    },
+    {
+      "name": "openpyxl",
+      "declared": ">=3.1.0",
+      "observed_version": "3.1.5",
+      "observed_satisfies_declaration": true
+    },
+    {
+      "name": "Pillow",
+      "declared": ">=8.0.0",
+      "observed_version": "12.3.0",
+      "observed_satisfies_declaration": true
+    },
+    {
+      "name": "imagehash",
+      "declared": ">=4.3.0",
+      "observed_version": "4.3.2",
+      "observed_satisfies_declaration": true
+    },
+    {
+      "name": "requests",
+      "declared": ">=2.25.0",
+      "observed_version": "2.34.2",
+      "observed_satisfies_declaration": true
+    },
+    {
+      "name": "python-dotenv",
+      "declared": ">=1.0.0",
+      "observed_version": "1.2.2",
+      "observed_satisfies_declaration": true
+    },
+    {
+      "name": "sentence-transformers",
+      "declared": ">=5.3.0",
+      "observed_version": "5.6.1",
+      "observed_satisfies_declaration": true
+    },
+    {
+      "name": "pymilvus",
+      "declared": ">=2.3.0",
+      "observed_version": "3.0.1",
+      "observed_satisfies_declaration": true
+    },
+    {
+      "name": "milvus_lite",
+      "declared": ">=2.3.0",
+      "observed_version": "3.1.1",
+      "observed_satisfies_declaration": true
+    },
+    {
+      "name": "jieba",
+      "declared": ">=0.42.1",
+      "observed_version": "0.42.1",
+      "observed_satisfies_declaration": true
+    },
+    {
+      "name": "rank-bm25",
+      "declared": ">=0.2.2",
+      "observed_version": "0.2.2",
+      "observed_satisfies_declaration": true
+    },
+    {
+      "name": "zhconv",
+      "declared": ">=1.4.0",
+      "observed_version": "1.4.3",
+      "observed_satisfies_declaration": true
+    },
+    {
+      "name": "matplotlib",
+      "declared": ">=3.5.0",
+      "observed_version": "3.11.1",
+      "observed_satisfies_declaration": true
+    }
+  ],
+  "direct_requirements_exactly_pinned": false,
+  "apt_system_packages_exactly_pinned": false,
+  "frontend_lockfile_present": true,
+  "context_rules_review": [
+    {
+      "path": "qa",
+      "exists_locally": true,
+      "explicit_ignore_line_present": false
+    },
+    {
+      "path": "pip_cache",
+      "exists_locally": true,
+      "explicit_ignore_line_present": false
+    },
+    {
+      "path": "backend/uploads",
+      "exists_locally": true,
+      "explicit_ignore_line_present": false
+    },
+    {
+      "path": "backend/backups",
+      "exists_locally": true,
+      "explicit_ignore_line_present": false
+    },
+    {
+      "path": "backend/reports",
+      "exists_locally": true,
+      "explicit_ignore_line_present": false
+    },
+    {
+      "path": "backend/monthly_report/work",
+      "exists_locally": true,
+      "explicit_ignore_line_present": false
+    }
+  ],
+  "context_review_note": "This records explicit lines only, not a full Docker ignore matcher. Review data isolation before any future build.",
+  "preserved_environment_restore": {
+    "image_and_runtime_filesystem_archives_preserved": true,
+    "archive_integrity_checked": true,
+    "mounted_business_data_in_those_archives": false,
+    "full_startup_restore_test_performed": false
+  },
+  "fresh_build_status": {
+    "ready": false,
+    "performed": false,
+    "blockers": [
+      "Dockerfile COPY requires a wheel absent from the project root",
+      "Cached CPU wheel equivalence to the observed runtime is not proven",
+      "Base image tag and Python ranges can resolve differently",
+      "System package repositories/versions are not frozen",
+      "Build-context data isolation still requires review",
+      "Fresh build and isolated business recovery have not been tested"
+    ]
+  },
+  "operations": {
+    "package_installs": 0,
+    "dependency_upgrades": 0,
+    "image_builds": 0,
+    "server_connections": 0,
+    "production_changes": 0
+  }
+}

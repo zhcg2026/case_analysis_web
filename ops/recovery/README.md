@@ -8,6 +8,8 @@
 
 本目录的参考 Compose、版本清单和只读工具也不会自动生效。原 `Dockerfile`/`requirements.txt` 的全新构建重现能力仍待独立验证，不要把“运行基线已记录”当作“可以删除重建”的结论。
 
+Dockerfile、缺失构建输入、缓存 PyTorch wheel 和逐项依赖版本的静态核对，见 [构建材料与两条恢复路径](BUILD_AND_RECOVERY.md)。本次核对没有安装依赖、构建镜像或改动原构建文件。
+
 ## 内容与边界
 
 | 文件 | 用途 |
@@ -17,6 +19,7 @@
 | `observed-python-packages.txt` | 110 个已安装 Python 发行包的观测版本，不是已验证的全新安装锁文件 |
 | `observed-debian-packages.json` | 观测的系统包版本，不包含软件仓库凭据或机器环境文件 |
 | `schema-verification.json` | Compose 1.29.2 只读解析及参数比对记录，不是恢复演练证明 |
+| `BUILD_AND_RECOVERY.md` / `build-inputs.reference.json` | 构建输入、25 项直接依赖版本对照及两条恢复路径的已验证/未验证边界 |
 | `preflight.py` | 仅在本地读取、比较并输出 JSON；无 SSH、Docker、数据库或文件写入调用 |
 | `tests/test_preflight.py` | 纯内存配置测试，不使用生产数据或服务 |
 
