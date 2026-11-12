@@ -1,0 +1,430 @@
+{
+  "snapshot_date": "2026-11-12",
+  "purpose": "Non-secret runtime reference only; not permission to recreate production",
+  "project_root": "/home/ubuntu/case_analysis_web",
+  "container_name": "case-analysis-web",
+  "original_image_id": "sha256:c97b7d21e74bdc1255aedd8282a2aee16ffa9bedd8b95da8d058c04b84a571a9",
+  "command": [
+    "gunicorn",
+    "--bind",
+    "0.0.0.0:5000",
+    "--workers",
+    "4",
+    "--worker-class",
+    "gthread",
+    "--threads",
+    "4",
+    "--timeout",
+    "300",
+    "--graceful-timeout",
+    "60",
+    "backend.app:app"
+  ],
+  "working_dir": "/app",
+  "ports": {
+    "5000/tcp": [
+      {
+        "HostIp": "",
+        "HostPort": "5001"
+      }
+    ]
+  },
+  "restart_policy": {
+    "Name": "unless-stopped",
+    "MaximumRetryCount": 0
+  },
+  "healthcheck": {
+    "Test": [
+      "CMD-SHELL",
+      "curl -f http://localhost:5000/health || exit 1"
+    ],
+    "Interval": 30000000000,
+    "Timeout": 3000000000,
+    "StartPeriod": 5000000000,
+    "Retries": 3
+  },
+  "networks": [
+    "backend_default"
+  ],
+  "safe_environment": {
+    "DB_NAME": "case_analysis",
+    "DB_HOST": "mysql-case-analysis",
+    "DB_PORT": "3306",
+    "OLLAMA_HOST": "http://ollama:11434",
+    "OLLAMA_MODEL": "qwen2.5:7b",
+    "OLLAMA_EMBED_MODEL": "EntropyYue/jina-embeddings-v2-base-zh",
+    "MILVUS_HOST": "milvus-standalone",
+    "MILVUS_PORT": "19530",
+    "PYTHONPATH": "/app/backend:/app",
+    "FLASK_ENV": "production",
+    "FLASK_APP": "backend/app.py",
+    "USE_LOCAL_MODE": "false",
+    "MILVUS_COLLECTION": "unified_kb",
+    "TZ": "Asia/Shanghai",
+    "PYTHONUNBUFFERED": "1"
+  },
+  "environment_file": "/home/ubuntu/case_analysis_web/.env.production",
+  "mounts": [
+    {
+      "Type": "bind",
+      "Source": "/home/ubuntu/case_analysis_web/backend/cyw_routes.py",
+      "Destination": "/app/backend/cyw_routes.py",
+      "RW": true,
+      "Propagation": "rprivate"
+    },
+    {
+      "Type": "bind",
+      "Source": "/home/ubuntu/case_analysis_web/backend/models.py",
+      "Destination": "/app/backend/models.py",
+      "RW": true,
+      "Propagation": "rprivate"
+    },
+    {
+      "Type": "bind",
+      "Source": "/home/ubuntu/case_analysis_web/backend/models_init.py",
+      "Destination": "/app/backend/models_init.py",
+      "RW": true,
+      "Propagation": "rprivate"
+    },
+    {
+      "Type": "bind",
+      "Source": "/home/ubuntu/case_analysis_web/backend/standards",
+      "Destination": "/app/backend/standards",
+      "RW": true,
+      "Propagation": "rprivate"
+    },
+    {
+      "Type": "bind",
+      "Source": "/home/ubuntu/case_analysis_web/backend/coord_transform.py",
+      "Destination": "/app/backend/coord_transform.py",
+      "RW": true,
+      "Propagation": "rprivate"
+    },
+    {
+      "Type": "bind",
+      "Source": "/home/ubuntu/case_analysis_web/backend/kb_embed.py",
+      "Destination": "/app/backend/kb_embed.py",
+      "RW": true,
+      "Propagation": "rprivate"
+    },
+    {
+      "Type": "bind",
+      "Source": "/home/ubuntu/case_analysis_web/backend/dict_routes.py",
+      "Destination": "/app/backend/dict_routes.py",
+      "RW": true,
+      "Propagation": "rprivate"
+    },
+    {
+      "Type": "bind",
+      "Source": "/home/ubuntu/case_analysis_web/backend/case_map_routes.py",
+      "Destination": "/app/backend/case_map_routes.py",
+      "RW": true,
+      "Propagation": "rprivate"
+    },
+    {
+      "Type": "bind",
+      "Source": "/home/ubuntu/case_analysis_web/backend/cleaning_rules.py",
+      "Destination": "/app/backend/cleaning_rules.py",
+      "RW": true,
+      "Propagation": "rprivate"
+    },
+    {
+      "Type": "bind",
+      "Source": "/home/ubuntu/case_analysis_web/backend/backup_routes.py",
+      "Destination": "/app/backend/backup_routes.py",
+      "RW": true,
+      "Propagation": "rprivate"
+    },
+    {
+      "Type": "bind",
+      "Source": "/home/ubuntu/case_analysis_web/backend/inspection_routes.py",
+      "Destination": "/app/backend/inspection_routes.py",
+      "RW": true,
+      "Propagation": "rprivate"
+    },
+    {
+      "Type": "bind",
+      "Source": "/home/ubuntu/case_analysis_web/backend/data_stats_routes.py",
+      "Destination": "/app/backend/data_stats_routes.py",
+      "RW": true,
+      "Propagation": "rprivate"
+    },
+    {
+      "Type": "bind",
+      "Source": "/home/ubuntu/case_analysis_web/frontend/public",
+      "Destination": "/app/frontend/public",
+      "RW": true,
+      "Propagation": "rprivate"
+    },
+    {
+      "Type": "bind",
+      "Source": "/home/ubuntu/case_analysis_web/backend/app.py",
+      "Destination": "/app/backend/app.py",
+      "RW": true,
+      "Propagation": "rprivate"
+    },
+    {
+      "Type": "bind",
+      "Source": "/home/ubuntu/case_analysis_web/backend/assessment_report",
+      "Destination": "/app/backend/assessment_report",
+      "RW": true,
+      "Propagation": "rprivate"
+    },
+    {
+      "Type": "bind",
+      "Source": "/home/ubuntu/case_analysis_web/backend/template_parser.py",
+      "Destination": "/app/backend/template_parser.py",
+      "RW": true,
+      "Propagation": "rprivate"
+    },
+    {
+      "Type": "bind",
+      "Source": "/home/ubuntu/case_analysis_web/backend/assessment_routes.py",
+      "Destination": "/app/backend/assessment_routes.py",
+      "RW": true,
+      "Propagation": "rprivate"
+    },
+    {
+      "Type": "bind",
+      "Source": "/home/ubuntu/case_analysis_web/backend/kb_common.py",
+      "Destination": "/app/backend/kb_common.py",
+      "RW": true,
+      "Propagation": "rprivate"
+    },
+    {
+      "Type": "bind",
+      "Source": "/home/ubuntu/case_analysis_web/backend/duty_routes.py",
+      "Destination": "/app/backend/duty_routes.py",
+      "RW": true,
+      "Propagation": "rprivate"
+    },
+    {
+      "Type": "bind",
+      "Source": "/home/ubuntu/case_analysis_web/backend/common.py",
+      "Destination": "/app/backend/common.py",
+      "RW": true,
+      "Propagation": "rprivate"
+    },
+    {
+      "Type": "bind",
+      "Source": "/home/ubuntu/case_analysis_web/backend/migrations",
+      "Destination": "/app/backend/migrations",
+      "RW": true,
+      "Propagation": "rprivate"
+    },
+    {
+      "Type": "bind",
+      "Source": "/home/ubuntu/case_analysis_web/backend/data_management_routes.py",
+      "Destination": "/app/backend/data_management_routes.py",
+      "RW": true,
+      "Propagation": "rprivate"
+    },
+    {
+      "Type": "bind",
+      "Source": "/home/ubuntu/case_analysis_web/backend/helpers.py",
+      "Destination": "/app/backend/helpers.py",
+      "RW": true,
+      "Propagation": "rprivate"
+    },
+    {
+      "Type": "bind",
+      "Source": "/home/ubuntu/case_analysis_web/backend/analysis_routes.py",
+      "Destination": "/app/backend/analysis_routes.py",
+      "RW": true,
+      "Propagation": "rprivate"
+    },
+    {
+      "Type": "bind",
+      "Source": "/home/ubuntu/case_analysis_web/backend/assessment_manual_routes.py",
+      "Destination": "/app/backend/assessment_manual_routes.py",
+      "RW": true,
+      "Propagation": "rprivate"
+    },
+    {
+      "Type": "bind",
+      "Source": "/home/ubuntu/case_analysis_web/backend/kb_routes.py",
+      "Destination": "/app/backend/kb_routes.py",
+      "RW": true,
+      "Propagation": "rprivate"
+    },
+    {
+      "Type": "bind",
+      "Source": "/home/ubuntu/case_analysis_web/backend/report_routes.py",
+      "Destination": "/app/backend/report_routes.py",
+      "RW": true,
+      "Propagation": "rprivate"
+    },
+    {
+      "Type": "bind",
+      "Source": "/home/ubuntu/case_analysis_web/backend/kb_index.py",
+      "Destination": "/app/backend/kb_index.py",
+      "RW": true,
+      "Propagation": "rprivate"
+    },
+    {
+      "Type": "bind",
+      "Source": "/home/ubuntu/case_analysis_web/backend/map_markers_routes.py",
+      "Destination": "/app/backend/map_markers_routes.py",
+      "RW": true,
+      "Propagation": "rprivate"
+    },
+    {
+      "Type": "bind",
+      "Source": "/home/ubuntu/case_analysis_web/backend/ledger_routes.py",
+      "Destination": "/app/backend/ledger_routes.py",
+      "RW": true,
+      "Propagation": "rprivate"
+    },
+    {
+      "Type": "bind",
+      "Source": "/home/ubuntu/case_analysis_web/backend/kb_store.py",
+      "Destination": "/app/backend/kb_store.py",
+      "RW": true,
+      "Propagation": "rprivate"
+    },
+    {
+      "Type": "bind",
+      "Source": "/home/ubuntu/case_analysis_web/frontend/dist",
+      "Destination": "/app/frontend/dist",
+      "RW": true,
+      "Propagation": "rprivate"
+    },
+    {
+      "Type": "bind",
+      "Source": "/home/ubuntu/case_analysis_web/backend/notice_routes.py",
+      "Destination": "/app/backend/notice_routes.py",
+      "RW": true,
+      "Propagation": "rprivate"
+    },
+    {
+      "Type": "bind",
+      "Source": "/home/ubuntu/case_analysis_web/backend/data_cleaning_routes.py",
+      "Destination": "/app/backend/data_cleaning_routes.py",
+      "RW": true,
+      "Propagation": "rprivate"
+    },
+    {
+      "Type": "bind",
+      "Source": "/home/ubuntu/case_analysis_web/backend/assessment_coefficients.json",
+      "Destination": "/app/backend/assessment_coefficients.json",
+      "RW": true,
+      "Propagation": "rprivate"
+    },
+    {
+      "Type": "bind",
+      "Source": "/home/ubuntu/case_analysis_web/backend/map_routes.py",
+      "Destination": "/app/backend/map_routes.py",
+      "RW": true,
+      "Propagation": "rprivate"
+    },
+    {
+      "Type": "bind",
+      "Source": "/home/ubuntu/case_analysis_web/backend/dispatch_engine.py",
+      "Destination": "/app/backend/dispatch_engine.py",
+      "RW": true,
+      "Propagation": "rprivate"
+    },
+    {
+      "Type": "bind",
+      "Source": "/home/ubuntu/case_analysis_web/backend/uploads",
+      "Destination": "/app/backend/uploads",
+      "RW": true,
+      "Propagation": "rprivate"
+    },
+    {
+      "Type": "bind",
+      "Source": "/home/ubuntu/case_analysis_web/backend/template_export_routes.py",
+      "Destination": "/app/backend/template_export_routes.py",
+      "RW": true,
+      "Propagation": "rprivate"
+    },
+    {
+      "Type": "bind",
+      "Source": "/home/ubuntu/case_analysis_web/backend/ledger_extra_routes.py",
+      "Destination": "/app/backend/ledger_extra_routes.py",
+      "RW": true,
+      "Propagation": "rprivate"
+    },
+    {
+      "Type": "bind",
+      "Source": "/home/ubuntu/case_analysis_web/backend/cms_routes.py",
+      "Destination": "/app/backend/cms_routes.py",
+      "RW": true,
+      "Propagation": "rprivate"
+    },
+    {
+      "Type": "bind",
+      "Source": "/home/ubuntu/case_analysis_web/backend/monthly_report",
+      "Destination": "/app/backend/monthly_report",
+      "RW": true,
+      "Propagation": "rprivate"
+    },
+    {
+      "Type": "bind",
+      "Source": "/home/ubuntu/case_analysis_web/backend/special_matter_routes.py",
+      "Destination": "/app/backend/special_matter_routes.py",
+      "RW": true,
+      "Propagation": "rprivate"
+    },
+    {
+      "Type": "bind",
+      "Source": "/home/ubuntu/case_analysis_web/backend/duty_record_export.py",
+      "Destination": "/app/backend/duty_record_export.py",
+      "RW": true,
+      "Propagation": "rprivate"
+    },
+    {
+      "Type": "bind",
+      "Source": "/home/ubuntu/case_analysis_web/backend/backups",
+      "Destination": "/app/backend/backups",
+      "RW": true,
+      "Propagation": "rprivate"
+    },
+    {
+      "Type": "bind",
+      "Source": "/home/ubuntu/case_analysis_web/backend/reports",
+      "Destination": "/app/backend/reports",
+      "RW": true,
+      "Propagation": "rprivate"
+    },
+    {
+      "Type": "bind",
+      "Source": "/home/ubuntu/case_analysis_web/backend/dispatch_routes.py",
+      "Destination": "/app/backend/dispatch_routes.py",
+      "RW": true,
+      "Propagation": "rprivate"
+    },
+    {
+      "Type": "bind",
+      "Source": "/home/ubuntu/case_analysis_web/backend/kb_dispatch.py",
+      "Destination": "/app/backend/kb_dispatch.py",
+      "RW": true,
+      "Propagation": "rprivate"
+    },
+    {
+      "Type": "bind",
+      "Source": "/home/ubuntu/case_analysis_web/backend/duty_record_routes.py",
+      "Destination": "/app/backend/duty_record_routes.py",
+      "RW": true,
+      "Propagation": "rprivate"
+    },
+    {
+      "Type": "bind",
+      "Source": "/home/ubuntu/case_analysis_web/backend/auth_routes.py",
+      "Destination": "/app/backend/auth_routes.py",
+      "RW": true,
+      "Propagation": "rprivate"
+    }
+  ],
+  "known_legacy_directory_targets": [
+    "/app/backend/models.py",
+    "/app/backend/models_init.py"
+  ],
+  "entrypoint": null,
+  "user": "",
+  "privileged": false,
+  "readonly_rootfs": false,
+  "cap_add": null,
+  "cap_drop": null,
+  "extra_hosts": null
+}

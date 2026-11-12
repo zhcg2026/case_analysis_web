@@ -1,0 +1,722 @@
+[
+  {
+    "name": "adduser",
+    "version": "3.152"
+  },
+  {
+    "name": "apt",
+    "version": "3.0.3"
+  },
+  {
+    "name": "base-files",
+    "version": "13.8+deb13u4"
+  },
+  {
+    "name": "base-passwd",
+    "version": "3.6.7"
+  },
+  {
+    "name": "bash",
+    "version": "5.2.37-2+b8"
+  },
+  {
+    "name": "binutils",
+    "version": "2.44-3"
+  },
+  {
+    "name": "binutils-common",
+    "version": "2.44-3"
+  },
+  {
+    "name": "binutils-x86-64-linux-gnu",
+    "version": "2.44-3"
+  },
+  {
+    "name": "bsdutils",
+    "version": "1:2.41-5"
+  },
+  {
+    "name": "build-essential",
+    "version": "12.12"
+  },
+  {
+    "name": "bzip2",
+    "version": "1.0.8-6"
+  },
+  {
+    "name": "ca-certificates",
+    "version": "20250419"
+  },
+  {
+    "name": "coreutils",
+    "version": "9.7-3"
+  },
+  {
+    "name": "cpp",
+    "version": "4:14.2.0-1"
+  },
+  {
+    "name": "cpp-14",
+    "version": "14.2.0-19"
+  },
+  {
+    "name": "cpp-14-x86-64-linux-gnu",
+    "version": "14.2.0-19"
+  },
+  {
+    "name": "cpp-x86-64-linux-gnu",
+    "version": "4:14.2.0-1"
+  },
+  {
+    "name": "curl",
+    "version": "8.14.1-2+deb13u4"
+  },
+  {
+    "name": "dash",
+    "version": "0.5.12-12"
+  },
+  {
+    "name": "debconf",
+    "version": "1.5.91"
+  },
+  {
+    "name": "debian-archive-keyring",
+    "version": "2025.1"
+  },
+  {
+    "name": "debianutils",
+    "version": "5.23.2"
+  },
+  {
+    "name": "diffutils",
+    "version": "1:3.10-4"
+  },
+  {
+    "name": "dpkg",
+    "version": "1.22.22"
+  },
+  {
+    "name": "dpkg-dev",
+    "version": "1.22.22"
+  },
+  {
+    "name": "findutils",
+    "version": "4.10.0-3"
+  },
+  {
+    "name": "fontconfig",
+    "version": "2.15.0-2.3"
+  },
+  {
+    "name": "fontconfig-config",
+    "version": "2.15.0-2.3"
+  },
+  {
+    "name": "fonts-dejavu-core",
+    "version": "2.37-8"
+  },
+  {
+    "name": "fonts-dejavu-mono",
+    "version": "2.37-8"
+  },
+  {
+    "name": "fonts-wqy-microhei",
+    "version": "0.2.0-beta-4"
+  },
+  {
+    "name": "fonts-wqy-zenhei",
+    "version": "0.9.45-8"
+  },
+  {
+    "name": "g++",
+    "version": "4:14.2.0-1"
+  },
+  {
+    "name": "g++-14",
+    "version": "14.2.0-19"
+  },
+  {
+    "name": "g++-14-x86-64-linux-gnu",
+    "version": "14.2.0-19"
+  },
+  {
+    "name": "g++-x86-64-linux-gnu",
+    "version": "4:14.2.0-1"
+  },
+  {
+    "name": "gcc",
+    "version": "4:14.2.0-1"
+  },
+  {
+    "name": "gcc-14",
+    "version": "14.2.0-19"
+  },
+  {
+    "name": "gcc-14-base",
+    "version": "14.2.0-19"
+  },
+  {
+    "name": "gcc-14-x86-64-linux-gnu",
+    "version": "14.2.0-19"
+  },
+  {
+    "name": "gcc-x86-64-linux-gnu",
+    "version": "4:14.2.0-1"
+  },
+  {
+    "name": "grep",
+    "version": "3.11-4"
+  },
+  {
+    "name": "gzip",
+    "version": "1.13-1"
+  },
+  {
+    "name": "hostname",
+    "version": "3.25"
+  },
+  {
+    "name": "init-system-helpers",
+    "version": "1.69~deb13u1"
+  },
+  {
+    "name": "libacl1",
+    "version": "2.3.2-2+b1"
+  },
+  {
+    "name": "libapt-pkg7.0",
+    "version": "3.0.3"
+  },
+  {
+    "name": "libasan8",
+    "version": "14.2.0-19"
+  },
+  {
+    "name": "libatomic1",
+    "version": "14.2.0-19"
+  },
+  {
+    "name": "libattr1",
+    "version": "1:2.5.2-3"
+  },
+  {
+    "name": "libaudit-common",
+    "version": "1:4.0.2-2"
+  },
+  {
+    "name": "libaudit1",
+    "version": "1:4.0.2-2+b2"
+  },
+  {
+    "name": "libbinutils",
+    "version": "2.44-3"
+  },
+  {
+    "name": "libblkid1",
+    "version": "2.41-5"
+  },
+  {
+    "name": "libbrotli1",
+    "version": "1.1.0-2+b7"
+  },
+  {
+    "name": "libbsd0",
+    "version": "0.12.2-2"
+  },
+  {
+    "name": "libbz2-1.0",
+    "version": "1.0.8-6"
+  },
+  {
+    "name": "libc-bin",
+    "version": "2.41-12+deb13u3"
+  },
+  {
+    "name": "libc-dev-bin",
+    "version": "2.41-12+deb13u3"
+  },
+  {
+    "name": "libc6",
+    "version": "2.41-12+deb13u3"
+  },
+  {
+    "name": "libc6-dev",
+    "version": "2.41-12+deb13u3"
+  },
+  {
+    "name": "libcap-ng0",
+    "version": "0.8.5-4+b1"
+  },
+  {
+    "name": "libcap2",
+    "version": "1:2.75-10+b8"
+  },
+  {
+    "name": "libcc1-0",
+    "version": "14.2.0-19"
+  },
+  {
+    "name": "libcom-err2",
+    "version": "1.47.2-3+b11"
+  },
+  {
+    "name": "libconfig-inifiles-perl",
+    "version": "3.000003-3+deb13u1"
+  },
+  {
+    "name": "libcrypt-dev",
+    "version": "1:4.4.38-1"
+  },
+  {
+    "name": "libcrypt1",
+    "version": "1:4.4.38-1"
+  },
+  {
+    "name": "libctf-nobfd0",
+    "version": "2.44-3"
+  },
+  {
+    "name": "libctf0",
+    "version": "2.44-3"
+  },
+  {
+    "name": "libcurl4t64",
+    "version": "8.14.1-2+deb13u4"
+  },
+  {
+    "name": "libdb5.3t64",
+    "version": "5.3.28+dfsg2-9"
+  },
+  {
+    "name": "libdebconfclient0",
+    "version": "0.280"
+  },
+  {
+    "name": "libdpkg-perl",
+    "version": "1.22.22"
+  },
+  {
+    "name": "libedit2",
+    "version": "3.1-20250104-1"
+  },
+  {
+    "name": "libexpat1",
+    "version": "2.8.2-1~deb13u1"
+  },
+  {
+    "name": "libffi8",
+    "version": "3.4.8-2"
+  },
+  {
+    "name": "libfontconfig1",
+    "version": "2.15.0-2.3"
+  },
+  {
+    "name": "libfreetype6",
+    "version": "2.13.3+dfsg-1+deb13u1"
+  },
+  {
+    "name": "libgcc-14-dev",
+    "version": "14.2.0-19"
+  },
+  {
+    "name": "libgcc-s1",
+    "version": "14.2.0-19"
+  },
+  {
+    "name": "libgdbm-compat4t64",
+    "version": "1.24-2"
+  },
+  {
+    "name": "libgdbm6t64",
+    "version": "1.24-2"
+  },
+  {
+    "name": "libgmp10",
+    "version": "2:6.3.0+dfsg-3"
+  },
+  {
+    "name": "libgnutls30t64",
+    "version": "3.8.9-3+deb13u4"
+  },
+  {
+    "name": "libgomp1",
+    "version": "14.2.0-19"
+  },
+  {
+    "name": "libgprofng0",
+    "version": "2.44-3"
+  },
+  {
+    "name": "libgssapi-krb5-2",
+    "version": "1.21.3-5+deb13u1"
+  },
+  {
+    "name": "libhogweed6t64",
+    "version": "3.10.1-1"
+  },
+  {
+    "name": "libhwasan0",
+    "version": "14.2.0-19"
+  },
+  {
+    "name": "libidn2-0",
+    "version": "2.3.8-2"
+  },
+  {
+    "name": "libisl23",
+    "version": "0.27-1"
+  },
+  {
+    "name": "libitm1",
+    "version": "14.2.0-19"
+  },
+  {
+    "name": "libjansson4",
+    "version": "2.14-2+b3"
+  },
+  {
+    "name": "libk5crypto3",
+    "version": "1.21.3-5+deb13u1"
+  },
+  {
+    "name": "libkeyutils1",
+    "version": "1.6.3-6"
+  },
+  {
+    "name": "libkrb5-3",
+    "version": "1.21.3-5+deb13u1"
+  },
+  {
+    "name": "libkrb5support0",
+    "version": "1.21.3-5+deb13u1"
+  },
+  {
+    "name": "liblastlog2-2",
+    "version": "2.41-5"
+  },
+  {
+    "name": "libldap2",
+    "version": "2.6.10+dfsg-1"
+  },
+  {
+    "name": "liblsan0",
+    "version": "14.2.0-19"
+  },
+  {
+    "name": "liblz4-1",
+    "version": "1.10.0-4"
+  },
+  {
+    "name": "liblzma5",
+    "version": "5.8.1-1+deb13u1"
+  },
+  {
+    "name": "libmariadb3",
+    "version": "1:11.8.6-0+deb13u1"
+  },
+  {
+    "name": "libmd0",
+    "version": "1.1.0-2+b1"
+  },
+  {
+    "name": "libmount1",
+    "version": "2.41-5"
+  },
+  {
+    "name": "libmpc3",
+    "version": "1.3.1-1+b3"
+  },
+  {
+    "name": "libmpfr6",
+    "version": "4.2.2-1"
+  },
+  {
+    "name": "libncurses6",
+    "version": "6.5+20250216-2"
+  },
+  {
+    "name": "libncursesw6",
+    "version": "6.5+20250216-2"
+  },
+  {
+    "name": "libnettle8t64",
+    "version": "3.10.1-1"
+  },
+  {
+    "name": "libnghttp2-14",
+    "version": "1.64.0-1.1+deb13u1"
+  },
+  {
+    "name": "libnghttp3-9",
+    "version": "1.8.0-1"
+  },
+  {
+    "name": "libp11-kit0",
+    "version": "0.25.5-3"
+  },
+  {
+    "name": "libpam-modules",
+    "version": "1.7.0-5"
+  },
+  {
+    "name": "libpam-modules-bin",
+    "version": "1.7.0-5"
+  },
+  {
+    "name": "libpam-runtime",
+    "version": "1.7.0-5"
+  },
+  {
+    "name": "libpam0g",
+    "version": "1.7.0-5"
+  },
+  {
+    "name": "libpcre2-8-0",
+    "version": "10.46-1~deb13u3"
+  },
+  {
+    "name": "libpcre2-posix3",
+    "version": "10.46-1~deb13u3"
+  },
+  {
+    "name": "libperl5.40",
+    "version": "5.40.1-6"
+  },
+  {
+    "name": "libpng16-16t64",
+    "version": "1.6.48-1+deb13u5"
+  },
+  {
+    "name": "libpsl5t64",
+    "version": "0.21.2-1.1+b1"
+  },
+  {
+    "name": "libquadmath0",
+    "version": "14.2.0-19"
+  },
+  {
+    "name": "libreadline8t64",
+    "version": "8.2-6"
+  },
+  {
+    "name": "librtmp1",
+    "version": "2.4+20151223.gitfa8646d.1-2+b5"
+  },
+  {
+    "name": "libsasl2-2",
+    "version": "2.1.28+dfsg1-9"
+  },
+  {
+    "name": "libsasl2-modules-db",
+    "version": "2.1.28+dfsg1-9"
+  },
+  {
+    "name": "libseccomp2",
+    "version": "2.6.0-2"
+  },
+  {
+    "name": "libselinux1",
+    "version": "3.8.1-1"
+  },
+  {
+    "name": "libsemanage-common",
+    "version": "3.8.1-1"
+  },
+  {
+    "name": "libsemanage2",
+    "version": "3.8.1-1"
+  },
+  {
+    "name": "libsepol2",
+    "version": "3.8.1-1"
+  },
+  {
+    "name": "libsframe1",
+    "version": "2.44-3"
+  },
+  {
+    "name": "libsmartcols1",
+    "version": "2.41-5"
+  },
+  {
+    "name": "libsqlite3-0",
+    "version": "3.46.1-7+deb13u1"
+  },
+  {
+    "name": "libssh2-1t64",
+    "version": "1.11.1-1+deb13u1"
+  },
+  {
+    "name": "libssl3t64",
+    "version": "3.5.5-1~deb13u2"
+  },
+  {
+    "name": "libstdc++-14-dev",
+    "version": "14.2.0-19"
+  },
+  {
+    "name": "libstdc++6",
+    "version": "14.2.0-19"
+  },
+  {
+    "name": "libsystemd0",
+    "version": "257.9-1~deb13u1"
+  },
+  {
+    "name": "libtasn1-6",
+    "version": "4.20.0-2+deb13u1"
+  },
+  {
+    "name": "libtinfo6",
+    "version": "6.5+20250216-2"
+  },
+  {
+    "name": "libtsan2",
+    "version": "14.2.0-19"
+  },
+  {
+    "name": "libubsan1",
+    "version": "14.2.0-19"
+  },
+  {
+    "name": "libudev1",
+    "version": "257.9-1~deb13u1"
+  },
+  {
+    "name": "libunistring5",
+    "version": "1.3-2"
+  },
+  {
+    "name": "libuuid1",
+    "version": "2.41-5"
+  },
+  {
+    "name": "libxxhash0",
+    "version": "0.8.3-2"
+  },
+  {
+    "name": "libzstd1",
+    "version": "1.5.7+dfsg-1"
+  },
+  {
+    "name": "linux-libc-dev",
+    "version": "6.12.96-1"
+  },
+  {
+    "name": "login",
+    "version": "1:4.16.0-2+really2.41-5"
+  },
+  {
+    "name": "login.defs",
+    "version": "1:4.17.4-2"
+  },
+  {
+    "name": "make",
+    "version": "4.4.1-2"
+  },
+  {
+    "name": "mariadb-client",
+    "version": "1:11.8.6-0+deb13u1"
+  },
+  {
+    "name": "mariadb-client-core",
+    "version": "1:11.8.6-0+deb13u1"
+  },
+  {
+    "name": "mariadb-common",
+    "version": "1:11.8.6-0+deb13u1"
+  },
+  {
+    "name": "mawk",
+    "version": "1.3.4.20250131-1"
+  },
+  {
+    "name": "mount",
+    "version": "2.41-5"
+  },
+  {
+    "name": "mysql-common",
+    "version": "5.8+1.1.1"
+  },
+  {
+    "name": "ncurses-base",
+    "version": "6.5+20250216-2"
+  },
+  {
+    "name": "ncurses-bin",
+    "version": "6.5+20250216-2"
+  },
+  {
+    "name": "netbase",
+    "version": "6.5"
+  },
+  {
+    "name": "openssl",
+    "version": "3.5.5-1~deb13u2"
+  },
+  {
+    "name": "openssl-provider-legacy",
+    "version": "3.5.5-1~deb13u2"
+  },
+  {
+    "name": "passwd",
+    "version": "1:4.17.4-2"
+  },
+  {
+    "name": "patch",
+    "version": "2.8-2"
+  },
+  {
+    "name": "perl",
+    "version": "5.40.1-6"
+  },
+  {
+    "name": "perl-base",
+    "version": "5.40.1-6"
+  },
+  {
+    "name": "perl-modules-5.40",
+    "version": "5.40.1-6"
+  },
+  {
+    "name": "readline-common",
+    "version": "8.2-6"
+  },
+  {
+    "name": "rpcsvc-proto",
+    "version": "1.4.3-1"
+  },
+  {
+    "name": "sed",
+    "version": "4.9-2"
+  },
+  {
+    "name": "sqv",
+    "version": "1.3.0-3+b2"
+  },
+  {
+    "name": "sysvinit-utils",
+    "version": "3.14-4"
+  },
+  {
+    "name": "tar",
+    "version": "1.35+dfsg-3.1"
+  },
+  {
+    "name": "tzdata",
+    "version": "2026b-0+deb13u1"
+  },
+  {
+    "name": "util-linux",
+    "version": "2.41-5"
+  },
+  {
+    "name": "xz-utils",
+    "version": "5.8.1-1+deb13u1"
+  },
+  {
+    "name": "zlib1g",
+    "version": "1:1.3.dfsg+really1.3.1-1+b1"
+  }
+]

@@ -1,0 +1,12 @@
+{
+  "compose_version": "1.29.2",
+  "schema_valid": true,
+  "guard_blocks_without_image": true,
+  "mounts_exact": 50,
+  "configured_environment_values_match_runtime": true,
+  "command_exact": true,
+  "ports_restart_network_healthcheck_match": true,
+  "container_start_unchanged": true,
+  "production_changes": 0,
+  "meaning": "Compose config parse and parameter comparison only; no image import or restoration test"
+}
