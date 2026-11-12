@@ -9,6 +9,9 @@ import threading
 import time
 import logging
 import datetime
+import uuid
+import hashlib
+from contextlib import contextmanager
 from flask import request, jsonify, send_file
 from sqlalchemy import text
 
@@ -26,7 +29,7 @@ def _ensure_backup_dir():
 
 
 def _timestamp():
-    return datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+    return datetime.datetime.now().strftime('%Y%m%d_%H%M%S_%f') + '_' + uuid.uuid4().hex[:12]
 
 
 def _file_info(filepath):
@@ -46,6 +49,119 @@ def _human_size(size_bytes):
             return f"{size_bytes:.1f} {unit}"
         size_bytes /= 1024
     return f"{size_bytes:.1f} TB"
+
+
+
+def _verification_path(filepath):
+    # A hidden sidecar is also ignored by the pre-fix list/cleanup during code rollback.
+    return os.path.join(os.path.dirname(filepath), '.' + os.path.basename(filepath) + '.verified.json')
+
+
+@contextmanager
+def _atomic_gzip(filepath, mode):
+    """Publish only closed, CRC-verified files; a writer never exposes a partial backup."""
+    if os.path.exists(filepath):
+        raise FileExistsError('Refusing to overwrite an existing backup')
+    temporary = filepath + '.' + uuid.uuid4().hex + '.partial'
+    try:
+        options = {'encoding': 'utf-8'} if 't' in mode else {}
+        with gzip.open(temporary, mode.replace('w', 'x'), **options) as stream:
+            yield stream
+        with gzip.open(temporary, 'rb') as stream:
+            while stream.read(1024 * 1024):
+                pass
+        with open(temporary, 'r+b') as stream:
+            digest = hashlib.file_digest(stream, 'sha256').hexdigest()
+            stream.flush(); os.fsync(stream.fileno())
+        os.replace(temporary, filepath)
+        _save_schedule_state(_verification_path(filepath), {
+            'sha256': digest, 'bytes': os.path.getsize(filepath), 'gzip_crc_verified': True,
+        })
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+
+
+@contextmanager
+def _scheduled_lease():
+    """Cross-process lease shared by all Gunicorn workers, released automatically on exit."""
+    _ensure_backup_dir()
+    handle = open(os.path.join(BACKUP_DIR, '.scheduled_backup.lock'), 'a+b')
+    acquired = False
+    try:
+        try:
+            if os.name == 'nt':
+                import msvcrt
+                handle.seek(0, 2)
+                if handle.tell() == 0:
+                    handle.write(b'0'); handle.flush()
+                handle.seek(0)
+                msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            acquired = True
+        except (BlockingIOError, OSError):
+            pass
+        yield acquired
+    finally:
+        if acquired:
+            if os.name == 'nt':
+                import msvcrt
+                handle.seek(0); msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        handle.close()
+
+
+def _save_schedule_state(path, state):
+    temporary = path + '.' + uuid.uuid4().hex + '.partial'
+    try:
+        with open(temporary, 'x', encoding='utf-8') as stream:
+            json.dump(state, stream)
+            stream.flush(); os.fsync(stream.fileno())
+        os.replace(temporary, path)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+
+
+def _scheduled_backup_tick(interval_hours, max_count, now=None):
+    """One worker performs a due backup; failures retry after a bounded cooldown."""
+    with _scheduled_lease() as acquired:
+        if not acquired:
+            return 60
+        now = time.time() if now is None else now
+        path = os.path.join(BACKUP_DIR, '.scheduled_backup_state.json')
+        try:
+            with open(path, encoding='utf-8') as stream:
+                state = json.load(stream)
+        except (OSError, ValueError):
+            state = {}
+        interval = max(1, int(interval_hours)) * 3600
+        if state.get('last_success') and now - state['last_success'] < interval:
+            return 60
+        if state.get('last_attempt') and now - state['last_attempt'] < 300:
+            return 60
+        state.update(last_attempt=now, status='running')
+        _save_schedule_state(path, state)
+        mysql_ok = milvus_ok = False
+        try:
+            _backup_mysql(); mysql_ok = True
+        except Exception as error:
+            logger.error('定时 MySQL 备份失败: %s', error)
+        try:
+            _backup_milvus(); milvus_ok = True
+        except Exception as error:
+            logger.error('定时 Milvus 备份失败: %s', error)
+        if mysql_ok or milvus_ok:
+            _cleanup_old_backups(max_count)
+        state.update(status='complete' if mysql_ok and milvus_ok else 'failed')
+        if mysql_ok and milvus_ok:
+            state['last_success'] = now
+        _save_schedule_state(path, state)
+        return 60
 
 
 # ===================== MySQL 备份 =====================
@@ -117,7 +233,7 @@ def _backup_mysql():
         error_msg = proc.stderr.decode('utf-8', errors='replace')
         raise RuntimeError(f"mysqldump 失败: {error_msg}")
 
-    with gzip.open(filepath, 'wb') as f:
+    with _atomic_gzip(filepath, 'wb') as f:
         f.write(proc.stdout)
 
     logger.info(f"MySQL 备份完成: {filepath} ({_human_size(os.path.getsize(filepath))})")
@@ -165,7 +281,7 @@ def _backup_milvus():
             row["embedding"] = list(row["embedding"])
         f.write(json.dumps(row, ensure_ascii=False) + "\n")
 
-    with gzip.open(filepath, 'wt', encoding='utf-8') as f:
+    with _atomic_gzip(filepath, 'wt') as f:
         if hasattr(client, "query_iterator"):
             # 整段 query(limit, offset) 会触发 Milvus 服务端单查询结果大小上限
             # （code=65535 query results exceed the limit size），改用游标分批拉取
@@ -412,8 +528,20 @@ def _cleanup_old_backups(max_count):
     try:
         files = []
         for f in os.listdir(BACKUP_DIR):
-            if f.startswith('mysql_backup_') or f.startswith('milvus_backup_'):
+            if ((f.startswith('mysql_backup_') and f.endswith('.sql.gz')) or
+                    (f.startswith('milvus_backup_') and f.endswith('.jsonl.gz'))):
                 filepath = os.path.join(BACKUP_DIR, f)
+                # Preserve legacy or unverified backups for manual review, even beyond retention.
+                try:
+                    with open(_verification_path(filepath), encoding='utf-8') as stream:
+                        verified = json.load(stream)
+                    if not verified.get('gzip_crc_verified') or verified.get('bytes') != os.path.getsize(filepath):
+                        continue
+                    with open(filepath, 'rb') as stream:
+                        if hashlib.file_digest(stream, 'sha256').hexdigest() != verified.get('sha256'):
+                            continue
+                except (OSError, ValueError):
+                    continue
                 files.append((os.path.getmtime(filepath), filepath))
         files.sort(reverse=True)
 
@@ -426,6 +554,8 @@ def _cleanup_old_backups(max_count):
                 for old_file in file_list[max_count:]:
                     try:
                         os.remove(old_file)
+                        if os.path.exists(_verification_path(old_file)):
+                            os.remove(_verification_path(old_file))
                         logger.info(f"清理旧备份: {os.path.basename(old_file)}")
                     except Exception as e:
                         logger.warning(f"清理旧备份失败: {e}")
@@ -444,20 +574,7 @@ def _scheduled_backup_loop(engine):
                 interval = int(config.get('backup_interval_hours', '24'))
                 max_count = int(config.get('backup_max_count', '10'))
 
-                logger.info(f"执行定时全量备份（间隔 {interval}h，保留 {max_count} 份）")
-                try:
-                    _backup_mysql()
-                except Exception as e:
-                    logger.error(f"定时 MySQL 备份失败: {e}")
-                try:
-                    _backup_milvus()
-                except Exception as e:
-                    logger.error(f"定时 Milvus 备份失败: {e}")
-
-                _cleanup_old_backups(max_count)
-
-                # 等待下一次备份
-                wait_seconds = interval * 3600
+                wait_seconds = _scheduled_backup_tick(interval, max_count)
             else:
                 # 未启用，60 秒后再检查
                 wait_seconds = 60
@@ -560,7 +677,8 @@ def register_backup_routes(app, engine=None, protected=None, admin_required=None
         _ensure_backup_dir()
         files = []
         for f in sorted(os.listdir(BACKUP_DIR), reverse=True):
-            if f.startswith('mysql_backup_') or f.startswith('milvus_backup_'):
+            if ((f.startswith('mysql_backup_') and f.endswith('.sql.gz')) or
+                    (f.startswith('milvus_backup_') and f.endswith('.jsonl.gz'))):
                 filepath = os.path.join(BACKUP_DIR, f)
                 info = _file_info(filepath)
                 info['type'] = 'mysql' if f.startswith('mysql_') else 'milvus'
