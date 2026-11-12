@@ -269,7 +269,9 @@ def _now_user():
 
 
 def ensure_manual_tables(engine):
+    from assessment_report.sources import SOURCE_DDL
     with engine.begin() as conn:
+        conn.execute(text(SOURCE_DDL))
         for sql in CREATE_TABLES:
             conn.execute(text(sql))
         _ensure_columns(conn, 'assessment_result', [
@@ -497,6 +499,8 @@ def register_assessment_manual_routes(app, engine=None, protected=None, admin_re
                 'ledgers': [],
             }
             with engine.connect() as conn:
+                from assessment_report.sources import read_sources
+                out['sources'] = read_sources(conn, batch)
                 r = conn.execute(text(
                     "SELECT batch, assessment_case_cnt, work_note, extra_note, updated_by, updated_at "
                     "FROM assessment_manual_monthly WHERE batch=:b"
@@ -587,7 +591,8 @@ def register_assessment_manual_routes(app, engine=None, protected=None, admin_re
         cnt = data.get('assessment_case_cnt')
         work_note = data.get('work_note')
         try:
-            cnt_i = int(cnt) if cnt is not None and cnt != '' else None
+            from assessment_report.sources import count_value
+            cnt_i = count_value(cnt, '当月考核案件数')
         except (TypeError, ValueError):
             return jsonify({'success': False, 'error': '当月考核案件数须为整数'}), 400
         user = _now_user()
@@ -689,12 +694,15 @@ def register_assessment_manual_routes(app, engine=None, protected=None, admin_re
                 conn.execute(text("DELETE FROM assessment_manual_special_detail WHERE batch=:b"), {'b': batch})
                 for d in details:
                     major = (d.get('major_name') or d.get('major') or '').strip()
-                    minor = (d.get('minor_name') or d.get('minor') or '').strip()
+                    minor = (d.get('minor_name') or d.get('minor') or d.get('category') or '').strip()
                     try:
                         cnt = int(d.get('piece_cnt', d.get('cnt', 0)) or 0)
                     except (TypeError, ValueError):
                         return jsonify({'success': False, 'error': '专项明细件数无效'}), 400
-                    if not major or not minor:
+                    # 类别手填后只校验 minor；大类可空（NOT NULL 存空串）。旧前端仍传大小类时两者都写。
+                    if not minor:
+                        minor = major
+                    if not minor:
                         continue
                     conn.execute(text(
                         """INSERT INTO assessment_manual_special_detail
@@ -764,6 +772,15 @@ def register_assessment_manual_routes(app, engine=None, protected=None, admin_re
             return jsonify({'success': False, 'error': '请指定月份'}), 400
         user = _now_user()
         monthly = data.get('monthly') or {}
+        from assessment_report.sources import normalize_sources, save_sources, read_sources, source_warning, count_value
+        try:
+            source_rows = normalize_sources(data['sources']) if 'sources' in data else None
+            if 'monthly' in data:
+                if not isinstance(data['monthly'], dict):
+                    raise ValueError('月度总项格式无效')
+                count_value(monthly.get('assessment_case_cnt'), '当月考核案件数')
+        except (ValueError, TypeError) as e:
+            return jsonify({'success': False, 'error': str(e)}), 400
         scores = data.get('scores') or []
         garbage = data.get('garbage') or {}
         self_d = data.get('self_dispose_cnt')
@@ -774,7 +791,7 @@ def register_assessment_manual_routes(app, engine=None, protected=None, admin_re
         do_collector = bool(data.get('do_collector', True))
         do_ledgers = bool(data.get('do_ledgers', True))
         # 分项保存时，显式传入的数组才整组替换；未传则保持原数据
-        has_monthly = isinstance(data.get('monthly'), (dict, type(None)))
+        has_monthly = 'monthly' in data and isinstance(data['monthly'], dict)
         has_scores = 'scores' in data
         has_garbage = 'garbage' in data
         has_collector = 'self_dispose_cnt' in data or 'special_details' in data or has_garbage
@@ -808,13 +825,16 @@ def register_assessment_manual_routes(app, engine=None, protected=None, admin_re
 
         try:
             with engine.begin() as conn:
+                # 渠道先校验后写入，与本次平台数据处于同一事务；未传字段不覆盖。
+                if source_rows is not None:
+                    save_sources(conn, batch, source_rows, user)
                 # monthly
                 if do_monthly and has_monthly:
                     cnt = monthly.get('assessment_case_cnt')
                     try:
                         cnt_i = int(cnt) if cnt is not None and cnt != '' else None
                     except (TypeError, ValueError):
-                        return jsonify({'success': False, 'error': '当月考核案件数须为整数'}), 400
+                        raise ValueError('当月考核案件数须为整数')
                     conn.execute(text(
                         """INSERT INTO assessment_manual_monthly (batch, assessment_case_cnt, work_note, extra_note, updated_by)
                            VALUES (:b,:c,:w,:en,:u)
@@ -840,7 +860,7 @@ def register_assessment_manual_routes(app, engine=None, protected=None, admin_re
                         try:
                             val = float(s.get('score_value'))
                         except (TypeError, ValueError):
-                            return jsonify({'success': False, 'error': f'{un}/{st} 分值无效'}), 400
+                            raise ValueError(f'{un}/{st} 分值无效')
                         conn.execute(text(
                             """INSERT INTO assessment_manual_score
                                (batch, unit_name, unit_type, score_type, score_value, updated_by)
@@ -856,9 +876,9 @@ def register_assessment_manual_routes(app, engine=None, protected=None, admin_re
                             try:
                                 n = int(raw) if raw is not None and raw != '' else 0
                             except (TypeError, ValueError):
-                                return jsonify({'success': False, 'error': f'{r}片区件数无效'}), 400
+                                raise ValueError(f'{r}片区件数无效')
                             if n < 0:
-                                return jsonify({'success': False, 'error': f'{r}片区件数不能为负'}), 400
+                                raise ValueError(f'{r}片区件数不能为负')
                             conn.execute(text(
                                 """INSERT INTO assessment_manual_garbage
                                    (batch, region, district_name, piece_count, updated_by)
@@ -878,12 +898,15 @@ def register_assessment_manual_routes(app, engine=None, protected=None, admin_re
                         conn.execute(text("DELETE FROM assessment_manual_special_detail WHERE batch=:b"), {'b': batch})
                         for d in details:
                             major = (d.get('major_name') or d.get('major') or '').strip()
-                            minor = (d.get('minor_name') or d.get('minor') or '').strip()
+                            minor = (d.get('minor_name') or d.get('minor') or d.get('category') or '').strip()
                             try:
                                 cnt = int(d.get('piece_cnt', d.get('cnt', 0)) or 0)
                             except (TypeError, ValueError):
-                                return jsonify({'success': False, 'error': '专项明细件数无效'}), 400
-                            if not major or not minor:
+                                raise ValueError('专项明细件数无效')
+                            # 类别手填后只校验 minor；大类可空（NOT NULL 存空串）。旧前端仍传大小类时两者都写。
+                            if not minor:
+                                minor = major
+                            if not minor:
                                 continue
                             conn.execute(text(
                                 """INSERT INTO assessment_manual_special_detail
@@ -904,7 +927,7 @@ def register_assessment_manual_routes(app, engine=None, protected=None, admin_re
                                 cnt = it.get('piece_cnt')
                                 cnt_i = int(cnt) if cnt is not None and cnt != '' else None
                             except (TypeError, ValueError):
-                                return jsonify({'success': False, 'error': '台账数量须为整数'}), 400
+                                raise ValueError('台账数量须为整数')
                             conn.execute(text(
                                 """INSERT INTO assessment_manual_ledger
                                    (batch, ledger_type, unit_name, dept_name, source, piece_cnt, content, reason, deadline, updated_by)
@@ -939,7 +962,17 @@ def register_assessment_manual_routes(app, engine=None, protected=None, admin_re
             except Exception as e:
                 logger.warning(f'挂账合计校验失败: {e}')
                 warnings = []
+            if source_rows is not None or has_monthly:
+                with engine.connect() as conn:
+                    current = conn.execute(text(
+                        'SELECT assessment_case_cnt FROM assessment_manual_monthly WHERE batch=:b'
+                    ), {'b': batch}).fetchone()
+                    warning = source_warning(current[0] if current else None, read_sources(conn, batch))
+                    if warning:
+                        warnings.append(warning)
             return jsonify({'success': True, 'warnings': warnings})
+        except ValueError as e:
+            return jsonify({'success': False, 'error': str(e)}), 400
         except Exception as e:
             logger.error(f'保存全部人工数据失败: {e}')
             return jsonify({'success': False, 'error': str(e)}), 500
@@ -954,6 +987,9 @@ def register_assessment_manual_routes(app, engine=None, protected=None, admin_re
     @app.route('/api/assessment/manual/save-collector', methods=['PUT', 'POST'])
     @perm_access('assessment_input_collector')
     def assessment_manual_save_collector_only():
+        data = request.get_json(silent=True) or {}
+        if 'sources' in data or 'monthly' in data:
+            return jsonify({'success': False, 'error': '采集员入口不能保存平台受理数据'}), 403
         return _assessment_manual_save_all_impl()
 
 

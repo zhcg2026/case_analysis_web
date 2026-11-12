@@ -2,11 +2,11 @@
   <div class="ami-tab">
     <div class="toolbar">
       <label class="lbl">考核月份</label>
-      <select v-model="batch" class="sel" @change="loadAll">
+      <select v-model="batch" class="sel" :disabled="saving" @change="loadAll">
         <option value="">请选择月份</option>
         <option v-for="m in months" :key="m.batch" :value="m.batch">{{ formatMonth(m.batch) }}</option>
       </select>
-      <button class="btn btn-primary" :disabled="!batch || saving" @click="saveAll">
+      <button class="btn btn-primary" :disabled="!batch || saving || loading || !loadReady" @click="saveAll">
         {{ saving ? '保存中…' : saveLabel }}
       </button>
       <span v-if="loadedHint" class="hint">{{ loadedHint }}</span>
@@ -14,6 +14,7 @@
 
     <div v-if="!batch" class="empty">请先选择考核月份</div>
 
+    <div v-else-if="loading" class="empty">正在读取本月数据…</div>
     <div v-else class="sections">
       <div v-if="pendingWarnings.length" class="pending-warn">
         <div class="pending-warn-title">挂账数量不一致，请核对（各片区/公园/子单位挂账合计应等于部门挂账案件数量）：</div>
@@ -29,6 +30,24 @@
             <input type="number" v-model.number="monthly.assessment_case_cnt" min="0" />
           </div>
         </div>
+        <h4>各渠道受理数</h4>
+        <p class="card-tip">用于月报图1。公众诉求由所属渠道自动汇总；无案件请填0，未填可暂存。增删仅影响当前月份。</p>
+        <table class="ami-grid">
+          <thead><tr><th>所属大类</th><th>渠道名称</th><th>受理件数</th><th>操作</th></tr></thead>
+          <tbody>
+            <tr v-for="(row, index) in sourceRows" :key="index">
+              <td><select v-model="row.group"><option v-for="g in sourceGroups" :key="g">{{ g }}</option></select></td>
+              <td><input v-model="row.name" maxlength="80" aria-label="渠道名称" /></td>
+              <td><input v-model.number="row.count" type="number" min="0" step="1" placeholder="未填写" aria-label="渠道受理数" /></td>
+              <td><button class="link danger" @click="removeSource(index)">删除</button></td>
+            </tr>
+          </tbody>
+        </table>
+        <button class="btn" :disabled="sourceRows.length >= 50" @click="sourceRows.push({ group: '公众诉求', name: '', count: null })">＋ 增加渠道</button>
+        <p class="card-tip" :class="{ 'source-warning': sourceMessage }">
+          渠道合计：{{ sourceTotal }}件；月报受理数：{{ monthly.assessment_case_cnt ?? '未填写' }}；
+          公众诉求：{{ publicTotal }}件。{{ sourceMessage || '合计一致，可生成月报。' }}
+        </p>
         <div class="field">
           <label>工作动态（整月总结，一行一条，序号自行填写）</label>
           <textarea v-model="monthly.work_note" rows="6" placeholder="一行一条，如：&#10;提升防汛实战能力。紧扣…&#10;加强部门协调联动。针对…"></textarea>
@@ -226,21 +245,13 @@
         <h4>专项采集明细（类别 + 件数）</h4>
         <table class="ami-grid">
           <thead>
-            <tr><th>大类</th><th>小类</th><th>件数</th><th></th></tr>
+            <tr><th>类别</th><th>件数</th><th></th></tr>
           </thead>
           <tbody>
             <tr v-for="(d, i) in specialDetails" :key="i">
               <td>
-                <select v-model="d.major_name" @change="onMajorChange(d)">
-                  <option value="">选择大类</option>
-                  <option v-for="c in categories" :key="c.id" :value="c.cat_name">{{ c.cat_name }}</option>
-                </select>
-              </td>
-              <td>
-                <select v-model="d.minor_name">
-                  <option value="">选择小类</option>
-                  <option v-for="s in subOptions[d.major_name] || []" :key="s.id" :value="s.sub_name">{{ s.sub_name }}</option>
-                </select>
+                <input v-model="d.minor_name" maxlength="100" placeholder="手填类别，如：暴露垃圾"
+                       aria-label="专项采集类别" />
               </td>
               <td><input type="number" min="0" v-model.number="d.piece_cnt" /></td>
               <td><button class="link danger" @click="specialDetails.splice(i,1)">删</button></td>
@@ -248,6 +259,7 @@
           </tbody>
         </table>
         <button class="btn" @click="specialDetails.push({major_name:'',minor_name:'',piece_cnt:0})">+ 添加明细</button>
+        <p class="page-sub" style="margin:8px 0 0">类别为手填文本；历史数据按原「小类」名显示与汇总，大类字段不再填写。</p>
       </section>
     </div>
 
@@ -262,7 +274,7 @@
 
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import axios from 'axios'
 
 const props = defineProps({
@@ -284,14 +296,34 @@ const tmpl = ref({
   parks: [], municipal_units: [], garbage_regions: [], pending_groups: {},
 })
 const monthly = reactive({ assessment_case_cnt: null, work_note: '', extra_note: '' })
+const sourceGroups = ['采集上报', '视频上报', '公众诉求']
+const defaultSources = () => ['采集上报', '视频上报', '12345政务转办', '12345热线', '值班电话', '民呼我应', '微信举报']
+  .map((name, i) => ({ name, group: i < 2 ? sourceGroups[i] : '公众诉求', count: null }))
+const sourceRows = ref(defaultSources())
+const loading = ref(false)
+const loadReady = ref(false)
+let loadSequence = 0
+const sourceTotal = computed(() => sourceRows.value.reduce((n, r) => n + (Number(r.count) || 0), 0))
+const publicTotal = computed(() => sourceRows.value.filter(r => r.group === '公众诉求').reduce((n, r) => n + (Number(r.count) || 0), 0))
+const sourceMessage = computed(() => {
+  if (monthly.assessment_case_cnt === null || monthly.assessment_case_cnt === '') return '受理总数未填写；可暂存，生成前须补齐。'
+  if (!sourceRows.value.length || sourceRows.value.some(r => r.count === null || r.count === '')) return '渠道件数尚未填齐；可暂存，生成前须补齐。'
+  const difference = Number(monthly.assessment_case_cnt) - sourceTotal.value
+  return difference ? `差额：${difference}件；可暂存，生成前须核对一致。` : ''
+})
+async function removeSource(index) {
+  const originalRows = sourceRows.value
+  try {
+    await ElMessageBox.confirm(`删除本月渠道“${sourceRows.value[index].name || '未命名'}”？保存后生效，其他月份不受影响。`, '删除渠道', { type: 'warning' })
+    if (sourceRows.value === originalRows) sourceRows.value.splice(index, 1)
+  } catch { /* 取消 */ }
+}
 const scoreMap = reactive({})
 const pendingMap = reactive({})
 const garbage = reactive({ 东: 0, 西: 0, 南: 0, 北: 0, 中: 0 })
 const selfDisposeCnt = ref(0)
 const specialDetails = ref([])
 const ledgers = reactive({ pending: [], backlog: [], praise: [] })
-const categories = ref([])
-const subOptions = reactive({})
 const allUnits = ref([])
 const saving = ref(false)
 const loadedHint = ref('')
@@ -481,32 +513,20 @@ async function fetchTemplate() {
 }
 
 async function fetchDicts() {
-  const tasks = []
-  if (isCollector.value) tasks.push(axios.get('/api/dict/categories'))
-  if (isPlatform.value) tasks.push(axios.get('/api/assessment/units'))
-  const results = await Promise.all(tasks)
-  let i = 0
-  if (isCollector.value) {
-    const cats = results[i++]
-    if (cats.data?.success) categories.value = cats.data.categories || []
-  }
+  // 采集员侧专项类别已改为手填，不再拉大类/小类字典
   if (isPlatform.value) {
-    const units = results[i++]
-    if (units.data?.success) allUnits.value = units.data.units || []
+    try {
+      const res = await axios.get('/api/assessment/units')
+      if (res.data?.success) allUnits.value = res.data.units || []
+    } catch { /* ignore */ }
   }
-}
-
-async function onMajorChange(row) {
-  row.minor_name = ''
-  if (!row.major_name) return
-  const cat = categories.value.find(c => c.cat_name === row.major_name)
-  if (!cat) return
-  const res = await axios.get('/api/dict/subcategories', { params: { category_id: cat.id } })
-  if (res.data?.success) subOptions[row.major_name] = res.data.subcategories || []
 }
 
 async function loadAll() {
-  if (!batch.value) return
+  const sequence = ++loadSequence
+  loading.value = true
+  loadReady.value = false
+  if (!batch.value) { loading.value = false; return }
   initScores()
   ledgers.pending = []
   ledgers.backlog = []
@@ -516,9 +536,11 @@ async function loadAll() {
   monthly.assessment_case_cnt = null
   monthly.work_note = ''
   monthly.extra_note = ''
+  sourceRows.value = defaultSources()
   loadedHint.value = '加载中…'
   try {
     const res = await axios.get('/api/assessment/manual', { params: { batch: batch.value } })
+    if (sequence !== loadSequence) return
     if (!res.data?.success) {
       ElMessage.error(res.data?.error || '操作失败，请稍后重试。')
       loadedHint.value = ''
@@ -526,6 +548,7 @@ async function loadAll() {
     }
     const d = res.data
     if (isPlatform.value) {
+      sourceRows.value = d.sources?.length ? d.sources.map(r => ({ ...r })) : defaultSources()
       if (d.monthly) {
         monthly.assessment_case_cnt = d.monthly.assessment_case_cnt
         monthly.work_note = d.monthly.work_note || ''
@@ -552,11 +575,11 @@ async function loadAll() {
       }
       if (d.collector) selfDisposeCnt.value = d.collector.self_dispose_cnt || 0
       specialDetails.value = (d.special_details || []).map(x => ({
-        major_name: x.major_name, minor_name: x.minor_name, piece_cnt: x.piece_cnt,
+        // 历史数据保留 major_name 以便再次保存时不丢库内原值；界面只展示/编辑 minor_name（类别）
+        major_name: x.major_name || '',
+        minor_name: x.minor_name || '',
+        piece_cnt: x.piece_cnt,
       }))
-      for (const row of specialDetails.value) {
-        if (row.major_name && !subOptions[row.major_name]) await onMajorChange(row)
-      }
     }
     if (isPlatform.value) {
       loadedHint.value = d.monthly || d.scores.length || (d.ledgers || []).length || (d.pending_counts || []).length ? '已回填已录入数据' : '该月尚未录入'
@@ -564,9 +587,12 @@ async function loadAll() {
       const hasCollector = (d.garbage || []).length || d.collector || (d.special_details || []).length
       loadedHint.value = hasCollector ? '已回填已录入数据' : '该月尚未录入'
     }
+    loadReady.value = true
   } catch (e) {
     // error toast via interceptor
     loadedHint.value = ''
+  } finally {
+    if (sequence === loadSequence) loading.value = false
   }
 }
 
@@ -593,7 +619,7 @@ function collectPending() {
 }
 
 async function saveAll() {
-  if (!batch.value) return
+  if (!batch.value || loading.value || !loadReady.value) return
   saving.value = true
   try {
     const url = isCollector.value
@@ -604,7 +630,13 @@ async function saveAll() {
           batch: batch.value,
           garbage: { ...garbage },
           self_dispose_cnt: selfDisposeCnt.value,
-          special_details: specialDetails.value.filter(d => d.major_name && d.minor_name),
+          special_details: specialDetails.value
+            .map(d => ({
+              major_name: (d.major_name || '').trim(),
+              minor_name: (d.minor_name || '').trim(),
+              piece_cnt: d.piece_cnt,
+            }))
+            .filter(d => d.minor_name),
         }
       : {
           batch: batch.value,
@@ -613,6 +645,7 @@ async function saveAll() {
             work_note: monthly.work_note,
             extra_note: monthly.extra_note,
           },
+          sources: sourceRows.value.map(r => ({ ...r })),
           scores: collectScores(),
           pending_counts: collectPending(),
           ledgers: {
@@ -687,6 +720,7 @@ textarea, .field textarea { height: auto; padding: 8px; width: 100%; }
 .link { border: none; background: none; color: var(--primary-600, #2563eb); cursor: pointer; font-size: 12px; }
 .link.danger { color: #dc2626; }
 .card-tip { margin: 0 0 12px; font-size: 12px; color: var(--text-tertiary, #6b7280); line-height: 1.6; }
+.card-tip.source-warning { color: #b45309; margin-top: 8px; }
 .grid-empty { text-align: center; color: var(--text-tertiary, #9ca3af); font-size: 12px; padding: 12px 0; }
 .empty-hint { font-size: 12px; color: var(--text-tertiary); padding: 4px 0 8px; }
 .anom-item {

@@ -3,6 +3,9 @@
 import logging
 import os
 import re
+import tempfile
+import threading
+from contextlib import contextmanager
 from datetime import datetime
 
 from flask import request, jsonify, send_from_directory
@@ -35,15 +38,49 @@ def _docx_path(batch: str) -> str:
 
 def generate_assessment_report(engine, batch: str) -> dict:
     """收集数据 → 出图 → 生成Word。返回文件信息。"""
-    data = collect_report_data(engine, batch)
-    img1, img2 = make_charts(data, CHARTS_DIR)
-    out = generate_word(data, img1, img2, _docx_path(batch))
+    # 文件锁跨Gunicorn worker生效；临时产物验证成功后才原子替换正式Word。
+    os.makedirs(REPORTS_DIR, exist_ok=True)
+    with _report_lock(batch):
+        data = collect_report_data(engine, batch)
+        with tempfile.TemporaryDirectory(prefix=f'.assessment_{batch}_', dir=REPORTS_DIR) as stage:
+            img1, img2 = make_charts(data, stage)
+            draft = os.path.join(stage, 'report.docx')
+            generate_word(data, img1, img2, draft)
+            from zipfile import ZipFile
+            with ZipFile(draft) as archive:
+                if archive.testzip() is not None:
+                    raise RuntimeError('月报文件校验失败，原报告已保留')
+            out = _docx_path(batch)
+            os.replace(draft, out)
     return {
         'batch': batch,
         'file_url': f'/reports/assessment_{batch}.docx',
         'generated_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
         'path': out,
     }
+
+
+_local_locks = {}
+_locks_guard = threading.Lock()
+
+
+@contextmanager
+def _report_lock(batch):
+    with _locks_guard:
+        lock = _local_locks.setdefault(batch, threading.Lock())
+    if not lock.acquire(blocking=False):
+        raise ValueError('该月月报正在生成，请稍后重试')
+    try:
+        with open(os.path.join(REPORTS_DIR, f'.assessment_{batch}.lock'), 'a') as handle:
+            if os.name != 'nt':
+                import fcntl
+                try:
+                    fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                except BlockingIOError:
+                    raise ValueError('该月月报正在生成，请稍后重试')
+            yield
+    finally:
+        lock.release()
 
 
 def register_assessment_report_routes(app, engine=None, protected=None):
@@ -61,6 +98,8 @@ def register_assessment_report_routes(app, engine=None, protected=None):
                 return jsonify({'success': False, 'error': '数据库未连接'}), 500
             info = generate_assessment_report(engine, batch)
             return jsonify({'success': True, **info})
+        except ValueError as e:
+            return jsonify({'success': False, 'error': str(e)}), 400
         except Exception as e:
             logger.exception('考核月报生成失败 batch=%s', batch)
             return jsonify({'success': False, 'error': f'生成失败: {e}'}), 500

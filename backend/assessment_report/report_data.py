@@ -104,23 +104,9 @@ def collect_report_data(engine, batch: str) -> dict:
                 'overtime': int(r[3]), 'delayed': int(r[4]), 'rework': int(r[5]),
             }
 
-        # 2. 来源渠道分布（图1）
-        src_rows = conn.execute(text("""
-            SELECT source, COUNT(*) FROM case_data
-            WHERE upload_batch = :batch
-            GROUP BY source ORDER BY 2 DESC
-        """), {'batch': batch}).fetchall()
-        src_groups = {SRC_COLLECTOR: 0, SRC_VIDEO: 0, SRC_PUBLIC: 0}
-        src_subs = []
-        for r in src_rows:
-            name, cnt = r[0] or '其他', int(r[1])
-            if name == '采集员上报':
-                src_groups[SRC_COLLECTOR] += cnt
-            elif name == '视频上报':
-                src_groups[SRC_VIDEO] += cnt
-            else:
-                src_groups[SRC_PUBLIC] += cnt
-                src_subs.append([name, cnt])
+        # 图1只用人工录入的受理来源，不能使用应结案批次的来源分布。
+        from assessment_report.sources import read_sources, chart_sources
+        source_rows = read_sources(conn, batch)
 
         # 3. 人工录入数据（extra_note 为后补列，旧库无该列时回退）
         monthly = None
@@ -135,6 +121,7 @@ def collect_report_data(engine, batch: str) -> dict:
                 "FROM assessment_manual_monthly WHERE batch = :b"
             ), {'b': batch}).fetchone()
         received = int(monthly[0]) if monthly and monthly[0] is not None else None
+        sources = chart_sources(received, source_rows)
         work_note = (monthly[1] or '') if monthly else ''
         extra_note = (monthly[2] or '') if monthly else ''
 
@@ -287,8 +274,7 @@ def collect_report_data(engine, batch: str) -> dict:
             'special_breakdown': special_breakdown,
             'no_assess_total': no_assess_total,
         },
-        'sources': {'groups': src_groups, 'subs': src_subs,
-                    'total': sum(src_groups.values())},
+        'sources': sources,
         'disposal': {'rows': disposal, 'total': disposal_total},
         'scores': results,
         'missing': missing,

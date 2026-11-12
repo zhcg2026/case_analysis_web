@@ -1,13 +1,5 @@
 # -*- coding: utf-8 -*-
-"""考核月报 Word 生成：按"运行月报"红头公文版式输出 docx
-
-版式取自 2026年7月月报 实测：
-- 红头：单位名称 方正楷体_GBK 26pt 红色分散对齐；运 行 月 报 方正小标宋_GBK 65pt 红色居中
-- 期号行：方正楷体_GB2312 16pt（期号 + 右对齐制表位日期）
-- 一级标题 黑体16pt、（一）级 方正楷体_GB2312 16pt、1、级 楷体16pt，正文 仿宋_GB2312 16pt
-- 表格：表头 548DD4 蓝底白色加粗 方正仿宋_GB2312 12pt，数据 仿宋_GB2312 12pt 居中
-- 注：楷体 12pt 灰色 7E7E7E
-"""
+"""运行月报：宋体正文、黑体标题、微软雅黑表格，统一版心及明确分页。"""
 import logging
 import os
 
@@ -32,13 +24,13 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 # 字体
-F_TITLE_KAI = '方正楷体_GBK'       # 红头单位名称
+F_TITLE_KAI = '楷体'              # 红头单位名称
 F_TITLE_SONG = '方正小标宋_GBK'    # 红头 运行月报
-F_KAI_GB = '方正楷体_GB2312'      # 期号行、（一）级标题、目录二级
-F_FANGSONG = '仿宋_GB2312'        # 正文、表格数据
-F_FANGSONG2 = '方正仿宋_GB2312'   # 图注、表头
+F_KAI_GB = '黑体'                # 二级标题、目录二级
+F_FANGSONG = '宋体'              # 正文
+F_FANGSONG2 = '微软雅黑'         # 表格
 F_HEI = '黑体'                    # 一级标题、目录一级
-F_KAI = '楷体'                    # 1、级标题、注、工作动态
+F_KAI = '黑体'                    # 三级标题
 
 RED = RGBColor(0xFF, 0x00, 0x00)
 GRAY = RGBColor(0x7E, 0x7E, 0x7E)
@@ -93,9 +85,19 @@ def _pf(p, align=None, indent_chars=0, size_pt=16, line_pt=None, before=0, after
     return p
 
 
-def _add_para(doc, text, cn_font=F_FANGSONG, size_pt=16, align=None, indent_chars=2,
-              line_pt=23, color=None, bold=False, before=0, after=0):
+def _add_para(doc, text, cn_font=F_FANGSONG, size_pt=14, align=None, indent_chars=2,
+              line_pt=22, color=None, bold=False, before=0, after=0):
+    heading = cn_font == F_HEI and bool(text.strip())
+    if heading and not text.startswith(('一、', '二、', '三、', '· ')):
+        size_pt = 14
+        line_pt = 22
+    if heading:
+        bold = True
+        before = max(before, 8)
+        after = max(after, 4)
     p = doc.add_paragraph()
+    p.paragraph_format.keep_with_next = heading
+    p.paragraph_format.widow_control = True
     _pf(p, align=align, indent_chars=indent_chars, size_pt=size_pt,
         line_pt=line_pt, before=before, after=after)
     run = p.add_run(text)
@@ -144,14 +146,43 @@ def _set_cell_margins(table, top=15, left=15, bottom=15, right=15):
 
 
 def _norm_widths(widths, total=CONTENT_W):
-    """保留参考文档各表的实际列宽网格。"""
-    return list(widths)
+    """所有表格统一到版心；舍入误差归入最后一列。"""
+    scaled = [int(w * total / sum(widths)) for w in widths]
+    scaled[-1] += total - sum(scaled)
+    return scaled
 
 
-def _add_table(doc, headers, rows, widths, header_size=12, data_size=12,
+def _text_width(value, size):
+    """保守估算单行宽度，用于优先给名称及数字留足空间（twips）。"""
+    import unicodedata
+    def units(c):
+        if unicodedata.east_asian_width(c) in ('W', 'F'):
+            return 1
+        if c in '.,:;':
+            return .28
+        if c == '%':
+            return .90
+        return .56
+    return max((sum(units(c) for c in line) for line in str(value).split('\n')), default=0) * size * 20
+
+
+def _add_table(doc, headers, rows, widths, header_size=10.5, data_size=10.5,
                header_font=F_FANGSONG2, data_font=F_FANGSONG):
-    """通用表格：蓝底白字表头 + 仿宋数据行，全部居中"""
+    """统一总宽和固定列网格，优先保证常规名称、数字单行，长说明自然换行。"""
+    narrative = any(h in ('主要内容', '内容') for h in headers)
+    header_font = data_font = F_FANGSONG2
+    size_limit = 9.5 if len(headers) >= 11 else 10.5
+    header_size = min(header_size, size_limit)
+    data_size = min(data_size, size_limit)
     widths = _norm_widths(widths)
+    if rows and not narrative:
+        required = [int(max(max(_text_width(row[j], data_size) for row in rows),
+                            _text_width(max(str(headers[j]).split('\n'), key=len)[:3], header_size))) + 80
+                    for j in range(len(headers))]
+        spare = CONTENT_W - sum(required)
+        if spare >= 0:
+            widths = [need + int(spare * w / CONTENT_W) for need, w in zip(required, widths)]
+            widths[-1] += CONTENT_W - sum(widths)
     table = doc.add_table(rows=len(rows) + 1, cols=len(headers))
     table.alignment = WD_TABLE_ALIGNMENT.CENTER
     table.autofit = False
@@ -162,11 +193,15 @@ def _add_table(doc, headers, rows, widths, header_size=12, data_size=12,
         tblPr.append(tblW)
     tblW.set(qn('w:w'), str(sum(widths)))
     tblW.set(qn('w:type'), 'dxa')
+    for layout in tblPr.findall(qn('w:tblLayout')):
+        tblPr.remove(layout)
     layout = OxmlElement('w:tblLayout')
-    layout.set(qn('w:type'), 'autofit')
+    layout.set(qn('w:type'), 'fixed')
     tblPr.append(layout)
+    for column, width in zip(table.columns, widths):
+        column.width = Twips(width)
     _set_table_borders(table)
-    _set_cell_margins(table)
+    _set_cell_margins(table, top=35, bottom=35, left=40, right=40)
 
     # 表头
     hdr = table.rows[0]
@@ -180,29 +215,34 @@ def _add_table(doc, headers, rows, widths, header_size=12, data_size=12,
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
         p.paragraph_format.space_before = Pt(0)
         p.paragraph_format.space_after = Pt(0)
+        p.paragraph_format.keep_with_next = True
         pPr = p._p.get_or_add_pPr()
         spacing = pPr.find(qn('w:spacing'))
         if spacing is None:
             spacing = OxmlElement('w:spacing')
             pPr.append(spacing)
-        spacing.set(qn('w:line'), '240')
+        spacing.set(qn('w:line'), '276')
         spacing.set(qn('w:lineRule'), 'auto')
-        parts = str(h).split('\n')
+        flat = str(h).replace('\n', '')
+        parts = [flat] if _text_width(flat, header_size) + 80 <= widths[j] else str(h).split('\n')
         for k, part in enumerate(parts):
             if k:
-                p.add_run().add_break()
+                break_run = p.add_run()
+                _set_run(break_run, header_font, header_size, color=WHITE, bold=True)
+                break_run.add_break()
             run = p.add_run(part)
             _set_run(run, header_font, header_size, color=WHITE, bold=True)
-    # 数据行（数字用 Times New Roman，度量稳定不因字体替换变化）
+    # 数字用Arial，中文用微软雅黑；普通表按实际可用列宽适度调整字号。
     for i, row_data in enumerate(rows):
         row = table.rows[i + 1]
-        _set_row_cant_split(row)
+        if not narrative or max(len(str(v)) for v in row_data) < 400:
+            _set_row_cant_split(row)
         for j, val in enumerate(row_data):
             cell = row.cells[j]
             cell.width = Twips(widths[j])
             cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
             p = cell.paragraphs[0]
-            p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            p.alignment = WD_ALIGN_PARAGRAPH.LEFT if (j == 0 or narrative and j >= 2) else WD_ALIGN_PARAGRAPH.CENTER
             p.paragraph_format.space_before = Pt(0)
             p.paragraph_format.space_after = Pt(0)
             pPr = p._p.get_or_add_pPr()
@@ -210,27 +250,37 @@ def _add_table(doc, headers, rows, widths, header_size=12, data_size=12,
             if spacing is None:
                 spacing = OxmlElement('w:spacing')
                 pPr.append(spacing)
-            spacing.set(qn('w:line'), '240')
+            spacing.set(qn('w:line'), '276')
             spacing.set(qn('w:lineRule'), 'auto')
             run = p.add_run('' if val is None else str(val))
-            _set_run(run, data_font, data_size)
+            cell_size = data_size
+            if not narrative and _text_width(val, cell_size) + 80 > widths[j]:
+                cell_size = max(9.5, min(cell_size, cell_size * (widths[j] - 80) / max(1, _text_width(val, cell_size))))
+            _set_run(run, data_font, cell_size)
             rFonts = run._element.get_or_add_rPr().find(qn('w:rFonts'))
-            rFonts.set(qn('w:ascii'), 'Times New Roman')
-            rFonts.set(qn('w:hAnsi'), 'Times New Roman')
+            rFonts.set(qn('w:ascii'), 'Arial')
+            rFonts.set(qn('w:hAnsi'), 'Arial')
+    # 避免“合计”独占下一页；超长说明行保留自然跨页能力。
+    if len(rows) >= 2 and str(rows[-1][0]).replace(' ', '') == '合计' and max(len(str(v)) for v in rows[-2]) < 400:
+        for cell in table.rows[-2].cells:
+            for p in cell.paragraphs:
+                p.paragraph_format.keep_with_next = True
     return table
 
 
 def _add_note(doc, lines):
     """表格下方灰色小字注"""
-    for ln in lines:
+    lines = [ln for ln in lines if ln]
+    for i, ln in enumerate(lines):
         if ln:
-            _add_para(doc, ln, cn_font=F_KAI, size_pt=12, indent_chars=2,
-                      line_pt=16, color=GRAY)
+            p = _add_para(doc, ln, cn_font=F_FANGSONG, size_pt=10.5, indent_chars=2,
+                          line_pt=15, color=GRAY)
+            p.paragraph_format.keep_with_next = i < len(lines) - 1
 
 
 def _add_caption(doc, text):
-    _add_para(doc, text, cn_font=F_FANGSONG2, size_pt=16,
-              align=WD_ALIGN_PARAGRAPH.CENTER, indent_chars=0, line_pt=20)
+    _add_para(doc, text, cn_font=F_FANGSONG, size_pt=12,
+              align=WD_ALIGN_PARAGRAPH.CENTER, indent_chars=0, line_pt=18, after=4)
 
 
 def _add_red_rule(doc):
@@ -252,6 +302,7 @@ def _add_red_rule(doc):
 def _add_image(doc, img_path, caption, width_cm):
     p = doc.add_paragraph()
     _pf(p, align=WD_ALIGN_PARAGRAPH.CENTER)
+    p.paragraph_format.keep_with_next = True
     run = p.add_run()
     run.add_picture(img_path, width=Cm(width_cm))
     _add_caption(doc, caption)
@@ -398,6 +449,11 @@ def _municipal_rows(data):
 
 def generate_word(data: dict, img1: str, img2: str, out_path: str) -> str:
     doc = Document()
+    normal = doc.styles['Normal']
+    normal.font.name = F_FANGSONG
+    normal.font.size = Pt(14)
+    normal._element.get_or_add_rPr().get_or_add_rFonts().set(qn('w:eastAsia'), F_FANGSONG)
+    normal.paragraph_format.space_after = Pt(0)
 
     # 页面：首节对应参考文档的标题页，目录后用正文节承载报告内容。
     sec = doc.sections[0]
@@ -433,9 +489,9 @@ def generate_word(data: dict, img1: str, img2: str, out_path: str) -> str:
     tabs.append(tab)
     pPr.append(tabs)
     run = p.add_run(f"〔{issue['year']}〕第{issue['no']}期（总第{issue['total']}期）")
-    _set_run(run, F_KAI_GB, 16)
+    _set_run(run, F_FANGSONG, 14)
     run2 = p.add_run('\t' + issue['date_str'])
-    _set_run(run2, F_KAI_GB, 16)
+    _set_run(run2, F_FANGSONG, 14)
     _add_red_rule(doc)
 
     # ===== 目录块 =====
@@ -479,10 +535,11 @@ def generate_word(data: dict, img1: str, img2: str, out_path: str) -> str:
         _add_para(doc, f"专项采集城市问题{o['special_total']}件，其中{detail}。")
     _add_para(doc, f"采集员自行处置{o['self_dispose']}件，单体垃圾扣分{o['garbage_cnt']}件。")
     if img2:
-        _add_image(doc, img2, '图2.不考核案件类型及数量', 13.58)
+        _add_image(doc, img2, '图2.不考核案件类型及数量', 15.48)
 
     # （一）处置情况
-    _add_para(doc, '（一）处置情况', cn_font=F_KAI_GB, size_pt=16, indent_chars=2, line_pt=23)
+    disposal_heading = _add_para(doc, '（一）处置情况', cn_font=F_KAI_GB, size_pt=14, indent_chars=2, line_pt=22)
+    disposal_heading.paragraph_format.page_break_before = True
     disp = data['disposal']
     rows = [[r['name'], r['total'], r['closed'], f"{r['rate']:.2f}%", f"{r['share']:.2f}%"]
             for r in disp['rows']]
@@ -604,9 +661,9 @@ def generate_word(data: dict, img1: str, img2: str, out_path: str) -> str:
     items = work_note_lines(data.get('work_note') or '')
     if items:
         for it in items:
-            _add_para(doc, it, cn_font=F_KAI, size_pt=16, indent_chars=2, line_pt=25)
+            _add_para(doc, it, cn_font=F_FANGSONG, size_pt=14, indent_chars=2, line_pt=22)
     else:
-        _add_para(doc, '无。', cn_font=F_KAI, size_pt=16, indent_chars=2, line_pt=25)
+        _add_para(doc, '无。', cn_font=F_FANGSONG, size_pt=14, indent_chars=2, line_pt=22)
 
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     doc.save(out_path)
