@@ -11,6 +11,8 @@
 
 ## 快速开始
 
+以下步骤用于独立的本地开发环境。运行中的生产实例请先阅读下方“部署与恢复说明”，不要在现网执行初始化或照搬历史部署命令。
+
 ### 1. 环境准备
 
 - Python 3.11+
@@ -60,19 +62,16 @@ npm run dev
 
 前端默认运行在 `http://localhost:5173`，代理 API 请求到后端 `http://localhost:5000`。
 
-## Docker 部署
+## 部署与恢复说明
 
-```bash
-# 先构建前端
-cd frontend && npm run build && cd ..
+当前生产容器的脱敏运行基线和只读预检统一从 [ops/recovery/README.md](ops/recovery/README.md) 查阅。
 
-# 后端打包需要一个 CPU 版 PyTorch whl 文件（放在项目根目录）
-# 下载地址: https://download.pytorch.org/whl/cpu/torch
-# 文件名: torch-2.13.0+cpu-cp311-cp311-manylinux_2_28_x86_64.whl
+- 根目录 `docker-compose.internal.yml` 是**已过期的历史配置**，不能完整描述当前生产挂载和环境；不要直接用于现网重建或容器接管。
+- `ops/recovery/compose.recovery.reference.yml` 是经过参数核对的**备查参考**，要求明确指定经过验证的恢复镜像，不会自动接管现网。静态检查通过也不代表已完成恢复演练。
+- 当前 `Dockerfile` 和 `requirements.txt` 不等于已验证的可复现构建方案；镜像与运行层的后装依赖有差异，不能据此重新构建后直接替换正常容器。
+- 密钥、环境文件、镜像、数据库及业务文件备份独立受控保存，不进入仓库。恢复前必须核对挂载数据、凭据、镜像和回退依据。
 
-docker build -t case-analysis .
-docker run -d -p 5000:5000 --env-file .env.production case-analysis
-```
+日常保持现有正常容器运行。任何生产变更或恢复另行制定方案并确认授权，本节不提供可直接作用于现网的生命周期命令。
 
 ## 项目结构
 

@@ -1,5 +1,8 @@
-# 内网服务器部署配置
-# 复用现有 MySQL 数据库
+# 历史内网部署配置：已过期，不是当前生产容器的完整重建基线。
+# 不要直接用本文件对现网执行 up/down/build 或替换正常容器。
+# 当前运行基线、只读检查和恢复边界见 ops/recovery/README.md。
+# ops/recovery/compose.recovery.reference.yml 也仅为备查参考，不是自动生效入口。
+# 本次只更新注释，以下历史配置内容保持不变，供审计和版本追溯。
 
 version: '3.8'
 
