@@ -2644,7 +2644,7 @@ def register_cyw_routes(app, Session=None, engine=None, protected=None, admin_re
 
         L = []
         A = L.append
-        A('创文问题处理 · 数据统计')
+        A('城市文明建设问题处理 · 数据统计')
         if is_single:
             A(f'统计日期：{range_start.strftime("%Y年%m月%d日")}')
             A('【一、当日概况】')
