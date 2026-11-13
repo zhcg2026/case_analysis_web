@@ -1,0 +1,36 @@
+# 巡查统计分析
+
+分析页面 `/inspection/stats` 使用权限保护的只读接口 `GET /api/inspection/analysis`。
+原 `/api/inspection/stats`、导入、编辑、图片和导出接口保持兼容。
+
+## 周期和口径
+
+`mode=all|month|week|day|range`；`anchor=YYYY-MM-DD`。
+自定义区间使用 `date_from`、`date_to`。周为周一至周日，自然月为月初至月末，未结束的当前周期截到北京时间今天。
+
+按发现日期筛选，整改状态截至查询时刻，不等同期间实际办结量。历史数据没有完整实际整改时间，因此不推算历史存量、平均整改时长、当日办结率。
+账龄以当前日期减发现日期计算，不称为逾期。没有登记不代表没有开展巡查。
+
+周期比较取两期相同日数（前月短时两边均截短）；对比期在最早发现日期前时不计算变化，上期0件不算增长百分比。
+无数据整改率为null，页面显示“—”。未来发现日期排除并提示。所有分类/权属提示仅作展示，不改案件。
+
+## 返回及明细
+
+返回period、overview、trend、departments、roads、ages、categories、comparison、narrative、classification_rules、generated_at。
+趋势按区间长度自动为日、周或月，补零仅表示该日无登记。
+GET接口只读取案件必要字段，在同一组结果上计算各维度。初始查询不读取图片。
+
+按需明细：`detail_kind=all|done|pending|old|disputed|dept|road|date|category|age`，具体维度通过`detail_value`指定，`page`起于1，`size`为1—50（默认20）。
+只有当页明细额外读取照片路径，不读图片二进制。原位置、问题和处理结果经Vue转义展示；图表tooltip使用richText而非拼接HTML。
+
+问题类型依次使用`INSP_CATEGORY_RULES`匹配原问题描述，一案只计一类；规则维护在巡查模块内，无法识别保留未分类，界面提供规则说明。
+复合问题须结合原文判断，第一版不提供持久化人工分类覆盖。
+
+## 验证与发布
+
+`python -m unittest discover -s tests -p inspection_analysis_test.py`运行不依赖数据库的日历、统计、分类、明细及非变更性测试。
+前端使用已有ECharts，无新增依赖；支持图表PNG导出、汇报文字复制、明细原图查看、Excel沿用既有导出。
+
+发布应先备份，保留原前端哈希资源，在后端就绪后原子切换index。源码变更仅限巡查模块、新图表组件和统计页。
+数据库、图片及其他业务模块不应被发布工具改写。核验旧接口兼容、权限、统计对账、健康及业务内容指纹。
+业务快照、图片、SQL和生产日志不提交源码仓库。

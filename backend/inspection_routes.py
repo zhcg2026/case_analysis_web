@@ -75,6 +75,217 @@ PHASH_DUP_DISTANCE = 2
 STATUS_VALID = ('待整改', '已整改')
 
 
+# Display-only classification: the first matching rule wins, never written to case data.
+INSP_CATEGORY_RULES = (
+    ('设施破损', r'地砖|路面|路沿石|井盖|护栏|树篦|树池|坑洼|隔离桩|隔离墩|围挡|线缆|电线|灯杆|路灯'),
+    ('环境卫生', r'垃圾|脏|不洁|污|小广告|积水|清运|油渍'),
+    ('车辆停放', r'车辆|停车|停放|小蓝|单车|小彬|哈罗'),
+    ('占道及堆放', r'摊点|商贩|经营|占道|堆|晾晒|晾乱晒'),
+    ('绿化养护', r'缺苗|缺株|绿化|枯|黄土|补植|树木|修剪|裸露'),
+)
+INSP_AGE_BANDS = (('0—3天', 0, 3), ('4—7天', 4, 7), ('8—14天', 8, 14),
+                  ('15—21天', 15, 21), ('22天及以上', 22, None))
+
+
+def inspection_period(args, today):
+    """Calendar periods in server Asia/Shanghai. Endpoints refer to discovery dates only."""
+    from datetime import date
+    mode = args.get('mode', 'all')
+    if mode not in ('all', 'month', 'week', 'day', 'range'):
+        raise ValueError('统计模式无效')
+    def parse(value):
+        try:
+            if not re.fullmatch(r'\d{4}-\d{2}-\d{2}', str(value)):
+                raise ValueError()
+            d = date.fromisoformat(value)
+            if d.year < 2000 or d > today:
+                raise ValueError()
+            return d
+        except (ValueError, TypeError):
+            raise ValueError('日期须为2000年起且不晚于今天的有效日期')
+    anchor = parse(args.get('anchor') or today.isoformat())
+    start = end = previous_start = previous_end = None
+    if mode == 'day':
+        start = end = anchor
+        previous_start = previous_end = start - timedelta(days=1)
+    elif mode == 'week':
+        start = anchor - timedelta(days=anchor.weekday())
+        end = min(start + timedelta(days=6), today)
+        previous_start = start - timedelta(days=7)
+        previous_end = previous_start + (end - start)
+    elif mode == 'month':
+        start = anchor.replace(day=1)
+        next_month = (start.replace(day=28) + timedelta(days=4)).replace(day=1)
+        end = min(next_month - timedelta(days=1), today)
+        previous_end_of_month = start - timedelta(days=1)
+        previous_start = previous_end_of_month.replace(day=1)
+        previous_end = min(previous_start + (end - start), previous_end_of_month)
+    elif mode == 'range':
+        start = parse(args.get('date_from'))
+        end = parse(args.get('date_to'))
+        if end < start:
+            raise ValueError('开始日期不能晚于结束日期')
+        previous_end = start - timedelta(days=1)
+        previous_start = previous_end - (end - start)
+    if start and (end - start).days > 3660:
+        raise ValueError('统计区间不能超过10年')
+    try:
+        page, size = int(args.get('page', 1)), int(args.get('size', 20))
+    except (TypeError, ValueError):
+        raise ValueError('分页参数无效')
+    if page < 1 or not 1 <= size <= 50:
+        raise ValueError('每页须为1—50条且页码大于0')
+    return {'mode': mode, 'start': start, 'end': end, 'previous_start': previous_start,
+            'previous_end': previous_end, 'page': page, 'size': size}
+
+
+def build_inspection_analysis(rows, args, today):
+    """Pure aggregation of minimal case columns. No mutations, SQL, photos or history inference."""
+    from datetime import date
+    p = inspection_period(args, today)
+    category_rules = [(name, re.compile(pattern)) for name, pattern in INSP_CATEGORY_RULES]
+    dispute_re = re.compile(r'不属于|非我|建议转|转办|权属|非本科室|非我科室|不归|管理范围')
+    enriched = []
+    for source in rows:
+        r = dict(source)
+        found = date.fromisoformat(str(r['case_date'])[:10])
+        # Future discovery dates are invalid for present-state metrics; expose their count separately.
+        r['case_date'] = found.isoformat()
+        r['dept'] = r.get('dept') or '未填'
+        r['road'] = r.get('road') or '未填'
+        r['category'] = next((name for name, pattern in category_rules
+                              if pattern.search(str(r.get('problem') or ''))), '未分类')
+        r['age_days'] = (today - found).days
+        r['disputed'] = bool(dispute_re.search(str(r.get('result') or '')))
+        r['_date'] = found
+        enriched.append(r)
+    valid = [r for r in enriched if r['_date'] <= today]
+    selected = [r for r in valid if not p['start'] or p['start'] <= r['_date'] <= p['end']]
+    pending = [r for r in selected if r['status'] != '已整改']
+    done = len(selected) - len(pending)
+    def pct(n, d):
+        return round(n / d * 100, 1) if d else None
+    def grouped(key):
+        result = {}
+        for r in selected:
+            entry = result.setdefault(r[key], {'name': r[key], 'total': 0, 'rectified': 0, 'pending': 0})
+            entry['total'] += 1
+            entry['rectified' if r['status'] == '已整改' else 'pending'] += 1
+        for entry in result.values():
+            entry['rate'] = pct(entry['rectified'], entry['total'])
+            entry['pending_share'] = pct(entry['pending'], len(pending))
+        return sorted(result.values(), key=lambda x: (-x['pending'], -x['total'], x['name']))
+    bands = []
+    for label, low, high in INSP_AGE_BANDS:
+        count = sum(r['age_days'] >= low and (high is None or r['age_days'] <= high) for r in pending)
+        bands.append({'name': label, 'min': low, 'max': high, 'total': count,
+                      'share': pct(count, len(pending))})
+    by_day = {}
+    for r in selected:
+        entry = by_day.setdefault(r['case_date'], {'name': r['case_date'], 'total': 0, 'rectified': 0, 'pending': 0})
+        entry['total'] += 1
+        entry['rectified' if r['status'] == '已整改' else 'pending'] += 1
+    # Fill zeros only within a bounded current query range; never claim absence of inspections.
+    first = p['start'] or min((r['_date'] for r in selected), default=today)
+    last = p['end'] or max((r['_date'] for r in selected), default=today)
+    granularity = 'day' if (last - first).days <= 92 else 'week' if (last - first).days <= 730 else 'month'
+    buckets = {}
+    cursor = first
+    while cursor <= last:
+        key = cursor.isoformat() if granularity == 'day' else (
+            (cursor - timedelta(days=cursor.weekday())).isoformat() if granularity == 'week' else cursor.strftime('%Y-%m'))
+        entry = buckets.setdefault(key, {'name': key, 'total': 0, 'rectified': 0, 'pending': 0})
+        daily = by_day.get(cursor.isoformat(), {})
+        for field in ('total', 'rectified', 'pending'):
+            entry[field] += daily.get(field, 0)
+        cursor += timedelta(days=1)
+    comparison = None
+    earliest = min((r['_date'] for r in valid), default=None)
+    if p['previous_start']:
+        previous = [r for r in valid if p['previous_start'] <= r['_date'] <= p['previous_end']]
+        coverage = bool(earliest and earliest <= p['previous_start'])
+        # If previous month is shorter, compare only the same number of calendar days on both sides.
+        days = (p['previous_end'] - p['previous_start']).days + 1
+        comparable_end = p['start'] + timedelta(days=days - 1)
+        comparable = [r for r in selected if r['_date'] <= comparable_end]
+        previous_total = len(previous)
+        comparison = {'start': p['previous_start'].isoformat(), 'end': p['previous_end'].isoformat(),
+                      'current_start': p['start'].isoformat(), 'current_end': comparable_end.isoformat(),
+                      'days': days, 'total': previous_total, 'current_total': len(comparable),
+                      'available': coverage, 'delta': len(comparable) - previous_total if coverage else None,
+                      'percent': round((len(comparable) - previous_total) / previous_total * 100, 1)
+                      if coverage and previous_total else None,
+                      'note': '仅比较相同日数的已登记问题量；不代表巡查工作量或绩效。' if coverage else '对比期早于台账最早发现日期，数据覆盖不足，不作增减判断。'}
+    departments, roads, categories = grouped('dept'), grouped('road'), grouped('category')
+    old_count = sum(r['age_days'] >= 15 for r in pending)
+    dispute_count = sum(r['disputed'] for r in pending)
+    period_label = f"{p['start']}至{p['end']}" if p['start'] else '全部已登记问题'
+    narrative = [{'text': f"{period_label}共发现{len(selected)}件问题，目前已整改{done}件、待整改{len(pending)}件，"
+                         + (f"整改率{pct(done, len(selected))}%。" if selected else '整改率暂无。'),
+                  'kind': 'all', 'value': ''}]
+    if pending:
+        leaders = [d for d in departments if d['pending']][:2]
+        count = sum(d['pending'] for d in leaders)
+        narrative.append({'text': f"待整改问题主要集中在{'、'.join(d['name'] for d in leaders)}，共{count}件，占本期待整改的{pct(count, len(pending))}%。",
+                          'kind': 'pending', 'value': ''})
+        narrative.append({'text': f"本期问题中，发现满15天仍待整改{old_count}件，占待整改的{pct(old_count, len(pending))}%；涉及权属或转办表述的待整改问题{dispute_count}件，需逐条核实。",
+                          'kind': 'old', 'value': ''})
+    if roads:
+        busiest = sorted(roads, key=lambda d: (-d['total'], d['name']))[:3]
+        count = sum(d['total'] for d in busiest)
+        narrative.append({'text': f"问题量居前的道路为{'、'.join(d['name'] for d in busiest)}，合计{count}件，占本期问题的{pct(count, len(selected))}%。",
+                          'kind': 'all', 'value': ''})
+    if comparison:
+        if comparison['available']:
+            difference = comparison['delta']
+            narrative.append({'text': f"同阶段（各{comparison['days']}天）登记问题，本期{comparison['current_total']}件、对比期{comparison['total']}件，"
+                                     + (f"增加{difference}件。" if difference > 0 else f"减少{-difference}件。" if difference < 0 else '数量持平。'),
+                              'kind': 'all', 'value': ''})
+        else:
+            narrative.append({'text': comparison['note'], 'kind': 'all', 'value': ''})
+    response = {'period': {'mode': p['mode'], 'start': str(p['start']) if p['start'] else None,
+                           'end': str(p['end']) if p['end'] else None, 'label': period_label},
+                'as_of': today.isoformat(), 'earliest_date': str(earliest) if earliest else None,
+                'latest_date': str(max((r['_date'] for r in valid), default='')) or None,
+                'future_date_count': len(enriched) - len(valid),
+                'overview': {'total': len(selected), 'rectified': done, 'pending': len(pending),
+                             'rate': pct(done, len(selected)), 'old_pending': old_count,
+                             'disputed': dispute_count, 'roads': len(roads), 'departments': len(departments)},
+                'comparison': comparison, 'trend': list(buckets.values()), 'trend_grain': granularity,
+                'departments': departments, 'roads': roads, 'categories': categories, 'ages': bands,
+                'narrative': narrative,
+                'classification_rules': [{'name': name, 'keywords': pattern} for name, pattern in INSP_CATEGORY_RULES],
+                'classification_note': '按问题描述关键词依次匹配，仅供分析，不改原案；无法识别保留未分类。'}
+    kind = args.get('detail_kind')
+    if kind:
+        value = str(args.get('detail_value') or '')
+        detail = selected
+        if kind in ('dept', 'road', 'category', 'date'):
+            field = 'case_date' if kind == 'date' else kind
+            detail = [r for r in selected if r[field] == value]
+        elif kind == 'age':
+            band = next((b for b in bands if b['name'] == value), None)
+            if band is None:
+                raise ValueError('账龄区间无效')
+            detail = [r for r in pending if r['age_days'] >= band['min'] and (band['max'] is None or r['age_days'] <= band['max'])]
+        elif kind == 'pending':
+            detail = pending
+        elif kind == 'done':
+            detail = [r for r in selected if r['status'] == '已整改']
+        elif kind == 'old':
+            detail = [r for r in pending if r['age_days'] >= 15]
+        elif kind == 'disputed':
+            detail = [r for r in pending if r['disputed']]
+        elif kind != 'all':
+            raise ValueError('明细类型无效')
+        detail = sorted(detail, key=lambda r: (r['status'] == '已整改', -r['age_days'], r['id']))
+        offset = (p['page'] - 1) * p['size']
+        response['detail'] = {'total': len(detail), 'page': p['page'], 'size': p['size'],
+                              'items': [{k: v for k, v in r.items() if k != '_date'}
+                                        for r in detail[offset:offset + p['size']]]}
+    return response
+
+
 def _now() -> str:
     """服务器容器 TZ=Asia/Shanghai，这里显式取本地时间，避免 MySQL NOW() 用 UTC 覆写。"""
     return datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -667,6 +878,39 @@ def register_inspection_routes(app, Session=None, engine=None, protected=None, a
         }), 200
 
     # ---------------------------------------------------------------- 疑似重复队列
+
+    @app.route('/api/inspection/analysis', methods=['GET'])
+    @insp_access
+    def insp_analysis():
+        """只读分析；不调用建表、更新状态或图片处理。旧 stats 接口保持兼容。"""
+        import time
+        started = time.monotonic()
+        try:
+            # Validate before accessing the database, including bounded dates and pagination.
+            inspection_period(request.args, datetime.now().date())
+            with engine.connect() as conn:
+                rows = conn.execute(text(
+                    "SELECT id, case_date, road, location, problem, dept, result, status "
+                    "FROM insp_case ORDER BY case_date, id"
+                )).mappings().all()
+                data = build_inspection_analysis(rows, request.args, datetime.now().date())
+                if 'detail' in data and data['detail']['items']:
+                    ids = [r['id'] for r in data['detail']['items']]
+                    from sqlalchemy import bindparam
+                    photos = conn.execute(text(
+                        "SELECT case_id, kind, file_path FROM insp_photo WHERE case_id IN :ids "
+                        "ORDER BY case_id, kind, seq"
+                    ).bindparams(bindparam('ids', expanding=True)), {'ids': ids}).mappings().all()
+                    by_id = {}
+                    for p in photos:
+                        by_id.setdefault(p['case_id'], []).append(dict(p))
+                    for r in data['detail']['items']:
+                        r['photos'] = by_id.get(r['id'], [])
+            data['generated_at'] = _now()
+            data['query_ms'] = round((time.monotonic() - started) * 1000, 1)
+            return jsonify(data), 200
+        except ValueError as exc:
+            return jsonify({'error': str(exc)}), 400
 
     @app.route('/api/inspection/dup-candidates', methods=['GET'])
     @insp_access

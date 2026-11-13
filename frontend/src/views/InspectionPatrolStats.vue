@@ -1,216 +1,61 @@
 <template>
-  <div class="ips-page">
-    <div class="page-header">
-      <div>
-        <h2>巡查数据统计</h2>
-        <p class="page-sub">数字全部实时聚合，没有手工维护的汇总。导出的 Excel 版式与《问题处置汇总总台账》一致。</p>
-      </div>
-      <div>
-        <el-button :loading="exporting" @click="exportExcel">导出台账</el-button>
-        <el-button type="primary" @click="load">刷新</el-button>
-      </div>
-    </div>
-
-    <el-card shadow="never" class="filter-card">
-      <div class="filter-row">
-        <el-radio-group v-model="mode" @change="onModeChange">
-          <el-radio-button label="range">时间段</el-radio-button>
-          <el-radio-button label="all">全部</el-radio-button>
-        </el-radio-group>
-        <el-date-picker
-          v-if="mode === 'range'"
-          v-model="dateRange"
-          type="daterange"
-          value-format="YYYY-MM-DD"
-          start-placeholder="开始日期"
-          end-placeholder="结束日期"
-          :shortcuts="shortcuts"
-          style="width: 260px"
-          @change="load"
-        />
-        <span v-else class="muted">统计范围：全部已入库数据</span>
-      </div>
-    </el-card>
-
-    <!-- 总览 -->
-    <el-row :gutter="16" class="overview">
-      <el-col :span="6">
-        <div class="stat-box total">
-          <div class="stat-num">{{ stats.total }}</div>
-          <div class="stat-label">问题总数</div>
-        </div>
-      </el-col>
-      <el-col :span="6">
-        <div class="stat-box done">
-          <div class="stat-num">{{ stats.rectified }}</div>
-          <div class="stat-label">已整改</div>
-        </div>
-      </el-col>
-      <el-col :span="6">
-        <div class="stat-box pending">
-          <div class="stat-num">{{ stats.pending }}</div>
-          <div class="stat-label">待整改</div>
-        </div>
-      </el-col>
-      <el-col :span="6">
-        <div class="stat-box rate">
-          <div class="stat-num">{{ stats.rectify_rate }}<small>%</small></div>
-          <div class="stat-label">整改率</div>
-        </div>
-      </el-col>
-    </el-row>
-
-    <el-row :gutter="16">
-      <!-- 按责任单位 -->
-      <el-col :span="8">
-        <el-card shadow="never">
-          <template #header><b>按责任单位</b></template>
-          <el-table :data="stats.by_dept" border size="small" max-height="420">
-            <el-table-column prop="dept" label="单位" min-width="90" />
-            <el-table-column prop="total" label="问题数" width="70" align="center" />
-            <el-table-column prop="rectified" label="已整改" width="70" align="center" />
-            <el-table-column label="整改率" width="80" align="center">
-              <template #default="{ row }">
-                {{ row.total ? Math.round(row.rectified / row.total * 100) : 0 }}%
-              </template>
-            </el-table-column>
-          </el-table>
-        </el-card>
-      </el-col>
-
-      <!-- 按道路 -->
-      <el-col :span="8">
-        <el-card shadow="never">
-          <template #header><b>按道路</b></template>
-          <el-table :data="stats.by_road" border size="small" max-height="420">
-            <el-table-column prop="road" label="道路" min-width="110" show-overflow-tooltip />
-            <el-table-column prop="total" label="问题数" width="70" align="center" />
-            <el-table-column prop="rectified" label="已整改" width="70" align="center" />
-            <el-table-column label="整改率" width="80" align="center">
-              <template #default="{ row }">
-                {{ row.total ? Math.round(row.rectified / row.total * 100) : 0 }}%
-              </template>
-            </el-table-column>
-          </el-table>
-        </el-card>
-      </el-col>
-
-      <!-- 按日期 -->
-      <el-col :span="8">
-        <el-card shadow="never">
-          <template #header><b>按发现日期</b></template>
-          <el-table :data="stats.by_date" border size="small" max-height="420">
-            <el-table-column label="日期" width="100">
-              <template #default="{ row }">{{ fmtDate(row.date) }}</template>
-            </el-table-column>
-            <el-table-column prop="total" label="问题数" width="70" align="center" />
-            <el-table-column prop="rectified" label="已整改" width="70" align="center" />
-            <el-table-column label="整改率" width="80" align="center">
-              <template #default="{ row }">
-                {{ row.total ? Math.round(row.rectified / row.total * 100) : 0 }}%
-              </template>
-            </el-table-column>
-          </el-table>
-        </el-card>
-      </el-col>
-    </el-row>
-  </div>
+ <div class="ips-page" v-loading="loading">
+  <header><div><h2>巡查数据分析</h2><p class="muted">按发现日期观察问题分布与当前整改情况</p></div><div class="actions"><el-button :disabled="!data||loading" @click="copyReport">复制汇报文字</el-button><el-button :disabled="!data||loading" :loading="exporting" @click="exportExcel">导出台账</el-button><el-button type="primary" @click="load">刷新</el-button></div></header>
+  <section class="filters"><el-radio-group v-model="mode" @change="changeMode"><el-radio-button label="all">全部</el-radio-button><el-radio-button label="month">月分析</el-radio-button><el-radio-button label="week">周分析</el-radio-button><el-radio-button label="day">日分析</el-radio-button><el-radio-button label="range">自定义</el-radio-button></el-radio-group>
+   <el-date-picker v-if="mode==='month'" v-model="anchor" type="month" value-format="YYYY-MM-DD" :clearable="false" :disabled-date="future" aria-label="选择月份" @change="load"/>
+   <template v-else-if="mode==='week'||mode==='day'"><el-date-picker v-model="anchor" type="date" value-format="YYYY-MM-DD" :clearable="false" :disabled-date="future" aria-label="选择日期" @change="load"/><span v-if="mode==='week'" class="muted">选择周内任意日期，按周一至周日统计</span></template>
+   <el-date-picker v-else-if="mode==='range'" v-model="dateRange" type="daterange" value-format="YYYY-MM-DD" :clearable="false" :disabled-date="future" start-placeholder="开始日期" end-placeholder="结束日期" @change="load"/>
+  </section>
+  <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon/>
+  <template v-if="data">
+   <div class="scope"><b>{{data.period.label}}</b><span>状态截至 {{data.generated_at}}（北京时间）</span><span>最新问题发现日期：{{data.latest_date||'暂无'}}</span></div>
+   <p class="muted">“已整改”指所选期间发现的问题截至当前的状态，不是本期实际办结量。账龄按今天 {{data.as_of}} 距发现日计算；无新增登记不代表未开展巡查。</p>
+   <el-alert v-if="data.future_date_count" :title="`${data.future_date_count}条未来发现日期已排除，请核对原台账。`" type="warning" :closable="false"/>
+   <div class="metrics"><button v-for="m in metrics" :key="m.label" @click="openDetail(m.kind,'',m.label)"><span>{{m.label}}</span><strong :class="m.kind">{{m.value}}</strong><small>{{m.note}}</small></button></div>
+   <section class="panel narrative"><div class="section-head"><h3>本期分析</h3><el-button text @click="copyReport">复制文字</el-button></div><p v-for="(r,i) in data.narrative" :key="i">{{r.text}} <el-button text type="primary" @click="openDetail(r.kind,r.value,'分析依据')">查看依据</el-button></p><p v-if="data.comparison" class="muted">对比期 {{data.comparison.start}} 至 {{data.comparison.end}}；本期对比范围 {{data.comparison.current_start}} 至 {{data.comparison.current_end}}。{{data.comparison.note}}</p><p v-if="data.comparison?.available&&data.comparison.total===0" class="muted">对比期登记为0件，不计算增长百分比。</p></section>
+   <section class="panel"><div class="section-head"><h3>发现趋势与当前整改构成</h3><span class="muted">按{{grainName}}汇总 · 点击柱形查看依据</span></div><InspectionAnalysisChart v-if="data.overview.total" :option="trendOption" title="巡查发现趋势" @select="selectTrend"/><el-empty v-else description="所选期间暂无问题登记，可切换日期或查看全部" :image-size="70"/></section>
+   <div class="chart-grid">
+    <section v-for="block in breakdowns" :key="block.kind" class="panel"><div class="section-head"><h3>{{block.title}}</h3><span class="muted">{{block.note}}</span></div><InspectionAnalysisChart :option="bars(block.chartRows)" :height="Math.max(320,block.chartRows.length*37+80)" :title="block.title" @select="p=>openDetail(block.kind,p.name,p.name)"/><el-table :data="block.rows" size="small" max-height="300" stripe><el-table-column label="名称" min-width="140"><template #default="{row}"><el-button text type="primary" @click="openDetail(block.kind,row.name,row.name)">{{row.name}}</el-button></template></el-table-column><el-table-column prop="total" label="问题数" min-width="72" align="right"/><el-table-column prop="rectified" label="已整改" min-width="72" align="right"/><el-table-column prop="pending" label="待整改" min-width="72" align="right"/><el-table-column label="整改率" min-width="80" align="right"><template #default="{row}">{{rate(row.rate)}}</template></el-table-column></el-table></section>
+    <section class="panel"><div class="section-head"><h3>待整改账龄</h3><span class="muted">按当前日期，不等同逾期</span></div><InspectionAnalysisChart :option="ageOption" title="待整改账龄" @select="p=>openDetail('age',p.name,p.name)"/><div class="age-list"><button v-for="r in data.ages" :key="r.name" @click="openDetail('age',r.name,r.name)"><span>{{r.name}}</span><b>{{r.total}}件</b><span>{{rate(r.share)}}</span></button></div></section>
+    <section class="panel"><div class="section-head"><h3>问题类型</h3><el-button text @click="rulesVisible=true">分类规则</el-button></div><InspectionAnalysisChart :option="bars(data.categories)" title="问题类型" @select="p=>openDetail('category',p.name,p.name)"/><p class="muted">{{data.classification_note}}</p><div class="age-list"><button v-for="r in data.categories" :key="r.name" @click="openDetail('category',r.name,r.name)"><span>{{r.name}}</span><b>{{r.total}}件</b><span>待整改{{r.pending}}件</span></button></div></section>
+   </div>
+   <section class="panel"><h3>重点跟进</h3><div class="actions"><el-button @click="openDetail('old','','发现满15天仍待整改')">发现满15天仍待整改 {{data.overview.old_pending}}件</el-button><el-button @click="openDetail('disputed','','权属或转办待核实')">权属或转办待核实 {{data.overview.disputed}}件</el-button><el-button @click="openDetail('pending','','全部待整改')">全部待整改 {{data.overview.pending}}件</el-button></div><p class="muted">根据登记日期和反馈原文提示，不自动判定逾期、责任归属或处理难度。</p></section>
+  </template>
+  <el-dialog v-model="detailVisible" :title="detailTitle" width="min(1120px,95vw)" destroy-on-close><div v-loading="detailLoading"><p v-if="detailError" class="error-text">{{detailError}}</p><template v-else><p class="muted">{{data?.period.label}} · {{detailTotal}}件 · 整改状态截至当前</p><el-table :data="detailItems" max-height="520" stripe><el-table-column prop="id" label="编号" width="70"/><el-table-column prop="case_date" label="发现日期" width="110"/><el-table-column prop="dept" label="责任单位" width="110"/><el-table-column prop="location" label="位置" min-width="170"/><el-table-column prop="problem" label="问题" min-width="160"/><el-table-column prop="result" label="反馈原文" min-width="160"/><el-table-column prop="status" label="当前状态" width="90"/><el-table-column label="照片" width="120"><template #default="{row}"><el-image v-for="(p,i) in row.photos" :key="i" :src="p.file_path" :preview-src-list="row.photos.map(p=>p.file_path)" :initial-index="i" preview-teleported fit="cover" class="thumb"><template #error><span>图失效</span></template></el-image></template></el-table-column></el-table><el-pagination v-model:current-page="detailPage" :page-size="20" :total="detailTotal" layout="total,prev,pager,next" @current-change="loadDetail"/></template></div></el-dialog>
+  <el-dialog v-model="rulesVisible" title="问题类型归类说明" width="min(680px,95vw)"><p>按以下顺序匹配问题描述，一条只计入一类。复合问题须结合原文判断，不改台账原数据。</p><dl v-for="r in data?.classification_rules" :key="r.name"><dt>{{r.name}}</dt><dd>{{r.keywords.split('|').join('、')}}</dd></dl><p>未命中为“未分类”；权属或转办提示单独依据处理结果原文，仅供核实。</p></el-dialog>
+ </div>
 </template>
 
 <script setup>
-import { reactive, ref, onMounted } from 'vue'
+import {computed,ref,onMounted} from 'vue'
 import axios from 'axios'
-import { ElMessage } from 'element-plus'
-
-const mode = ref('range')
-const dateRange = ref(null)
-const exporting = ref(false)
-const stats = reactive({ total: 0, rectified: 0, pending: 0, rectify_rate: 0, by_dept: [], by_road: [], by_date: [] })
-
-const pad = (n) => String(n).padStart(2, '0')
-const dayText = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
-const today = () => dayText(new Date())
-const shift = (days) => {
-  const d = new Date()
-  d.setDate(d.getDate() + days)
-  return dayText(d)
-}
-const shortcuts = [
-  { text: '最近7天', value: () => [shift(-6), today()] },
-  { text: '最近30天', value: () => [shift(-29), today()] },
-  { text: '本月', value: () => {
-      const d = new Date()
-      return [dayText(new Date(d.getFullYear(), d.getMonth(), 1)), today()]
-    } },
-  { text: '全部', value: () => null },
-]
-
-const fmtDate = (d) => {
-  if (!d) return ''
-  const s = String(d)
-  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return `${s.slice(5, 7)}月${s.slice(8, 10)}日`
-  return s
-}
-
-function onModeChange() {
-  if (mode.value === 'range' && !dateRange.value) dateRange.value = [shift(-6), today()]
-  load()
-}
-
-async function load() {
-  try {
-    const params = mode.value === 'range' && dateRange.value?.length === 2
-      ? { date_from: dateRange.value[0], date_to: dateRange.value[1] }
-      : {}
-    const { data } = await axios.get('/api/inspection/stats', { params })
-    Object.assign(stats, data)
-  } catch { /* 拦截器已提示 */ }
-}
-
-async function exportExcel() {
-  exporting.value = true
-  try {
-    const params = mode.value === 'range' && dateRange.value?.length === 2
-      ? { date_from: dateRange.value[0], date_to: dateRange.value[1] }
-      : {}
-    const { data, headers } = await axios.get('/api/inspection/export', {
-      params, responseType: 'blob',
-    })
-    const disposition = headers['content-disposition'] || ''
-    const utf8 = /filename\*=UTF-8''([^;]+)/i.exec(disposition)
-    const fname = utf8 ? decodeURIComponent(utf8[1]) : '巡查问题台账.xlsx'
-    const url = URL.createObjectURL(data)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = fname
-    a.click()
-    URL.revokeObjectURL(url)
-    ElMessage.success('导出成功')
-  } catch { /* 拦截器已提示 */ }
-  exporting.value = false
-}
-
-onMounted(() => {
-  dateRange.value = [shift(-6), today()]
-  load()
-})
+import {ElMessage} from 'element-plus'
+import InspectionAnalysisChart from '../components/InspectionAnalysisChart.vue'
+const day=d=>new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Shanghai'}).format(d),today=()=>day(new Date()),future=d=>day(d)>today()
+const mode=ref('all'),anchor=ref(today()),dateRange=ref([today(),today()]),loading=ref(false),exporting=ref(false),data=ref(null),error=ref(''),rulesVisible=ref(false)
+const detailVisible=ref(false),detailLoading=ref(false),detailError=ref(''),detailItems=ref([]),detailTotal=ref(0),detailPage=ref(1),detailTitle=ref('')
+let sequence=0,detailSequence=0,activeParams={},detailParams={}
+const rate=v=>v==null?'—':`${v}%`
+const params=()=>mode.value==='range'?{mode:'range',date_from:dateRange.value?.[0],date_to:dateRange.value?.[1]}:{mode:mode.value,anchor:anchor.value}
+async function load(){const n=++sequence;++detailSequence;detailVisible.value=false;loading.value=true;error.value='';data.value=null;const requested=params();try{const r=await axios.get('/api/inspection/analysis',{params:requested});if(n===sequence){data.value=r.data;activeParams={...requested}}}catch{if(n===sequence)error.value='统计读取失败，请刷新重试；未显示上次查询的旧数据。'}finally{if(n===sequence)loading.value=false}}
+function changeMode(){if(mode.value==='month')anchor.value=`${anchor.value.slice(0,7)}-01`;load()}
+const metrics=computed(()=>{const o=data.value.overview;return[{label:'发现问题',value:o.total,kind:'all',note:`${o.roads}条道路 · ${o.departments}家单位`},{label:'目前已整改',value:o.rectified,kind:'done',note:'本期发现问题的当前状态'},{label:'目前待整改',value:o.pending,kind:'pending',note:'点击查看待整改明细'},{label:'当前整改率',value:rate(o.rate),kind:'all',note:'已整改 ÷ 本期发现问题'}]})
+const grainName=computed(()=>({day:'日',week:'周',month:'月'}[data.value?.trend_grain]||'日'))
+const base=()=>({animationDuration:250,textStyle:{color:'#475569'},tooltip:{trigger:'axis',renderMode:'richText',axisPointer:{type:'shadow'}},legend:{top:0,data:['已整改','待整改']},grid:{top:46,left:20,right:24,bottom:26,containLabel:true}})
+const series=rows=>['rectified','pending'].map((k,i)=>({name:i?'待整改':'已整改',type:'bar',stack:'total',barMaxWidth:26,itemStyle:{color:i?'#d89a3c':'#3c8d7b'},data:rows.map(r=>r[k]),emphasis:{focus:'series'}}))
+const trendOption=computed(()=>({...base(),xAxis:{type:'category',data:data.value.trend.map(r=>r.name),axisLabel:{hideOverlap:true}},yAxis:{type:'value',minInterval:1},dataZoom:data.value.trend.length>45?[{type:'inside'},{type:'slider',height:15,bottom:0}]:[],series:series(data.value.trend)}))
+function bars(rows){const r=[...rows].reverse();return{...base(),xAxis:{type:'value',minInterval:1},yAxis:{type:'category',data:r.map(r=>r.name),axisLabel:{width:150,overflow:'truncate'}},series:series(r)}}
+const breakdowns=computed(()=>[{kind:'dept',title:'责任单位',note:'按待整改数量排序',rows:data.value.departments,chartRows:data.value.departments},{kind:'road',title:'道路分布',note:'图示待整改前10，表格包含全部道路',rows:data.value.roads,chartRows:data.value.roads.slice(0,10)}])
+const ageOption=computed(()=>({...base(),legend:{show:false},xAxis:{type:'category',data:data.value.ages.map(r=>r.name),axisLabel:{interval:0,fontSize:11}},yAxis:{type:'value',minInterval:1},series:[{name:'待整改',type:'bar',barMaxWidth:42,itemStyle:{color:'#d89a3c'},label:{show:true,position:'top'},data:data.value.ages.map(r=>r.total)}]}))
+async function openDetail(kind,value,title){detailTitle.value=title;detailParams={...activeParams,detail_kind:kind,detail_value:value};detailPage.value=1;detailVisible.value=true;await loadDetail()}
+async function loadDetail(){const n=++detailSequence;detailLoading.value=true;detailError.value='';detailItems.value=[];try{const r=await axios.get('/api/inspection/analysis',{params:{...detailParams,page:detailPage.value,size:20}});if(n===detailSequence){detailItems.value=r.data.detail.items;detailTotal.value=r.data.detail.total}}catch{if(n===detailSequence)detailError.value='明细读取失败，请关闭后重试。'}finally{if(n===detailSequence)detailLoading.value=false}}
+function selectTrend(p){if(data.value.trend_grain==='day')return openDetail('date',p.name,`${p.name}发现的问题`);const start=p.name.length===7?`${p.name}-01`:p.name,d=new Date(`${start}T00:00:00Z`);if(p.name.length===7){d.setUTCMonth(d.getUTCMonth()+1);d.setUTCDate(0)}else d.setUTCDate(d.getUTCDate()+6);detailParams={mode:'range',date_from:start<(data.value.period.start||start)?data.value.period.start:start,date_to:[d.toISOString().slice(0,10),data.value.period.end||data.value.latest_date,today()].sort()[0],detail_kind:'all'};detailTitle.value=`${p.name}发现的问题`;detailPage.value=1;detailVisible.value=true;loadDetail()}
+async function copyReport(){const text=[`巡查发现问题及整改情况分析（${data.value.period.label}）`,`状态统计时间：${data.value.generated_at}（北京时间）`,...data.value.narrative.map(r=>r.text),'口径：按发现日期筛选，整改状态截至当前；不代表期间实际办结量。'].join('\n\n');try{if(navigator.clipboard?.writeText)await navigator.clipboard.writeText(text);else{const input=document.createElement('textarea');input.value=text;document.body.appendChild(input);input.select();const ok=document.execCommand('copy');input.remove();if(!ok)throw new Error('copy')}ElMessage.success('汇报文字已复制')}catch{ElMessage.warning('复制失败，请手动选取本期分析文字')}}
+async function exportExcel(){exporting.value=true;try{const p=data.value.period;const r=await axios.get('/api/inspection/export',{params:p.start?{date_from:p.start,date_to:p.end}:{},responseType:'blob'});const url=URL.createObjectURL(r.data),a=document.createElement('a');a.href=url;a.download=`巡查台账-${p.start||'全部'}-${p.end||today()}.xlsx`;a.click();URL.revokeObjectURL(url)}catch{ElMessage.error('导出失败，请重试')}finally{exporting.value=false}}
+onMounted(load)
 </script>
 
 <style scoped>
-.ips-page { padding: 20px; }
-.page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; }
-.page-header h2 { margin: 0 0 6px; font-size: 20px; }
-.page-sub { margin: 0; color: #909399; font-size: 13px; max-width: 720px; line-height: 1.6; }
-.filter-card { margin-bottom: 16px; }
-.filter-row { display: flex; align-items: center; gap: 14px; }
-.muted { color: #909399; font-size: 13px; }
-.overview { margin-bottom: 16px; }
-.stat-box { text-align: center; padding: 22px 10px; border-radius: 8px; color: #fff; }
-.stat-num { font-size: 32px; font-weight: 600; line-height: 1; }
-.stat-num small { font-size: 16px; margin-left: 2px; }
-.stat-label { font-size: 13px; margin-top: 8px; opacity: .9; }
-.stat-box.total { background: linear-gradient(135deg, #409eff, #66b1ff); }
-.stat-box.done { background: linear-gradient(135deg, #67c23a, #95d475); }
-.stat-box.pending { background: linear-gradient(135deg, #e6a23c, #f0c78a); }
-.stat-box.rate { background: linear-gradient(135deg, #9254de, #b37feb); }
+.ips-page{padding:24px;color:#27364b;background:#f5f7fa;min-height:100%}header,.section-head{display:flex;align-items:center;justify-content:space-between;gap:16px}h2{margin:0 0 8px;font-size:23px}h3{font-size:16px;margin:0 0 12px}p{line-height:1.8}.muted{color:#637184;font-size:13px}header p{margin:0}.actions,.filters{display:flex;flex-wrap:wrap;align-items:center;gap:10px}.actions :deep(.el-button){margin-left:0}.filters{margin:22px 0 12px;background:white;padding:16px;border:1px solid #e2e7ee;border-radius:8px}.scope{display:flex;flex-wrap:wrap;gap:8px 22px;font-size:13px}.scope span{color:#637184}.metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;margin:18px 0 20px}.metrics button{text-align:left;font:inherit;color:inherit;border:1px solid #e2e7ee;background:white;border-radius:8px;padding:20px;cursor:pointer}.metrics button:hover{border-color:#7595bd}.metrics span,.metrics small{display:block}.metrics strong{display:block;margin:12px 0;font-size:32px;font-weight:650}.metrics small{color:#637184;font-size:12px}.done{color:#287b68}.pending{color:#a66817}.panel{background:white;border:1px solid #e2e7ee;padding:20px;margin-bottom:20px;border-radius:8px;min-width:0}.narrative p{margin:6px 0}.narrative .el-button{height:auto;padding:0 4px}.section-head{align-items:baseline;flex-wrap:wrap}.chart-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 20px}.age-list{display:grid;gap:8px}.age-list button{display:flex;justify-content:space-between;border:0;padding:8px;background:#f5f7fa;cursor:pointer;color:inherit}.thumb{width:36px;height:36px;margin:2px}.error-text{color:#b83434}dl{line-height:1.8}dt{font-weight:600}dd{margin-left:0;color:#637184}
+@media(max-width:1100px){.chart-grid{grid-template-columns:1fr}header{align-items:flex-start;flex-direction:column}}@media(max-width:650px){.ips-page{padding:12px}.metrics{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.metrics button{padding:14px}.metrics strong{font-size:26px}.panel{padding:12px}.filters :deep(.el-radio-button__inner){padding:8px}}
 </style>
