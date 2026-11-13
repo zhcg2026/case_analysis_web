@@ -31,13 +31,16 @@ import {computed,ref,onMounted} from 'vue'
 import axios from 'axios'
 import {ElMessage} from 'element-plus'
 import InspectionAnalysisChart from '../components/InspectionAnalysisChart.vue'
-const day=d=>new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Shanghai'}).format(d),today=()=>day(new Date()),future=d=>day(d)>today()
-const mode=ref('all'),anchor=ref(today()),dateRange=ref([today(),today()]),loading=ref(false),exporting=ref(false),data=ref(null),error=ref(''),rulesVisible=ref(false)
+// Default dates come from the server, never the workstation clock or locale formatting.
+const serverDay=ref(''),today=()=>serverDay.value
+const day=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+const future=d=>Boolean(serverDay.value)&&day(d)>serverDay.value
+const mode=ref('all'),anchor=ref(''),dateRange=ref([]),loading=ref(false),exporting=ref(false),data=ref(null),error=ref(''),rulesVisible=ref(false)
 const detailVisible=ref(false),detailLoading=ref(false),detailError=ref(''),detailItems=ref([]),detailTotal=ref(0),detailPage=ref(1),detailTitle=ref('')
 let sequence=0,detailSequence=0,activeParams={},detailParams={}
 const rate=v=>v==null?'—':`${v}%`
-const params=()=>mode.value==='range'?{mode:'range',date_from:dateRange.value?.[0],date_to:dateRange.value?.[1]}:{mode:mode.value,anchor:anchor.value}
-async function load(){const n=++sequence;++detailSequence;detailVisible.value=false;loading.value=true;error.value='';data.value=null;const requested=params();try{const r=await axios.get('/api/inspection/analysis',{params:requested});if(n===sequence){data.value=r.data;activeParams={...requested}}}catch{if(n===sequence)error.value='统计读取失败，请刷新重试；未显示上次查询的旧数据。'}finally{if(n===sequence)loading.value=false}}
+const params=()=>mode.value==='all'?{mode:'all'}:mode.value==='range'?{mode:'range',date_from:dateRange.value?.[0],date_to:dateRange.value?.[1]}:{mode:mode.value,...(anchor.value?{anchor:anchor.value}:{})}
+async function load(){const n=++sequence;++detailSequence;detailVisible.value=false;loading.value=true;error.value='';data.value=null;const requested=params();try{const r=await axios.get('/api/inspection/analysis',{params:requested});if(n===sequence){serverDay.value=r.data.as_of;if(!anchor.value)anchor.value=serverDay.value;if(dateRange.value.length!==2)dateRange.value=[serverDay.value,serverDay.value];data.value=r.data;activeParams={...requested}}}catch{if(n===sequence)error.value='统计读取失败，请刷新重试；未显示上次查询的旧数据。'}finally{if(n===sequence)loading.value=false}}
 function changeMode(){if(mode.value==='month')anchor.value=`${anchor.value.slice(0,7)}-01`;load()}
 const metrics=computed(()=>{const o=data.value.overview;return[{label:'发现问题',value:o.total,kind:'all',note:`${o.roads}条道路 · ${o.departments}家单位`},{label:'目前已整改',value:o.rectified,kind:'done',note:'本期发现问题的当前状态'},{label:'目前待整改',value:o.pending,kind:'pending',note:'点击查看待整改明细'},{label:'当前整改率',value:rate(o.rate),kind:'all',note:'已整改 ÷ 本期发现问题'}]})
 const grainName=computed(()=>({day:'日',week:'周',month:'月'}[data.value?.trend_grain]||'日'))
